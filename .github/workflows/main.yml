@@ -1,0 +1,29 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Build Docker image
+      run: docker build -t nomad-crew-backend:${{ github.sha }} .
+
+    # - name: Run tests
+    #   run: docker run nomad-crew-backend:${{ github.sha }} your-test-script
+
+    # Additional steps for pushing to Docker registry, etc.
+
+    - name: Notify Slack
+      uses: some/slack-action@v1
+      with:
+        status: ${{ job.status }}
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
