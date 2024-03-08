@@ -1,15 +1,18 @@
-FROM golang:1.15
+FROM golang:1.21 AS builder
 
-WORKDIR /go/src/app
+WORKDIR /app
 
-COPY . .
+COPY ./user-service/go.mod ./user-service/go.sum ./
+RUN go mod download
 
-RUN go get -d -v ./...
+COPY ./user-service .
+COPY ./user-service/config.json ./
 
-RUN go install -v ./...
+RUN go build -o nomadcrew-backend
 
-EXPOSE 8080
+FROM golang:1.21
 
-ENV GIN_MODE release
+COPY --from=builder /app/nomadcrew-backend /nomadcrew-backend
+COPY --from=builder /app/config.json /config.json
 
-CMD ["app"]
+CMD ["/nomadcrew-backend"]
