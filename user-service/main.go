@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/NomadCrew/nomad-crew-backend/user-service/db"
+	"github.com/NomadCrew/nomad-crew-backend/user-service/logger"
 	"github.com/NomadCrew/nomad-crew-backend/user-service/models"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -22,6 +22,7 @@ type Config struct {
 }
 
 func loadConfig() Config {
+	logger := logger.GetLogger()
 	configFile, err := os.Open("config.json")
 	if err != nil {
 		logger.Fatal("Error opening config file:", err)
@@ -32,51 +33,58 @@ func loadConfig() Config {
 	decoder := json.NewDecoder(configFile)
 	err = decoder.Decode(&config)
 	if err != nil {
-		logger.Fatal("Error decoding config file:", err)
+		logger.Error("Error decoding config file:", err)
 	}
 
 	return config
 }
 
-var logger = logrus.New()
 
 func main() {
-	config := loadConfig()
-	logger.Info(config.DatabaseConnectionString)
-	logger.Formatter = new(logrus.JSONFormatter)
-	logger.Level = logrus.DebugLevel
+	logger := logger.GetLogger()
 	dbConnectionString := os.Getenv("DB_CONNECTION_STRING")
-	logger.Info(dbConnectionString)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 	dbPool := db.ConnectToDB(dbConnectionString)
 	server := &Server{db: dbPool}
+	logger.Info(server.db.Stat())
 
 	http.HandleFunc("/v1/register", server.registerHandler)
 	http.HandleFunc("/v1/login", server.loginHandler)
-	http.ListenAndServe(":8080", nil)
-
+	err := http.ListenAndServe(":"+port, nil)
+	if err != nil {
+		logger.Errorf("Failed to start server: %s", err)
+	}
 }
 
 func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    var u models.User
+    if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
 
-	var u models.User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+    if err := u.HashPassword(u.Password); err != nil {
+        http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+        return
+    }
 
-	ctx := r.Context()
-	if err := u.SaveUser(ctx, s.db); err != nil {
-		http.Error(w, "Failed to save user", http.StatusInternalServerError)
-		return
-	}
+    ctx := r.Context()
+    if err := u.SaveUser(ctx, s.db); err != nil {
+        http.Error(w, "Failed to save user", http.StatusInternalServerError)
+        return
+    }
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(u)
+    w.WriteHeader(http.StatusOK)
+    u.Password = ""
+    json.NewEncoder(w).Encode(u)
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
