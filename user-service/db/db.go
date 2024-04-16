@@ -2,12 +2,12 @@ package db
 
 import (
 	"context"
+
 	"github.com/NomadCrew/nomad-crew-backend/user-service/logger"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 var DbPool *pgxpool.Pool
-
 
 func ConnectToDB(connectionString string) *pgxpool.Pool {
 	log := logger.GetLogger()
@@ -15,7 +15,7 @@ func ConnectToDB(connectionString string) *pgxpool.Pool {
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	} else {
-		log.Error("Connected to database")
+		log.Printf("Connected to database")
 	}
 	ensureUserTableExists(pool)
 	return pool
