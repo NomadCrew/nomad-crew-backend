@@ -31,8 +31,12 @@ func main() {
 
 	// Protected routes
 	router.Group(func(r chi.Router) {
-		r.Use(middleware.EnsureValidToken())
-		// Add protected routes here
+		r.Use(func(next http.Handler) http.Handler {+
+			return middleware.EnsureValidToken(next)
+		})
+		// Add your protected routes here
+		r.Get("/v1/user", server.GetUserHandler)
+		r.Get("/v1/nearby-places", server.GetNearbyPlacesHandler)
 	})
 
 	corsHandler := cors.New(cors.Options{
@@ -43,5 +47,9 @@ func main() {
 		Debug:            true,
 	}).Handler(router)
 
-	http.ListenAndServe(":"+cfg.Port, corsHandler)
+	// http.ListenAndServe(":"+cfg.Port, corsHandler)
+	err = http.ListenAndServeTLS(":"+cfg.Port, "/secrets/server.crt", "/secrets/myserver.key", corsHandler)
+	if err != nil {
+		logger.Fatalf("Failed to start TLS server: %s", err)
+	}
 }
