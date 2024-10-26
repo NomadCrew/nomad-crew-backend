@@ -1,110 +1,56 @@
 package main
 
 import (
-	"database/sql"
-	"encoding/json"
 	"net/http"
-	"os"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/cors"
+
+	"github.com/NomadCrew/nomad-crew-backend/user-service/config"
 	"github.com/NomadCrew/nomad-crew-backend/user-service/db"
-	"github.com/NomadCrew/nomad-crew-backend/user-service/models"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/sirupsen/logrus"
+	"github.com/NomadCrew/nomad-crew-backend/user-service/handlers"
+	"github.com/NomadCrew/nomad-crew-backend/user-service/logger"
+	"github.com/NomadCrew/nomad-crew-backend/user-service/middleware"
 )
 
-type Server struct {
-	db *pgxpool.Pool
-}
-
-type Config struct {
-	DatabaseConnectionString string `json:"databaseConnectionString"`
-	JwtSecretKey             string `json:"jwtSecretKey"`
-}
-
-func loadConfig() Config {
-	configFile, err := os.Open("config.json")
-	if err != nil {
-		logger.Fatal("Error opening config file:", err)
-	}
-	defer configFile.Close()
-
-	var config Config
-	decoder := json.NewDecoder(configFile)
-	err = decoder.Decode(&config)
-	if err != nil {
-		logger.Fatal("Error decoding config file:", err)
-	}
-
-	return config
-}
-
-var logger = logrus.New()
-
 func main() {
-	config := loadConfig()
-	logger.Info(config.DatabaseConnectionString)
-	logger.Formatter = new(logrus.JSONFormatter)
-	logger.Level = logrus.DebugLevel
-	dbConnectionString := os.Getenv("DB_CONNECTION_STRING")
-	logger.Info(dbConnectionString)
-	dbPool := db.ConnectToDB(dbConnectionString)
-	server := &Server{db: dbPool}
-
-	http.HandleFunc("/v1/register", server.registerHandler)
-	http.HandleFunc("/v1/login", server.loginHandler)
-	http.ListenAndServe(":8080", nil)
-
-}
-
-func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var u models.User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	if err := u.SaveUser(ctx, s.db); err != nil {
-		http.Error(w, "Failed to save user", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(u)
-}
-
-func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var credentials struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	user, err := models.AuthenticateUser(ctx, s.db, credentials.Email, credentials.Password)
+	logger := logger.GetLogger()
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		} else {
-			http.Error(w, "Server error", http.StatusInternalServerError)
-		}
-		return
+		logger.Fatalf("Failed to load configuration: %s", err)
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	dbPool := db.ConnectToDB(cfg.DatabaseConnectionString)
+	server := handlers.Server{DB: dbPool}
+
+	router := chi.NewRouter()
+
+	// Public routes
+	router.Post("/v1/register", server.RegisterHandler)
+	router.Post("/v1/login", server.LoginHandler)
+
+	// Protected routes
+	router.Group(func(r chi.Router) {
+		r.Use(func(next http.Handler) http.Handler {
+			return middleware.EnsureValidToken(next)
+		})
+		// Add your protected routes here
+		r.Get("/v1/user", server.GetUserHandler)
+		r.Get("/v1/nearby-places", server.GetNearbyPlacesHandler)
+	})
+
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+		Debug:            true,
+	}).Handler(router)
+
+	// http.ListenAndServe(":"+cfg.Port, corsHandler)
+	err = http.ListenAndServeTLS(":"+cfg.Port, "/etc/nginx/ssl/localhost+2.pem", "/etc/nginx/ssl/localhost+2-key.pem", corsHandler)
+	if err != nil {
+		logger.Fatalf("Failed to start TLS server: %s", err)
+	}
+
 }
