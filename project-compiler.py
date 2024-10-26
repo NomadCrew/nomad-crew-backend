@@ -50,7 +50,7 @@ ttk.Button(root, text="Browse", command=lambda: source_dir.set(filedialog.askdir
 extension_frame = ttk.LabelFrame(root, text="Select File Extensions")
 extension_frame.pack(pady=10)
 extension_vars = []
-for ext in ['py', 'go', 'java', 'js', 'txt']:  # Add more extensions as needed
+for ext in ['go', 'python']:  # Add more extensions as needed
     var = tk.StringVar(value=ext)
     chk = ttk.Checkbutton(extension_frame, text=ext.upper(), variable=var, onvalue=ext, offvalue="")
     chk.pack(side='left', padx=5, pady=5)

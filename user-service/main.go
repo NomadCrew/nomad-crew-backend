@@ -31,7 +31,7 @@ func main() {
 
 	// Protected routes
 	router.Group(func(r chi.Router) {
-		r.Use(func(next http.Handler) http.Handler {+
+		r.Use(func(next http.Handler) http.Handler {
 			return middleware.EnsureValidToken(next)
 		})
 		// Add your protected routes here
@@ -48,8 +48,9 @@ func main() {
 	}).Handler(router)
 
 	// http.ListenAndServe(":"+cfg.Port, corsHandler)
-	err = http.ListenAndServeTLS(":"+cfg.Port, "/secrets/server.crt", "/secrets/myserver.key", corsHandler)
+	err = http.ListenAndServeTLS(":"+cfg.Port, "/etc/nginx/ssl/localhost+2.pem", "/etc/nginx/ssl/localhost+2-key.pem", corsHandler)
 	if err != nil {
 		logger.Fatalf("Failed to start TLS server: %s", err)
 	}
+
 }

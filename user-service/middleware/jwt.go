@@ -2,68 +2,62 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"net/url"
-	"os"
-	"time"
+	"strings"
 
-	"github.com/NomadCrew/nomad-crew-backend/user-service/logger"
-	jwtmiddleware "github.com/auth0/go-jwt-middleware/v2"
-	"github.com/auth0/go-jwt-middleware/v2/jwks"
-	"github.com/auth0/go-jwt-middleware/v2/validator"
+	firebase "firebase.google.com/go"
+	"google.golang.org/api/option"
 )
 
-// CustomClaims contains custom data we want from the token.
-type CustomClaims struct {
-	Scope string `json:"scope"`
+// EnsureValidToken verifies the Firebase ID token
+func EnsureValidToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract the token from the Authorization header
+		idToken := extractBearerToken(r.Header.Get("Authorization"))
+		if idToken == "" {
+			http.Error(w, "Missing or malformed JWT", http.StatusUnauthorized)
+			return
+		}
+
+		// Initialize Firebase SDK with service account key
+		opt := option.WithCredentialsFile("/secrets/serviceAccountKey.json")
+		app, err := firebase.NewApp(context.Background(), nil, opt)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error initializing app: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Authenticate the token with Firebase
+		client, err := app.Auth(context.Background())
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error getting Auth client: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		token, err := client.VerifyIDToken(context.Background(), idToken)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error verifying ID token: %v", err), http.StatusUnauthorized)
+			return
+		}
+
+		// Pass the user's Firebase UID to the next middleware or handler
+		type contextKey string
+		const uidKey contextKey = "uid"
+		ctx := context.WithValue(r.Context(), uidKey, token.UID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
-// Validate does nothing for this example, but we need
-// it to satisfy validator.CustomClaims interface.
-func (c CustomClaims) Validate(ctx context.Context) error {
-	return nil
-}
-
-// EnsureValidToken is a middleware that will check the validity of our JWT.
-func EnsureValidToken() func(next http.Handler) http.Handler {
-	logger := logger.GetLogger()
-	issuerURL, err := url.Parse("https://" + os.Getenv("AUTH0_DOMAIN") + "/")
-	if err != nil {
-		logger.Fatalf("Failed to parse the issuer url: %v", err)
+func extractBearerToken(authHeader string) string {
+	if authHeader == "" {
+		return ""
 	}
 
-	provider := jwks.NewCachingProvider(issuerURL, 5*time.Minute)
-
-	jwtValidator, err := validator.New(
-		provider.KeyFunc,
-		validator.RS256,
-		issuerURL.String(),
-		[]string{os.Getenv("AUTH0_AUDIENCE")},
-		validator.WithCustomClaims(
-			func() validator.CustomClaims {
-				return &CustomClaims{}
-			},
-		),
-		validator.WithAllowedClockSkew(time.Minute),
-	)
-	if err != nil {
-		logger.Fatalf("Failed to set up the jwt validator")
+	parts := strings.Split(authHeader, "Bearer ")
+	if len(parts) != 2 {
+		return ""
 	}
 
-	errorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.Printf("Encountered error while validating JWT: %v", err)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"message":"Failed to validate JWT."}`))
-	}
-
-	middleware := jwtmiddleware.New(
-		jwtValidator.ValidateToken,
-		jwtmiddleware.WithErrorHandler(errorHandler),
-	)
-
-	return func(next http.Handler) http.Handler {
-		return middleware.CheckJWT(next)
-	}
+	return strings.TrimSpace(parts[1])
 }
