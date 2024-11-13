@@ -11,7 +11,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./user-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./user-service/db/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -31,6 +31,8 @@ services:
       - "8080:8080"
     environment:
       DB_CONNECTION_STRING: ${DB_CONNECTION_STRING}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      PORT: ${PORT}
     depends_on:
       postgres:
         condition: service_healthy

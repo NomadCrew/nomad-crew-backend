@@ -1,35 +1,25 @@
 package db
 
 import (
-	"context"
-	"log"
+    "context"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/NomadCrew/nomad-crew-backend/user-service/db/dbutils"
+    "github.com/NomadCrew/nomad-crew-backend/user-service/logger"
 )
 
-var DbPool *pgxpool.Pool
+func ConnectToDB(connectionString string, ctx context.Context) *pgxpool.Pool {
+    log := logger.GetLogger()
 
-func ConnectToDB(connectionString string) *pgxpool.Pool {
-	pool, err := pgxpool.Connect(context.Background(), connectionString)
-	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
-	}
-	ensureUserTableExists(pool)
-	return pool
+    pool, err := pgxpool.Connect(ctx, connectionString)
+    if err != nil {
+        log.Fatalf("Unable to connect to database: %v", err)
+    }
+
+    log.Info("Successfully connected to database")
+    return pool
 }
 
-func ensureUserTableExists(pool *pgxpool.Pool) {
-	ctx := context.Background()
-	query := `
-	CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
-		username VARCHAR(50),
-		email VARCHAR(255) UNIQUE,
-		password_hash VARCHAR(255)
-	);
-	`
-	_, err := pool.Exec(ctx, query)
-	if err != nil {
-		log.Fatalf("Unable to ensure table exists: %v\n", err)
-	}
+func EnsureUserTableExists(pool *pgxpool.Pool, ctx context.Context) error {
+    return dbutils.EnsureTableExists(ctx, pool, "users")
 }
