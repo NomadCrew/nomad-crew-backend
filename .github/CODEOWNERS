@@ -1,0 +1,12 @@
+# Global code owners
+* @naqeebali-shamsi
+
+# Backend specific
+/user-service/ @naqeebali-shamsi
+
+# Database migrations
+/user-service/db/migrations/ @naqeebali-shamsi
+
+# Configuration files
+*.yml @naqeebali-shamsi
+Dockerfile @naqeebali-shamsi
