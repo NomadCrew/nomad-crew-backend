@@ -56,13 +56,13 @@ type LoginRequest struct {
 func (h *UserHandler) CreateUserHandler(c *gin.Context) {
     var req CreateUserRequest
     if err := c.ShouldBindJSON(&req); err != nil {
-        c.Error(errors.ValidationFailed("Invalid input", err.Error()))
+        _ = c.Error(errors.ValidationFailed("Invalid input", err.Error()))
         return
     }
 
     hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
     if err != nil {
-        c.Error(errors.New(errors.ServerError, "Failed to hash password", err.Error()))
+        _ = c.Error(errors.New(errors.ServerError, "Failed to hash password", err.Error()))
         return
     }
 
@@ -79,7 +79,7 @@ func (h *UserHandler) CreateUserHandler(c *gin.Context) {
 
     ctx := c.Request.Context()
     if err := h.userModel.CreateUser(ctx, user); err != nil {
-        c.Error(errors.NewDatabaseError(err))
+        _ = c.Error(errors.NewDatabaseError(err))
         return
     }
 
@@ -96,7 +96,7 @@ func (h *UserHandler) GetUserHandler(c *gin.Context) {
     id, err := strconv.ParseInt(idStr, 10, 64)
     if err != nil {
         log.Errorw("Invalid user ID format", "id", idStr)
-        c.Error(errors.ValidationFailed("Invalid user ID", ""))
+        _ = c.Error(errors.ValidationFailed("Invalid user ID", ""))
         return
     }
 
@@ -104,7 +104,7 @@ func (h *UserHandler) GetUserHandler(c *gin.Context) {
     user, err := h.userModel.GetUserByID(ctx, id)
     if err != nil {
         log.Errorw("Failed to get user", "userId", id, "error", err)
-        c.Error(err)
+        _ = c.Error(err)
         return
     }
 
@@ -122,13 +122,13 @@ func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		log.Errorw("Invalid user ID format", "id", idStr)
-		c.Error(errors.ValidationFailed("Invalid user ID", err.Error()))
+		_ = c.Error(errors.ValidationFailed("Invalid user ID", err.Error()))
 		return
 	}
 
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(errors.ValidationFailed("Invalid input", err.Error()))
+		_ = c.Error(errors.ValidationFailed("Invalid input", err.Error()))
 		return
 	}
 
@@ -136,7 +136,7 @@ func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
     user, err := h.userModel.GetUserByID(ctx, id)
     if err != nil {
         log.Errorw("Failed to get user for update", "userId", id, "error", err)
-        c.Error(err)
+        _ = c.Error(err)
         return
     }
 
@@ -165,7 +165,7 @@ func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
 
     if err := h.userModel.UpdateUser(ctx, user); err != nil {
         log.Errorw("Failed to update user", "userId", id, "error", err)
-        c.Error(err)
+        _ = c.Error(err)
         return
     }
 
@@ -180,7 +180,7 @@ func (h *UserHandler) DeleteUserHandler(c *gin.Context) {
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		log.Errorw("Invalid user ID format", "id", idStr)
-		c.Error(errors.ValidationFailed("Invalid user ID", err.Error()))
+		_ = c.Error(errors.ValidationFailed("Invalid user ID", err.Error()))
 		return
 	}
 
@@ -188,7 +188,7 @@ func (h *UserHandler) DeleteUserHandler(c *gin.Context) {
 	err = h.userModel.DeleteUser(ctx, id)
 	if err != nil {
 		log.Errorw("Failed to delete user", "userId", id, "error", err)
-		c.Error(err)
+		_ = c.Error(err)
 		return
 	}
 
@@ -201,7 +201,7 @@ func (h *UserHandler) LoginHandler(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Errorw("Failed to bind JSON", "error", err)
-		c.Error(errors.ValidationFailed("Invalid input", err.Error()))
+		_ = c.Error(errors.ValidationFailed("Invalid input", err.Error()))
 		return
 	}
 
@@ -209,14 +209,14 @@ func (h *UserHandler) LoginHandler(c *gin.Context) {
 	user, err := h.userModel.AuthenticateUser(ctx, req.Email, req.Password)
 	if err != nil {
 		log.Errorw("Authentication failed", "email", req.Email, "error", err)
-		c.Error(err)
+		_ = c.Error(err)
 		return
 	}
 
 	token, err := models.GenerateJWT(user)
 	if err != nil {
 		log.Errorw("Failed to generate token", "userId", user.ID, "error", err)
-		c.Error(err)
+		_ = c.Error(err)
 		return
 	}
 
