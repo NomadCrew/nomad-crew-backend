@@ -6,6 +6,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/user-service/db"
 	"github.com/NomadCrew/nomad-crew-backend/user-service/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/user-service/logger"
+	"github.com/NomadCrew/nomad-crew-backend/user-service/middleware"
 )
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 
 	// Router setup
 	r := gin.Default()
+	r.Use(middleware.ErrorHandler())
 	r.POST("/users", h.CreateUserHandler)
 	r.GET("/users/:id", h.GetUserHandler)
 	r.PUT("/users/:id", h.UpdateUserHandler)
@@ -37,11 +39,14 @@ func main() {
 	r.POST("/login", h.LoginHandler)
 
 	v1 := r.Group("/v1")
+	trips := v1.Group("/trips")
 	{
-		v1.POST("/trips", tripHandler.CreateTripHandler)
-		v1.GET("/trips/:id", tripHandler.GetTripHandler)
-		v1.PUT("/trips/:id", tripHandler.UpdateTripHandler)
-		v1.DELETE("/trips/:id", tripHandler.DeleteTripHandler)
+		trips.POST("", tripHandler.CreateTripHandler)
+		trips.GET("/:id", tripHandler.GetTripHandler)
+		trips.PUT("/:id", tripHandler.UpdateTripHandler)
+		trips.DELETE("/:id", tripHandler.DeleteTripHandler)
+		trips.GET("", tripHandler.ListUserTripsHandler)
+		trips.POST("/search", tripHandler.SearchTripsHandler)
 	}
 
 	log.Infof("Starting server on port %s", cfg.Port)
