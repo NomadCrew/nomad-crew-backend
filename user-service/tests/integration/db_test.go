@@ -5,6 +5,8 @@ import (
     "testing"
     "time"
     "fmt"
+	"os"
+	"io"
     "github.com/stretchr/testify/require"
     "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/wait"
@@ -38,14 +40,27 @@ func setupTestDatabase(t *testing.T) (*db.DatabaseClient, func()) {
     host, err := container.Host(ctx)
     require.NoError(t, err)
 
-    // Build the connection string using the container's host and mapped port
     connectionString := fmt.Sprintf("postgresql://test:test@%s:%s/testdb?sslmode=disable", host, mappedPort.Port())
 
     // Add a short delay to ensure the database is fully ready
     time.Sleep(2 * time.Second)
 
     dbClient, err := db.SetupTestDB(connectionString)
-    require.NoError(t, err)
+    if err != nil {
+        // Enhanced error logging
+        t.Logf("Database setup failed: %v", err)
+        t.Logf("Current working directory: %s", mustGetwd(t))
+        t.Logf("Container status: host=%s, port=%s", host, mappedPort.Port())
+        
+        // Get container logs for debugging
+        logs, _ := container.Logs(ctx)
+        if logs != nil {
+            content, _ := io.ReadAll(logs)
+            t.Logf("Container logs:\n%s", string(content))
+        }
+        
+        require.NoError(t, err)
+    }
 
     cleanup := func() {
         if err := db.CleanupTestDB(dbClient); err != nil {
@@ -57,6 +72,14 @@ func setupTestDatabase(t *testing.T) (*db.DatabaseClient, func()) {
     }
 
     return dbClient, cleanup
+}
+
+func mustGetwd(t *testing.T) string {
+    dir, err := os.Getwd()
+    if err != nil {
+        t.Fatalf("Failed to get working directory: %v", err)
+    }
+    return dir
 }
 
 func TestUserDB_Integration(t *testing.T) {
