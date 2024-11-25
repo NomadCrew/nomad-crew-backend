@@ -7,6 +7,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/user-service/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/user-service/logger"
 	"github.com/NomadCrew/nomad-crew-backend/user-service/middleware"
+	"github.com/NomadCrew/nomad-crew-backend/user-service/models"
 )
 
 func main() {
@@ -26,17 +27,17 @@ func main() {
 	tripDB := db.NewTripDB(cfg.DB)
 
 	// Handlers
-	h := handlers.NewHandler(userDB)
-	tripHandler := handlers.NewTripHandler(tripDB)
+	userHandler := handlers.NewUserHandler(models.NewUserModel(userDB))
+	tripHandler := handlers.NewTripHandler(models.NewTripModel(tripDB))
 
 	// Router setup
 	r := gin.Default()
 	r.Use(middleware.ErrorHandler())
-	r.POST("/users", h.CreateUserHandler)
-	r.GET("/users/:id", h.GetUserHandler)
-	r.PUT("/users/:id", h.UpdateUserHandler)
-	r.DELETE("/users/:id", h.DeleteUserHandler)
-	r.POST("/login", h.LoginHandler)
+	r.POST("/users", userHandler.CreateUserHandler)
+	r.GET("/users/:id", userHandler.GetUserHandler)
+	r.PUT("/users/:id", userHandler.UpdateUserHandler)
+	r.DELETE("/users/:id", userHandler.DeleteUserHandler)
+	r.POST("/login", userHandler.LoginHandler)
 
 	v1 := r.Group("/v1")
 	trips := v1.Group("/trips")
