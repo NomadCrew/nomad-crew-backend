@@ -46,21 +46,20 @@ type SearchTripsRequest struct {
     StartDateTo   time.Time `json:"start_date_to"`
 }
 
-// CreateTripHandler handles the creation of a new trip
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
     log := logger.GetLogger()
     
     var req CreateTripRequest
     if err := c.ShouldBindJSON(&req); err != nil {
         log.Errorw("Invalid trip creation request", "error", err)
-        c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
+        _ = c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
         return
     }
 
     // Get user ID from context (assuming it was set by auth middleware)
     userID, exists := c.Get("user_id")
     if !exists {
-        c.Error(errors.AuthenticationFailed("User not authenticated"))
+        _ = c.Error(errors.AuthenticationFailed("User not authenticated"))
         return
     }
 
@@ -75,7 +74,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
     if err := h.tripModel.CreateTrip(c.Request.Context(), trip); err != nil {
         log.Errorw("Failed to create trip", "error", err)
-        c.Error(err)
+        _ = c.Error(err)
         return
     }
 
