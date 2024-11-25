@@ -2,24 +2,40 @@ package db
 
 import (
     "context"
-
     "github.com/jackc/pgx/v4/pgxpool"
-    "github.com/NomadCrew/nomad-crew-backend/user-service/db/dbutils"
-    "github.com/NomadCrew/nomad-crew-backend/user-service/logger"
+    "github.com/NomadCrew/nomad-crew-backend/user-service/types"
 )
 
-func ConnectToDB(connectionString string, ctx context.Context) *pgxpool.Pool {
-    log := logger.GetLogger()
-
-    pool, err := pgxpool.Connect(ctx, connectionString)
-    if err != nil {
-        log.Fatalf("Unable to connect to database: %v", err)
-    }
-
-    log.Info("Successfully connected to database")
-    return pool
+// Store provides access to all database operations
+type Store struct {
+    pool *pgxpool.Pool
+    Users UserRepository
+    Trips TripRepository
 }
 
-func EnsureUserTableExists(pool *pgxpool.Pool, ctx context.Context) error {
-    return dbutils.EnsureTableExists(ctx, pool, "users")
+// NewStore creates a new database store
+func NewStore(pool *pgxpool.Pool) *Store {
+    store := &Store{
+        pool: pool,
+    }
+    store.Users = &UserRepo{store}
+    store.Trips = &TripRepo{store}
+    return store
+}
+
+// UserRepository defines the interface for user operations
+type UserRepository interface {
+    Create(ctx context.Context, user *types.User) error
+    GetByID(ctx context.Context, id int64) (*types.User, error)
+    Update(ctx context.Context, user *types.User) error
+    Delete(ctx context.Context, id int64) error
+    GetByEmail(ctx context.Context, email string) (*types.User, error)
+}
+
+// TripRepository defines the interface for trip operations
+type TripRepository interface {
+    Create(ctx context.Context, trip *types.Trip) (int64, error)
+    GetByID(ctx context.Context, id int64) (*types.Trip, error)
+    Update(ctx context.Context, id int64, update *types.TripUpdate) error
+    Delete(ctx context.Context, id int64) error
 }
