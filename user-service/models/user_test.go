@@ -1,3 +1,4 @@
+// user-service/models/user_test.go
 package models
 
 import (
@@ -7,12 +8,23 @@ import (
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
     "golang.org/x/crypto/bcrypt"
+    "github.com/jackc/pgx/v4/pgxpool"
     "github.com/NomadCrew/nomad-crew-backend/user-service/types"
     "github.com/NomadCrew/nomad-crew-backend/user-service/errors"
+    "github.com/NomadCrew/nomad-crew-backend/user-service/internal/store"
 )
 
+// MockUserStore implements store.UserStore interface
 type MockUserStore struct {
     mock.Mock
+}
+
+func (m *MockUserStore) GetPool() *pgxpool.Pool {
+    args := m.Called()
+    if args.Get(0) == nil {
+        return nil
+    }
+    return args.Get(0).(*pgxpool.Pool)
 }
 
 func (m *MockUserStore) SaveUser(ctx context.Context, user *types.User) error {
@@ -46,8 +58,13 @@ func (m *MockUserStore) AuthenticateUser(ctx context.Context, email string) (*ty
     return args.Get(0).(*types.User), args.Error(1)
 }
 
+// Verify interface compliance at compile time
+var _ store.UserStore = (*MockUserStore)(nil)
+
 func TestUserModel_CreateUser(t *testing.T) {
     mockStore := new(MockUserStore)
+    // Mock GetPool for interface satisfaction
+    mockStore.On("GetPool").Return(nil)
     userModel := NewUserModel(mockStore)
     ctx := context.Background()
 
@@ -80,6 +97,7 @@ func TestUserModel_CreateUser(t *testing.T) {
 
 func TestUserModel_GetUserByID(t *testing.T) {
     mockStore := new(MockUserStore)
+    mockStore.On("GetPool").Return(nil)
     userModel := NewUserModel(mockStore)
     ctx := context.Background()
 
@@ -99,17 +117,19 @@ func TestUserModel_GetUserByID(t *testing.T) {
     })
 
     t.Run("user not found", func(t *testing.T) {
-        mockStore.On("GetUserByID", ctx, int64(999)).Return(nil, errors.NotFound("User", 999)).Once()
+        notFoundErr := errors.NotFound("User", 999)
+        mockStore.On("GetUserByID", ctx, int64(999)).Return(nil, notFoundErr).Once()
         user, err := userModel.GetUserByID(ctx, 999)
         assert.Error(t, err)
         assert.Nil(t, user)
-        assert.True(t, errors.Is(err, errors.NotFoundError))
+        assert.Equal(t, notFoundErr.Type, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 }
 
 func TestUserModel_AuthenticateUser(t *testing.T) {
     mockStore := new(MockUserStore)
+    mockStore.On("GetPool").Return(nil)
     userModel := NewUserModel(mockStore)
     ctx := context.Background()
 
@@ -134,7 +154,7 @@ func TestUserModel_AuthenticateUser(t *testing.T) {
         mockStore.On("AuthenticateUser", ctx, user.Email).Return(user, nil).Once()
         _, err := userModel.AuthenticateUser(ctx, user.Email, "wrongpassword")
         assert.Error(t, err)
-        assert.True(t, errors.Is(err, errors.AuthError))
+        assert.Equal(t, errors.AuthError, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 
@@ -143,7 +163,7 @@ func TestUserModel_AuthenticateUser(t *testing.T) {
             Return(nil, errors.NotFound("User", 0)).Once()
         _, err := userModel.AuthenticateUser(ctx, "nonexistent@example.com", password)
         assert.Error(t, err)
-        assert.True(t, errors.Is(err, errors.AuthError))
+        assert.Equal(t, errors.AuthError, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 }
@@ -167,6 +187,6 @@ func TestGenerateJWT(t *testing.T) {
         token, err := GenerateJWT(user)
         assert.Error(t, err)
         assert.Empty(t, token)
-        assert.True(t, errors.Is(err, errors.ServerError))
+        assert.Equal(t, errors.ServerError, err.(*errors.AppError).Type)
     })
 }
