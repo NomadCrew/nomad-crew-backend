@@ -53,10 +53,11 @@ jobs:
           JWT_SECRET_KEY: test_secret
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v3
         with:
-          files: ./user-service/coverage.txt
+          name: test-report
+          path: ./user-service/coverage.txt
 
   security-scan:
     name: Security Scan
