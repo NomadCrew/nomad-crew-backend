@@ -34,6 +34,16 @@ func LoadConfig() (*Config, error) {
 
     pool := connectToDB(cfg.DatabaseConnectionString, context.Background())
     cfg.DB = db.NewDatabaseClient(pool)
+
+    if cfg.DatabaseConnectionString == "" {
+        return nil, errors.New("missing DB_CONNECTION_STRING environment variable")
+    }
+    if cfg.JwtSecretKey == "" {
+        return nil, errors.New("missing JWT_SECRET_KEY environment variable")
+    }
+    if cfg.Port == "" {
+        return nil, errors.New("missing PORT environment variable")
+    }
     
     log.Infow("Configuration loaded",
         "database_connection", maskSensitiveURL(cfg.DatabaseConnectionString),
