@@ -27,6 +27,8 @@ type TripStore interface {
     GetPool() *pgxpool.Pool
     CreateTrip(ctx context.Context, trip types.Trip) (int64, error)
     GetTrip(ctx context.Context, id int64) (*types.Trip, error)
-    UpdateTrip(ctx context.Context, tripID int64, update types.TripUpdate) error
-    SoftDeleteTrip(ctx context.Context, tripID int64) error
+    UpdateTrip(ctx context.Context, id int64, update types.TripUpdate) error
+    SoftDeleteTrip(ctx context.Context, id int64) error
+    ListUserTrips(ctx context.Context, userID int64) ([]*types.Trip, error)
+    SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error)
 }
