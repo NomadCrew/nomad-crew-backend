@@ -42,7 +42,7 @@ func SetupTestDB(connectionString string) (*DatabaseClient, error) {
         return nil, fmt.Errorf("failed to get schema path: %v", err)
     }
 
-    schema, err := os.ReadFile(schemaPath)
+    schema, err := os.ReadFile(schemaPath) // #nosec G304
     if err != nil {
         return nil, fmt.Errorf("failed to read schema file at %s: %v", schemaPath, err)
     }
