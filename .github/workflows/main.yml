@@ -49,7 +49,7 @@ jobs:
         env:
           DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
           JWT_SECRET_KEY: test_secret
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
 
       - name: Upload Test Report
         uses: actions/upload-artifact@v3
@@ -63,11 +63,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Pre-build for Gosec
+        run: go build -buildvcs=false ./...
+
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
           working-directory: ./
-          args: -buildvcs=false ./...
+          args: ./...
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
