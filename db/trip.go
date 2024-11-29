@@ -3,6 +3,7 @@ package db
 import (
     "context"
     "github.com/jackc/pgx/v4/pgxpool"
+    "strconv"
     "github.com/NomadCrew/nomad-crew-backend/types"
     "github.com/NomadCrew/nomad-crew-backend/logger"
     "github.com/NomadCrew/nomad-crew-backend/errors"
@@ -215,19 +216,19 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
     paramCount := 1
 
     if criteria.Destination != "" {
-        query += ` AND t.destination ILIKE $` + string(paramCount)
+        query += ` AND t.destination ILIKE $` + strconv.Itoa(paramCount)
         params = append(params, "%"+criteria.Destination+"%")
         paramCount++
     }
 
     if !criteria.StartDateFrom.IsZero() {
-        query += ` AND t.start_date >= $` + string(paramCount)
+        query += ` AND t.start_date >= $` + strconv.Itoa(paramCount)
         params = append(params, criteria.StartDateFrom)
         paramCount++
     }
 
     if !criteria.StartDateTo.IsZero() {
-        query += ` AND t.start_date <= $` + string(paramCount)
+        query += ` AND t.start_date <= $` + strconv.Itoa(paramCount)
         params = append(params, criteria.StartDateTo)
         paramCount++
     }
