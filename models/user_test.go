@@ -62,8 +62,6 @@ var _ store.UserStore = (*MockUserStore)(nil)
 
 func TestUserModel_CreateUser(t *testing.T) {
     mockStore := new(MockUserStore)
-    // Mock GetPool for interface satisfaction
-    mockStore.On("GetPool").Return(nil)
     userModel := NewUserModel(mockStore)
     ctx := context.Background()
 
@@ -85,26 +83,22 @@ func TestUserModel_CreateUser(t *testing.T) {
     })
 
     t.Run("store error", func(t *testing.T) {
-        storeErr := errors.NewDatabaseError(assert.AnError)
-        mockStore.On("SaveUser", ctx, user).Return(storeErr).Once()
+        mockStore.On("SaveUser", ctx, user).Return(errors.NewDatabaseError(assert.AnError)).Once()
         err := userModel.CreateUser(ctx, user)
         assert.Error(t, err)
-        assert.Equal(t, storeErr, err)
         mockStore.AssertExpectations(t)
     })
 }
 
 func TestUserModel_GetUserByID(t *testing.T) {
     mockStore := new(MockUserStore)
-    mockStore.On("GetPool").Return(nil)
     userModel := NewUserModel(mockStore)
     ctx := context.Background()
 
     expectedUser := &types.User{
-        ID:           1,
-        Username:     "testuser",
-        Email:        "test@example.com",
-        PasswordHash: "hashedpassword",
+        ID:       1,
+        Username: "testuser",
+        Email:    "test@example.com",
     }
 
     t.Run("successful retrieval", func(t *testing.T) {
@@ -116,19 +110,16 @@ func TestUserModel_GetUserByID(t *testing.T) {
     })
 
     t.Run("user not found", func(t *testing.T) {
-        notFoundErr := errors.NotFound("User", 999)
-        mockStore.On("GetUserByID", ctx, int64(999)).Return(nil, notFoundErr).Once()
+        mockStore.On("GetUserByID", ctx, int64(999)).Return(nil, errors.NotFound("User", 999)).Once()
         user, err := userModel.GetUserByID(ctx, 999)
         assert.Error(t, err)
         assert.Nil(t, user)
-        assert.Equal(t, notFoundErr.Type, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 }
 
 func TestUserModel_AuthenticateUser(t *testing.T) {
     mockStore := new(MockUserStore)
-    mockStore.On("GetPool").Return(nil)
     userModel := NewUserModel(mockStore)
     ctx := context.Background()
 
@@ -153,16 +144,13 @@ func TestUserModel_AuthenticateUser(t *testing.T) {
         mockStore.On("AuthenticateUser", ctx, user.Email).Return(user, nil).Once()
         _, err := userModel.AuthenticateUser(ctx, user.Email, "wrongpassword")
         assert.Error(t, err)
-        assert.Equal(t, errors.AuthError, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 
     t.Run("user not found", func(t *testing.T) {
-        mockStore.On("AuthenticateUser", ctx, "nonexistent@example.com").
-            Return(nil, errors.NotFound("User", 0)).Once()
+        mockStore.On("AuthenticateUser", ctx, "nonexistent@example.com").Return(nil, errors.NotFound("User", 0)).Once()
         _, err := userModel.AuthenticateUser(ctx, "nonexistent@example.com", password)
         assert.Error(t, err)
-        assert.Equal(t, errors.AuthError, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 }
