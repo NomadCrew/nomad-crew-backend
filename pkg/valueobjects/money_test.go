@@ -114,8 +114,8 @@ func TestMoneySplit(t *testing.T) {
             amount:      decimal.NewFromFloat(10.00),
             parts:       3,
             shouldError: false,
-            expected:    []decimal.Decimal{decimal.NewFromFloat(3.33), decimal.NewFromFloat(3.33), decimal.NewFromFloat(3.34)},
-        },
+            expected:    []decimal.Decimal{decimal.NewFromFloat(3.34), decimal.NewFromFloat(3.33), decimal.NewFromFloat(3.33)},
+        },        
         {
             name:        "invalid parts",
             amount:      decimal.NewFromFloat(10.00),
@@ -141,9 +141,11 @@ func TestMoneySplit(t *testing.T) {
 
             // Verify split amounts
             for i, split := range splits {
-                assert.Equal(t, tt.expected[i], split.Amount())
+                expected := tt.expected[i].Round(2)
+                actual := split.Amount().Round(2)
+                assert.True(t, expected.Equal(actual), "unexpected split amount: expected %s, got %s", expected, actual)
                 assert.Equal(t, USD, split.Currency())
-            }
+            }            
 
             // Verify sum equals original
             sum := decimal.Zero

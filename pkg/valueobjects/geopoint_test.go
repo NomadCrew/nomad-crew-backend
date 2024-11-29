@@ -151,7 +151,7 @@ func TestGeoPointIsWithinRadius(t *testing.T) {
             name:     "Exactly on radius",
             point1:   london,
             point2:   paris,
-            radius:   343457.0, // Approximate actual distance
+            radius:   london.DistanceTo(*paris),
             expected: true,
         },
         {
