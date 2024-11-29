@@ -62,15 +62,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
-      - name: Pre-build for Gosec
-        run: go build -buildvcs=false ./...
-
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
           working-directory: ./
-          args: ./...
+          args: -exclude-dir=.git ./...
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
