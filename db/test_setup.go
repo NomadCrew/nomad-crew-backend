@@ -4,15 +4,15 @@ import (
     "context"
     "fmt"
     "os"
+    "strings"
     "path/filepath"
     "runtime"
     "github.com/jackc/pgx/v4/pgxpool"
 )
 
 func getSchemaPath() string {
-    // Get the current file's path
     _, b, _, _ := runtime.Caller(0)
-    // Navigate to migrations directory relative to this file
+    // Explicitly use the init.sql file relative to this file
     return filepath.Join(filepath.Dir(b), "migrations", "init.sql")
 }
 
@@ -24,6 +24,16 @@ func SetupTestDB(connectionString string) (*DatabaseClient, error) {
     }
 
     schemaPath := getSchemaPath()
+    // Validate path is within project root
+    if !filepath.IsAbs(schemaPath) {
+        return nil, fmt.Errorf("schema path must be absolute: %s", schemaPath)
+    }
+
+    // Extra validation to ensure we're only reading from migrations directory
+    if !strings.Contains(schemaPath, "migrations") {
+        return nil, fmt.Errorf("schema must be in migrations directory")
+    }
+
     schema, err := os.ReadFile(schemaPath)
     if err != nil {
         return nil, fmt.Errorf("failed to read schema file at %s: %v", schemaPath, err)
