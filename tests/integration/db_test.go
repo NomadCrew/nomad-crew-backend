@@ -117,18 +117,6 @@ func TestUserDB_Integration(t *testing.T) {
     })
 }
 
-package integration
-
-import (
-    "context"
-    "testing"
-    "time"
-
-    "github.com/stretchr/testify/require"
-    "github.com/NomadCrew/nomad-crew-backend/db"
-    "github.com/NomadCrew/nomad-crew-backend/types"
-)
-
 func TestTripDB_Integration(t *testing.T) {
     dbClient, cleanup := setupTestDatabase(t)
     defer cleanup()
