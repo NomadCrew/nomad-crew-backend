@@ -67,7 +67,7 @@ jobs:
         uses: securego/gosec@master
         with:
           working-directory: ./
-          args: ./...
+          args: -buildvcs=false ./...
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
