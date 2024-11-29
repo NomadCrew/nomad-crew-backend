@@ -1,4 +1,3 @@
-// user-service/models/user_test.go
 package models
 
 import (

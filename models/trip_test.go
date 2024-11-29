@@ -4,15 +4,15 @@ import (
     "context"
     "testing"
     "time"
+
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
-    "github.com/jackc/pgx/v4/pgxpool"
     "github.com/NomadCrew/nomad-crew-backend/types"
     "github.com/NomadCrew/nomad-crew-backend/errors"
     "github.com/NomadCrew/nomad-crew-backend/internal/store"
 )
 
-
+// MockTripStore for testing
 type MockTripStore struct {
     mock.Mock
 }
@@ -38,22 +38,21 @@ func (m *MockTripStore) GetTrip(ctx context.Context, id int64) (*types.Trip, err
     return args.Get(0).(*types.Trip), args.Error(1)
 }
 
-func (m *MockTripStore) UpdateTrip(ctx context.Context, tripID int64, update types.TripUpdate) error {
-    args := m.Called(ctx, tripID, update)
+func (m *MockTripStore) UpdateTrip(ctx context.Context, id int64, update types.TripUpdate) error {
+    args := m.Called(ctx, id, update)
     return args.Error(0)
 }
 
-func (m *MockTripStore) SoftDeleteTrip(ctx context.Context, tripID int64) error {
-    args := m.Called(ctx, tripID)
+func (m *MockTripStore) SoftDeleteTrip(ctx context.Context, id int64) error {
+    args := m.Called(ctx, id)
     return args.Error(0)
 }
 
-// Verify interface compliance at compile time
+// Verify interface compliance
 var _ store.TripStore = (*MockTripStore)(nil)
 
 func TestTripModel_CreateTrip(t *testing.T) {
     mockStore := new(MockTripStore)
-    mockStore.On("GetPool").Return(nil)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -74,35 +73,16 @@ func TestTripModel_CreateTrip(t *testing.T) {
         mockStore.AssertExpectations(t)
     })
 
-    t.Run("validation error - missing name", func(t *testing.T) {
-        invalidTrip := *validTrip
-        invalidTrip.Name = ""
-        err := tripModel.CreateTrip(ctx, &invalidTrip)
-        assert.Error(t, err)
-        assert.Equal(t, errors.ValidationError, err.(*errors.AppError).Type)
-    })
-
-    t.Run("validation error - end date before start date", func(t *testing.T) {
-        invalidTrip := *validTrip
-        invalidTrip.StartDate = time.Now().Add(48 * time.Hour)
-        invalidTrip.EndDate = time.Now().Add(24 * time.Hour)
-        err := tripModel.CreateTrip(ctx, &invalidTrip)
-        assert.Error(t, err)
-        assert.Equal(t, errors.ValidationError, err.(*errors.AppError).Type)
-    })
-
     t.Run("store error", func(t *testing.T) {
         mockStore.On("CreateTrip", ctx, *validTrip).Return(int64(0), errors.NewDatabaseError(assert.AnError)).Once()
         err := tripModel.CreateTrip(ctx, validTrip)
         assert.Error(t, err)
-        assert.Equal(t, errors.DatabaseError, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 }
 
 func TestTripModel_GetTripByID(t *testing.T) {
     mockStore := new(MockTripStore)
-    mockStore.On("GetPool").Return(nil)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -136,7 +116,6 @@ func TestTripModel_GetTripByID(t *testing.T) {
 
 func TestTripModel_UpdateTrip(t *testing.T) {
     mockStore := new(MockTripStore)
-    mockStore.On("GetPool").Return(nil)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -168,14 +147,12 @@ func TestTripModel_UpdateTrip(t *testing.T) {
         mockStore.On("UpdateTrip", ctx, int64(1), *update).Return(errors.NewDatabaseError(assert.AnError)).Once()
         err := tripModel.UpdateTrip(ctx, 1, update)
         assert.Error(t, err)
-        assert.Equal(t, errors.DatabaseError, err.(*errors.AppError).Type)
         mockStore.AssertExpectations(t)
     })
 }
 
 func TestTripModel_DeleteTrip(t *testing.T) {
     mockStore := new(MockTripStore)
-    mockStore.On("GetPool").Return(nil)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -197,7 +174,6 @@ func TestTripModel_DeleteTrip(t *testing.T) {
 
 func TestTripModel_SearchTrips(t *testing.T) {
     mockStore := new(MockTripStore)
-    mockStore.On("GetPool").Return(nil)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 

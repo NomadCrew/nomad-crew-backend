@@ -1,4 +1,3 @@
-// user-service/handlers/trip.go
 package handlers
 
 import (

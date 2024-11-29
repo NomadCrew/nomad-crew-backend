@@ -1,11 +1,11 @@
-// user-service/tests/mocks/user_store.go
 package mocks
 
 import (
 	"context"
-	"github.com/stretchr/testify/mock"
-	"github.com/jackc/pgx/v4/pgxpool"
+
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/stretchr/testify/mock"
 )
 
 type MockUserStore struct {
