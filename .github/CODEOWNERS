@@ -2,10 +2,10 @@
 * @naqeebali-shamsi
 
 # Backend specific
-/user-service/ @naqeebali-shamsi
+/ @naqeebali-shamsi
 
 # Database migrations
-/user-service/db/migrations/ @naqeebali-shamsi
+/db/migrations/ @naqeebali-shamsi
 
 # Configuration files
 *.yml @naqeebali-shamsi

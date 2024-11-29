@@ -57,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: test-report
-          path: ./user-service/coverage.txt
+          path: ./coverage.txt
 
   security-scan:
     name: Security Scan
