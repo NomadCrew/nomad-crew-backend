@@ -16,15 +16,18 @@ func getSchemaPath() (string, error) {
     basePath := filepath.Dir(b)
     schemaPath := filepath.Join(basePath, "migrations", "init.sql")
 
-    // Clean the path to remove any ../ or ./ elements
-    cleanPath := filepath.Clean(schemaPath)
-
-    // Ensure the cleaned path is within the base directory
-    if !strings.HasPrefix(cleanPath, basePath) {
-        return "", fmt.Errorf("invalid schema path: %s", cleanPath)
+    // Clean and obtain the absolute path
+    absSchemaPath, err := filepath.Abs(filepath.Clean(schemaPath))
+    if err != nil {
+        return "", fmt.Errorf("failed to get absolute path: %v", err)
     }
 
-    return cleanPath, nil
+    // Ensure the schema path is within the base directory
+    if !strings.HasPrefix(absSchemaPath, basePath) {
+        return "", fmt.Errorf("schema path %s is outside of the base directory %s", absSchemaPath, basePath)
+    }
+
+    return absSchemaPath, nil
 }
 
 func SetupTestDB(connectionString string) (*DatabaseClient, error) {
@@ -36,7 +39,7 @@ func SetupTestDB(connectionString string) (*DatabaseClient, error) {
 
     schemaPath, err := getSchemaPath()
     if err != nil {
-        return nil, err
+        return nil, fmt.Errorf("failed to get schema path: %v", err)
     }
 
     schema, err := os.ReadFile(schemaPath)
