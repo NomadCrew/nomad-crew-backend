@@ -60,15 +60,15 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
+    env:
+      GOFLAGS: "-buildvcs=false"
     steps:
       - uses: actions/checkout@v3
-      - name: Mark directory as safe
-        run: git config --local --add safe.directory "$(pwd)"
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
           working-directory: ./
-          args: -exclude-dir=.git ./...
+          args: ./...
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
