@@ -2,10 +2,10 @@ FROM golang:1.21 AS builder
 
 WORKDIR /app
 
-COPY ./user-service/go.mod ./user-service/go.sum ./
+COPY ./go.mod ./go.sum ./
 RUN go mod download
 
-COPY ./user-service .
+COPY ./ .
 RUN go build -o nomadcrew-backend
 
 FROM golang:1.21
