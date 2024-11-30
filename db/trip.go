@@ -4,6 +4,7 @@ import (
     "context"
     "github.com/jackc/pgx/v4/pgxpool"
     "strconv"
+    "strings"
     "github.com/NomadCrew/nomad-crew-backend/types"
     "github.com/NomadCrew/nomad-crew-backend/logger"
     "github.com/NomadCrew/nomad-crew-backend/errors"
@@ -212,26 +213,32 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
         LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
         WHERE m.deleted_at IS NULL`
     
-    params := make([]interface{}, 0)
-    paramCount := 1
-
+        params := make([]interface{}, 0)
+        paramCount := 1
+        var conditions []string
+        
     if criteria.Destination != "" {
-        query += ` AND t.destination ILIKE $` + strconv.Itoa(paramCount)
+        conditions = append(conditions, `t.destination ILIKE $`+strconv.Itoa(paramCount))
         params = append(params, "%"+criteria.Destination+"%")
         paramCount++
     }
-
+    
     if !criteria.StartDateFrom.IsZero() {
-        query += ` AND t.start_date >= $` + strconv.Itoa(paramCount)
+        conditions = append(conditions, `t.start_date >= $`+strconv.Itoa(paramCount))
         params = append(params, criteria.StartDateFrom)
         paramCount++
     }
-
+    
     if !criteria.StartDateTo.IsZero() {
-        query += ` AND t.start_date <= $` + strconv.Itoa(paramCount)
+        conditions = append(conditions, `t.start_date <= $`+strconv.Itoa(paramCount))
         params = append(params, criteria.StartDateTo)
         paramCount++
     }
+    
+    if len(conditions) > 0 {
+        query += ` AND ` + strings.Join(conditions, " AND ")
+    }
+        
 
     query += ` ORDER BY t.start_date DESC`
 
