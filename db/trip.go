@@ -217,27 +217,27 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
         paramCount := 1 //nolint:ineffassign
         var conditions []string
         
-    if criteria.Destination != "" {
-        conditions = append(conditions, `t.destination ILIKE $`+strconv.Itoa(paramCount))
-        params = append(params, "%"+criteria.Destination+"%")
-        paramCount++
-    }
-    
-    if !criteria.StartDateFrom.IsZero() {
-        conditions = append(conditions, `t.start_date >= $`+strconv.Itoa(paramCount))
-        params = append(params, criteria.StartDateFrom)
-        paramCount++
-    }
-    
-    if !criteria.StartDateTo.IsZero() {
-        conditions = append(conditions, `t.start_date <= $`+strconv.Itoa(paramCount))
-        params = append(params, criteria.StartDateTo)
-        paramCount++
-    }
-    
-    if len(conditions) > 0 {
-        query += ` AND ` + strings.Join(conditions, " AND ")
-    }
+        if criteria.Destination != "" {
+            conditions = append(conditions, `t.destination ILIKE $`+strconv.Itoa(paramCount))
+            params = append(params, "%"+criteria.Destination+"%")
+            paramCount++ //nolint:ineffassign
+        }
+        
+        if !criteria.StartDateFrom.IsZero() {
+            conditions = append(conditions, `t.start_date >= $`+strconv.Itoa(paramCount))
+            params = append(params, criteria.StartDateFrom)
+            paramCount++ //nolint:ineffassign
+        }
+        
+        if !criteria.StartDateTo.IsZero() {
+            conditions = append(conditions, `t.start_date <= $`+strconv.Itoa(paramCount))
+            params = append(params, criteria.StartDateTo)
+            paramCount++ //nolint:ineffassign
+        }
+        
+        if len(conditions) > 0 {
+            query += ` AND ` + strings.Join(conditions, " AND ")
+        }
         
 
     query += ` ORDER BY t.start_date DESC`
