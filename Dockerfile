@@ -8,7 +8,7 @@ RUN go mod download
 COPY ./ .
 RUN go build -o nomadcrew-backend
 
-FROM golang:1.21
+FROM golang:1.23
 
 COPY --from=builder /app/nomadcrew-backend /nomadcrew-backend
 
