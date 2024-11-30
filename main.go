@@ -46,7 +46,7 @@ func main() {
         trips.GET("/:id", tripHandler.GetTripHandler)
         trips.PUT("/:id", tripHandler.UpdateTripHandler)
         trips.DELETE("/:id", tripHandler.DeleteTripHandler)
-        trips.GET("", tripHandler.ListUserTripsHandler)
+        trips.GET("/list", tripHandler.ListUserTripsHandler)
         trips.POST("/search", tripHandler.SearchTripsHandler)
     }
 
