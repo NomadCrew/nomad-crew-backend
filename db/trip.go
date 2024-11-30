@@ -214,7 +214,7 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
         WHERE m.deleted_at IS NULL`
     
         params := make([]interface{}, 0)
-        paramCount := 1
+        paramCount := 1 //nolint:ineffassign
         var conditions []string
         
     if criteria.Destination != "" {
