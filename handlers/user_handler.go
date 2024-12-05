@@ -113,6 +113,29 @@ func (h *UserHandler) GetUserHandler(c *gin.Context) {
     c.JSON(http.StatusOK, response)
 }
 
+func (h *UserHandler) verifyUserAccess(c *gin.Context, targetUserID int64) bool {
+    // Get authenticated user ID from context
+    contextUserID, exists := c.Get("user_id")
+    if !exists {
+        c.Error(errors.AuthenticationFailed("User not authenticated"))
+        return false
+    }
+
+    // Type assert with safety check
+    authUserID, ok := contextUserID.(int64)
+    if !ok {
+        c.Error(errors.AuthenticationFailed("Invalid user ID format"))
+        return false
+    }
+
+    // Users can only modify their own details
+    if authUserID != targetUserID {
+        c.Error(errors.AuthenticationFailed("Cannot modify other users' details"))
+        return false
+    }
+
+    return true
+}
 
 // UpdateUserHandler handles updating user information
 func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
@@ -125,6 +148,10 @@ func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
 		_ = c.Error(errors.ValidationFailed("Invalid user ID", err.Error()))
 		return
 	}
+
+	if !h.verifyUserAccess(c, id) {
+        return
+    }
 
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -183,6 +210,10 @@ func (h *UserHandler) DeleteUserHandler(c *gin.Context) {
 		_ = c.Error(errors.ValidationFailed("Invalid user ID", err.Error()))
 		return
 	}
+
+	if !h.verifyUserAccess(c, id) {
+        return
+    }
 
 	ctx := c.Request.Context()
 	err = h.userModel.DeleteUser(ctx, id)

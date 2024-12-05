@@ -47,3 +47,31 @@ func AuthMiddleware() gin.HandlerFunc {
         }
     }
 }
+
+func RequireRole(roles ...string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        userRole, exists := c.Get("user_role")
+        if !exists {
+            c.Error(errors.AuthenticationFailed("User role not found"))
+            c.Abort()
+            return
+        }
+
+        roleStr, ok := userRole.(string)
+        if !ok {
+            c.Error(errors.AuthenticationFailed("Invalid role type"))
+            c.Abort()
+            return
+        }
+
+        for _, role := range roles {
+            if roleStr == role {
+                c.Next()
+                return
+            }
+        }
+
+        c.Error(errors.AuthenticationFailed("Insufficient permissions"))
+        c.Abort()
+    }
+}
