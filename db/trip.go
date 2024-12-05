@@ -214,25 +214,25 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
         WHERE m.deleted_at IS NULL`
     
         params := make([]interface{}, 0)
-        paramCount := 1 //nolint:ineffassign
+        paramCount := 1
         var conditions []string
         
         if criteria.Destination != "" {
             conditions = append(conditions, `t.destination ILIKE $`+strconv.Itoa(paramCount))
             params = append(params, "%"+criteria.Destination+"%")
-            paramCount++ //nolint:ineffassign
+            paramCount++
         }
         
         if !criteria.StartDateFrom.IsZero() {
             conditions = append(conditions, `t.start_date >= $`+strconv.Itoa(paramCount))
             params = append(params, criteria.StartDateFrom)
-            paramCount++ //nolint:ineffassign
+            paramCount++
         }
         
         if !criteria.StartDateTo.IsZero() {
             conditions = append(conditions, `t.start_date <= $`+strconv.Itoa(paramCount))
             params = append(params, criteria.StartDateTo)
-            paramCount++ //nolint:ineffassign
+            paramCount++
         }
         
         if len(conditions) > 0 {
