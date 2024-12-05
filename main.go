@@ -33,15 +33,19 @@ func main() {
     // Router setup
     r := gin.Default()
     r.Use(middleware.ErrorHandler())
-    r.POST("/users", userHandler.CreateUserHandler)
-    r.GET("/users/:id", userHandler.GetUserHandler)
-    r.PUT("/users/:id", userHandler.UpdateUserHandler)
-    r.DELETE("/users/:id", userHandler.DeleteUserHandler)
     r.POST("/login", userHandler.LoginHandler)
-
     v1 := r.Group("/v1")
+    users := v1.Group("/users")
+    {
+        users.POST("", userHandler.CreateUserHandler)
+        users.GET("/:id", userHandler.GetUserHandler)
+        users.PUT("/:id", userHandler.UpdateUserHandler)
+        users.DELETE("/:id", userHandler.DeleteUserHandler)
+    }
+
     trips := v1.Group("/trips")
     {
+        trips.Use(middleware.AuthMiddleware())
         trips.POST("", tripHandler.CreateTripHandler)
         trips.GET("/:id", tripHandler.GetTripHandler)
         trips.PUT("/:id", tripHandler.UpdateTripHandler)

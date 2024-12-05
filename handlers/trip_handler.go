@@ -182,12 +182,24 @@ func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
     log := logger.GetLogger()
     
-    userID, _ := c.Get("user_id")
+    userID, exists := c.Get("user_id")
+    if !exists {
+        log.Error("User ID not found in context")
+        c.Error(errors.AuthenticationFailed("User not authenticated"))
+        return
+    }
 
-    trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userID.(int64))
+    userIDInt, ok := userID.(int64)
+    if !ok {
+        log.Errorw("Invalid user ID type in context", "userID", userID)
+        c.Error(errors.AuthenticationFailed("Invalid user ID"))
+        return
+    }
+
+    trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userIDInt)
     if err != nil {
-        log.Errorw("Failed to list user trips", "userId", userID, "error", err)
-        _ = c.Error(err)
+        log.Errorw("Failed to list user trips", "userId", userIDInt, "error", err)
+        c.Error(err)
         return
     }
 
