@@ -83,8 +83,22 @@ func (h *UserHandler) CreateUserHandler(c *gin.Context) {
         return
     }
 
-    // Convert to UserResponse before sending
-    response := types.CreateUserResponse(user)
+    // Generate token for newly created user
+    token, err := models.GenerateJWT(user)
+    if err != nil {
+        _ = c.Error(errors.New(errors.ServerError, "Failed to generate token", err.Error()))
+        return
+    }
+
+    // Convert to UserResponse and include token
+    response := struct {
+        User  types.UserResponse `json:"user"`
+        Token string            `json:"token"`
+    }{
+        User:  types.CreateUserResponse(user),
+        Token: token,
+    }
+
     c.JSON(http.StatusCreated, response)
 }
 
