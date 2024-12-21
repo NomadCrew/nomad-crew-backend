@@ -258,15 +258,27 @@ func (h *UserHandler) LoginHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := models.GenerateJWT(user)
+	// Generate access token
+	accessToken, err := models.GenerateJWT(user)
 	if err != nil {
-		log.Errorw("Failed to generate token", "userId", user.ID, "error", err)
+		log.Errorw("Failed to generate access token", "userId", user.ID, "error", err)
 		_ = c.Error(err)
 		return
 	}
 
+	// Generate refresh token
+	refreshToken, err := models.GenerateRefreshToken(user)
+	if err != nil {
+		log.Errorw("Failed to generate refresh token", "userId", user.ID, "error", err)
+		_ = c.Error(err)
+		return
+	}
+
+	// TODO: store the refresh token securely (e.g., in Redis or database)
+
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"user":  user,
+		"token":         accessToken,
+		"refreshToken":  refreshToken,
+		"user":          user,
 	})
 }

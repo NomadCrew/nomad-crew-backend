@@ -88,3 +88,16 @@ func GenerateJWT(user *types.User) (string, error) {
 
     return tokenString, nil
 }
+
+func GenerateRefreshToken(user *types.User) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":   user.ID,
+		"email": user.Email,
+		"exp":   time.Now().Add(30 * 24 * time.Hour).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secretKey := []byte(os.Getenv("JWT_SECRET_KEY"))
+
+	return token.SignedString(secretKey)
+}
