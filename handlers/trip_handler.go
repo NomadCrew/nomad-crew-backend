@@ -104,6 +104,7 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
     
     tripID, err := strconv.ParseInt(c.Param("id"), 10, 64)
     if err != nil {
+        log.Errorw("Invalid trip ID format", "id", c.Param("id"))
         _ = c.Error(errors.ValidationFailed("Invalid trip ID", err.Error()))
         return
     }
@@ -151,6 +152,7 @@ func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
     
     tripID, err := strconv.ParseInt(c.Param("id"), 10, 64)
     if err != nil {
+        log.Errorw("Invalid trip ID format", "id", c.Param("id"))
         _ = c.Error(errors.ValidationFailed("Invalid trip ID", err.Error()))
         return
     }
