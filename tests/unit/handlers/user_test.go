@@ -175,8 +175,8 @@ func TestGetUserHandler(t *testing.T) {
             userID: "invalid",
             setupMock: func(m *MockUserModel) {},
             expectedStatus: http.StatusBadRequest,
-            expectedBody:   `{"type":"VALIDATION_ERROR","message":"Invalid user ID"}`,
-        },
+            expectedBody:   `{"type":"VALIDATION_ERROR","message":"Invalid user ID","detail":"Invalid input provided"}`,
+        },        
     }
     
     for _, tt := range tests {
