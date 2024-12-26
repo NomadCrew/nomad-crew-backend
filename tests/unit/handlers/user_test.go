@@ -63,7 +63,7 @@ func (m *MockUserModel) AuthenticateUser(ctx context.Context, email, password st
     return args.Get(0).(*types.User), args.Error(1)
 }
 
-func setupTestRouter(generateJWTFunc func(user *types.User) (string, error)) (*gin.Engine, *MockUserModel) {
+func setupTestRouter(generateJWTFunc ...func(user *types.User) (string, error)) (*gin.Engine, *MockUserModel) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(middleware.ErrorHandler())
@@ -71,9 +71,8 @@ func setupTestRouter(generateJWTFunc func(user *types.User) (string, error)) (*g
 	mockModel := new(MockUserModel)
 	handler := handlers.NewUserHandler(mockModel)
 
-	// Inject the mocked generateJWT function if provided
-	if generateJWTFunc != nil {
-		handler.SetGenerateJWTFunc(generateJWTFunc)
+	if len(generateJWTFunc) > 0 && generateJWTFunc[0] != nil {
+		handler.SetGenerateJWTFunc(generateJWTFunc[0])
 	}
 
 	r.POST("/users", handler.CreateUserHandler)
@@ -86,13 +85,13 @@ func setupTestRouter(generateJWTFunc func(user *types.User) (string, error)) (*g
 }
 
 
+
 func TestCreateUserHandler(t *testing.T) {
 	// Mock GenerateJWT function
 	mockGenerateJWT := func(user *types.User) (string, error) {
 		return "mocked-token", nil
 	}
 
-	// Pass the mocked function to the router setup
 	router, mockModel := setupTestRouter(mockGenerateJWT)
 
 	tests := []struct {
@@ -157,7 +156,7 @@ func TestCreateUserHandler(t *testing.T) {
 }
 
 func TestGetUserHandler(t *testing.T) {
-    router, mockModel := setupTestRouter()
+    router, mockModel := setupTestRouter(nil)
 
     tests := []struct {
         name           string
@@ -202,15 +201,15 @@ func TestGetUserHandler(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             tt.setupMock(mockModel)
 
-            req, _ := http.NewRequest(http.MethodGet, "/users/"+tt.userID, nil)
-            w := httptest.NewRecorder()
-            router.ServeHTTP(w, req)
+			req, _ := http.NewRequest(http.MethodGet, "/users/"+tt.userID, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
 
-            assert.Equal(t, tt.expectedStatus, w.Code)
-            if tt.expectedBody != "" {
-                assert.JSONEq(t, tt.expectedBody, w.Body.String())
-            }
-            mockModel.AssertExpectations(t)
-        })
-    }
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			if tt.expectedBody != "" {
+				assert.JSONEq(t, tt.expectedBody, w.Body.String())
+			}
+			mockModel.AssertExpectations(t)
+		})
+	}
 }
