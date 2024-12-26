@@ -47,18 +47,20 @@ type SearchTripsRequest struct {
 
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
     log := logger.GetLogger()
-    
+
     var req CreateTripRequest
     if err := c.ShouldBindJSON(&req); err != nil {
-        log.Errorw("Invalid trip creation request", "error", err)
-        _ = c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
-    // Get user ID from context (assuming it was set by auth middleware)
     userID, exists := c.Get("user_id")
     if !exists {
-        _ = c.Error(errors.AuthenticationFailed("User not authenticated"))
+        if err := c.Error(errors.AuthenticationFailed("User not authenticated")); err != nil {
+            log.Errorw("Failed to add authentication error", "error", err)
+        }
         return
     }
 
@@ -73,7 +75,9 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
     if err := h.tripModel.CreateTrip(c.Request.Context(), trip); err != nil {
         log.Errorw("Failed to create trip", "error", err)
-        _ = c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
@@ -82,17 +86,21 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
     log := logger.GetLogger()
-    
+
     tripID, err := strconv.ParseInt(c.Param("id"), 10, 64)
     if err != nil {
-        _ = c.Error(errors.ValidationFailed("Invalid trip ID", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid trip ID", "Invalid input provided")); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
     trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
     if err != nil {
         log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
-        _ = c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
@@ -101,32 +109,39 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
 
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
     log := logger.GetLogger()
-    
+
     tripID, err := strconv.ParseInt(c.Param("id"), 10, 64)
     if err != nil {
         log.Errorw("Invalid trip ID format", "id", c.Param("id"))
-        _ = c.Error(errors.ValidationFailed("Invalid trip ID", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid trip ID", "Invalid input provided")); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
     var req UpdateTripRequest
     if err := c.ShouldBindJSON(&req); err != nil {
         log.Errorw("Invalid trip update request", "error", err)
-        _ = c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
-    // Verify trip ownership
     trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
     if err != nil {
         log.Errorw("Failed to get trip for update", "tripId", tripID, "error", err)
-        _ = c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     userID, _ := c.Get("user_id")
     if trip.CreatedBy != userID.(int64) {
-        _ = c.Error(errors.AuthenticationFailed("Not authorized to update this trip"))
+        if err := c.Error(errors.AuthenticationFailed("Not authorized to update this trip")); err != nil {
+            log.Errorw("Failed to add authentication error", "error", err)
+        }
         return
     }
 
@@ -140,7 +155,9 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 
     if err := h.tripModel.UpdateTrip(c.Request.Context(), tripID, update); err != nil {
         log.Errorw("Failed to update trip", "tripId", tripID, "error", err)
-        _ = c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
@@ -149,73 +166,86 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 
 func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
     log := logger.GetLogger()
-    
+
     tripID, err := strconv.ParseInt(c.Param("id"), 10, 64)
     if err != nil {
         log.Errorw("Invalid trip ID format", "id", c.Param("id"))
-        _ = c.Error(errors.ValidationFailed("Invalid trip ID", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid trip ID", "Invalid input provided")); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
-    // Verify trip ownership
     trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
     if err != nil {
         log.Errorw("Failed to get trip for deletion", "tripId", tripID, "error", err)
-        _ = c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     userID, _ := c.Get("user_id")
     if trip.CreatedBy != userID.(int64) {
-        _ = c.Error(errors.AuthenticationFailed("Not authorized to delete this trip"))
+        if err := c.Error(errors.AuthenticationFailed("Not authorized to delete this trip")); err != nil {
+            log.Errorw("Failed to add authentication error", "error", err)
+        }
         return
     }
 
     if err := h.tripModel.DeleteTrip(c.Request.Context(), tripID); err != nil {
         log.Errorw("Failed to delete trip", "tripId", tripID, "error", err)
-        _ = c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     c.JSON(http.StatusOK, gin.H{"message": "Trip deleted successfully"})
 }
 
-// ListUserTripsHandler handles retrieving all trips for the current user
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
     log := logger.GetLogger()
-    
+
     userID, exists := c.Get("user_id")
     if !exists {
+        if err := c.Error(errors.AuthenticationFailed("User not authenticated")); err != nil {
+            log.Errorw("Failed to add authentication error", "error", err)
+        }
         log.Error("User ID not found in context")
-        c.Error(errors.AuthenticationFailed("User not authenticated"))
         return
     }
 
     userIDInt, ok := userID.(int64)
     if !ok {
+        if err := c.Error(errors.AuthenticationFailed("Invalid user ID")); err != nil {
+            log.Errorw("Failed to add authentication error", "error", err)
+        }
         log.Errorw("Invalid user ID type in context", "userID", userID)
-        c.Error(errors.AuthenticationFailed("Invalid user ID"))
         return
     }
 
     trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userIDInt)
     if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         log.Errorw("Failed to list user trips", "userId", userIDInt, "error", err)
-        c.Error(err)
         return
     }
 
     c.JSON(http.StatusOK, trips)
 }
 
-// SearchTripsHandler handles searching for trips based on criteria
 func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
     log := logger.GetLogger()
-    
+
     var req SearchTripsRequest
     if err := c.ShouldBindJSON(&req); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         log.Errorw("Invalid trip search request", "error", err)
-        _ = c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
         return
     }
 
@@ -227,8 +257,10 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 
     trips, err := h.tripModel.SearchTrips(c.Request.Context(), criteria)
     if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         log.Errorw("Failed to search trips", "error", err)
-        _ = c.Error(err)
         return
     }
 
