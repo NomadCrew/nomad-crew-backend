@@ -63,82 +63,100 @@ func (m *MockUserModel) AuthenticateUser(ctx context.Context, email, password st
     return args.Get(0).(*types.User), args.Error(1)
 }
 
-func setupTestRouter() (*gin.Engine, *MockUserModel) {
-    gin.SetMode(gin.TestMode)
-    r := gin.New()
-    r.Use(middleware.ErrorHandler())
+func setupTestRouter(generateJWTFunc ...func(user *types.User) (string, error)) (*gin.Engine, *MockUserModel) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.ErrorHandler())
 
-    mockModel := new(MockUserModel)
-    handler := handlers.NewUserHandler(mockModel)
+	mockModel := new(MockUserModel)
+	handler := handlers.NewUserHandler(mockModel)
 
-    r.POST("/users", handler.CreateUserHandler)
-    r.GET("/users/:id", handler.GetUserHandler)
-    r.PUT("/users/:id", handler.UpdateUserHandler)
-    r.DELETE("/users/:id", handler.DeleteUserHandler)
-    r.POST("/login", handler.LoginHandler)
+	if len(generateJWTFunc) > 0 && generateJWTFunc[0] != nil {
+		handler.SetGenerateJWTFunc(generateJWTFunc[0])
+	}
 
-    return r, mockModel
+	r.POST("/users", handler.CreateUserHandler)
+	r.GET("/users/:id", handler.GetUserHandler)
+	r.PUT("/users/:id", handler.UpdateUserHandler)
+	r.DELETE("/users/:id", handler.DeleteUserHandler)
+	r.POST("/login", handler.LoginHandler)
+
+	return r, mockModel
 }
 
+
+
 func TestCreateUserHandler(t *testing.T) {
-    router, mockModel := setupTestRouter()
+	// Mock GenerateJWT function
+	mockGenerateJWT := func(user *types.User) (string, error) {
+		return "mocked-token", nil
+	}
 
-    tests := []struct {
-        name           string
-        payload        CreateUserRequest
-        setupMock      func(*MockUserModel)
-        expectedStatus int
-        expectedBody   string
-    }{
-        {
-            name: "Success",
-            payload: CreateUserRequest{
-                Username: "testuser",
-                Email:    "test@example.com",
-                Password: "password123",
-            },
-            setupMock: func(m *MockUserModel) {
-                m.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *types.User) bool {
-                    return user.Username == "testuser" && user.Email == "test@example.com"
-                })).Return(nil)
-            },
-            expectedStatus: http.StatusCreated,
-            expectedBody:   `{"id":0,"username":"testuser","email":"test@example.com"}`,
-        },
-        {
-            name: "Invalid Email",
-            payload: CreateUserRequest{
-                Username: "testuser",
-                Email:    "invalid-email",
-                Password: "password123",
-            },
-            setupMock:      func(m *MockUserModel) {},
-            expectedStatus: http.StatusBadRequest,
-        },
-    }
+	router, mockModel := setupTestRouter(mockGenerateJWT)
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            tt.setupMock(mockModel)
+	tests := []struct {
+		name           string
+		payload        CreateUserRequest
+		setupMock      func(*MockUserModel)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "Success",
+			payload: CreateUserRequest{
+				Username: "testuser",
+				Email:    "test@example.com",
+				Password: "password123",
+			},
+			setupMock: func(m *MockUserModel) {
+				m.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *types.User) bool {
+					return user.Username == "testuser" && user.Email == "test@example.com"
+				})).Return(nil)
+			},
+			expectedStatus: http.StatusCreated,
+			expectedBody: `{
+				"user": {
+					"id": 0,
+					"username": "testuser",
+					"email": "test@example.com"
+				},
+				"token": "mocked-token"
+			}`,
+		},
+		{
+			name: "Invalid Email",
+			payload: CreateUserRequest{
+				Username: "testuser",
+				Email:    "invalid-email",
+				Password: "password123",
+			},
+			setupMock:      func(m *MockUserModel) {},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
 
-            payloadBytes, _ := json.Marshal(tt.payload)
-            req, _ := http.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(payloadBytes))
-            req.Header.Set("Content-Type", "application/json")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupMock(mockModel)
 
-            w := httptest.NewRecorder()
-            router.ServeHTTP(w, req)
+			payloadBytes, _ := json.Marshal(tt.payload)
+			req, _ := http.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(payloadBytes))
+			req.Header.Set("Content-Type", "application/json")
 
-            assert.Equal(t, tt.expectedStatus, w.Code)
-            if tt.expectedBody != "" {
-                assert.JSONEq(t, tt.expectedBody, w.Body.String())
-            }
-            mockModel.AssertExpectations(t)
-        })
-    }
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			if tt.expectedBody != "" {
+				assert.JSONEq(t, tt.expectedBody, w.Body.String())
+			}
+			mockModel.AssertExpectations(t)
+		})
+	}
 }
 
 func TestGetUserHandler(t *testing.T) {
-    router, mockModel := setupTestRouter()
+    router, mockModel := setupTestRouter(nil)
 
     tests := []struct {
         name           string
@@ -175,23 +193,23 @@ func TestGetUserHandler(t *testing.T) {
             userID: "invalid",
             setupMock: func(m *MockUserModel) {},
             expectedStatus: http.StatusBadRequest,
-            expectedBody:   `{"type":"VALIDATION_ERROR","message":"Invalid user ID"}`,
-        },
+            expectedBody:   `{"type":"VALIDATION_ERROR","message":"Invalid user ID","detail":"Invalid input provided"}`,
+        },        
     }
     
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             tt.setupMock(mockModel)
 
-            req, _ := http.NewRequest(http.MethodGet, "/users/"+tt.userID, nil)
-            w := httptest.NewRecorder()
-            router.ServeHTTP(w, req)
+			req, _ := http.NewRequest(http.MethodGet, "/users/"+tt.userID, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
 
-            assert.Equal(t, tt.expectedStatus, w.Code)
-            if tt.expectedBody != "" {
-                assert.JSONEq(t, tt.expectedBody, w.Body.String())
-            }
-            mockModel.AssertExpectations(t)
-        })
-    }
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			if tt.expectedBody != "" {
+				assert.JSONEq(t, tt.expectedBody, w.Body.String())
+			}
+			mockModel.AssertExpectations(t)
+		})
+	}
 }

@@ -6,6 +6,8 @@ import (
     "time"
     "github.com/golang-jwt/jwt"
     "golang.org/x/crypto/bcrypt"
+    "github.com/google/uuid"
+    "fmt"
     "github.com/NomadCrew/nomad-crew-backend/errors"
     "github.com/NomadCrew/nomad-crew-backend/types"
     "github.com/NomadCrew/nomad-crew-backend/internal/store"
@@ -57,19 +59,26 @@ func (um *UserModel) AuthenticateUser(ctx context.Context, email, password strin
 
 func GenerateJWT(user *types.User) (string, error) {
     log := logger.GetLogger()
-    
+
     jwtSecretKey := os.Getenv("JWT_SECRET_KEY")
     if jwtSecretKey == "" {
         return "", errors.New(errors.ServerError, "JWT configuration error", "secret key not set")
     }
 
+    // Generate a unique identifier for the token
+    jti := uuid.New().String()
+
+    // Define claims for the JWT
     claims := jwt.MapClaims{
-        "user_id":  user.ID,
-        "username": user.Username,
-        "email":    user.Email,
-        "exp":      time.Now().Add(24 * time.Hour).Unix(),
+        "user_id":  user.ID,                              // Custom claim for user ID
+        "username": user.Username,                       // Custom claim for username
+        "email":    user.Email,                          // Custom claim for email
+        "exp":      time.Now().Add(24 * time.Hour).Unix(), // Expiration time (24 hours)
+        "jti":      jti,                                 // Unique identifier for the token
+        "sub":      fmt.Sprintf("%d", user.ID),          // Subject (user ID)
     }
 
+    // Create the token with claims and sign it
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
     tokenString, err := token.SignedString([]byte(jwtSecretKey))
     if err != nil {
@@ -78,4 +87,17 @@ func GenerateJWT(user *types.User) (string, error) {
     }
 
     return tokenString, nil
+}
+
+func GenerateRefreshToken(user *types.User) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":   user.ID,
+		"email": user.Email,
+		"exp":   time.Now().Add(30 * 24 * time.Hour).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secretKey := []byte(os.Getenv("JWT_SECRET_KEY"))
+
+	return token.SignedString(secretKey)
 }

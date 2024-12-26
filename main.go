@@ -33,25 +33,29 @@ func main() {
     // Router setup
     r := gin.Default()
     r.Use(middleware.ErrorHandler())
-    r.POST("/login", userHandler.LoginHandler)
-    r.POST("/users", userHandler.CreateUserHandler)
+
+    // Routes that are outside versioning
+    r.POST("/login", userHandler.LoginHandler)           // Login endpoint
+    r.POST("/users", userHandler.CreateUserHandler)      // Create user endpoint
+
+    // Versioned routes (e.g., /v1)
     v1 := r.Group("/v1")
     users := v1.Group("/users")
     {
-        users.GET("/:id", userHandler.GetUserHandler)
-        users.PUT("/:id", userHandler.UpdateUserHandler)
-        users.DELETE("/:id", userHandler.DeleteUserHandler)
+        users.GET("/:id", userHandler.GetUserHandler)     // Get user by ID
+        users.PUT("/:id", userHandler.UpdateUserHandler)  // Update user
+        users.DELETE("/:id", userHandler.DeleteUserHandler) // Delete user
     }
 
     trips := v1.Group("/trips")
     {
         trips.Use(middleware.AuthMiddleware())
-        trips.POST("", tripHandler.CreateTripHandler)
-        trips.GET("/:id", tripHandler.GetTripHandler)
-        trips.PUT("/:id", tripHandler.UpdateTripHandler)
-        trips.DELETE("/:id", tripHandler.DeleteTripHandler)
-        trips.GET("/list", tripHandler.ListUserTripsHandler)
-        trips.POST("/search", tripHandler.SearchTripsHandler)
+        trips.POST("", tripHandler.CreateTripHandler)     // Create trip
+        trips.GET("/:id", tripHandler.GetTripHandler)     // Get trip by ID
+        trips.PUT("/:id", tripHandler.UpdateTripHandler)  // Update trip
+        trips.DELETE("/:id", tripHandler.DeleteTripHandler) // Delete trip
+        trips.GET("/list", tripHandler.ListUserTripsHandler) // List trips
+        trips.POST("/search", tripHandler.SearchTripsHandler) // Search trips
     }
 
     log.Infof("Starting server on port %s", cfg.Port)

@@ -49,7 +49,7 @@ func ErrorHandler() gin.HandlerFunc {
 			c.JSON(500, ErrorResponse{
 				Type:    string(errors.ServerError),
 				Message: "Internal server error",
-				Detail:  err.Error(),
+				Detail:  "An unexpected error occurred",
 			})
 		}
 	}
