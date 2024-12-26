@@ -16,10 +16,14 @@ import (
 // UserHandler struct with userModel
 type UserHandler struct {
 	userModel models.UserModelInterface
+	generateJWT func(user *types.User) (string, error)
 }
 
 func NewUserHandler(userModel models.UserModelInterface) *UserHandler {
-	return &UserHandler{userModel: userModel}
+	return &UserHandler{
+		userModel:   userModel,
+		generateJWT: models.GenerateJWT,
+	}
 }
 
 // CreateUserRequest represents the request body for creating a user
@@ -88,7 +92,7 @@ func (h *UserHandler) CreateUserHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := models.GenerateJWT(user)
+	token, err := h.generateJWT(user)
 	if err != nil {
 		if err := c.Error(errors.New(errors.ServerError, "Failed to generate token", err.Error())); err != nil {
 			logger.GetLogger().Errorw("Failed to add token generation error", "error", err)
@@ -306,4 +310,8 @@ func (h *UserHandler) LoginHandler(c *gin.Context) {
 		"refreshToken": refreshToken,
 		"user":         user,
 	})
+}
+
+func (h *UserHandler) SetGenerateJWTFunc(fn func(user *types.User) (string, error)) {
+	h.generateJWT = fn
 }

@@ -81,60 +81,79 @@ func setupTestRouter() (*gin.Engine, *MockUserModel) {
 }
 
 func TestCreateUserHandler(t *testing.T) {
-    router, mockModel := setupTestRouter()
+	router, mockModel := setupTestRouter()
 
-    tests := []struct {
-        name           string
-        payload        CreateUserRequest
-        setupMock      func(*MockUserModel)
-        expectedStatus int
-        expectedBody   string
-    }{
-        {
-            name: "Success",
-            payload: CreateUserRequest{
-                Username: "testuser",
-                Email:    "test@example.com",
-                Password: "password123",
-            },
-            setupMock: func(m *MockUserModel) {
-                m.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *types.User) bool {
-                    return user.Username == "testuser" && user.Email == "test@example.com"
-                })).Return(nil)
-            },
-            expectedStatus: http.StatusCreated,
-            expectedBody:   `{"id":0,"username":"testuser","email":"test@example.com"}`,
-        },
-        {
-            name: "Invalid Email",
-            payload: CreateUserRequest{
-                Username: "testuser",
-                Email:    "invalid-email",
-                Password: "password123",
-            },
-            setupMock:      func(m *MockUserModel) {},
-            expectedStatus: http.StatusBadRequest,
-        },
-    }
+	// Create a new handler to access the setter
+	handler := handlers.NewUserHandler(mockModel)
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            tt.setupMock(mockModel)
+	// Replace the default generateJWT function with a mock
+	mockGenerateJWT := func(user *types.User) (string, error) {
+		return "mocked-token", nil
+	}
+	handler.SetGenerateJWTFunc(mockGenerateJWT)
 
-            payloadBytes, _ := json.Marshal(tt.payload)
-            req, _ := http.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(payloadBytes))
-            req.Header.Set("Content-Type", "application/json")
+	// Re-assign handler routes to use the updated handler
+	router.POST("/users", handler.CreateUserHandler)
 
-            w := httptest.NewRecorder()
-            router.ServeHTTP(w, req)
+	tests := []struct {
+		name           string
+		payload        CreateUserRequest
+		setupMock      func(*MockUserModel)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "Success",
+			payload: CreateUserRequest{
+				Username: "testuser",
+				Email:    "test@example.com",
+				Password: "password123",
+			},
+			setupMock: func(m *MockUserModel) {
+				m.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *types.User) bool {
+					return user.Username == "testuser" && user.Email == "test@example.com"
+				})).Return(nil)
+			},
+			expectedStatus: http.StatusCreated,
+			expectedBody: `{
+				"user": {
+					"id": 0,
+					"username": "testuser",
+					"email": "test@example.com"
+				},
+				"token": "mocked-token"
+			}`,
+		},
+		{
+			name: "Invalid Email",
+			payload: CreateUserRequest{
+				Username: "testuser",
+				Email:    "invalid-email",
+				Password: "password123",
+			},
+			setupMock:      func(m *MockUserModel) {},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
 
-            assert.Equal(t, tt.expectedStatus, w.Code)
-            if tt.expectedBody != "" {
-                assert.JSONEq(t, tt.expectedBody, w.Body.String())
-            }
-            mockModel.AssertExpectations(t)
-        })
-    }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupMock(mockModel)
+
+			payloadBytes, _ := json.Marshal(tt.payload)
+			req, _ := http.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(payloadBytes))
+			req.Header.Set("Content-Type", "application/json")
+
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			if tt.expectedBody != "" {
+				assert.JSONEq(t, tt.expectedBody, w.Body.String())
+			}
+			mockModel.AssertExpectations(t)
+		})
+	}
 }
 
 func TestGetUserHandler(t *testing.T) {
