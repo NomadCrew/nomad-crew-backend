@@ -85,6 +85,9 @@ jobs:
     needs: [test, security-scan]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    permissions:
+      contents: write
+      packages: write
     
     steps:
       - uses: actions/checkout@v4
