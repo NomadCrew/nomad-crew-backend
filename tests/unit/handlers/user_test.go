@@ -63,37 +63,37 @@ func (m *MockUserModel) AuthenticateUser(ctx context.Context, email, password st
     return args.Get(0).(*types.User), args.Error(1)
 }
 
-func setupTestRouter() (*gin.Engine, *MockUserModel) {
-    gin.SetMode(gin.TestMode)
-    r := gin.New()
-    r.Use(middleware.ErrorHandler())
+func setupTestRouter(generateJWTFunc func(user *types.User) (string, error)) (*gin.Engine, *MockUserModel) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.ErrorHandler())
 
-    mockModel := new(MockUserModel)
-    handler := handlers.NewUserHandler(mockModel)
-
-    r.POST("/users", handler.CreateUserHandler)
-    r.GET("/users/:id", handler.GetUserHandler)
-    r.PUT("/users/:id", handler.UpdateUserHandler)
-    r.DELETE("/users/:id", handler.DeleteUserHandler)
-    r.POST("/login", handler.LoginHandler)
-
-    return r, mockModel
-}
-
-func TestCreateUserHandler(t *testing.T) {
-	router, mockModel := setupTestRouter()
-
-	// Create a new handler to access the setter
+	mockModel := new(MockUserModel)
 	handler := handlers.NewUserHandler(mockModel)
 
-	// Replace the default generateJWT function with a mock
+	// Inject the mocked generateJWT function if provided
+	if generateJWTFunc != nil {
+		handler.SetGenerateJWTFunc(generateJWTFunc)
+	}
+
+	r.POST("/users", handler.CreateUserHandler)
+	r.GET("/users/:id", handler.GetUserHandler)
+	r.PUT("/users/:id", handler.UpdateUserHandler)
+	r.DELETE("/users/:id", handler.DeleteUserHandler)
+	r.POST("/login", handler.LoginHandler)
+
+	return r, mockModel
+}
+
+
+func TestCreateUserHandler(t *testing.T) {
+	// Mock GenerateJWT function
 	mockGenerateJWT := func(user *types.User) (string, error) {
 		return "mocked-token", nil
 	}
-	handler.SetGenerateJWTFunc(mockGenerateJWT)
 
-	// Re-assign handler routes to use the updated handler
-	router.POST("/users", handler.CreateUserHandler)
+	// Pass the mocked function to the router setup
+	router, mockModel := setupTestRouter(mockGenerateJWT)
 
 	tests := []struct {
 		name           string
