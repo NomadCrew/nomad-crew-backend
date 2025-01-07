@@ -14,6 +14,7 @@ import (
 type Config struct {
     DatabaseConnectionString string
     JwtSecretKey            string
+    SupabaseAnonKey         string 
     Port                    string
     DB                      *db.DatabaseClient
 }
@@ -23,11 +24,19 @@ func LoadConfig() (*Config, error) {
 
     cfg := &Config{
         DatabaseConnectionString: os.Getenv("DB_CONNECTION_STRING"),
-        JwtSecretKey:            os.Getenv("JWT_SECRET_KEY"),
-        Port:                    os.Getenv("PORT"),
+        SupabaseAnonKey:          os.Getenv("SUPABASE_ANON_KEY"),
+        JwtSecretKey:             os.Getenv("JWT_SECRET_KEY"),
+        Port:                     os.Getenv("PORT"),
     }
 
-    if cfg.DatabaseConnectionString == "" || cfg.JwtSecretKey == "" || cfg.Port == "" {
+    log.Debug("DB_CONNECTION_STRING: ", cfg.DatabaseConnectionString)
+    log.Debug("SUPABASE_ANON_KEY: ", cfg.SupabaseAnonKey)
+    log.Debug("JWT_SECRET_KEY: ",
+        strings.Repeat("*", len(cfg.JwtSecretKey)),
+    )
+    log.Debug("PORT: ", cfg.Port)
+
+    if cfg.DatabaseConnectionString == "" || cfg.SupabaseAnonKey == "" || cfg.JwtSecretKey == "" || cfg.Port == "" {
         log.Fatal("Error: one or more environment variables are not set")
         return nil, errors.New("one or more environment variables are not set")
     }

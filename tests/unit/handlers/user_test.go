@@ -1,66 +1,66 @@
-package handlers_test 
+package handlers_test
 
 import (
-    "bytes"
-    "context"
-    "encoding/json"
-    "net/http"
-    "net/http/httptest"
-    "testing"
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 
-    "github.com/gin-gonic/gin"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/mock"
-    "github.com/NomadCrew/nomad-crew-backend/middleware"
-    "github.com/NomadCrew/nomad-crew-backend/handlers"
-    "github.com/NomadCrew/nomad-crew-backend/types"
-    "github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/handlers"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
+	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 type CreateUserRequest struct {
-    Username       string `json:"username"`
-    Email          string `json:"email"`
-    Password       string `json:"password"`
-    FirstName      string `json:"first_name,omitempty"`
-    LastName       string `json:"last_name,omitempty"`
-    ProfilePicture string `json:"profile_picture,omitempty"`
-    PhoneNumber    string `json:"phone_number,omitempty"`
-    Address        string `json:"address,omitempty"`
+	Username       string `json:"username"`
+	Email          string `json:"email"`
+	Password       string `json:"password"`
+	FirstName      string `json:"first_name,omitempty"`
+	LastName       string `json:"last_name,omitempty"`
+	ProfilePicture string `json:"profile_picture,omitempty"`
+	PhoneNumber    string `json:"phone_number,omitempty"`
+	Address        string `json:"address,omitempty"`
 }
 
 type MockUserModel struct {
-    mock.Mock
+	mock.Mock
 }
 
 func (m *MockUserModel) CreateUser(ctx context.Context, user *types.User) error {
-    args := m.Called(ctx, user)
-    return args.Error(0)
+	args := m.Called(ctx, user)
+	return args.Error(0)
 }
 
-func (m *MockUserModel) GetUserByID(ctx context.Context, id int64) (*types.User, error) {
-    args := m.Called(ctx, id)
-    if args.Get(0) == nil {
-        return nil, args.Error(1)
-    }
-    return args.Get(0).(*types.User), args.Error(1)
+func (m *MockUserModel) GetUserByID(ctx context.Context, id string) (*types.User, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
 }
 
 func (m *MockUserModel) UpdateUser(ctx context.Context, user *types.User) error {
-    args := m.Called(ctx, user)
-    return args.Error(0)
+	args := m.Called(ctx, user)
+	return args.Error(0)
 }
 
-func (m *MockUserModel) DeleteUser(ctx context.Context, id int64) error {
-    args := m.Called(ctx, id)
-    return args.Error(0)
+func (m *MockUserModel) DeleteUser(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
 }
 
 func (m *MockUserModel) AuthenticateUser(ctx context.Context, email, password string) (*types.User, error) {
-    args := m.Called(ctx, email, password)
-    if args.Get(0) == nil {
-        return nil, args.Error(1)
-    }
-    return args.Get(0).(*types.User), args.Error(1)
+	args := m.Called(ctx, email, password)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
 }
 
 func setupTestRouter(generateJWTFunc ...func(user *types.User) (string, error)) (*gin.Engine, *MockUserModel) {
@@ -83,8 +83,6 @@ func setupTestRouter(generateJWTFunc ...func(user *types.User) (string, error)) 
 
 	return r, mockModel
 }
-
-
 
 func TestCreateUserHandler(t *testing.T) {
 	// Mock GenerateJWT function
@@ -156,50 +154,50 @@ func TestCreateUserHandler(t *testing.T) {
 }
 
 func TestGetUserHandler(t *testing.T) {
-    router, mockModel := setupTestRouter(nil)
+	router, mockModel := setupTestRouter(nil)
 
-    tests := []struct {
-        name           string
-        userID         string
-        setupMock      func(*MockUserModel)
-        expectedStatus int
-        expectedBody   string
-    }{
-        {
-            name:   "Success",
-            userID: "1",
-            setupMock: func(m *MockUserModel) {
-                m.On("GetUserByID", mock.Anything, int64(1)).Return(&types.User{
-                    ID:       1,
-                    Username: "testuser",
-                    Email:    "test@example.com",
-                }, nil)
-            },
-            expectedStatus: http.StatusOK,
-            expectedBody:   `{"id":1,"username":"testuser","email":"test@example.com"}`,
-        },
-        {
-            name:   "User Not Found",
-            userID: "999",
-            setupMock: func(m *MockUserModel) {
-                m.On("GetUserByID", mock.Anything, int64(999)).Return(nil, 
-                    errors.NotFound("User", 999))
-            },
-            expectedStatus: http.StatusNotFound,
-            expectedBody:   `{"type":"NOT_FOUND","message":"User not found","detail":"ID: 999"}`,
-        },
-        {
-            name:   "Invalid ID Format",
-            userID: "invalid",
-            setupMock: func(m *MockUserModel) {},
-            expectedStatus: http.StatusBadRequest,
-            expectedBody:   `{"type":"VALIDATION_ERROR","message":"Invalid user ID","detail":"Invalid input provided"}`,
-        },        
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            tt.setupMock(mockModel)
+	tests := []struct {
+		name           string
+		userID         string
+		setupMock      func(*MockUserModel)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:   "Success",
+			userID: "1",
+			setupMock: func(m *MockUserModel) {
+				m.On("GetUserByID", mock.Anything, string(1)).Return(&types.User{
+					ID:       1,
+					Username: "testuser",
+					Email:    "test@example.com",
+				}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `{"id":1,"username":"testuser","email":"test@example.com"}`,
+		},
+		{
+			name:   "User Not Found",
+			userID: "999",
+			setupMock: func(m *MockUserModel) {
+				m.On("GetUserByID", mock.Anything, string(999)).Return(nil,
+					errors.NotFound("User", 999))
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   `{"type":"NOT_FOUND","message":"User not found","detail":"ID: 999"}`,
+		},
+		{
+			name:           "Invalid ID Format",
+			userID:         "invalid",
+			setupMock:      func(m *MockUserModel) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   `{"type":"VALIDATION_ERROR","message":"Invalid user ID","detail":"Invalid input provided"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupMock(mockModel)
 
 			req, _ := http.NewRequest(http.MethodGet, "/users/"+tt.userID, nil)
 			w := httptest.NewRecorder()

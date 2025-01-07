@@ -49,7 +49,7 @@ func main() {
 
     trips := v1.Group("/trips")
     {
-        trips.Use(middleware.AuthMiddleware())
+        trips.Use(middleware.AuthMiddleware(cfg))
         trips.POST("", tripHandler.CreateTripHandler)     // Create trip
         trips.GET("/:id", tripHandler.GetTripHandler)     // Get trip by ID
         trips.PUT("/:id", tripHandler.UpdateTripHandler)  // Update trip

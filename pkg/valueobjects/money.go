@@ -129,35 +129,35 @@ func (m Money) Subtract(other Money) (*Money, error) {
 
 // Split divides money into n equal parts
 func (m Money) Split(n int) ([]*Money, error) {
-    if n <= 0 {
-        return nil, errors.ValidationFailed(
-            "invalid split",
-            "number of parts must be positive",
-        )
-    }
+	if n <= 0 {
+		return nil, errors.ValidationFailed(
+			"invalid split",
+			"number of parts must be positive",
+		)
+	}
 
-    // Calculate the total amount in cents to avoid floating-point issues
-    totalAmount := m.amount.Mul(decimal.NewFromInt(100)) // Convert to cents
-    baseAmount := totalAmount.Div(decimal.NewFromInt(int64(n))).Floor() // Base amount in cents
-    remainder := totalAmount.Sub(baseAmount.Mul(decimal.NewFromInt(int64(n)))) // Remaining cents
+	// Calculate the total amount in cents to avoid floating-point issues
+	totalAmount := m.amount.Mul(decimal.NewFromInt(100))                        // Convert to cents
+	baseAmount := totalAmount.Div(decimal.NewFromInt(string(n))).Floor()        // Base amount in cents
+	remainder := totalAmount.Sub(baseAmount.Mul(decimal.NewFromInt(string(n)))) // Remaining cents
 
-    result := make([]*Money, n)
+	result := make([]*Money, n)
 
-    for i := 0; i < n; i++ {
-        partAmount := baseAmount
-        if remainder.GreaterThan(decimal.Zero) {
-            partAmount = partAmount.Add(decimal.NewFromInt(1)) // Distribute extra cents
-            remainder = remainder.Sub(decimal.NewFromInt(1))
-        }
+	for i := 0; i < n; i++ {
+		partAmount := baseAmount
+		if remainder.GreaterThan(decimal.Zero) {
+			partAmount = partAmount.Add(decimal.NewFromInt(1)) // Distribute extra cents
+			remainder = remainder.Sub(decimal.NewFromInt(1))
+		}
 
-        // Convert back to dollars and round to 2 decimal places
-        result[i] = &Money{
-            amount:   partAmount.Div(decimal.NewFromInt(100)).Round(2),
-            currency: m.currency,
-        }
-    }
+		// Convert back to dollars and round to 2 decimal places
+		result[i] = &Money{
+			amount:   partAmount.Div(decimal.NewFromInt(100)).Round(2),
+			currency: m.currency,
+		}
+	}
 
-    return result, nil
+	return result, nil
 }
 
 // IsZero checks if the amount is zero

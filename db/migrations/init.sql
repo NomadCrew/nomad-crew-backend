@@ -9,7 +9,7 @@ DROP TABLE IF EXISTS users CASCADE;
 
 -- Create users table
 CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(30) PRIMARY KEY,
     username VARCHAR(50) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE users (
 
 -- Create trips table
 CREATE TABLE trips (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(30) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     start_date DATE NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE trips (
     destination VARCHAR(255),
     trip_type VARCHAR(50),
     budget DECIMAL(10, 2),
-    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_by VARCHAR(30) NOT NULL REFERENCES users(id),
     status VARCHAR(50) DEFAULT 'planned',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -41,8 +41,8 @@ CREATE TABLE trips (
 -- Create expenses table
 CREATE TABLE expenses (
     id SERIAL PRIMARY KEY,
-    trip_id INTEGER NOT NULL REFERENCES trips(id),
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    trip_id VARCHAR(30) NOT NULL REFERENCES trips(id),
+    user_id VARCHAR(30) NOT NULL REFERENCES users(id),
     amount DECIMAL(10, 2) NOT NULL,
     description TEXT,
     category VARCHAR(50),
@@ -56,8 +56,8 @@ CREATE TABLE expenses (
 -- Create locations table
 CREATE TABLE locations (
     id SERIAL PRIMARY KEY,
-    trip_id INTEGER NOT NULL REFERENCES trips(id),
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    trip_id VARCHAR(30) NOT NULL REFERENCES trips(id),
+    user_id VARCHAR(30) NOT NULL REFERENCES users(id),
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     location_name VARCHAR(255),
@@ -80,8 +80,8 @@ CREATE TABLE categories (
 -- Create relationships table
 CREATE TABLE relationships (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    related_user_id INTEGER NOT NULL REFERENCES users(id),
+    user_id VARCHAR(30) NOT NULL REFERENCES users(id),
+    related_user_id VARCHAR(30) NOT NULL REFERENCES users(id),
     relationship_type VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -91,7 +91,7 @@ CREATE TABLE relationships (
 CREATE TABLE metadata (
     id SERIAL PRIMARY KEY,
     table_name VARCHAR(50) NOT NULL,
-    record_id INTEGER NOT NULL,
+    record_id VARCHAR(30) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP,

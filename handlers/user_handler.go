@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -15,7 +14,7 @@ import (
 
 // UserHandler struct with userModel
 type UserHandler struct {
-	userModel models.UserModelInterface
+	userModel   models.UserModelInterface
 	generateJWT func(user *types.User) (string, error)
 }
 
@@ -115,14 +114,7 @@ func (h *UserHandler) CreateUserHandler(c *gin.Context) {
 func (h *UserHandler) GetUserHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid user ID", "Invalid input provided")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
+	id := c.Param("id")
 
 	ctx := c.Request.Context()
 	user, err := h.userModel.GetUserByID(ctx, id)
@@ -139,130 +131,109 @@ func (h *UserHandler) GetUserHandler(c *gin.Context) {
 }
 
 // verifyUserAccess checks user access to modify resources
-func (h *UserHandler) verifyUserAccess(c *gin.Context, targetUserID int64) bool {
-	contextUserID, exists := c.Get("user_id")
-	if !exists {
-		if err := c.Error(errors.AuthenticationFailed("User not authenticated")); err != nil {
-			logger.GetLogger().Errorw("Failed to add authentication error", "error", err)
-		}
-		return false
-	}
+func (h *UserHandler) verifyUserAccess(c *gin.Context, targetUserID string) bool {
+    contextUserID := c.GetString("user_id")
 
-	authUserID, ok := contextUserID.(int64)
-	if !ok {
-		if err := c.Error(errors.AuthenticationFailed("Invalid user ID format")); err != nil {
-			logger.GetLogger().Errorw("Failed to add user ID format error", "error", err)
-		}
-		return false
-	}
+    if contextUserID == "" {
+        if err := c.Error(errors.AuthenticationFailed("User not authenticated")); err != nil {
+            logger.GetLogger().Errorw("Failed to add authentication error", "error", err)
+        }
+        return false
+    }
 
-	if authUserID != targetUserID {
-		if err := c.Error(errors.AuthenticationFailed("Cannot modify other users' details")); err != nil {
-			logger.GetLogger().Errorw("Failed to add access error", "error", err)
-		}
-		return false
-	}
+    if contextUserID != targetUserID {
+        if err := c.Error(errors.AuthenticationFailed("Cannot modify other users' details")); err != nil {
+            logger.GetLogger().Errorw("Failed to add access error", "error", err)
+        }
+        return false
+    }
 
-	return true
+    return true
 }
 
 // UpdateUserHandler handles updating user information
 func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
-	log := logger.GetLogger()
+    log := logger.GetLogger()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid user ID", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
+    id := c.Param("id")
 
-	if !h.verifyUserAccess(c, id) {
-		return
-	}
+    if !h.verifyUserAccess(c, id) {
+        return
+    }
 
-	var req UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid input", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
+    var req UpdateUserRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid input", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
 
-	ctx := c.Request.Context()
-	user, err := h.userModel.GetUserByID(ctx, id)
-	if err != nil {
-		log.Errorw("Failed to get user for update", "userId", id, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    ctx := c.Request.Context()
+    user, err := h.userModel.GetUserByID(ctx, id)
+    if err != nil {
+        log.Errorw("Failed to get user for update", "userId", id, "error", err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
+        return
+    }
 
-	// Apply updates
-	if req.Username != "" {
-		user.Username = req.Username
-	}
-	if req.Email != "" {
-		user.Email = req.Email
-	}
-	if req.FirstName != "" {
-		user.FirstName = req.FirstName
-	}
-	if req.LastName != "" {
-		user.LastName = req.LastName
-	}
-	if req.ProfilePicture != "" {
-		user.ProfilePicture = req.ProfilePicture
-	}
-	if req.PhoneNumber != "" {
-		user.PhoneNumber = req.PhoneNumber
-	}
-	if req.Address != "" {
-		user.Address = req.Address
-	}
+    // Apply updates
+    if req.Username != "" {
+        user.Username = req.Username
+    }
+    if req.Email != "" {
+        user.Email = req.Email
+    }
+    if req.FirstName != "" {
+        user.FirstName = req.FirstName
+    }
+    if req.LastName != "" {
+        user.LastName = req.LastName
+    }
+    if req.ProfilePicture != "" {
+        user.ProfilePicture = req.ProfilePicture
+    }
+    if req.PhoneNumber != "" {
+        user.PhoneNumber = req.PhoneNumber
+    }
+    if req.Address != "" {
+        user.Address = req.Address
+    }
 
-	if err := h.userModel.UpdateUser(ctx, user); err != nil {
-		log.Errorw("Failed to update user", "userId", id, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    if err := h.userModel.UpdateUser(ctx, user); err != nil {
+        log.Errorw("Failed to update user", "userId", id, "error", err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
+        return
+    }
 
-	c.JSON(http.StatusOK, user)
+    c.JSON(http.StatusOK, user)
 }
 
 // DeleteUserHandler handles deleting a user
 func (h *UserHandler) DeleteUserHandler(c *gin.Context) {
-	log := logger.GetLogger()
+    log := logger.GetLogger()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid user ID", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
+    id := c.Param("id")
 
-	if !h.verifyUserAccess(c, id) {
-		return
-	}
+    if !h.verifyUserAccess(c, id) {
+        return
+    }
 
-	ctx := c.Request.Context()
-	err = h.userModel.DeleteUser(ctx, id)
-	if err != nil {
-		log.Errorw("Failed to delete user", "userId", id, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    ctx := c.Request.Context()
+    err := h.userModel.DeleteUser(ctx, id)
+    if err != nil {
+        log.Errorw("Failed to delete user", "userId", id, "error", err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
+        return
+    }
 
-	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+    c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
 // LoginHandler handles user login

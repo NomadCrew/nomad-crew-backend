@@ -20,7 +20,7 @@ func (m *MockUserStore) GetPool() *pgxpool.Pool {
 	return args.Get(0).(*pgxpool.Pool)
 }
 
-func (m *MockUserStore) GetUserByID(ctx context.Context, id int64) (*types.User, error) {
+func (m *MockUserStore) GetUserByID(ctx context.Context, id string) (*types.User, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -38,7 +38,7 @@ func (m *MockUserStore) UpdateUser(ctx context.Context, user *types.User) error 
 	return args.Error(0)
 }
 
-func (m *MockUserStore) DeleteUser(ctx context.Context, id int64) error {
+func (m *MockUserStore) DeleteUser(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
