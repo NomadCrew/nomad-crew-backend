@@ -7,24 +7,12 @@ DROP TABLE IF EXISTS expenses CASCADE;
 DROP TABLE IF EXISTS trips CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
--- Create users table
-CREATE TABLE users (
-    id VARCHAR(30) PRIMARY KEY,
-    username VARCHAR(50) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(50),
-    last_name VARCHAR(50),
-    profile_picture VARCHAR(255),
-    phone_number VARCHAR(20),
-    address TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+-- Enable the uuid-ossp extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create trips table
 CREATE TABLE trips (
-    id VARCHAR(30) PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     description TEXT,
     start_date DATE NOT NULL,
@@ -32,7 +20,7 @@ CREATE TABLE trips (
     destination VARCHAR(255),
     trip_type VARCHAR(50),
     budget DECIMAL(10, 2),
-    created_by VARCHAR(30) NOT NULL REFERENCES users(id),
+    created_by UUID NOT NULL,
     status VARCHAR(50) DEFAULT 'planned',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -40,9 +28,9 @@ CREATE TABLE trips (
 
 -- Create expenses table
 CREATE TABLE expenses (
-    id SERIAL PRIMARY KEY,
-    trip_id VARCHAR(30) NOT NULL REFERENCES trips(id),
-    user_id VARCHAR(30) NOT NULL REFERENCES users(id),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    user_id UUID NOT NULL,
     amount DECIMAL(10, 2) NOT NULL,
     description TEXT,
     category VARCHAR(50),
@@ -56,8 +44,8 @@ CREATE TABLE expenses (
 -- Create locations table
 CREATE TABLE locations (
     id SERIAL PRIMARY KEY,
-    trip_id VARCHAR(30) NOT NULL REFERENCES trips(id),
-    user_id VARCHAR(30) NOT NULL REFERENCES users(id),
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    user_id UUID NOT NULL,
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     location_name VARCHAR(255),
@@ -70,7 +58,7 @@ CREATE TABLE locations (
 
 -- Create categories table
 CREATE TABLE categories (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
     type VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -80,8 +68,8 @@ CREATE TABLE categories (
 -- Create relationships table
 CREATE TABLE relationships (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(30) NOT NULL REFERENCES users(id),
-    related_user_id VARCHAR(30) NOT NULL REFERENCES users(id),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    related_user_id VARCHAR(36) NOT NULL REFERENCES users(id),
     relationship_type VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

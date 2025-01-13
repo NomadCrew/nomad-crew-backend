@@ -6,6 +6,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
@@ -18,12 +19,15 @@ func NewTripModel(store store.TripStore) *TripModel {
 }
 
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
+	log := logger.GetLogger()
 	if err := validateTrip(trip); err != nil {
 		return err
 	}
 
 	id, err := tm.store.CreateTrip(ctx, *trip)
+	
 	if err != nil {
+		log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
 		return errors.NewDatabaseError(err)
 	}
 
