@@ -1,14 +1,23 @@
 -- Drop existing tables if they exist
 DROP TABLE IF EXISTS metadata CASCADE;
-DROP TABLE IF EXISTS relationships CASCADE;
 DROP TABLE IF EXISTS categories CASCADE;
 DROP TABLE IF EXISTS locations CASCADE;
 DROP TABLE IF EXISTS expenses CASCADE;
 DROP TABLE IF EXISTS trips CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
 
 -- Enable the uuid-ossp extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create metadata table for tracking record lifecycle
+CREATE TABLE metadata (
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(50) NOT NULL,
+    record_id UUID NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    UNIQUE (table_name, record_id)
+);
 
 -- Create trips table
 CREATE TABLE trips (
@@ -65,26 +74,6 @@ CREATE TABLE categories (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create relationships table
-CREATE TABLE relationships (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    related_user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    relationship_type VARCHAR(50) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create metadata table for tracking record lifecycle
-CREATE TABLE metadata (
-    id SERIAL PRIMARY KEY,
-    table_name VARCHAR(50) NOT NULL,
-    record_id VARCHAR(30) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP,
-    UNIQUE (table_name, record_id)
-);
 
 -- Create triggers to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -95,12 +84,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Add triggers to all tables
-CREATE TRIGGER update_users_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
+-- Add triggers
 CREATE TRIGGER update_trips_updated_at
     BEFORE UPDATE ON trips
     FOR EACH ROW
@@ -121,16 +105,16 @@ CREATE TRIGGER update_categories_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_relationships_updated_at
-    BEFORE UPDATE ON relationships
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_metadata_updated_at
     BEFORE UPDATE ON metadata
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Add indexes for better performance
+CREATE INDEX idx_trips_created_by ON trips(created_by);
+CREATE INDEX idx_expenses_user_id ON expenses(user_id);
+CREATE INDEX idx_expenses_trip_id ON expenses(trip_id);
+CREATE INDEX idx_locations_user_id ON locations(user_id);
+CREATE INDEX idx_locations_trip_id ON locations(trip_id);
 CREATE INDEX idx_metadata_table_record ON metadata(table_name, record_id);
 CREATE INDEX idx_metadata_deleted_at ON metadata(deleted_at);

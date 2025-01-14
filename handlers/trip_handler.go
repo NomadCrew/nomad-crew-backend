@@ -182,3 +182,26 @@ func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 
     c.JSON(http.StatusOK, gin.H{"message": "Trip deleted successfully"})
 }
+
+func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    
+    var criteria types.TripSearchCriteria
+    if err := c.ShouldBindJSON(&criteria); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid search criteria", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
+
+    trips, err := h.tripModel.SearchTrips(c.Request.Context(), criteria)
+    if err != nil {
+        log.Errorw("Failed to search trips", "error", err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, trips)
+}
