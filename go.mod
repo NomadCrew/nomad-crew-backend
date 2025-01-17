@@ -6,8 +6,8 @@ toolchain go1.22.9
 
 require (
 	github.com/gin-gonic/gin v1.10.0
-	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v4 v4.18.2
+	github.com/lestrrat-go/jwx/v2 v2.1.3
 	github.com/shopspring/decimal v1.2.0
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go v0.34.0
@@ -15,9 +15,8 @@ require (
 )
 
 require (
-	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/lib/pq v1.10.9 // indirect
-	golang.org/x/crypto v0.31.0
+	golang.org/x/crypto v0.31.0 // indirect
 )
 
 require (
@@ -50,6 +49,7 @@ require (
 	github.com/go-playground/validator/v10 v10.23.0 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.14.3 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
@@ -67,7 +67,6 @@ require (
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc v1.0.6 // indirect
 	github.com/lestrrat-go/iter v1.0.2 // indirect
-	github.com/lestrrat-go/jwx/v2 v2.1.3 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
