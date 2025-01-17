@@ -5,13 +5,18 @@ import (
     "testing"
     "time"
     "fmt"
-	"os"
-	"io"
+    "io"
+    "os"
     "github.com/stretchr/testify/require"
     "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/wait"
     "github.com/NomadCrew/nomad-crew-backend/db"
     "github.com/NomadCrew/nomad-crew-backend/types"
+)
+
+// Test constants to represent Supabase user IDs
+const (
+    testUserID = "auth0|123456789"  // Format similar to Supabase/Auth0 user IDs
 )
 
 func setupTestDatabase(t *testing.T) (*db.DatabaseClient, func()) {
@@ -82,60 +87,12 @@ func mustGetwd(t *testing.T) string {
     return dir
 }
 
-func TestUserDB_Integration(t *testing.T) {
-    dbClient, cleanup := setupTestDatabase(t)
-    defer cleanup()
-
-    ctx := context.Background()
-    userDB := db.NewUserDB(dbClient)
-
-    t.Run("Create and Get User", func(t *testing.T) {
-        user := &types.User{
-            Username:     "testuser",
-            Email:        "test@example.com",
-            PasswordHash: "hashedpassword",
-            FirstName:    "Test",
-            LastName:     "User",
-            CreatedAt:    time.Now(),
-            UpdatedAt:    time.Now(),
-        }
-
-        err := userDB.SaveUser(ctx, user)
-        require.NoError(t, err)
-        require.NotZero(t, user.ID)
-
-        fetchedUser, err := userDB.GetUserByID(ctx, user.ID)
-        require.NoError(t, err)
-        require.Equal(t, user.Username, fetchedUser.Username)
-        require.Equal(t, user.Email, fetchedUser.Email)
-    })
-
-    // Add cleanup verification
-    t.Run("Cleanup", func(t *testing.T) {
-        err := db.CleanupTestDB(dbClient)
-        require.NoError(t, err)
-    })
-}
-
 func TestTripDB_Integration(t *testing.T) {
     dbClient, cleanup := setupTestDatabase(t)
     defer cleanup()
 
     ctx := context.Background()
     tripDB := db.NewTripDB(dbClient)
-    userDB := db.NewUserDB(dbClient)
-
-    // First create a user for our trips
-    user := &types.User{
-        Username:     "testuser",
-        Email:        "test@example.com",
-        PasswordHash: "hashedpassword",
-        FirstName:    "Test",
-        LastName:     "User",
-    }
-    err := userDB.SaveUser(ctx, user)
-    require.NoError(t, err)
-    require.NotZero(t, user.ID)
 
     t.Run("Create and Get Trip", func(t *testing.T) {
         trip := types.Trip{
@@ -144,13 +101,14 @@ func TestTripDB_Integration(t *testing.T) {
             Destination: "Test Location",
             StartDate:   time.Now().Add(24 * time.Hour),
             EndDate:     time.Now().Add(48 * time.Hour),
-            CreatedBy:   user.ID,
+            CreatedBy:   testUserID,
+            Status:      types.TripStatusPlanning,
         }
 
         // Test creation
         id, err := tripDB.CreateTrip(ctx, trip)
         require.NoError(t, err)
-        require.NotZero(t, id)
+        require.NotEmpty(t, id)
 
         // Test retrieval
         fetchedTrip, err := tripDB.GetTrip(ctx, id)
@@ -158,6 +116,7 @@ func TestTripDB_Integration(t *testing.T) {
         require.Equal(t, trip.Name, fetchedTrip.Name)
         require.Equal(t, trip.Description, fetchedTrip.Description)
         require.Equal(t, trip.Destination, fetchedTrip.Destination)
+        require.Equal(t, testUserID, fetchedTrip.CreatedBy)
     })
 
     t.Run("Update Trip", func(t *testing.T) {
@@ -168,7 +127,8 @@ func TestTripDB_Integration(t *testing.T) {
             Destination: "Original Location",
             StartDate:   time.Now().Add(24 * time.Hour),
             EndDate:     time.Now().Add(48 * time.Hour),
-            CreatedBy:   user.ID,
+            CreatedBy:   testUserID,
+            Status:      types.TripStatusPlanning,
         }
 
         id, err := tripDB.CreateTrip(ctx, trip)
@@ -201,64 +161,198 @@ func TestTripDB_Integration(t *testing.T) {
                 Destination: "Test Location",
                 StartDate:   time.Now().Add(24 * time.Hour),
                 EndDate:     time.Now().Add(48 * time.Hour),
-                CreatedBy:   user.ID,
+                CreatedBy:   testUserID,
+                Status:      types.TripStatusPlanning,
             }
             _, err := tripDB.CreateTrip(ctx, trip)
             require.NoError(t, err)
         }
 
         // List trips
-        trips, err := tripDB.ListUserTrips(ctx, user.ID)
+        trips, err := tripDB.ListUserTrips(ctx, testUserID)
         require.NoError(t, err)
         require.GreaterOrEqual(t, len(trips), 3)
+
+        // Verify all trips belong to test user
+        for _, trip := range trips {
+            require.Equal(t, testUserID, trip.CreatedBy)
+        }
     })
 
-    t.Run("Soft Delete Trip", func(t *testing.T) {
-        // Create a trip
+    // Add cleanup verification
+    t.Run("Cleanup", func(t *testing.T) {
+        err := db.CleanupTestDB(dbClient)
+        require.NoError(t, err)
+    })
+
+    // Add these test cases to TestTripDB_Integration
+
+    t.Run("Status Transitions", func(t *testing.T) {
+        // Create a trip in PLANNING status
         trip := types.Trip{
-            Name:        "Delete Test Trip",
-            Description: "Test Description",
+            Name:        "Status Test Trip",
+            Description: "Testing status transitions",
             Destination: "Test Location",
             StartDate:   time.Now().Add(24 * time.Hour),
             EndDate:     time.Now().Add(48 * time.Hour),
-            CreatedBy:   user.ID,
+            CreatedBy:   testUserID,
+            Status:      types.TripStatusPlanning,
         }
 
         id, err := tripDB.CreateTrip(ctx, trip)
         require.NoError(t, err)
 
-        // Delete the trip
-        err = tripDB.SoftDeleteTrip(ctx, id)
+        // Test valid transition: PLANNING -> ACTIVE
+        update := types.TripUpdate{
+            Status: types.TripStatusActive,
+        }
+        err = tripDB.UpdateTrip(ctx, id, update)
         require.NoError(t, err)
 
-        // Verify it's not retrievable
-        _, err = tripDB.GetTrip(ctx, id)
-        require.Error(t, err)
+        // Verify status change
+        fetchedTrip, err := tripDB.GetTrip(ctx, id)
+        require.NoError(t, err)
+        require.Equal(t, types.TripStatusActive, fetchedTrip.Status)
+
+        // Test valid transition: ACTIVE -> COMPLETED
+        update.Status = types.TripStatusCompleted
+        err = tripDB.UpdateTrip(ctx, id, update)
+        require.NoError(t, err)
+
+        // Verify final status
+        fetchedTrip, err = tripDB.GetTrip(ctx, id)
+        require.NoError(t, err)
+        require.Equal(t, types.TripStatusCompleted, fetchedTrip.Status)
     })
 
-    t.Run("Search Trips", func(t *testing.T) {
-        // Create some searchable trips
-        locations := []string{"Paris", "London", "New York"}
-        for _, loc := range locations {
-            trip := types.Trip{
-                Name:        fmt.Sprintf("Trip to %s", loc),
-                Description: "Test Description",
-                Destination: loc,
-                StartDate:   time.Now().Add(24 * time.Hour),
-                EndDate:     time.Now().Add(48 * time.Hour),
-                CreatedBy:   user.ID,
-            }
+    t.Run("Soft Delete Functionality", func(t *testing.T) {
+        // Create two trips
+        trip1 := types.Trip{
+            Name:        "Trip to Delete",
+            Description: "This trip will be deleted",
+            Destination: "Deletion Test",
+            StartDate:   time.Now().Add(24 * time.Hour),
+            EndDate:     time.Now().Add(48 * time.Hour),
+            CreatedBy:   testUserID,
+            Status:      types.TripStatusPlanning,
+        }
+
+        trip2 := types.Trip{
+            Name:        "Trip to Keep",
+            Description: "This trip will remain",
+            Destination: "Deletion Test",
+            StartDate:   time.Now().Add(24 * time.Hour),
+            EndDate:     time.Now().Add(48 * time.Hour),
+            CreatedBy:   testUserID,
+            Status:      types.TripStatusPlanning,
+        }
+
+        // Create both trips
+        id1, err := tripDB.CreateTrip(ctx, trip1)
+        require.NoError(t, err)
+        id2, err := tripDB.CreateTrip(ctx, trip2)
+        require.NoError(t, err)
+
+        // Soft delete the first trip
+        err = tripDB.SoftDeleteTrip(ctx, id1)
+        require.NoError(t, err)
+
+        // Verify first trip is not retrieved directly
+        _, err = tripDB.GetTrip(ctx, id1)
+        require.Error(t, err) // Should return NotFound error
+
+        // Verify second trip is still retrievable
+        fetchedTrip2, err := tripDB.GetTrip(ctx, id2)
+        require.NoError(t, err)
+        require.Equal(t, trip2.Name, fetchedTrip2.Name)
+
+        // Verify first trip doesn't appear in list
+        trips, err := tripDB.ListUserTrips(ctx, testUserID)
+        require.NoError(t, err)
+        for _, trip := range trips {
+            require.NotEqual(t, id1, trip.ID, "Deleted trip should not appear in list")
+        }
+    })
+
+    t.Run("Search Functionality", func(t *testing.T) {
+        // Create trips with different characteristics for search testing
+        searchTrips := []types.Trip{
+            {
+                Name:        "Paris Summer Trip",
+                Description: "Summer vacation in Paris",
+                Destination: "Paris",
+                StartDate:   time.Now().Add(30 * 24 * time.Hour),  // 30 days from now
+                EndDate:     time.Now().Add(37 * 24 * time.Hour),
+                CreatedBy:   testUserID,
+                Status:      types.TripStatusPlanning,
+            },
+            {
+                Name:        "London Business Trip",
+                Description: "Business meeting in London",
+                Destination: "London",
+                StartDate:   time.Now().Add(60 * 24 * time.Hour),  // 60 days from now
+                EndDate:     time.Now().Add(63 * 24 * time.Hour),
+                CreatedBy:   testUserID,
+                Status:      types.TripStatusPlanning,
+            },
+            {
+                Name:        "Paris Winter Trip",
+                Description: "Winter in Paris",
+                Destination: "Paris",
+                StartDate:   time.Now().Add(180 * 24 * time.Hour), // 180 days from now
+                EndDate:     time.Now().Add(187 * 24 * time.Hour),
+                CreatedBy:   testUserID,
+                Status:      types.TripStatusPlanning,
+            },
+        }
+
+        // Create all test trips
+        for _, trip := range searchTrips {
             _, err := tripDB.CreateTrip(ctx, trip)
             require.NoError(t, err)
         }
 
-        // Search for specific location
-        criteria := types.TripSearchCriteria{
-            Destination: "Paris",
-        }
-        results, err := tripDB.SearchTrips(ctx, criteria)
-        require.NoError(t, err)
-        require.NotEmpty(t, results)
-        require.Contains(t, results[0].Destination, "Paris")
+        t.Run("Search by Destination", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                Destination: "Paris",
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Len(t, results, 2) // Should find both Paris trips
+            for _, trip := range results {
+                require.Equal(t, "Paris", trip.Destination)
+            }
+        })
+
+        t.Run("Search by Date Range", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                StartDateFrom: time.Now().Add(20 * 24 * time.Hour),
+                StartDateTo:   time.Now().Add(40 * 24 * time.Hour),
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Len(t, results, 1) // Should find only the first Paris trip
+            require.Equal(t, "Paris Summer Trip", results[0].Name)
+        })
+
+        t.Run("Search with Multiple Criteria", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                Destination:   "Paris",
+                StartDateFrom: time.Now().Add(150 * 24 * time.Hour),
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Len(t, results, 1) // Should find only the Paris Winter trip
+            require.Equal(t, "Paris Winter Trip", results[0].Name)
+        })
+
+        t.Run("Search with No Results", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                Destination: "Tokyo", // No trips to Tokyo in test data
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Empty(t, results)
+        })
     })
 }
