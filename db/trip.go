@@ -134,6 +134,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
         args = append(args, string(update.Status))
         argPosition++
+		log.Debugw("Adding status update to query", "status", update.Status)
     }
 
     // Always update updated_at timestamp
@@ -146,21 +147,23 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 
     query := fmt.Sprintf(`
         UPDATE trips 
-        SET %s
+        SET %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = $%d
-    `, strings.Join(setFields, ", "), argPosition)
+        RETURNING status`,
+        strings.Join(setFields, ", "),
+        argPosition,
+	)
 
     args = append(args, id)
 
-    result, err := tdb.client.GetPool().Exec(ctx, query, args...)
+    var updatedStatus string
+    err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&updatedStatus)
     if err != nil {
         log.Errorw("Failed to update trip", "tripId", id, "error", err)
         return err
     }
 
-    if result.RowsAffected() == 0 {
-        return errors.NotFound("Trip", id)
-    }
+    log.Debugw("Trip status updated", "tripId", id, "status", updatedStatus)
 
     return nil
 }
@@ -233,44 +236,45 @@ func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.T
 }
 
 func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error) {
-	log := logger.GetLogger()
+    log := logger.GetLogger()
 
-	// Build base query with params
-	query := `
+    query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
                t.destination, t.created_by, t.created_at, t.updated_at
         FROM trips t
         LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
         WHERE m.deleted_at IS NULL`
 
-	params := make([]interface{}, 0)
-	paramCount := 1
-	var conditions []string
+    params := make([]interface{}, 0)
+    paramCount := 1
 
-	if criteria.Destination != "" {
-		conditions = append(conditions, `t.destination ILIKE $`+strconv.Itoa(paramCount))
-		params = append(params, "%"+criteria.Destination+"%")
-	}
-
-	if !criteria.StartDateFrom.IsZero() {
+    if criteria.Destination != "" {
+        query += fmt.Sprintf(" AND t.destination ILIKE $%d", paramCount)
+        params = append(params, "%"+criteria.Destination+"%")
         paramCount++
-        conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d::date", paramCount))
+    }
+
+    if !criteria.StartDateFrom.IsZero() {
+        query += fmt.Sprintf(" AND t.start_date >= $%d::timestamptz", paramCount)
         params = append(params, criteria.StartDateFrom)
+        paramCount++
     }
 
     if !criteria.StartDateTo.IsZero() {
-        paramCount++
-        conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d::date", paramCount))
+        query += fmt.Sprintf(" AND t.start_date <= $%d::timestamptz", paramCount)
         params = append(params, criteria.StartDateTo)
-	}
+        paramCount++
+    }
 
-	if len(conditions) > 0 {
-		query += ` AND ` + strings.Join(conditions, " AND ")
-	}
+    query += " ORDER BY t.start_date DESC"
 
-	query += ` ORDER BY t.start_date DESC`
+    log.Debugw("Executing search query", 
+        "query", query, 
+        "paramCount", paramCount,
+        "params", params,
+    )
 
-	rows, err := tdb.client.GetPool().Query(ctx, query, params...)
+    rows, err := tdb.client.GetPool().Query(ctx, query, params...)
 	if err != nil {
 		log.Errorw("Failed to search trips", "error", err)
 		return nil, err

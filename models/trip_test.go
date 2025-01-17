@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/assert"
+    "strings"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
@@ -512,7 +513,8 @@ func TestTripModel_EdgeCases(t *testing.T) {
 
         err := tripModel.CreateTrip(ctx, pastTrip)
         assert.Error(t, err)
-        assert.Contains(t, err.Error(), "start date cannot be in the past")
+        assert.True(t, strings.Contains(err.Error(), "start date cannot be in the past"))
+		mockStore.AssertNotCalled(t, "CreateTrip")
     })
 }
 
