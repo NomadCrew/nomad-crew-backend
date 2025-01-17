@@ -85,7 +85,8 @@ func TestTripModel_CreateTrip(t *testing.T) {
 		Destination: "Test Destination",
 		StartDate:   time.Now().Add(24 * time.Hour),
 		EndDate:     time.Now().Add(48 * time.Hour),
-		CreatedBy: testUserID,
+		CreatedBy: 	 testUserID,
+		Status: 	 types.TripStatusPlanning,
 	}
 
 	t.Run("successful creation", func(t *testing.T) {

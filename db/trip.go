@@ -132,7 +132,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
     }
     if update.Status != "" {
         setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
-        args = append(args, update.Status)
+        args = append(args, string(update.Status))
         argPosition++
     }
 
@@ -253,15 +253,15 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 	}
 
 	if !criteria.StartDateFrom.IsZero() {
-		conditions = append(conditions, `t.start_date >= $`+strconv.Itoa(paramCount))
-		params = append(params, criteria.StartDateFrom)
-		paramCount++ //nolint:ineffassign
-	}
+        paramCount++
+        conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d::date", paramCount))
+        params = append(params, criteria.StartDateFrom)
+    }
 
-	if !criteria.StartDateTo.IsZero() {
-		conditions = append(conditions, `t.start_date <= $`+strconv.Itoa(paramCount))
-		params = append(params, criteria.StartDateTo)
-		paramCount++ //nolint:ineffassign
+    if !criteria.StartDateTo.IsZero() {
+        paramCount++
+        conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d::date", paramCount))
+        params = append(params, criteria.StartDateTo)
 	}
 
 	if len(conditions) > 0 {

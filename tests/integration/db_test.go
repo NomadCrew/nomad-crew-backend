@@ -106,10 +106,13 @@ func TestTripDB_Integration(t *testing.T) {
             tx, err := conn.Begin(ctx)
             require.NoError(t, err)
             
-            // Modify the deferred rollback to handle errors
+            // Only rollback if commit hasn't happened
+            var committed bool
             defer func() {
-                if err := tx.Rollback(ctx); err != nil {
-                    t.Logf("failed to rollback transaction: %v", err)
+                if !committed {
+                    if err := tx.Rollback(ctx); err != nil {
+                        t.Logf("failed to rollback transaction: %v", err)
+                    }
                 }
             }()
         
@@ -122,6 +125,7 @@ func TestTripDB_Integration(t *testing.T) {
         
             err = tx.Commit(ctx)
             require.NoError(t, err)
+            committed = true
         })
         cleanup()
     }()
