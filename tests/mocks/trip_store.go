@@ -44,7 +44,7 @@ func (m *MockTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
 }
 
 func (m *MockTripStore) ListUserTrips(ctx context.Context, userid string) ([]*types.Trip, error) {
-	args := m.Called(ctx, userID)
+	args := m.Called(ctx, userid)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

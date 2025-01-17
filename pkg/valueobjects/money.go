@@ -138,8 +138,8 @@ func (m Money) Split(n int) ([]*Money, error) {
 
 	// Calculate the total amount in cents to avoid floating-point issues
 	totalAmount := m.amount.Mul(decimal.NewFromInt(100))                        // Convert to cents
-	baseAmount := totalAmount.Div(decimal.NewFromInt(string(n))).Floor()        // Base amount in cents
-	remainder := totalAmount.Sub(baseAmount.Mul(decimal.NewFromInt(string(n)))) // Remaining cents
+	baseAmount := totalAmount.Div(decimal.NewFromInt(int64(n))).Floor()        // Base amount in cents
+	remainder := totalAmount.Sub(baseAmount.Mul(decimal.NewFromInt(int64(n)))) // Remaining cents
 
 	result := make([]*Money, n)
 
