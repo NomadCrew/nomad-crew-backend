@@ -105,15 +105,21 @@ func TestTripDB_Integration(t *testing.T) {
             conn := dbClient.GetPool()
             tx, err := conn.Begin(ctx)
             require.NoError(t, err)
-            defer tx.Rollback(ctx)
-
+            
+            // Modify the deferred rollback to handle errors
+            defer func() {
+                if err := tx.Rollback(ctx); err != nil {
+                    t.Logf("failed to rollback transaction: %v", err)
+                }
+            }()
+        
             // Clean up in correct order
             tables := []string{"metadata", "locations", "expenses", "trips", "categories"}
             for _, table := range tables {
                 _, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))
                 require.NoError(t, err)
             }
-
+        
             err = tx.Commit(ctx)
             require.NoError(t, err)
         })
