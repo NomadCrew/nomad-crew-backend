@@ -2,7 +2,9 @@ package models
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
@@ -25,7 +27,7 @@ func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
 	}
 
 	id, err := tm.store.CreateTrip(ctx, *trip)
-	
+
 	if err != nil {
 		log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
 		return errors.NewDatabaseError(err)
@@ -44,14 +46,43 @@ func (tm *TripModel) GetTripByID(ctx context.Context, id string) (*types.Trip, e
 }
 
 func (tm *TripModel) UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error {
+	// Validate the update fields
 	if err := validateTripUpdate(update); err != nil {
 		return err
 	}
 
 	// First check if trip exists
-	_, err := tm.GetTripByID(ctx, id)
+	currentTrip, err := tm.GetTripByID(ctx, id)
 	if err != nil {
 		return err
+	}
+
+	// If updating status, validate status transition
+	if update.Status != "" {
+		if !currentTrip.Status.IsValidTransition(update.Status) {
+			return errors.ValidationFailed(
+				"Invalid status transition",
+				fmt.Sprintf("Cannot transition from %s to %s", currentTrip.Status, update.Status),
+			)
+		}
+		// Additional business rule validations
+		now := time.Now()
+		switch update.Status {
+		case types.TripStatusActive:
+			if currentTrip.EndDate.Before(now) {
+				return errors.ValidationFailed(
+					"Invalid status transition",
+					"Cannot activate a trip that has already ended",
+				)
+			}
+		case types.TripStatusCompleted:
+			if currentTrip.EndDate.After(now) {
+				return errors.ValidationFailed(
+					"Invalid status transition",
+					"Cannot complete a trip before its end date",
+				)
+			}
+		}
 	}
 
 	err = tm.store.UpdateTrip(ctx, id, *update)
@@ -116,13 +147,19 @@ func validateTrip(trip *types.Trip) error {
 		validationErrors = append(validationErrors, "trip creator ID is required")
 	}
 
-	if len(validationErrors) > 0 {
-		return errors.ValidationFailed(
-			"Invalid trip data",
-			strings.Join(validationErrors, "; "),
-		)
-	}
-	return nil
+	if trip.Status == "" {
+		trip.Status = types.TripStatusPlanning
+    } else if !trip.Status.IsValid() {
+        validationErrors = append(validationErrors, "invalid trip status")
+    }
+
+    if len(validationErrors) > 0 {
+        return errors.ValidationFailed(
+            "Invalid trip data",
+            strings.Join(validationErrors, "; "),
+        )
+    }
+    return nil
 }
 
 func validateTripUpdate(update *types.TripUpdate) error {
@@ -133,6 +170,10 @@ func validateTripUpdate(update *types.TripUpdate) error {
 		validationErrors = append(validationErrors, "trip end date cannot be before start date")
 	}
 
+	if update.Status != "" && !update.Status.IsValid() {
+		validationErrors = append(validationErrors, "invalid trip status")
+	}
+
 	if len(validationErrors) > 0 {
 		return errors.ValidationFailed(
 			"Invalid trip update data",
@@ -140,4 +181,45 @@ func validateTripUpdate(update *types.TripUpdate) error {
 		)
 	}
 	return nil
+}
+
+func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus types.TripStatus) error {
+    // First get current trip to check current status
+    currentTrip, err := tm.GetTripByID(ctx, id)
+    if err != nil {
+        return err
+    }
+
+    // Validate status transition
+    if !currentTrip.Status.IsValidTransition(newStatus) {
+        return errors.ValidationFailed(
+            "invalid status transition",
+            fmt.Sprintf("cannot transition from %s to %s", currentTrip.Status, newStatus),
+        )
+    }
+
+    // Additional business rules
+    now := time.Now()
+    switch newStatus {
+    case types.TripStatusActive:
+        // Can only activate future or ongoing trips
+        if currentTrip.EndDate.Before(now) {
+            return errors.ValidationFailed(
+                "invalid status transition",
+                "cannot activate a trip that has already ended",
+            )
+        }
+    case types.TripStatusCompleted:
+        // Can only complete trips that have ended
+        if currentTrip.EndDate.After(now) {
+            return errors.ValidationFailed(
+                "invalid status transition",
+                "cannot complete a trip before its end date",
+            )
+        }
+    }
+
+    // Update the status in the database
+    update := types.TripUpdate{Status: newStatus}
+    return tm.store.UpdateTrip(ctx, id, update)
 }

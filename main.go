@@ -43,6 +43,7 @@ func main() {
         trips.DELETE("/:id", tripHandler.DeleteTripHandler) // Delete trip
         trips.GET("/list", tripHandler.ListUserTripsHandler) // List trips
         trips.POST("/search", tripHandler.SearchTripsHandler) // Search trips
+        trips.PATCH("/:id/status", tripHandler.UpdateTripStatusHandler)
     }
 
     log.Infof("Starting server on port %s", cfg.Port)

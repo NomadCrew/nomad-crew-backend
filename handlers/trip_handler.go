@@ -3,6 +3,7 @@ package handlers
 import (
     "net/http"
     "time"
+    "fmt"
 
     "github.com/NomadCrew/nomad-crew-backend/errors"
     "github.com/NomadCrew/nomad-crew-backend/logger"
@@ -13,6 +14,10 @@ import (
 
 type TripHandler struct {
     tripModel *models.TripModel
+}
+
+type UpdateTripStatusRequest struct {
+    Status string `json:"status" binding:"required"`
 }
 
 func NewTripHandler(model *models.TripModel) *TripHandler {
@@ -54,8 +59,10 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
         Destination: req.Destination,
         StartDate:   req.StartDate,
         EndDate:     req.EndDate,
-        CreatedBy:   userID.(string), // Already string UUID from Supabase
+        CreatedBy:   userID.(string),
+        Status:      types.TripStatusPlanning,
     }
+    log.Infow("Creating trip", "trip", trip)
 
     if err := h.tripModel.CreateTrip(c.Request.Context(), trip); err != nil {
         log.Errorw("Failed to create trip", "error", err)
@@ -132,6 +139,58 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, gin.H{"message": "Trip updated successfully"})
+}
+
+func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+    userID := c.GetString("user_id")
+
+    // Parse request body
+    var req UpdateTripStatusRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
+
+    // Convert string to TripStatus and validate
+    newStatus := types.TripStatus(req.Status)
+    if !newStatus.IsValid() {
+        if err := c.Error(errors.ValidationFailed("Invalid status", "Status must be one of: PLANNING, ACTIVE, COMPLETED, CANCELLED")); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
+
+    // Verify trip ownership
+    trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+    if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
+        return
+    }
+
+    if trip.CreatedBy != userID {
+        if err := c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status")); err != nil {
+            log.Errorw("Failed to add authentication error", "error", err)
+        }
+        return
+    }
+
+    // Update status
+    if err := h.tripModel.UpdateTripStatus(c.Request.Context(), tripID, newStatus); err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "message": fmt.Sprintf("Trip status updated to %s", newStatus),
+    })
 }
 
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {

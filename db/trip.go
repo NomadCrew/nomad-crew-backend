@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"fmt"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -25,12 +26,15 @@ func (tdb *TripDB) GetPool() *pgxpool.Pool {
 
 func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, error) {
 	log := logger.GetLogger()
+	if trip.Status == "" {
+        trip.Status = types.TripStatusPlanning
+    }
 	query := `
         INSERT INTO trips (
             name, description, start_date, end_date, 
-            destination, created_by
+            destination, created_by, status
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7) 
         RETURNING id`
 
 	var tripID string
@@ -41,6 +45,7 @@ func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, err
 		trip.EndDate,
 		trip.Destination,
 		trip.CreatedBy,
+		trip.Status,
 	).Scan(&tripID)
 
 	if err != nil {
@@ -93,48 +98,71 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 }
 
 func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) error {
-	log := logger.GetLogger()
-	query := `
+    log := logger.GetLogger()
+    
+    // Build the query dynamically based on what fields are being updated
+    var setFields []string
+    var args []interface{}
+    argPosition := 1
+
+    if update.Name != "" {
+        setFields = append(setFields, fmt.Sprintf("name = $%d", argPosition))
+        args = append(args, update.Name)
+        argPosition++
+    }
+    if update.Description != "" {
+        setFields = append(setFields, fmt.Sprintf("description = $%d", argPosition))
+        args = append(args, update.Description)
+        argPosition++
+    }
+    if update.Destination != "" {
+        setFields = append(setFields, fmt.Sprintf("destination = $%d", argPosition))
+        args = append(args, update.Destination)
+        argPosition++
+    }
+    if !update.StartDate.IsZero() {
+        setFields = append(setFields, fmt.Sprintf("start_date = $%d", argPosition))
+        args = append(args, update.StartDate)
+        argPosition++
+    }
+    if !update.EndDate.IsZero() {
+        setFields = append(setFields, fmt.Sprintf("end_date = $%d", argPosition))
+        args = append(args, update.EndDate)
+        argPosition++
+    }
+    if update.Status != "" {
+        setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
+        args = append(args, update.Status)
+        argPosition++
+    }
+
+    // Always update updated_at timestamp
+    setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
+
+    // If no fields to update, return early
+    if len(setFields) == 0 {
+        return nil
+    }
+
+    query := fmt.Sprintf(`
         UPDATE trips 
-        SET name = COALESCE($1, name),
-            description = COALESCE($2, description),
-            destination = COALESCE($3, destination),
-            start_date = COALESCE($4, start_date),
-            end_date = COALESCE($5, end_date),
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $6`
+        SET %s
+        WHERE id = $%d
+    `, strings.Join(setFields, ", "), argPosition)
 
-	result, err := tdb.client.GetPool().Exec(ctx, query,
-		update.Name,
-		update.Description,
-		update.Destination,
-		update.StartDate,
-		update.EndDate,
-		id,
-	)
+    args = append(args, id)
 
-	if err != nil {
-		log.Errorw("Failed to update trip", "tripId", id, "error", err)
-		return err
-	}
+    result, err := tdb.client.GetPool().Exec(ctx, query, args...)
+    if err != nil {
+        log.Errorw("Failed to update trip", "tripId", id, "error", err)
+        return err
+    }
 
-	if result.RowsAffected() == 0 {
-		return errors.NotFound("Trip", id)
-	}
+    if result.RowsAffected() == 0 {
+        return errors.NotFound("Trip", id)
+    }
 
-	// Update metadata
-	metadataQuery := `
-        UPDATE metadata
-        SET updated_at = CURRENT_TIMESTAMP
-        WHERE table_name = 'trips' AND record_id = $1`
-
-	_, err = tdb.client.GetPool().Exec(ctx, metadataQuery, id)
-	if err != nil {
-		log.Errorw("Failed to update trip metadata", "error", err)
-		return err
-	}
-
-	return nil
+    return nil
 }
 
 func (tdb *TripDB) SoftDeleteTrip(ctx context.Context, id string) error {
@@ -160,12 +188,12 @@ func (tdb *TripDB) SoftDeleteTrip(ctx context.Context, id string) error {
 func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error) {
 	log := logger.GetLogger()
 	query := `
-        SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.created_by, t.created_at, t.updated_at
-        FROM trips t
-        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
-        WHERE t.created_by = $1 AND m.deleted_at IS NULL
-        ORDER BY t.start_date DESC`
+    SELECT t.id, t.name, t.description, t.start_date, t.end_date,
+           t.destination, t.status, t.created_by, t.created_at, t.updated_at
+    FROM trips t
+    LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
+    WHERE t.created_by = $1 AND m.deleted_at IS NULL
+    ORDER BY t.start_date DESC`
 
 	rows, err := tdb.client.GetPool().Query(ctx, query, userID)
 	if err != nil {
@@ -184,6 +212,7 @@ func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.T
 			&trip.StartDate,
 			&trip.EndDate,
 			&trip.Destination,
+			&trip.Status,
 			&trip.CreatedBy,
 			&trip.CreatedAt,
 			&trip.UpdatedAt,

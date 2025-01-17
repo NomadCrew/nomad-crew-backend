@@ -27,10 +27,8 @@ CREATE TABLE trips (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     destination VARCHAR(255),
-    trip_type VARCHAR(50),
-    budget DECIMAL(10, 2),
+    status VARCHAR(50) NOT NULL DEFAULT 'PLANNING' CHECK (status IN ('PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED')),
     created_by UUID NOT NULL,
-    status VARCHAR(50) DEFAULT 'planned',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
