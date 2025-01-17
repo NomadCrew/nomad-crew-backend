@@ -44,7 +44,7 @@ func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, err
 		trip.EndDate,
 		trip.Destination,
 		trip.CreatedBy,
-		trip.Status,
+		string(trip.Status),
 	).Scan(&tripID)
 
 	if err != nil {
@@ -239,7 +239,7 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 
     query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.created_by, t.created_at, t.updated_at
+               t.destination, t.created_by, t.created_at, t.updated_at, trip.status
         FROM trips t
         LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
         WHERE m.deleted_at IS NULL`
@@ -254,31 +254,25 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
     }
 
     if !criteria.StartDateFrom.IsZero() {
-        query += fmt.Sprintf(" AND t.start_date >= $%d::timestamptz", paramCount)
+        query += fmt.Sprintf(" AND t.start_date >= $%d::timestamp", paramCount)
         params = append(params, criteria.StartDateFrom)
         paramCount++
     }
 
     if !criteria.StartDateTo.IsZero() {
-        query += fmt.Sprintf(" AND t.start_date <= $%d::timestamptz", paramCount)
+        query += fmt.Sprintf(" AND t.start_date <= $%d::timestamp", paramCount)
         params = append(params, criteria.StartDateTo)
         paramCount++
     }
 
-    query += " ORDER BY t.start_date DESC"
-
-    log.Debugw("Executing search query", 
-        "query", query, 
-        "paramCount", paramCount,
-        "params", params,
-    )
+    query += ` ORDER BY t.start_date DESC`
 
     rows, err := tdb.client.GetPool().Query(ctx, query, params...)
-	if err != nil {
-		log.Errorw("Failed to search trips", "error", err)
-		return nil, err
-	}
-	defer rows.Close()
+    if err != nil {
+        log.Errorw("Failed to search trips", "error", err)
+        return nil, err
+    }
+    defer rows.Close()
 
 	var trips []*types.Trip
 	for rows.Next() {
@@ -293,6 +287,7 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 			&trip.CreatedBy,
 			&trip.CreatedAt,
 			&trip.UpdatedAt,
+			&trip.Status,
 		)
 		if err != nil {
 			log.Errorw("Failed to scan trip row", "error", err)

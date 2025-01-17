@@ -129,26 +129,32 @@ func validateTrip(trip *types.Trip) error {
 	var validationErrors []string
 
 	if trip.Name == "" {
-		validationErrors = append(validationErrors, "trip name is required")
-	}
-	if trip.Destination == "" {
-		validationErrors = append(validationErrors, "trip destination is required")
-	}
-	if trip.StartDate.IsZero() {
-		validationErrors = append(validationErrors, "trip start date is required")
-	}
-	if trip.EndDate.IsZero() {
-		validationErrors = append(validationErrors, "trip end date is required")
-	}
-	if trip.EndDate.Before(trip.StartDate) {
-		validationErrors = append(validationErrors, "trip end date cannot be before start date")
-	}
-	if trip.CreatedBy == "" {
-		validationErrors = append(validationErrors, "trip creator ID is required")
-	}
+        validationErrors = append(validationErrors, "trip name is required")
+    }
+    if trip.Destination == "" {
+        validationErrors = append(validationErrors, "trip destination is required")
+    }
+    if trip.StartDate.IsZero() {
+        validationErrors = append(validationErrors, "trip start date is required")
+    }
+    if trip.EndDate.IsZero() {
+        validationErrors = append(validationErrors, "trip end date is required")
+    }
+    
+    // New validation for past start date
+    if !trip.StartDate.IsZero() && trip.StartDate.Before(time.Now()) {
+        validationErrors = append(validationErrors, "start date cannot be in the past")
+    }
+    
+    if trip.EndDate.Before(trip.StartDate) {
+        validationErrors = append(validationErrors, "trip end date cannot be before start date")
+    }
+    if trip.CreatedBy == "" {
+        validationErrors = append(validationErrors, "trip creator ID is required")
+    }
 
-	if trip.Status == "" {
-		trip.Status = types.TripStatusPlanning
+    if trip.Status == "" {
+        trip.Status = types.TripStatusPlanning
     } else if !trip.Status.IsValid() {
         validationErrors = append(validationErrors, "invalid trip status")
     }
