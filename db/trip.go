@@ -142,40 +142,35 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
     }
 
     query := fmt.Sprintf(`
-        WITH updated AS (
-            UPDATE trips 
-            SET %s
-            WHERE id = $%d
-            RETURNING status
-        )
-        SELECT status FROM updated;`,
+        UPDATE trips 
+        SET %s
+        WHERE id = $%d
+        RETURNING status;`, 
         strings.Join(setFields, ", "),
         argPosition,
     )
 
     args = append(args, id)
 
-    var status string
-    err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&status)
+    var statusStr string
+    err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&statusStr)
     if err != nil {
-        log.Errorw("Failed to update trip", 
-            "tripId", id, 
-            "error", err, 
-            "query", query, 
-            "args", args)
+        log.Errorw("Failed to update trip", "tripId", id, "error", err)
         return err
     }
 
-    if status == "" {
-        log.Errorw("Updated trip status is empty", 
+    // Validate the returned status matches what we set
+    if update.Status != "" && statusStr != string(update.Status) {
+        log.Errorw("Status mismatch after update", 
             "tripId", id, 
-            "expectedStatus", update.Status)
-        return fmt.Errorf("trip status update failed: status is empty")
+            "expected", update.Status,
+            "got", statusStr)
+        return fmt.Errorf("status update failed: expected %s, got %s", update.Status, statusStr)
     }
 
     log.Debugw("Successfully updated trip", 
         "tripId", id, 
-        "newStatus", status,
+        "newStatus", statusStr,
         "requestedStatus", update.Status)
     return nil
 }
