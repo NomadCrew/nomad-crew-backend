@@ -133,25 +133,23 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
         args = append(args, string(update.Status))
         argPosition++
-		log.Debugw("Adding status update to query", "status", update.Status)
+        log.Debugw("Adding status update to query", "status", update.Status)
     }
 
-    // Always update updated_at timestamp
     setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
 
-    // If no fields to update, return early
     if len(setFields) == 0 {
         return nil
     }
 
     query := fmt.Sprintf(`
         UPDATE trips 
-        SET %s, updated_at = CURRENT_TIMESTAMP
+        SET %s
         WHERE id = $%d
         RETURNING status`,
         strings.Join(setFields, ", "),
         argPosition,
-	)
+    )
 
     args = append(args, id)
 
@@ -161,8 +159,6 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         log.Errorw("Failed to update trip", "tripId", id, "error", err)
         return err
     }
-
-    log.Debugw("Trip status updated", "tripId", id, "status", updatedStatus)
 
     return nil
 }

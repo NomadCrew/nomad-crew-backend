@@ -126,9 +126,10 @@ func (tm *TripModel) SearchTrips(ctx context.Context, criteria types.TripSearchC
 
 // Helper functions for validation
 func validateTrip(trip *types.Trip) error {
-	var validationErrors []string
+    var validationErrors []string
+    now := time.Now().Truncate(24 * time.Hour)
 
-	if trip.Name == "" {
+    if trip.Name == "" {
         validationErrors = append(validationErrors, "trip name is required")
     }
     if trip.Destination == "" {
@@ -141,14 +142,18 @@ func validateTrip(trip *types.Trip) error {
         validationErrors = append(validationErrors, "trip end date is required")
     }
     
-    // New validation for past start date
-    if !trip.StartDate.IsZero() && trip.StartDate.Before(time.Now()) {
-        validationErrors = append(validationErrors, "start date cannot be in the past")
+    // Only validate start date being in past for new trips (where ID is empty)
+    if trip.ID == "" && !trip.StartDate.IsZero() {
+        startDate := trip.StartDate.Truncate(24 * time.Hour)
+        if startDate.Before(now) {
+            validationErrors = append(validationErrors, "start date cannot be in the past")
+        }
     }
     
-    if trip.EndDate.Before(trip.StartDate) {
+    if !trip.StartDate.IsZero() && !trip.EndDate.IsZero() && trip.EndDate.Before(trip.StartDate) {
         validationErrors = append(validationErrors, "trip end date cannot be before start date")
     }
+    
     if trip.CreatedBy == "" {
         validationErrors = append(validationErrors, "trip creator ID is required")
     }
