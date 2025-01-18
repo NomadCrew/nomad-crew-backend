@@ -67,33 +67,36 @@ func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, err
 }
 
 func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) {
-	log := logger.GetLogger()
-	query := `
+    log := logger.GetLogger()
+    query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.created_by, t.created_at, t.updated_at
+               t.destination, t.status, t.created_by, t.created_at, t.updated_at
         FROM trips t
         LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
         WHERE t.id = $1 AND m.deleted_at IS NULL`
 
-	var trip types.Trip
-	err := tdb.client.GetPool().QueryRow(ctx, query, id).Scan(
-		&trip.ID,
-		&trip.Name,
-		&trip.Description,
-		&trip.StartDate,
-		&trip.EndDate,
-		&trip.Destination,
-		&trip.CreatedBy,
-		&trip.CreatedAt,
-		&trip.UpdatedAt,
-	)
+    log.Debugw("Executing GetTrip query", "query", query, "tripId", id)
 
-	if err != nil {
-		log.Errorw("Failed to get trip", "tripId", id, "error", err)
-		return nil, err
-	}
+    var trip types.Trip
+    err := tdb.client.GetPool().QueryRow(ctx, query, id).Scan(
+        &trip.ID,
+        &trip.Name,
+        &trip.Description,
+        &trip.StartDate,
+        &trip.EndDate,
+        &trip.Destination,
+        &trip.Status,
+        &trip.CreatedBy,
+        &trip.CreatedAt,
+        &trip.UpdatedAt,
+    )
+    if err != nil {
+        log.Errorw("Failed to get trip", "tripId", id, "error", err)
+        return nil, err
+    }
 
-	return &trip, nil
+    log.Infow("Fetched trip data", "trip", trip)
+    return &trip, nil
 }
 
 func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) error {
