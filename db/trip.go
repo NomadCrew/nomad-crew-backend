@@ -262,7 +262,7 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
     if !criteria.StartDateTo.IsZero() {
         query += fmt.Sprintf(" AND t.start_date <= $%d::timestamp", paramCount)
         params = append(params, criteria.StartDateTo)
-        paramCount++
+        paramCount++ // nolint:ineffassign
     }
 
     query += ` ORDER BY t.start_date DESC`
