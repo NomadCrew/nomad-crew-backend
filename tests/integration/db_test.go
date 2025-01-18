@@ -2,17 +2,32 @@ package integration
 
 import (
     "context"
-    "testing"
-    "time"
     "fmt"
-	"os"
-	"io"
+    "github.com/NomadCrew/nomad-crew-backend/db"
+    "github.com/NomadCrew/nomad-crew-backend/types"
+    "github.com/google/uuid"
     "github.com/stretchr/testify/require"
     "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/wait"
-    "github.com/NomadCrew/nomad-crew-backend/db"
-    "github.com/NomadCrew/nomad-crew-backend/types"
+    "io"
+    "os"
+    "strings"
+    "testing"
+    "time"
 )
+
+// Test constants and helpers
+const (
+    testAuthID = "auth0|123456789" // Auth0/Supabase style ID
+)
+
+// Helper function to convert Auth0 ID to UUID
+func authIDtoUUID(authID string) string {
+    // Create a deterministic UUID v5 from the auth ID
+    // using DNS namespace for simplicity
+    namespace := uuid.NameSpaceDNS
+    return uuid.NewSHA1(namespace, []byte(authID)).String()
+}
 
 func setupTestDatabase(t *testing.T) (*db.DatabaseClient, func()) {
     ctx := context.Background()
@@ -51,21 +66,17 @@ func setupTestDatabase(t *testing.T) (*db.DatabaseClient, func()) {
         t.Logf("Database setup failed: %v", err)
         t.Logf("Current working directory: %s", mustGetwd(t))
         t.Logf("Container status: host=%s, port=%s", host, mappedPort.Port())
-        
-        // Get container logs for debugging
+
         logs, _ := container.Logs(ctx)
         if logs != nil {
             content, _ := io.ReadAll(logs)
             t.Logf("Container logs:\n%s", string(content))
         }
-        
+
         require.NoError(t, err)
     }
 
     cleanup := func() {
-        if err := db.CleanupTestDB(dbClient); err != nil {
-            t.Logf("failed to cleanup test database: %s", err)
-        }
         if err := container.Terminate(ctx); err != nil {
             t.Logf("failed to terminate container: %s", err)
         }
@@ -82,60 +93,42 @@ func mustGetwd(t *testing.T) string {
     return dir
 }
 
-func TestUserDB_Integration(t *testing.T) {
-    dbClient, cleanup := setupTestDatabase(t)
-    defer cleanup()
-
-    ctx := context.Background()
-    userDB := db.NewUserDB(dbClient)
-
-    t.Run("Create and Get User", func(t *testing.T) {
-        user := &types.User{
-            Username:     "testuser",
-            Email:        "test@example.com",
-            PasswordHash: "hashedpassword",
-            FirstName:    "Test",
-            LastName:     "User",
-            CreatedAt:    time.Now(),
-            UpdatedAt:    time.Now(),
-        }
-
-        err := userDB.SaveUser(ctx, user)
-        require.NoError(t, err)
-        require.NotZero(t, user.ID)
-
-        fetchedUser, err := userDB.GetUserByID(ctx, user.ID)
-        require.NoError(t, err)
-        require.Equal(t, user.Username, fetchedUser.Username)
-        require.Equal(t, user.Email, fetchedUser.Email)
-    })
-
-    // Add cleanup verification
-    t.Run("Cleanup", func(t *testing.T) {
-        err := db.CleanupTestDB(dbClient)
-        require.NoError(t, err)
-    })
-}
-
 func TestTripDB_Integration(t *testing.T) {
     dbClient, cleanup := setupTestDatabase(t)
-    defer cleanup()
-
     ctx := context.Background()
     tripDB := db.NewTripDB(dbClient)
-    userDB := db.NewUserDB(dbClient)
+    testUserUUID := authIDtoUUID(testAuthID)
 
-    // First create a user for our trips
-    user := &types.User{
-        Username:     "testuser",
-        Email:        "test@example.com",
-        PasswordHash: "hashedpassword",
-        FirstName:    "Test",
-        LastName:     "User",
-    }
-    err := userDB.SaveUser(ctx, user)
-    require.NoError(t, err)
-    require.NotZero(t, user.ID)
+    // Setup cleanup to run at the end
+    defer func() {
+        t.Run("Cleanup", func(t *testing.T) {
+            conn := dbClient.GetPool()
+            tx, err := conn.Begin(ctx)
+            require.NoError(t, err)
+            
+            // Only rollback if commit hasn't happened
+            var committed bool
+            defer func() {
+                if !committed {
+                    if err := tx.Rollback(ctx); err != nil {
+                        t.Logf("failed to rollback transaction: %v", err)
+                    }
+                }
+            }()
+        
+            // Clean up in correct order
+            tables := []string{"metadata", "locations", "expenses", "trips", "categories"}
+            for _, table := range tables {
+                _, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))
+                require.NoError(t, err)
+            }
+        
+            err = tx.Commit(ctx)
+            require.NoError(t, err)
+            committed = true
+        })
+        cleanup()
+    }()
 
     t.Run("Create and Get Trip", func(t *testing.T) {
         trip := types.Trip{
@@ -144,13 +137,14 @@ func TestTripDB_Integration(t *testing.T) {
             Destination: "Test Location",
             StartDate:   time.Now().Add(24 * time.Hour),
             EndDate:     time.Now().Add(48 * time.Hour),
-            CreatedBy:   user.ID,
+            CreatedBy:   testUserUUID,
+            Status:      types.TripStatusPlanning,
         }
 
         // Test creation
         id, err := tripDB.CreateTrip(ctx, trip)
         require.NoError(t, err)
-        require.NotZero(t, id)
+        require.True(t, isValidUUID(id), "Expected valid UUID")
 
         // Test retrieval
         fetchedTrip, err := tripDB.GetTrip(ctx, id)
@@ -158,23 +152,23 @@ func TestTripDB_Integration(t *testing.T) {
         require.Equal(t, trip.Name, fetchedTrip.Name)
         require.Equal(t, trip.Description, fetchedTrip.Description)
         require.Equal(t, trip.Destination, fetchedTrip.Destination)
+        require.Equal(t, testUserUUID, fetchedTrip.CreatedBy)
     })
 
     t.Run("Update Trip", func(t *testing.T) {
-        // Create a trip first
         trip := types.Trip{
             Name:        "Update Test Trip",
             Description: "Original Description",
             Destination: "Original Location",
             StartDate:   time.Now().Add(24 * time.Hour),
             EndDate:     time.Now().Add(48 * time.Hour),
-            CreatedBy:   user.ID,
+            CreatedBy:   testUserUUID,
+            Status:      types.TripStatusPlanning,
         }
 
         id, err := tripDB.CreateTrip(ctx, trip)
         require.NoError(t, err)
 
-        // Update the trip
         update := types.TripUpdate{
             Name:        "Updated Trip",
             Description: "Updated Description",
@@ -184,7 +178,6 @@ func TestTripDB_Integration(t *testing.T) {
         err = tripDB.UpdateTrip(ctx, id, update)
         require.NoError(t, err)
 
-        // Verify update
         fetchedTrip, err := tripDB.GetTrip(ctx, id)
         require.NoError(t, err)
         require.Equal(t, update.Name, fetchedTrip.Name)
@@ -193,7 +186,6 @@ func TestTripDB_Integration(t *testing.T) {
     })
 
     t.Run("List User Trips", func(t *testing.T) {
-        // Create multiple trips
         for i := 0; i < 3; i++ {
             trip := types.Trip{
                 Name:        fmt.Sprintf("List Test Trip %d", i),
@@ -201,64 +193,188 @@ func TestTripDB_Integration(t *testing.T) {
                 Destination: "Test Location",
                 StartDate:   time.Now().Add(24 * time.Hour),
                 EndDate:     time.Now().Add(48 * time.Hour),
-                CreatedBy:   user.ID,
+                CreatedBy:   testUserUUID,
+                Status:      types.TripStatusPlanning,
             }
             _, err := tripDB.CreateTrip(ctx, trip)
             require.NoError(t, err)
         }
 
-        // List trips
-        trips, err := tripDB.ListUserTrips(ctx, user.ID)
+        trips, err := tripDB.ListUserTrips(ctx, testUserUUID)
         require.NoError(t, err)
         require.GreaterOrEqual(t, len(trips), 3)
+
+        for _, trip := range trips {
+            require.Equal(t, testUserUUID, trip.CreatedBy)
+        }
     })
 
-    t.Run("Soft Delete Trip", func(t *testing.T) {
-        // Create a trip
+    t.Run("Status Transitions", func(t *testing.T) {
         trip := types.Trip{
-            Name:        "Delete Test Trip",
-            Description: "Test Description",
+            Name:        "Status Test Trip",
+            Description: "Testing status transitions",
             Destination: "Test Location",
             StartDate:   time.Now().Add(24 * time.Hour),
             EndDate:     time.Now().Add(48 * time.Hour),
-            CreatedBy:   user.ID,
+            CreatedBy:   testUserUUID,
+            Status:      types.TripStatusPlanning,
         }
-
+    
         id, err := tripDB.CreateTrip(ctx, trip)
         require.NoError(t, err)
+    
+        // Transition to Active
+        update := types.TripUpdate{
+            Status: types.TripStatusActive,
+        }
+        err = tripDB.UpdateTrip(ctx, id, update)
+        require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
+    
+        fetchedTrip, err := tripDB.GetTrip(ctx, id)
+        require.NoError(t, err)
+        require.Equal(t, types.TripStatusActive, fetchedTrip.Status, "Expected trip to be ACTIVE")
+    
+        // Transition to Completed
+        update.Status = types.TripStatusCompleted
+        err = tripDB.UpdateTrip(ctx, id, update)
+        require.NoError(t, err, "Expected status transition to COMPLETED to succeed")
+    
+        fetchedTrip, err = tripDB.GetTrip(ctx, id)
+        require.NoError(t, err)
+        require.Equal(t, types.TripStatusCompleted, fetchedTrip.Status, "Expected trip to be COMPLETED")
+    
+        // Invalid Transition: Completed -> Active
+        update.Status = types.TripStatusActive
+        err = tripDB.UpdateTrip(ctx, id, update)
+        require.Error(t, err, "Expected error for invalid transition from COMPLETED to ACTIVE")
+    })    
 
-        // Delete the trip
-        err = tripDB.SoftDeleteTrip(ctx, id)
+    t.Run("Soft Delete Functionality", func(t *testing.T) {
+        trip1 := types.Trip{
+            Name:        "Trip to Delete",
+            Description: "This trip will be deleted",
+            Destination: "Deletion Test",
+            StartDate:   time.Now().Add(24 * time.Hour),
+            EndDate:     time.Now().Add(48 * time.Hour),
+            CreatedBy:   testUserUUID,
+            Status:      types.TripStatusPlanning,
+        }
+
+        trip2 := types.Trip{
+            Name:        "Trip to Keep",
+            Description: "This trip will remain",
+            Destination: "Deletion Test",
+            StartDate:   time.Now().Add(24 * time.Hour),
+            EndDate:     time.Now().Add(48 * time.Hour),
+            CreatedBy:   testUserUUID,
+            Status:      types.TripStatusPlanning,
+        }
+
+        id1, err := tripDB.CreateTrip(ctx, trip1)
+        require.NoError(t, err)
+        id2, err := tripDB.CreateTrip(ctx, trip2)
         require.NoError(t, err)
 
-        // Verify it's not retrievable
-        _, err = tripDB.GetTrip(ctx, id)
-        require.Error(t, err)
+        err = tripDB.SoftDeleteTrip(ctx, id1)
+        require.NoError(t, err)
+
+        _, err = tripDB.GetTrip(ctx, id1)
+        require.Error(t, err) // Should return NotFound error
+
+        fetchedTrip2, err := tripDB.GetTrip(ctx, id2)
+        require.NoError(t, err)
+        require.Equal(t, trip2.Name, fetchedTrip2.Name)
+
+        trips, err := tripDB.ListUserTrips(ctx, testUserUUID)
+        require.NoError(t, err)
+        for _, trip := range trips {
+            require.NotEqual(t, id1, trip.ID, "Deleted trip should not appear in list")
+        }
     })
 
-    t.Run("Search Trips", func(t *testing.T) {
-        // Create some searchable trips
-        locations := []string{"Paris", "London", "New York"}
-        for _, loc := range locations {
-            trip := types.Trip{
-                Name:        fmt.Sprintf("Trip to %s", loc),
-                Description: "Test Description",
-                Destination: loc,
-                StartDate:   time.Now().Add(24 * time.Hour),
-                EndDate:     time.Now().Add(48 * time.Hour),
-                CreatedBy:   user.ID,
-            }
+    t.Run("Search Functionality", func(t *testing.T) {
+        searchTrips := []types.Trip{
+            {
+                Name:        "Paris Summer Trip",
+                Description: "Summer vacation in Paris",
+                Destination: "Paris",
+                StartDate:   time.Now().Add(30 * 24 * time.Hour),
+                EndDate:     time.Now().Add(37 * 24 * time.Hour),
+                CreatedBy:   testUserUUID,
+                Status:      types.TripStatusPlanning,
+            },
+            {
+                Name:        "London Business Trip",
+                Description: "Business meeting in London",
+                Destination: "London",
+                StartDate:   time.Now().Add(60 * 24 * time.Hour),
+                EndDate:     time.Now().Add(63 * 24 * time.Hour),
+                CreatedBy:   testUserUUID,
+                Status:      types.TripStatusPlanning,
+            },
+            {
+                Name:        "Paris Winter Trip",
+                Description: "Winter in Paris",
+                Destination: "Paris",
+                StartDate:   time.Now().Add(180 * 24 * time.Hour),
+                EndDate:     time.Now().Add(187 * 24 * time.Hour),
+                CreatedBy:   testUserUUID,
+                Status:      types.TripStatusPlanning,
+            },
+        }
+
+        for _, trip := range searchTrips {
             _, err := tripDB.CreateTrip(ctx, trip)
             require.NoError(t, err)
         }
 
-        // Search for specific location
-        criteria := types.TripSearchCriteria{
-            Destination: "Paris",
-        }
-        results, err := tripDB.SearchTrips(ctx, criteria)
-        require.NoError(t, err)
-        require.NotEmpty(t, results)
-        require.Contains(t, results[0].Destination, "Paris")
+        t.Run("Search by Destination", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                Destination: "Paris",
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Len(t, results, 2)
+            for _, trip := range results {
+                require.Equal(t, "Paris", trip.Destination)
+            }
+        })
+
+        t.Run("Search by Date Range", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                StartDateFrom: time.Now().Add(20 * 24 * time.Hour),
+                StartDateTo:   time.Now().Add(40 * 24 * time.Hour),
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Len(t, results, 1)
+            require.Equal(t, "Paris Summer Trip", results[0].Name)
+        })
+
+        t.Run("Search with Multiple Criteria", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                Destination:   "Paris",
+                StartDateFrom: time.Now().Add(150 * 24 * time.Hour),
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Len(t, results, 1)
+            require.Equal(t, "Paris Winter Trip", results[0].Name)
+        })
+
+        t.Run("Search with No Results", func(t *testing.T) {
+            criteria := types.TripSearchCriteria{
+                Destination: "Tokyo",
+            }
+            results, err := tripDB.SearchTrips(ctx, criteria)
+            require.NoError(t, err)
+            require.Empty(t, results)
+        })
     })
+}
+
+// Helper function to validate UUIDs
+func isValidUUID(u string) bool {
+    _, err := uuid.Parse(u)
+    return err == nil && strings.Contains(u, "-")
 }

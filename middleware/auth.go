@@ -1,95 +1,126 @@
 package middleware
 
 import (
-    "github.com/gin-gonic/gin"
-    "github.com/NomadCrew/nomad-crew-backend/errors"
-    "github.com/NomadCrew/nomad-crew-backend/logger"
+    "fmt"
+    "net/http"
+    "time"
     "strings"
-    "os"
-    "github.com/golang-jwt/jwt"
 
+    "github.com/NomadCrew/nomad-crew-backend/config"
+    "github.com/NomadCrew/nomad-crew-backend/logger"
+    "github.com/NomadCrew/nomad-crew-backend/types"
+    "github.com/gin-gonic/gin"
+    "github.com/lestrrat-go/jwx/v2/jwt"
 )
 
-var log = logger.GetLogger()
+// SupabaseClaims represents the expected claims in a Supabase JWT
+type SupabaseClaims struct {
+    Subject    string `json:"sub"`
+    Email      string `json:"email"`
+    Role       string `json:"role"`
+    Exp        int64  `json:"exp"`
+    AppMetadata struct {
+        Provider  string   `json:"provider"`
+        Providers []string `json:"providers"`
+    } `json:"app_metadata"`
+    UserMetadata types.UserMetadata `json:"user_metadata"`
+}
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
     return func(c *gin.Context) {
+        log := logger.GetLogger()
+
+        // Verify Supabase API key
+        apiKey := c.GetHeader("apikey")
+        if apiKey != cfg.SupabaseAnonKey {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": "Invalid API key",
+            })
+            return
+        }
+
+        // Extract and validate Bearer token
         authHeader := c.GetHeader("Authorization")
-        if authHeader == "" {
-            if err := c.Error(errors.AuthenticationFailed("No authorization header")); err != nil {
-                log.Error("Failed to attach error to context: %v", err)
-            }
-            c.Abort()
+        if !strings.HasPrefix(authHeader, "Bearer ") {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": "Invalid authorization header",
+            })
             return
         }
 
-        tokenString := strings.Replace(authHeader, "Bearer ", "", 1)
-        if tokenString == "" {
-            if err := c.Error(errors.AuthenticationFailed("Invalid token format")); err != nil {
-                log.Error("Failed to attach error to context: %v", err)
-            }
-            c.Abort()
+        tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+        
+        claims, err := validateSupabaseToken(tokenString)
+        if err != nil {
+            log.Errorw("Token validation failed", "error", err)
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": err.Error(),
+            })
             return
         }
 
-        // Parse and validate JWT token
-        token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-            return []byte(os.Getenv("JWT_SECRET_KEY")), nil
-        })
+        // Store user information in context
+        c.Set("user_id", claims.Subject)
+        c.Set("user_email", claims.Email)
+        c.Set("user_role", claims.Role)
+        c.Set("user_metadata", claims.UserMetadata)
 
-        if err != nil || !token.Valid {
-            if err := c.Error(errors.AuthenticationFailed("Invalid token")); err != nil {
-                log.Error("Failed to attach error to context: %v", err)
-            }
-            c.Abort()
-            return
-        }
-
-        // Extract claims
-        if claims, ok := token.Claims.(jwt.MapClaims); ok {
-            userID := int64(claims["user_id"].(float64))
-            c.Set("user_id", userID)
-            c.Next()
-        } else {
-            if err := c.Error(errors.AuthenticationFailed("Invalid token claims")); err != nil {
-                log.Error("Failed to attach error to context: %v", err)
-            }
-            c.Abort()
-            return
-        }
+        c.Next()
     }
 }
 
-func RequireRole(roles ...string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        userRole, exists := c.Get("user_role")
-        if !exists {
-            if err := c.Error(errors.AuthenticationFailed("User role not found")); err != nil {
-                log.Error("Failed to attach error to context: %v", err)
-            }
-            c.Abort()
-            return
-        }
-
-        roleStr, ok := userRole.(string)
-        if !ok {
-            if err := c.Error(errors.AuthenticationFailed("Invalid role type")); err != nil {
-                log.Error("Failed to attach error to context: %v", err)
-            }
-            c.Abort()
-            return
-        }
-
-        for _, role := range roles {
-            if roleStr == role {
-                c.Next()
-                return
-            }
-        }
-
-        if err := c.Error(errors.AuthenticationFailed("Insufficient permissions")); err != nil {
-            log.Error("Failed to attach error to context: %v", err)
-        }
-        c.Abort()
+func validateSupabaseToken(tokenString string) (*SupabaseClaims, error) {
+    log := logger.GetLogger()
+    
+    // Parse without verification first to extract claims
+    parsed, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
+    if err != nil {
+        return nil, fmt.Errorf("invalid token format: %v", err)
     }
+
+    // Validate token expiration
+    if parsed.Expiration().Before(time.Now()) {
+        return nil, fmt.Errorf("token has expired")
+    }
+
+    claims := &SupabaseClaims{
+        Subject: parsed.Subject(),
+        Email:   parsed.PrivateClaims()["email"].(string),
+        Role:    parsed.PrivateClaims()["role"].(string),
+        Exp:     parsed.Expiration().Unix(),
+    }
+
+    // Extract user metadata
+    if metadata, ok := parsed.PrivateClaims()["user_metadata"].(map[string]interface{}); ok {
+        claims.UserMetadata = types.UserMetadata{
+            Username:       getStringValue(metadata, "username"),
+            FirstName:     getStringValue(metadata, "firstName"),
+            LastName:      getStringValue(metadata, "lastName"),
+            ProfilePicture: getStringValue(metadata, "avatar_url"),
+        }
+    }
+
+    log.Debugw("Validated token claims",
+        "subject", claims.Subject,
+        "email", claims.Email,
+        "role", claims.Role,
+    )
+
+    // Validate required claims
+    if claims.Subject == "" {
+        return nil, fmt.Errorf("missing subject claim")
+    }
+    if claims.Role != "authenticated" {
+        return nil, fmt.Errorf("insufficient permissions")
+    }
+
+    return claims, nil
+}
+
+// Helper function to safely extract string values from metadata
+func getStringValue(m map[string]interface{}, key string) string {
+    if val, ok := m[key].(string); ok {
+        return val
+    }
+    return ""
 }
