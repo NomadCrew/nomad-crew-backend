@@ -6,7 +6,6 @@ import (
     "github.com/NomadCrew/nomad-crew-backend/db"
     "github.com/NomadCrew/nomad-crew-backend/types"
     "github.com/google/uuid"
-    "github.com/NomadCrew/nomad-crew-backend/logger"
     "github.com/stretchr/testify/require"
     "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/wait"
@@ -230,7 +229,6 @@ func TestTripDB_Integration(t *testing.T) {
         }
         err = tripDB.UpdateTrip(ctx, id, update)
         require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
-        debugTripState(ctx, dbClient, id)
     
         fetchedTrip, err := tripDB.GetTrip(ctx, id)
         require.NoError(t, err)
@@ -379,26 +377,4 @@ func TestTripDB_Integration(t *testing.T) {
 func isValidUUID(u string) bool {
     _, err := uuid.Parse(u)
     return err == nil && strings.Contains(u, "-")
-}
-
-func debugTripState(ctx context.Context, dbClient *db.DatabaseClient, tripID string) {
-    log := logger.GetLogger()
-
-    // Log the status directly from trips
-    var status string
-    err := dbClient.GetPool().QueryRow(ctx, `SELECT status FROM trips WHERE id = $1`, tripID).Scan(&status)
-    if err != nil {
-        log.Errorw("Failed to fetch trip status", "tripId", tripID, "error", err)
-    } else {
-        log.Infow("Trip table status", "tripId", tripID, "status", status)
-    }
-
-    // Log the metadata record
-    var deletedAt *time.Time
-    err = dbClient.GetPool().QueryRow(ctx, `SELECT deleted_at FROM metadata WHERE record_id = $1`, tripID).Scan(&deletedAt)
-    if err != nil {
-        log.Errorw("Failed to fetch metadata record", "tripId", tripID, "error", err)
-    } else {
-        log.Infow("Metadata state", "tripId", tripID, "deletedAt", deletedAt)
-    }
 }
