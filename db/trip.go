@@ -132,6 +132,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
         args = append(args, string(update.Status))
         argPosition++
+        log.Debugw("Adding status update to query", "status", update.Status)
     }
 
     setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
@@ -141,10 +142,13 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
     }
 
     query := fmt.Sprintf(`
-        UPDATE trips 
-        SET %s
-        WHERE id = $%d
-        RETURNING status;`,
+        WITH updated AS (
+            UPDATE trips 
+            SET %s
+            WHERE id = $%d
+            RETURNING status
+        )
+        SELECT status FROM updated;`,
         strings.Join(setFields, ", "),
         argPosition,
     )
@@ -154,11 +158,25 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
     var status string
     err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&status)
     if err != nil {
-        log.Errorw("Failed to update trip", "tripId", id, "error", err, "query", query)
+        log.Errorw("Failed to update trip", 
+            "tripId", id, 
+            "error", err, 
+            "query", query, 
+            "args", args)
         return err
     }
 
-    log.Debugw("Successfully updated trip", "tripId", id, "status", status)
+    if status == "" {
+        log.Errorw("Updated trip status is empty", 
+            "tripId", id, 
+            "expectedStatus", update.Status)
+        return fmt.Errorf("trip status update failed: status is empty")
+    }
+
+    log.Debugw("Successfully updated trip", 
+        "tripId", id, 
+        "newStatus", status,
+        "requestedStatus", update.Status)
     return nil
 }
 
@@ -236,7 +254,7 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
                t.destination, t.status, t.created_by, t.created_at, t.updated_at
         FROM trips t
-        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id::text
+        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id::uuid = t.id
         WHERE m.deleted_at IS NULL`
 
     var conditions []string
