@@ -246,19 +246,19 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
     if criteria.Destination != "" {
         conditions = append(conditions, fmt.Sprintf("t.destination ILIKE $%d", paramCount))
         params = append(params, "%"+criteria.Destination+"%")
-        paramCount++
+        paramCount++ // nolint:ineffassign
     }
 
     if !criteria.StartDateFrom.IsZero() {
         conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", paramCount))
         params = append(params, criteria.StartDateFrom)
-        paramCount++
+        paramCount++ // nolint:ineffassign
     }
 
     if !criteria.StartDateTo.IsZero() {
         conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", paramCount))
         params = append(params, criteria.StartDateTo)
-        paramCount++
+        paramCount++ // nolint:ineffassign
     }
 
     // Add conditions to base query
