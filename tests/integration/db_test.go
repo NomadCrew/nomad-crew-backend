@@ -6,6 +6,7 @@ import (
     "github.com/NomadCrew/nomad-crew-backend/db"
     "github.com/NomadCrew/nomad-crew-backend/types"
     "github.com/google/uuid"
+    "github.com/NomadCrew/nomad-crew-backend/logger"
     "github.com/stretchr/testify/require"
     "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/wait"
@@ -229,7 +230,7 @@ func TestTripDB_Integration(t *testing.T) {
         }
         err = tripDB.UpdateTrip(ctx, id, update)
         require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
-        debugTripState(ctx, t, dbClient, id)
+        debugTripState(ctx, dbClient, id)
     
         fetchedTrip, err := tripDB.GetTrip(ctx, id)
         require.NoError(t, err)
@@ -380,7 +381,7 @@ func isValidUUID(u string) bool {
     return err == nil && strings.Contains(u, "-")
 }
 
-func debugTripState(ctx context.Context, t *testing.T, dbClient *db.DatabaseClient, tripID string) {
+func debugTripState(ctx context.Context, dbClient *db.DatabaseClient, tripID string) {
     log := logger.GetLogger()
 
     // Log the status directly from trips
