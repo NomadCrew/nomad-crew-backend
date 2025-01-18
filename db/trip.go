@@ -99,7 +99,6 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) error {
     log := logger.GetLogger()
     
-    // Build the query dynamically based on what fields are being updated
     var setFields []string
     var args []interface{}
     argPosition := 1
@@ -133,7 +132,6 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
         args = append(args, string(update.Status))
         argPosition++
-        log.Debugw("Adding status update to query", "status", update.Status)
     }
 
     setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
@@ -146,20 +144,21 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         UPDATE trips 
         SET %s
         WHERE id = $%d
-        RETURNING status`,
+        RETURNING status;`,
         strings.Join(setFields, ", "),
         argPosition,
     )
 
     args = append(args, id)
 
-    var updatedStatus string
-    err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&updatedStatus)
+    var status string
+    err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&status)
     if err != nil {
-        log.Errorw("Failed to update trip", "tripId", id, "error", err)
+        log.Errorw("Failed to update trip", "tripId", id, "error", err, "query", query)
         return err
     }
 
+    log.Debugw("Successfully updated trip", "tripId", id, "status", status)
     return nil
 }
 
@@ -233,69 +232,77 @@ func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.T
 func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error) {
     log := logger.GetLogger()
 
-    query := `
+    baseQuery := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.created_by, t.created_at, t.updated_at, trip.status
+               t.destination, t.status, t.created_by, t.created_at, t.updated_at
         FROM trips t
-        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
+        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id::text
         WHERE m.deleted_at IS NULL`
 
+    var conditions []string
     params := make([]interface{}, 0)
     paramCount := 1
 
     if criteria.Destination != "" {
-        query += fmt.Sprintf(" AND t.destination ILIKE $%d", paramCount)
+        conditions = append(conditions, fmt.Sprintf("t.destination ILIKE $%d", paramCount))
         params = append(params, "%"+criteria.Destination+"%")
-        paramCount++  // nolint:ineffassign
+        paramCount++
     }
 
     if !criteria.StartDateFrom.IsZero() {
-        query += fmt.Sprintf(" AND t.start_date >= $%d::timestamp", paramCount)
+        conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", paramCount))
         params = append(params, criteria.StartDateFrom)
-        paramCount++ // nolint:ineffassign
+        paramCount++
     }
 
     if !criteria.StartDateTo.IsZero() {
-        query += fmt.Sprintf(" AND t.start_date <= $%d::timestamp", paramCount)
+        conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", paramCount))
         params = append(params, criteria.StartDateTo)
-        paramCount++ // nolint:ineffassign
+        paramCount++
     }
 
-    query += ` ORDER BY t.start_date DESC`
+    // Add conditions to base query
+    query := baseQuery
+    if len(conditions) > 0 {
+        query += " AND " + strings.Join(conditions, " AND ")
+    }
+    query += " ORDER BY t.start_date DESC"
+
+    log.Debugw("Executing search query", "query", query, "params", params)
 
     rows, err := tdb.client.GetPool().Query(ctx, query, params...)
     if err != nil {
-        log.Errorw("Failed to search trips", "error", err)
+        log.Errorw("Failed to search trips", "error", err, "query", query)
         return nil, err
     }
     defer rows.Close()
 
-	var trips []*types.Trip
-	for rows.Next() {
-		var trip types.Trip
-		err := rows.Scan(
-			&trip.ID,
-			&trip.Name,
-			&trip.Description,
-			&trip.StartDate,
-			&trip.EndDate,
-			&trip.Destination,
-			&trip.CreatedBy,
-			&trip.CreatedAt,
-			&trip.UpdatedAt,
-			&trip.Status,
-		)
-		if err != nil {
-			log.Errorw("Failed to scan trip row", "error", err)
-			return nil, err
-		}
-		trips = append(trips, &trip)
-	}
+    var trips []*types.Trip
+    for rows.Next() {
+        var trip types.Trip
+        err := rows.Scan(
+            &trip.ID,
+            &trip.Name,
+            &trip.Description,
+            &trip.StartDate,
+            &trip.EndDate,
+            &trip.Destination,
+            &trip.Status,
+            &trip.CreatedBy,
+            &trip.CreatedAt,
+            &trip.UpdatedAt,
+        )
+        if err != nil {
+            log.Errorw("Failed to scan trip row", "error", err)
+            return nil, err
+        }
+        trips = append(trips, &trip)
+    }
 
-	if err = rows.Err(); err != nil {
-		log.Errorw("Error iterating trip rows", "error", err)
-		return nil, err
-	}
+    if err = rows.Err(); err != nil {
+        log.Errorw("Error iterating trip rows", "error", err)
+        return nil, err
+    }
 
-	return trips, nil
+    return trips, nil
 }
