@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   postgres:
     image: postgres:latest
@@ -11,7 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./user-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -23,14 +21,17 @@ services:
     ports:
       - "6379:6379"
   
-  user-service:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
-    env_file:
-      - ./.env
+      - "8080:8080"
+    environment:
+      DB_CONNECTION_STRING: ${DB_CONNECTION_STRING}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      PORT: ${PORT}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
     depends_on:
       postgres:
         condition: service_healthy
