@@ -98,11 +98,28 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 
 func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) error {
     log := logger.GetLogger()
-    
+
+    // Retrieve the current status for validation
+    var currentStatusStr string
+    err := tdb.client.GetPool().QueryRow(ctx, "SELECT status FROM trips WHERE id = $1", id).Scan(&currentStatusStr)
+    if err != nil {
+        log.Errorw("Failed to fetch current status for trip", "tripId", id, "error", err)
+        return fmt.Errorf("unable to fetch current status for trip %s: %v", id, err)
+    }
+
+    currentStatus := types.TripStatus(currentStatusStr)
+
+    // Ensure status transition is valid
+    if update.Status != "" && !currentStatus.IsValidTransition(update.Status) {
+        log.Errorw("Invalid status transition", "tripId", id, "currentStatus", currentStatus, "requestedStatus", update.Status)
+        return fmt.Errorf("invalid status transition: %s -> %s", currentStatus, update.Status)
+    }
+
     var setFields []string
     var args []interface{}
     argPosition := 1
 
+    // Update fields
     if update.Name != "" {
         setFields = append(setFields, fmt.Sprintf("name = $%d", argPosition))
         args = append(args, update.Name)
@@ -132,7 +149,6 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
         args = append(args, string(update.Status))
         argPosition++
-        log.Debugw("Adding status update to query", "status", update.Status)
     }
 
     setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
@@ -145,35 +161,31 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
         UPDATE trips 
         SET %s
         WHERE id = $%d
-        RETURNING status;`, 
+        RETURNING status;`,
         strings.Join(setFields, ", "),
         argPosition,
     )
 
     args = append(args, id)
 
-    var statusStr string
-    err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&statusStr)
+    // Execute query and validate result
+    var updatedStatusStr string
+    err = tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&updatedStatusStr)
     if err != nil {
         log.Errorw("Failed to update trip", "tripId", id, "error", err)
         return err
     }
 
-    // Validate the returned status matches what we set
-    if update.Status != "" && statusStr != string(update.Status) {
-        log.Errorw("Status mismatch after update", 
-            "tripId", id, 
-            "expected", update.Status,
-            "got", statusStr)
-        return fmt.Errorf("status update failed: expected %s, got %s", update.Status, statusStr)
+    // Verify status matches expected value
+    if update.Status != "" && updatedStatusStr != string(update.Status) {
+        log.Errorw("Mismatch in updated status", "tripId", id, "expected", update.Status, "got", updatedStatusStr)
+        return fmt.Errorf("status mismatch: expected %s, got %s", update.Status, updatedStatusStr)
     }
 
-    log.Debugw("Successfully updated trip", 
-        "tripId", id, 
-        "newStatus", statusStr,
-        "requestedStatus", update.Status)
+    log.Infow("Trip updated successfully", "tripId", id, "newStatus", updatedStatusStr)
     return nil
 }
+
 
 func (tdb *TripDB) SoftDeleteTrip(ctx context.Context, id string) error {
 	log := logger.GetLogger()

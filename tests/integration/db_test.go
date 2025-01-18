@@ -219,28 +219,35 @@ func TestTripDB_Integration(t *testing.T) {
             CreatedBy:   testUserUUID,
             Status:      types.TripStatusPlanning,
         }
-
+    
         id, err := tripDB.CreateTrip(ctx, trip)
         require.NoError(t, err)
-
+    
+        // Transition to Active
         update := types.TripUpdate{
             Status: types.TripStatusActive,
         }
         err = tripDB.UpdateTrip(ctx, id, update)
-        require.NoError(t, err)
-
+        require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
+    
         fetchedTrip, err := tripDB.GetTrip(ctx, id)
         require.NoError(t, err)
-        require.Equal(t, types.TripStatusActive, fetchedTrip.Status)
-
+        require.Equal(t, types.TripStatusActive, fetchedTrip.Status, "Expected trip to be ACTIVE")
+    
+        // Transition to Completed
         update.Status = types.TripStatusCompleted
         err = tripDB.UpdateTrip(ctx, id, update)
-        require.NoError(t, err)
-
+        require.NoError(t, err, "Expected status transition to COMPLETED to succeed")
+    
         fetchedTrip, err = tripDB.GetTrip(ctx, id)
         require.NoError(t, err)
-        require.Equal(t, types.TripStatusCompleted, fetchedTrip.Status)
-    })
+        require.Equal(t, types.TripStatusCompleted, fetchedTrip.Status, "Expected trip to be COMPLETED")
+    
+        // Invalid Transition: Completed -> Active
+        update.Status = types.TripStatusActive
+        err = tripDB.UpdateTrip(ctx, id, update)
+        require.Error(t, err, "Expected error for invalid transition from COMPLETED to ACTIVE")
+    })    
 
     t.Run("Soft Delete Functionality", func(t *testing.T) {
         trip1 := types.Trip{
