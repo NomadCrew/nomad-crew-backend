@@ -8,7 +8,9 @@ import (
     "github.com/NomadCrew/nomad-crew-backend/logger"
     "github.com/NomadCrew/nomad-crew-backend/middleware"
     "github.com/NomadCrew/nomad-crew-backend/models"
+    "github.com/NomadCrew/nomad-crew-backend/types"
 )
+
 
 func main() {
     // Initialize logger
@@ -35,16 +37,44 @@ func main() {
     // Versioned routes (e.g., /v1)
     v1 := r.Group("/v1")
     trips := v1.Group("/trips")
+{
+    trips.Use(middleware.AuthMiddleware(cfg))
+    
+    // Core trip routes
+    trips.POST("", tripHandler.CreateTripHandler)            // Create trip
+    trips.GET("/:id", tripHandler.GetTripHandler)           // Get trip by ID (now includes members)
+    trips.PUT("/:id", tripHandler.UpdateTripHandler)        // Update trip
+    trips.DELETE("/:id", tripHandler.DeleteTripHandler)     // Delete trip
+    trips.GET("/list", tripHandler.ListUserTripsHandler)    // List trips
+    trips.POST("/search", tripHandler.SearchTripsHandler)   // Search trips
+    trips.PATCH("/:id/status", tripHandler.UpdateTripStatusHandler)
+    
+
+    tripModel := models.NewTripModel(tripDB)
+
+    // Member management routes
+    memberRoutes := trips.Group("/:id/members")
     {
-        trips.Use(middleware.AuthMiddleware(cfg))
-        trips.POST("", tripHandler.CreateTripHandler)     // Create trip
-        trips.GET("/:id", tripHandler.GetTripHandler)     // Get trip by ID
-        trips.PUT("/:id", tripHandler.UpdateTripHandler)  // Update trip
-        trips.DELETE("/:id", tripHandler.DeleteTripHandler) // Delete trip
-        trips.GET("/list", tripHandler.ListUserTripsHandler) // List trips
-        trips.POST("/search", tripHandler.SearchTripsHandler) // Search trips
-        trips.PATCH("/:id/status", tripHandler.UpdateTripStatusHandler)
+        // Add members (admin only)
+        memberRoutes.POST("", 
+            middleware.RequireRole(tripModel, types.MemberRoleAdmin),
+            tripHandler.AddMemberHandler)
+
+        // Update member role (admin only)
+        memberRoutes.PUT("/:userId/role",
+            middleware.RequireRole(tripModel, types.MemberRoleAdmin),
+            tripHandler.UpdateMemberRoleHandler)
+
+        // Remove member (admin or self)
+        memberRoutes.DELETE("/:userId",
+            tripHandler.RemoveMemberHandler)
+
+        // Get trip members (any member)
+        memberRoutes.GET("",
+            middleware.RequireRole(tripModel, types.MemberRoleMember),
+            tripHandler.GetTripMembersHandler)
     }
+}
 
     log.Infof("Starting server on port %s", cfg.Port)
     if err := r.Run(":" + cfg.Port); err != nil {

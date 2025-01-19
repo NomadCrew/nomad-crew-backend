@@ -80,17 +80,25 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
     tripID := c.Param("id")
     userID := c.GetString("user_id")
 
-    trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+    // Get trip with members
+    trip, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID)
     if err != nil {
-        log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
         if err := c.Error(err); err != nil {
-            log.Errorw("Failed to add model error", "error", err)
+            log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
         }
         return
     }
 
     // Verify user has access to this trip
-    if trip.CreatedBy != userID {
+    hasAccess := false
+    for _, member := range trip.Members {
+        if member.UserID == userID {
+            hasAccess = true
+            break
+        }
+    }
+
+    if !hasAccess {
         if err := c.Error(errors.AuthenticationFailed("Not authorized to view this trip")); err != nil {
             log.Errorw("Failed to add authentication error", "error", err)
         }
@@ -263,4 +271,123 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, trips)
+}
+
+type AddMemberRequest struct {
+    UserID string         `json:"userId" binding:"required"`
+    Role   types.MemberRole `json:"role" binding:"required"`
+}
+
+type UpdateMemberRoleRequest struct {
+    Role types.MemberRole `json:"role" binding:"required"`
+}
+
+// AddMemberHandler handles adding a new member to a trip
+func (h *TripHandler) AddMemberHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+    // requestingUserID := c.GetString("user_id")
+
+    var req AddMemberRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
+
+    // Add the member
+    err := h.tripModel.AddMember(c.Request.Context(), tripID, req.UserID, req.Role)
+    if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add member error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "message": "Member added successfully",
+    })
+}
+
+// UpdateMemberRoleHandler handles updating a member's role
+func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+    userID := c.Param("userId")
+    requestingUserID := c.GetString("user_id")
+
+    var req UpdateMemberRoleRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
+
+    err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, userID, req.Role, requestingUserID)
+    if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to update member role error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "message": "Member role updated successfully",
+    })
+}
+
+// RemoveMemberHandler handles removing a member from a trip
+func (h *TripHandler) RemoveMemberHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+    userID := c.Param("userId")
+    requestingUserID := c.GetString("user_id")
+
+    err := h.tripModel.RemoveMember(c.Request.Context(), tripID, userID, requestingUserID)
+    if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to remove member error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "message": "Member removed successfully",
+    })
+}
+
+// GetTripMembersHandler handles getting all members of a trip
+func (h *TripHandler) GetTripMembersHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+
+    members, err := h.tripModel.GetTripMembers(c.Request.Context(), tripID)
+    if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to get members error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "members": members,
+    })
+}
+
+// GetTripWithMembersHandler handles getting a trip with its members
+func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+
+    trip, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID)
+    if err != nil {
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to get trip with members error", "error", err)
+        }
+        return
+    }
+
+    c.JSON(http.StatusOK, trip)
 }

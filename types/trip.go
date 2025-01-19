@@ -81,3 +81,8 @@ type TripSearchCriteria struct {
 	StartDateFrom time.Time `json:"startDateFrom"`
 	StartDateTo   time.Time `json:"startDateTo"`
 }
+
+type TripWithMembers struct {
+    Trip
+    Members []TripMembership `json:"members"`
+}

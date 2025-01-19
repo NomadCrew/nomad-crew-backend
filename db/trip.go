@@ -24,46 +24,59 @@ func (tdb *TripDB) GetPool() *pgxpool.Pool {
 }
 
 func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, error) {
-	log := logger.GetLogger()
-	if trip.Status == "" {
-        trip.Status = types.TripStatusPlanning
+    log := logger.GetLogger()
+    
+    // Start transaction
+    tx, err := tdb.GetPool().Begin(ctx)
+    if err != nil {
+        return "", fmt.Errorf("failed to begin transaction: %w", err)
     }
-	query := `
+    defer tx.Rollback(ctx)
+
+    // Create trip
+    var tripID string
+    err = tx.QueryRow(ctx, `
         INSERT INTO trips (
             name, description, start_date, end_date, 
             destination, created_by, status
         ) 
         VALUES ($1, $2, $3, $4, $5, $6, $7) 
-        RETURNING id`
+        RETURNING id`,
+        trip.Name,
+        trip.Description,
+        trip.StartDate,
+        trip.EndDate,
+        trip.Destination,
+        trip.CreatedBy,
+        string(trip.Status),
+    ).Scan(&tripID)
 
-	var tripID string
-	err := tdb.client.GetPool().QueryRow(ctx, query,
-		trip.Name,
-		trip.Description,
-		trip.StartDate,
-		trip.EndDate,
-		trip.Destination,
-		trip.CreatedBy,
-		string(trip.Status),
-	).Scan(&tripID)
+    if err != nil {
+        log.Errorw("Failed to create trip", "error", err)
+        return "", err
+    }
 
-	if err != nil {
-		log.Errorw("Failed to create trip", "error", err)
-		return "", err
-	}
+    // Add creator as admin
+    _, err = tx.Exec(ctx, `
+        INSERT INTO trip_memberships (trip_id, user_id, role, status)
+        VALUES ($1, $2, $3, $4)`,
+        tripID,
+        trip.CreatedBy,
+        types.MemberRoleAdmin,
+        types.MembershipStatusActive,
+    )
+    if err != nil {
+        log.Errorw("Failed to add creator as admin", "error", err)
+        return "", err
+    }
 
-	// Insert metadata
-	metadataQuery := `
-        INSERT INTO metadata (table_name, record_id, created_at, updated_at)
-        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    // Commit transaction
+    if err = tx.Commit(ctx); err != nil {
+        log.Errorw("Failed to commit transaction", "error", err)
+        return "", err
+    }
 
-	_, err = tdb.client.GetPool().Exec(ctx, metadataQuery, "trips", tripID)
-	if err != nil {
-		log.Errorw("Failed to create trip metadata", "error", err)
-		return "", err
-	}
-
-	return tripID, nil
+    return tripID, nil
 }
 
 func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) {
@@ -333,4 +346,145 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
     }
 
     return trips, nil
+}
+
+// AddMember adds a new member to a trip
+func (tdb *TripDB) AddMember(ctx context.Context, membership *types.TripMembership) error {
+    log := logger.GetLogger()
+    query := `
+        INSERT INTO trip_memberships (trip_id, user_id, role, status)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id`
+
+    err := tdb.GetPool().QueryRow(ctx, query,
+        membership.TripID,
+        membership.UserID,
+        membership.Role,
+        types.MembershipStatusActive,
+    ).Scan(&membership.ID)
+
+    if err != nil {
+        log.Errorw("Failed to add trip member", "error", err)
+        return fmt.Errorf("failed to add member: %w", err)
+    }
+
+    return nil
+}
+
+// UpdateMemberRole updates a member's role in a trip
+func (tdb *TripDB) UpdateMemberRole(ctx context.Context, tripID string, userID string, role types.MemberRole) error {
+    log := logger.GetLogger()
+    query := `
+        UPDATE trip_memberships
+        SET role = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE trip_id = $2 AND user_id = $3
+        RETURNING id`
+
+    var id string
+    err := tdb.GetPool().QueryRow(ctx, query, role, tripID, userID).Scan(&id)
+    if err != nil {
+        log.Errorw("Failed to update member role", 
+            "tripId", tripID, 
+            "userId", userID, 
+            "error", err)
+        return fmt.Errorf("failed to update member role: %w", err)
+    }
+
+    return nil
+}
+
+// RemoveMember removes a member from a trip (soft delete by setting status to INACTIVE)
+func (tdb *TripDB) RemoveMember(ctx context.Context, tripID string, userID string) error {
+    log := logger.GetLogger()
+    query := `
+        UPDATE trip_memberships
+        SET status = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE trip_id = $2 AND user_id = $3
+        RETURNING id`
+
+    var id string
+    err := tdb.GetPool().QueryRow(ctx, query, 
+        types.MembershipStatusInactive, 
+        tripID, 
+        userID,
+    ).Scan(&id)
+
+    if err != nil {
+        log.Errorw("Failed to remove trip member", 
+            "tripId", tripID, 
+            "userId", userID, 
+            "error", err)
+        return fmt.Errorf("failed to remove member: %w", err)
+    }
+
+    return nil
+}
+
+// GetTripMembers gets all active members of a trip
+func (tdb *TripDB) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
+    log := logger.GetLogger()
+    query := `
+        SELECT id, trip_id, user_id, role, status, created_at, updated_at
+        FROM trip_memberships
+        WHERE trip_id = $1 AND status = $2
+        ORDER BY created_at ASC`
+
+    rows, err := tdb.GetPool().Query(ctx, query, tripID, types.MembershipStatusActive)
+    if err != nil {
+        log.Errorw("Failed to get trip members", "tripId", tripID, "error", err)
+        return nil, fmt.Errorf("failed to get trip members: %w", err)
+    }
+    defer rows.Close()
+
+    var members []types.TripMembership
+    for rows.Next() {
+        var member types.TripMembership
+        err := rows.Scan(
+            &member.ID,
+            &member.TripID,
+            &member.UserID,
+            &member.Role,
+            &member.Status,
+            &member.CreatedAt,
+            &member.UpdatedAt,
+        )
+        if err != nil {
+            log.Errorw("Failed to scan trip member", "error", err)
+            return nil, fmt.Errorf("failed to scan member: %w", err)
+        }
+        members = append(members, member)
+    }
+
+    if err = rows.Err(); err != nil {
+        log.Errorw("Error iterating trip members", "error", err)
+        return nil, fmt.Errorf("error iterating members: %w", err)
+    }
+
+    return members, nil
+}
+
+// GetUserRole gets a user's role in a trip
+func (tdb *TripDB) GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error) {
+    log := logger.GetLogger()
+    query := `
+        SELECT role
+        FROM trip_memberships
+        WHERE trip_id = $1 AND user_id = $2 AND status = $3`
+
+    var role types.MemberRole
+    err := tdb.GetPool().QueryRow(ctx, query, 
+        tripID, 
+        userID, 
+        types.MembershipStatusActive,
+    ).Scan(&role)
+
+    if err != nil {
+        log.Errorw("Failed to get user role", 
+            "tripId", tripID, 
+            "userId", userID, 
+            "error", err)
+        return "", fmt.Errorf("failed to get user role: %w", err)
+    }
+
+    return role, nil
 }
