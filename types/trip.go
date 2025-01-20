@@ -22,6 +22,7 @@ type Trip struct {
 	CreatedBy   string     `json:"createdBy"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+	BackgroundImageURL string    `json:"backgroundImageUrl"`
 }
 
 // IsValidTransition checks if a status transition is allowed

@@ -38,9 +38,9 @@ func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, err
     err = tx.QueryRow(ctx, `
         INSERT INTO trips (
             name, description, start_date, end_date, 
-            destination, created_by, status
+            destination, created_by, status, background_image_url
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
         RETURNING id`,
         trip.Name,
         trip.Description,
@@ -49,6 +49,7 @@ func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, err
         trip.Destination,
         trip.CreatedBy,
         string(trip.Status),
+        trip.BackgroundImageURL,
     ).Scan(&tripID)
 
     if err != nil {

@@ -32,6 +32,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       PORT: ${PORT}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      PEXELS_API_KEY: ${PEXELS_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy

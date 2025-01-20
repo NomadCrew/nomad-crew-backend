@@ -1,15 +1,17 @@
 package handlers
 
 import (
-    "net/http"
-    "time"
-    "fmt"
+	"fmt"
+	"net/http"
+	"time"
 
-    "github.com/NomadCrew/nomad-crew-backend/errors"
-    "github.com/NomadCrew/nomad-crew-backend/logger"
-    "github.com/NomadCrew/nomad-crew-backend/models"
-    "github.com/NomadCrew/nomad-crew-backend/types"
-    "github.com/gin-gonic/gin"
+	"github.com/NomadCrew/nomad-crew-backend/config"
+	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/models"
+	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
+	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/gin-gonic/gin"
 )
 
 type TripHandler struct {
@@ -35,6 +37,8 @@ type CreateTripRequest struct {
 
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
     log := logger.GetLogger()
+    cfg, err := config.LoadConfig()
+    pexelsClient := pexels.NewClient(cfg.PexelsAPIKey)
 
     var req CreateTripRequest
     if err := c.ShouldBindJSON(&req); err != nil {
@@ -63,6 +67,14 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
         Status:      types.TripStatusPlanning,
     }
     log.Infow("Creating trip", "trip", trip)
+
+    imageURL, err := pexelsClient.SearchDestinationImage(trip.Destination)
+    if err != nil {
+        log.Warnw("Failed to fetch background image", "error", err)
+        // Continue without image - don't fail the trip creation
+    }
+    
+    trip.BackgroundImageURL = imageURL
 
     if err := h.tripModel.CreateTrip(c.Request.Context(), trip); err != nil {
         log.Errorw("Failed to create trip", "error", err)

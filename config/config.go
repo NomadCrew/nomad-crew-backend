@@ -17,6 +17,7 @@ type Config struct {
     SupabaseAnonKey         string 
     Port                    string
     DB                      *db.DatabaseClient
+    PexelsAPIKey           string
 }
 
 func LoadConfig() (*Config, error) {
@@ -27,6 +28,7 @@ func LoadConfig() (*Config, error) {
         SupabaseAnonKey:          os.Getenv("SUPABASE_ANON_KEY"),
         JwtSecretKey:             os.Getenv("JWT_SECRET_KEY"),
         Port:                     os.Getenv("PORT"),
+        PexelsAPIKey: os.Getenv("PEXELS_API_KEY"),
     }
 
     log.Debug("DB_CONNECTION_STRING: ", cfg.DatabaseConnectionString)
@@ -52,6 +54,9 @@ func LoadConfig() (*Config, error) {
     }
     if cfg.Port == "" {
         return nil, errors.New("missing PORT environment variable")
+    }
+    if cfg.PexelsAPIKey == "" {
+        return nil, errors.New("missing PEXELS_API_KEY environment variable")
     }
     
     log.Infow("Configuration loaded",
