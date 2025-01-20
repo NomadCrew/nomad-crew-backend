@@ -1,10 +1,10 @@
 package pexels
 
 import (
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "net/url"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
 )
 
 const pexelsAPIBaseURL = "https://api.pexels.com/v1"
@@ -39,7 +39,7 @@ func (c *Client) SearchDestinationImage(destination string) (string, error) {
     
     // Build query params
     params := url.Values{}
-    params.Add("query", fmt.Sprintf("%s travel destination", destination))
+    params.Add("query", destination)
     params.Add("per_page", "1")
     params.Add("orientation", "landscape")
     
@@ -66,7 +66,7 @@ func (c *Client) SearchDestinationImage(destination string) (string, error) {
     }
 
     if len(searchResp.Photos) == 0 {
-        return "", nil // No images found
+        return "", nil
     }
 
     return searchResp.Photos[0].Source.Landscape, nil
