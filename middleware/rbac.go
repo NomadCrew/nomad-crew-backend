@@ -10,7 +10,7 @@ import (
 )
 
 // RequireRole enforces role-based access control for a specific route
-func RequireRole(tripModel *models.TripModel, requiredRole types.MemberRole) gin.HandlerFunc {
+func RequireRole(tripModel models.TripModelInterface, requiredRole types.MemberRole) gin.HandlerFunc {
     return func(c *gin.Context) {
         log := logger.GetLogger()
 

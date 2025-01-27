@@ -1,17 +1,20 @@
 package middleware
 
 import (
-    "context"
-    "net/http"
-    "net/http/httptest"
-    "testing"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 
-    "github.com/NomadCrew/nomad-crew-backend/models"
-    "github.com/NomadCrew/nomad-crew-backend/types"
-    "github.com/gin-gonic/gin"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/mock"
+	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
+
+type tripModelInterface interface {
+    GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error)
+}
 
 type MockTripModel struct {
     mock.Mock
