@@ -455,7 +455,7 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
     // Create context-aware channel
     eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID)
     if err != nil {
-        c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status"))
+        _ = c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status"))
         return
     }
 
