@@ -208,7 +208,7 @@ func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
             "tripId", tripID,
             "error", err,
         )
-        c.Error(err)
+        _ = c.Error(err)
         return
     }
 

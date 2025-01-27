@@ -438,6 +438,14 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
         return
     }
 
+    if role != types.MemberRoleOwner {
+        log := logger.GetLogger()
+        if err := c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status")); err != nil {
+            log.Errorw("Failed to add auth error", "error", err)
+        }
+        return
+    }
+
     // Set SSE headers
     c.Header("Content-Type", "text/event-stream")
     c.Header("Cache-Control", "no-cache")
@@ -447,7 +455,7 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
     // Create context-aware channel
     eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID)
     if err != nil {
-            c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status"))
+        c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status"))
         return
     }
 
