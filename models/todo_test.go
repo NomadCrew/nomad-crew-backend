@@ -131,32 +131,47 @@ func TestTodoModel_ListTripTodos(t *testing.T) {
 }
 
 func TestTodoModel_ListTripTodos_Error(t *testing.T) {
-	mockStore := new(MockTodoStore)
-	mockTripStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockTripStore)
-	model := NewTodoModel(mockStore, tripModel)
-	ctx := context.Background()
+    t.Run("unauthorized access", func(t *testing.T) {
+        mockStore := new(MockTodoStore)
+        mockTripStore := new(mocks.MockTripStore)
+        tripModel := NewTripModel(mockTripStore)
+        model := NewTodoModel(mockStore, tripModel)
+        ctx := context.Background()
 
-	tripID := "test-trip-id"
-	userID := "test-user-id"
-	limit := 10
-	offset := 0
+        tripID := "test-trip-id"
+        userID := "test-user-id"
+        limit := 10
+        offset := 0
 
-	// Test unauthorized access
-	mockTripStore.On("GetUserRole", ctx, tripID, userID).Return(types.MemberRole(""), errors.New("unauthorized"))
+        mockTripStore.On("GetUserRole", ctx, tripID, userID).Return(types.MemberRole(""), errors.New("unauthorized"))
 
-	response, err := model.ListTripTodos(ctx, tripID, userID, limit, offset)
-	require.Error(t, err)
-	assert.Nil(t, response)
+        response, err := model.ListTripTodos(ctx, tripID, userID, limit, offset)
+        require.Error(t, err)
+        assert.Nil(t, response)
 
-	// Test database error
-	mockTripStore.On("GetUserRole", ctx, tripID, userID).Return(types.MemberRoleMember, nil)
-	mockStore.On("ListTodos", ctx, tripID, limit, offset).Return(nil, 0, errors.New("database error"))
+        mockTripStore.AssertExpectations(t)
+    })
 
-	response, err = model.ListTripTodos(ctx, tripID, userID, limit, offset)
-	require.Error(t, err)
-	assert.Nil(t, response)
+    t.Run("database error", func(t *testing.T) {
+        mockStore := new(MockTodoStore)
+        mockTripStore := new(mocks.MockTripStore)
+        tripModel := NewTripModel(mockTripStore)
+        model := NewTodoModel(mockStore, tripModel)
+        ctx := context.Background()
 
-	mockStore.AssertExpectations(t)
-	mockTripStore.AssertExpectations(t)
+        tripID := "test-trip-id"
+        userID := "test-user-id"
+        limit := 10
+        offset := 0
+
+        mockTripStore.On("GetUserRole", ctx, tripID, userID).Return(types.MemberRoleMember, nil)
+        mockStore.On("ListTodos", ctx, tripID, limit, offset).Return(nil, 0, errors.New("database error"))
+
+        response, err := model.ListTripTodos(ctx, tripID, userID, limit, offset)
+        require.Error(t, err)
+        assert.Nil(t, response)
+
+        mockStore.AssertExpectations(t)
+        mockTripStore.AssertExpectations(t)
+    })
 }
