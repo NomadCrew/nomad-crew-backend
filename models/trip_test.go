@@ -16,7 +16,6 @@ import (
     "github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 )
 
-// MockTripStore for testing
 type MockTripStore struct {
 	mock.Mock
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"time"
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
@@ -37,12 +38,13 @@ func main() {
 	})
 
 	// Initialize services
-	eventService := services.NewRedisEventService(redisClient)
+	rateLimitService := services.NewRateLimitService(redisClient)
+    eventService := services.NewRedisEventService(redisClient)
 
 	// Handlers
 	tripModel := models.NewTripModel(tripDB)
+    todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService)
-	todoModel := models.NewTodoModel(todoDB)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 
 	// Router setup
@@ -91,7 +93,7 @@ func main() {
 	}
 
 	// Todo routes setup
-	setupTodoRoutes(r, todoHandler, cfg, tripModel)
+	setupTodoRoutes(r, todoHandler, cfg, tripModel, rateLimitService)
 
 	log.Infof("Starting server on port %s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
@@ -100,9 +102,16 @@ func main() {
 }
 
 // setupTodoRoutes sets up todo-related routes
-func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, tripModel *models.TripModel) {
+func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, tripModel *models.TripModel, rateLimitService *services.RateLimitService) {
 	todos := r.Group("/v1/trips/:tripId/todos")
-	todos.Use(middleware.AuthMiddleware(cfg))
+    todos.Use(
+        middleware.AuthMiddleware(cfg),
+        middleware.RateLimiter(
+            rateLimitService.GetRedisClient(),
+            100,
+            time.Minute,
+        ),
+    )
 	{
 		todos.POST("", th.CreateTodoHandler)
 		todos.GET("", th.ListTodosHandler)

@@ -37,16 +37,32 @@ func (tdb *TodoDB) CreateTodo(ctx context.Context, todo *types.Todo) error {
     return nil
 }
 
-func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string) ([]*types.Todo, error) {
+func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string, limit int, offset int) ([]*types.Todo, int, error) {
+    // First get total count
+    var total int
+    countQuery := `
+        SELECT COUNT(*) 
+        FROM trip_todos t
+        LEFT JOIN metadata m ON m.table_name = 'trip_todos' AND m.record_id = t.id
+        WHERE t.trip_id = $1 AND m.deleted_at IS NULL`
+        
+    err := tdb.client.GetPool().QueryRow(ctx, countQuery, tripID).Scan(&total)
+    if err != nil {
+        return nil, 0, errors.NewDatabaseError(err)
+    }
+
+    // Then get paginated results
     query := `
         SELECT id, trip_id, text, status, created_by, created_at, updated_at 
-        FROM trip_todos
-        WHERE trip_id = $1 
-        ORDER BY status = 'COMPLETE', created_at DESC`
+        FROM trip_todos t
+        LEFT JOIN metadata m ON m.table_name = 'trip_todos' AND m.record_id = t.id
+        WHERE t.trip_id = $1 AND m.deleted_at IS NULL 
+        ORDER BY status = 'COMPLETE', created_at DESC
+        LIMIT $2 OFFSET $3`
         
-    rows, err := tdb.client.GetPool().Query(ctx, query, tripID)
+    rows, err := tdb.client.GetPool().Query(ctx, query, tripID, limit, offset)
     if err != nil {
-        return nil, errors.NewDatabaseError(err)
+        return nil, 0, errors.NewDatabaseError(err)
     }
     defer rows.Close()
 
@@ -63,12 +79,12 @@ func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string) ([]*types.Todo,
             &todo.UpdatedAt,
         )
         if err != nil {
-            return nil, errors.NewDatabaseError(err)
+            return nil, 0, errors.NewDatabaseError(err)
         }
         todos = append(todos, &todo)
     }
 
-    return todos, nil
+    return todos, total, nil
 }
 
 func (tdb *TodoDB) UpdateTodo(ctx context.Context, id string, update *types.TodoUpdate) error {

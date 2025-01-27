@@ -13,10 +13,14 @@ import (
 
 type TodoModel struct {
     store store.TodoStore
+    tripModel *TripModel
 }
 
-func NewTodoModel(store store.TodoStore) *TodoModel {
-    return &TodoModel{store: store}
+func NewTodoModel(store store.TodoStore, tripModel *TripModel) *TodoModel {
+    return &TodoModel{
+        store: store,
+        tripModel: tripModel,
+    }
 }
 
 func (tm *TodoModel) CreateTodo(ctx context.Context, todo *types.Todo) error {
@@ -77,13 +81,25 @@ func (tm *TodoModel) DeleteTodo(ctx context.Context, id string, userID string) e
     return tm.store.DeleteTodo(ctx, id, userID)
 }
 
-func (tm *TodoModel) ListTripTodos(ctx context.Context, tripID string, userID string) ([]*types.Todo, error) {
-    // Verify user is trip member
+func (tm *TodoModel) ListTripTodos(ctx context.Context, tripID string, userID string, limit int, offset int) (*types.PaginatedResponse, error) {
+    // First verify trip access
     if err := tm.verifyTripMembership(ctx, tripID, userID); err != nil {
         return nil, err
     }
 
-    return tm.store.ListTodos(ctx, tripID)
+    todos, total, err := tm.store.ListTodos(ctx, tripID, limit, offset)
+    if err != nil {
+        return nil, err
+    }
+
+    return &types.PaginatedResponse{
+        Data: todos,
+        Pagination: types.Pagination{
+            Limit:  limit,
+            Offset: offset,
+            Total:  total,
+        },
+    }, nil
 }
 
 func (tm *TodoModel) GetTodo(ctx context.Context, id string) (*types.Todo, error) {
@@ -95,7 +111,6 @@ func (tm *TodoModel) GetTodo(ctx context.Context, id string) (*types.Todo, error
 }
 
 // Helper functions
-
 func validateTodo(todo *types.Todo) error {
     var validationErrors []string
 
@@ -151,8 +166,16 @@ func validateTodoUpdate(update *types.TodoUpdate) error {
 }
 
 func (tm *TodoModel) verifyTripMembership(ctx context.Context, tripID string, userID string) error {
-    // TODO: This would use TripModel to verify membership
-    // For now stub implementation returning nil
+    role, err := tm.tripModel.GetUserRole(ctx, tripID, userID)
+    if err != nil {
+        return err
+    }
+    if role == "" {
+        return errors.ValidationFailed(
+            "unauthorized",
+            "user is not a trip member",
+        )
+    }
     return nil
 }
 

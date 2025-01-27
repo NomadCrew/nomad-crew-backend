@@ -3,7 +3,7 @@ package handlers
 import (
     "net/http"
     "encoding/json"
-	"time"
+    "time"
 
     "github.com/NomadCrew/nomad-crew-backend/errors"
     "github.com/NomadCrew/nomad-crew-backend/logger"
@@ -121,16 +121,38 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 }
 
 func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
+    var params types.ListTodosParams
+    if err := c.ShouldBindQuery(&params); err != nil {
+        log := logger.GetLogger()
+        log.Errorw("Invalid query parameters", "error", err)
+        c.Error(errors.ValidationFailed("invalid query parameters", err.Error()))
+        return
+    }
+
+    // Validate and adjust limits
+    if params.Limit <= 0 || params.Limit > 100 {
+        params.Limit = 20
+    }
+    if params.Offset < 0 {
+        params.Offset = 0
+    }
+
     tripID := c.Param("tripId")
     userID := c.GetString("user_id")
 
-    todos, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID)
+    response, err := h.todoModel.ListTripTodos(
+        c.Request.Context(), 
+        tripID, 
+        userID,
+        params.Limit,
+        params.Offset,
+    )
     if err != nil {
         c.Error(err)
         return
     }
 
-    c.JSON(http.StatusOK, todos)
+    c.JSON(http.StatusOK, response)
 }
 
 func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
@@ -139,7 +161,7 @@ func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
     userID := c.GetString("user_id")
 
     // Verify trip access
-    if _, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID); err != nil {
+    if _, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, 1, 0); err != nil {
         c.Error(errors.AuthenticationFailed("Not authorized to access this trip's todos"))
         return
     }
