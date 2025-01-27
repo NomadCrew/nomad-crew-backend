@@ -22,6 +22,7 @@ type Trip struct {
 	CreatedBy   string     `json:"createdBy"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+	BackgroundImageURL string    `json:"backgroundImageUrl"`
 }
 
 // IsValidTransition checks if a status transition is allowed
@@ -80,4 +81,9 @@ type TripSearchCriteria struct {
 	Destination   string    `json:"destination"`
 	StartDateFrom time.Time `json:"startDateFrom"`
 	StartDateTo   time.Time `json:"startDateTo"`
+}
+
+type TripWithMembers struct {
+    Trip
+    Members []TripMembership `json:"members"`
 }

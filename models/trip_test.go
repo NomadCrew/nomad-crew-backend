@@ -13,9 +13,9 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+    "github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 )
 
-// MockTripStore for testing
 type MockTripStore struct {
 	mock.Mock
 }
@@ -73,10 +73,10 @@ func (m *MockTripStore) SearchTrips(ctx context.Context, criteria types.TripSear
 }
 
 // Verify interface compliance
-var _ store.TripStore = (*MockTripStore)(nil)
+var _ store.TripStore = (*mocks.MockTripStore)(nil)
 
 func TestTripModel_CreateTrip(t *testing.T) {
-	mockStore := new(MockTripStore)
+	mockStore := new(mocks.MockTripStore)
 	tripModel := NewTripModel(mockStore)
 	ctx := context.Background()
 
@@ -118,7 +118,7 @@ func TestTripModel_CreateTrip(t *testing.T) {
 }
 
 func TestTripModel_GetTripByID(t *testing.T) {
-	mockStore := new(MockTripStore)
+	mockStore := new(mocks.MockTripStore)
 	tripModel := NewTripModel(mockStore)
 	ctx := context.Background()
 
@@ -152,7 +152,7 @@ func TestTripModel_GetTripByID(t *testing.T) {
 }
 
 func TestTripModel_UpdateTrip(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -202,7 +202,7 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 }
 
 func TestTripModel_DeleteTrip(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -237,7 +237,7 @@ func TestTripModel_DeleteTrip(t *testing.T) {
 // Add this after the existing test cases in models/trip_test.go
 
 func TestTripModel_UpdateTripStatus(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -277,7 +277,7 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 }
 
 func TestTripModel_ListUserTrips(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -321,7 +321,7 @@ func TestTripModel_ListUserTrips(t *testing.T) {
 }
 
 func TestTripModel_SearchTrips(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
 
@@ -382,7 +382,7 @@ func TestTripModel_SearchTrips(t *testing.T) {
 }
 
 func TestTripModel_CreateTrip_Validation(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
     now := time.Now()
@@ -462,7 +462,7 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 }
 
 func TestTripModel_EdgeCases(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
     now := time.Now()
@@ -519,7 +519,7 @@ func TestTripModel_EdgeCases(t *testing.T) {
 }
 
 func TestTripModel_StatusTransitionEdgeCases(t *testing.T) {
-    mockStore := new(MockTripStore)
+    mockStore := new(mocks.MockTripStore)
     tripModel := NewTripModel(mockStore)
     ctx := context.Background()
     now := time.Now()

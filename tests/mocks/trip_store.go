@@ -58,3 +58,31 @@ func (m *MockTripStore) SearchTrips(ctx context.Context, criteria types.TripSear
 	}
 	return args.Get(0).([]*types.Trip), args.Error(1)
 }
+
+func (m *MockTripStore) AddMember(ctx context.Context, membership *types.TripMembership) error {
+    args := m.Called(ctx, membership)
+    return args.Error(0)
+}
+
+func (m *MockTripStore) UpdateMemberRole(ctx context.Context, tripID string, userID string, role types.MemberRole) error {
+    args := m.Called(ctx, tripID, userID, role)
+    return args.Error(0)
+}
+
+func (m *MockTripStore) RemoveMember(ctx context.Context, tripID string, userID string) error {
+    args := m.Called(ctx, tripID, userID)
+    return args.Error(0)
+}
+
+func (m *MockTripStore) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
+    args := m.Called(ctx, tripID)
+    if args.Get(0) == nil {
+        return nil, args.Error(1)
+    }
+    return args.Get(0).([]types.TripMembership), args.Error(1)
+}
+
+func (m *MockTripStore) GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error) {
+    args := m.Called(ctx, tripID, userID)
+    return args.Get(0).(types.MemberRole), args.Error(1)
+}

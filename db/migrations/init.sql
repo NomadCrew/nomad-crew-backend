@@ -30,7 +30,8 @@ CREATE TABLE trips (
     status VARCHAR(50) NOT NULL DEFAULT 'PLANNING' CHECK (status IN ('PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED')),
     created_by UUID NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    background_image_url VARCHAR(512)
 );
 
 -- Create expenses table
@@ -72,6 +73,27 @@ CREATE TABLE categories (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create trip_memberships table
+CREATE TABLE trip_memberships (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    user_id UUID NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER' CHECK (role IN ('OWNER', 'MEMBER')),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(trip_id, user_id)
+);
+
+CREATE TABLE trip_todos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    text VARCHAR(255) NOT NULL,
+    created_by UUID NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'INCOMPLETE' CHECK (status IN ('COMPLETE', 'INCOMPLETE')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Create triggers to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -107,6 +129,14 @@ CREATE TRIGGER update_metadata_updated_at
     BEFORE UPDATE ON metadata
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_trip_memberships_updated_at
+    BEFORE UPDATE ON trip_memberships
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_trip_todos_updated_at
+    BEFORE UPDATE ON trip_todos
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- Add indexes for better performance
 CREATE INDEX idx_trips_created_by ON trips(created_by);
@@ -116,3 +146,8 @@ CREATE INDEX idx_locations_user_id ON locations(user_id);
 CREATE INDEX idx_locations_trip_id ON locations(trip_id);
 CREATE INDEX idx_metadata_table_record ON metadata(table_name, record_id);
 CREATE INDEX idx_metadata_deleted_at ON metadata(deleted_at);
+CREATE INDEX idx_trip_memberships_trip_user ON trip_memberships(trip_id, user_id);
+CREATE INDEX idx_trip_memberships_user ON trip_memberships(user_id);
+CREATE INDEX idx_trip_todos_trip ON trip_todos(trip_id);
+CREATE INDEX idx_trip_todos_status ON trip_todos(status);
+CREATE INDEX idx_trip_todos_created_by ON trip_todos(created_by);

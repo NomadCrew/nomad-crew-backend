@@ -11,8 +11,9 @@ type TripModelInterface interface {
     GetTripByID(ctx context.Context, id string) (*types.Trip, error)
     UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error
     DeleteTrip(ctx context.Context, id string) error
-    ListUserTrips(ctx context.Context, userid string) ([]*types.Trip, error)
+    ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error)
     SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error)
+    GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error)
 }
 
 // Verify TripModel implements TripModelInterface at compile time

@@ -126,51 +126,51 @@ func (tm *TripModel) SearchTrips(ctx context.Context, criteria types.TripSearchC
 
 // Helper functions for validation
 func validateTrip(trip *types.Trip) error {
-    var validationErrors []string
-    now := time.Now().Truncate(24 * time.Hour)
+	var validationErrors []string
+	now := time.Now().Truncate(24 * time.Hour)
 
-    if trip.Name == "" {
-        validationErrors = append(validationErrors, "trip name is required")
-    }
-    if trip.Destination == "" {
-        validationErrors = append(validationErrors, "trip destination is required")
-    }
-    if trip.StartDate.IsZero() {
-        validationErrors = append(validationErrors, "trip start date is required")
-    }
-    if trip.EndDate.IsZero() {
-        validationErrors = append(validationErrors, "trip end date is required")
-    }
-    
-    // Only validate start date being in past for new trips (where ID is empty)
-    if trip.ID == "" && !trip.StartDate.IsZero() {
-        startDate := trip.StartDate.Truncate(24 * time.Hour)
-        if startDate.Before(now) {
-            validationErrors = append(validationErrors, "start date cannot be in the past")
-        }
-    }
-    
-    if !trip.StartDate.IsZero() && !trip.EndDate.IsZero() && trip.EndDate.Before(trip.StartDate) {
-        validationErrors = append(validationErrors, "trip end date cannot be before start date")
-    }
-    
-    if trip.CreatedBy == "" {
-        validationErrors = append(validationErrors, "trip creator ID is required")
-    }
+	if trip.Name == "" {
+		validationErrors = append(validationErrors, "trip name is required")
+	}
+	if trip.Destination == "" {
+		validationErrors = append(validationErrors, "trip destination is required")
+	}
+	if trip.StartDate.IsZero() {
+		validationErrors = append(validationErrors, "trip start date is required")
+	}
+	if trip.EndDate.IsZero() {
+		validationErrors = append(validationErrors, "trip end date is required")
+	}
 
-    if trip.Status == "" {
-        trip.Status = types.TripStatusPlanning
-    } else if !trip.Status.IsValid() {
-        validationErrors = append(validationErrors, "invalid trip status")
-    }
+	// Only validate start date being in past for new trips (where ID is empty)
+	if trip.ID == "" && !trip.StartDate.IsZero() {
+		startDate := trip.StartDate.Truncate(24 * time.Hour)
+		if startDate.Before(now) {
+			validationErrors = append(validationErrors, "start date cannot be in the past")
+		}
+	}
 
-    if len(validationErrors) > 0 {
-        return errors.ValidationFailed(
-            "Invalid trip data",
-            strings.Join(validationErrors, "; "),
-        )
-    }
-    return nil
+	if !trip.StartDate.IsZero() && !trip.EndDate.IsZero() && trip.EndDate.Before(trip.StartDate) {
+		validationErrors = append(validationErrors, "trip end date cannot be before start date")
+	}
+
+	if trip.CreatedBy == "" {
+		validationErrors = append(validationErrors, "trip creator ID is required")
+	}
+
+	if trip.Status == "" {
+		trip.Status = types.TripStatusPlanning
+	} else if !trip.Status.IsValid() {
+		validationErrors = append(validationErrors, "invalid trip status")
+	}
+
+	if len(validationErrors) > 0 {
+		return errors.ValidationFailed(
+			"Invalid trip data",
+			strings.Join(validationErrors, "; "),
+		)
+	}
+	return nil
 }
 
 func validateTripUpdate(update *types.TripUpdate) error {
@@ -195,42 +195,203 @@ func validateTripUpdate(update *types.TripUpdate) error {
 }
 
 func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus types.TripStatus) error {
-    // First get current trip to check current status
-    currentTrip, err := tm.GetTripByID(ctx, id)
-    if err != nil {
-        return err
-    }
+	// First get current trip to check current status
+	currentTrip, err := tm.GetTripByID(ctx, id)
+	if err != nil {
+		return err
+	}
 
-    // Validate status transition
-    if !currentTrip.Status.IsValidTransition(newStatus) {
-        return errors.ValidationFailed(
-            "invalid status transition",
-            fmt.Sprintf("cannot transition from %s to %s", currentTrip.Status, newStatus),
-        )
-    }
+	// Validate status transition
+	if !currentTrip.Status.IsValidTransition(newStatus) {
+		return errors.ValidationFailed(
+			"invalid status transition",
+			fmt.Sprintf("cannot transition from %s to %s", currentTrip.Status, newStatus),
+		)
+	}
 
-    // Additional business rules
-    now := time.Now()
-    switch newStatus {
-    case types.TripStatusActive:
-        // Can only activate future or ongoing trips
-        if currentTrip.EndDate.Before(now) {
-            return errors.ValidationFailed(
-                "invalid status transition",
-                "cannot activate a trip that has already ended",
-            )
-        }
-    case types.TripStatusCompleted:
-        // Can only complete trips that have ended
-        if currentTrip.EndDate.After(now) {
-            return errors.ValidationFailed(
-                "invalid status transition",
-                "cannot complete a trip before its end date",
-            )
-        }
-    }
+	// Additional business rules
+	now := time.Now()
+	switch newStatus {
+	case types.TripStatusActive:
+		// Can only activate future or ongoing trips
+		if currentTrip.EndDate.Before(now) {
+			return errors.ValidationFailed(
+				"invalid status transition",
+				"cannot activate a trip that has already ended",
+			)
+		}
+	case types.TripStatusCompleted:
+		// Can only complete trips that have ended
+		if currentTrip.EndDate.After(now) {
+			return errors.ValidationFailed(
+				"invalid status transition",
+				"cannot complete a trip before its end date",
+			)
+		}
+	}
 
-    // Update the status in the database
-    update := types.TripUpdate{Status: newStatus}
-    return tm.store.UpdateTrip(ctx, id, update)
+	// Update the status in the database
+	update := types.TripUpdate{Status: newStatus}
+	return tm.store.UpdateTrip(ctx, id, update)
+}
+
+// AddMember adds a new member to a trip with role validation
+func (tm *TripModel) AddMember(ctx context.Context, tripID string, userID string, role types.MemberRole) error {
+	// First verify that the trip exists
+	trip, err := tm.GetTripByID(ctx, tripID)
+	log := logger.GetLogger()
+	log.Infof("Trip: %v", trip)
+	if err != nil {
+		return err
+	}
+
+	// Verify the role is valid
+	if !isValidRole(role) {
+		return errors.ValidationFailed(
+			"Invalid role",
+			fmt.Sprintf("Role %s is not valid", role),
+		)
+	}
+
+	membership := &types.TripMembership{
+		TripID: tripID,
+		UserID: userID,
+		Role:   role,
+		Status: types.MembershipStatusActive,
+	}
+
+	if err := tm.store.AddMember(ctx, membership); err != nil {
+		return errors.NewDatabaseError(err)
+	}
+
+	return nil
+}
+
+func (tm *TripModel) GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error) {
+	return tm.store.GetUserRole(ctx, tripID, userID)
+}
+
+// UpdateMemberRole updates a member's role with validation
+func (tm *TripModel) UpdateMemberRole(ctx context.Context, tripID string, userID string, newRole types.MemberRole, requestingUserID string) error {
+	// Check if requesting user is an admin
+	requestingUserRole, err := tm.store.GetUserRole(ctx, tripID, requestingUserID)
+	if err != nil {
+		return err
+	}
+
+	if requestingUserRole != types.MemberRoleOwner {
+		return errors.ValidationFailed(
+			"Unauthorized",
+			"Only admins can update member roles",
+		)
+	}
+
+	// Prevent removing the last admin
+	if newRole != types.MemberRoleOwner {
+		members, err := tm.store.GetTripMembers(ctx, tripID)
+		if err != nil {
+			return err
+		}
+
+		adminCount := 0
+		for _, member := range members {
+			if member.Role == types.MemberRoleOwner {
+				adminCount++
+			}
+		}
+
+		if adminCount <= 1 {
+			return errors.ValidationFailed(
+				"Invalid operation",
+				"Cannot remove the last admin from the trip",
+			)
+		}
+	}
+
+	if err := tm.store.UpdateMemberRole(ctx, tripID, userID, newRole); err != nil {
+		return errors.NewDatabaseError(err)
+	}
+
+	return nil
+}
+
+// RemoveMember removes a member from a trip
+func (tm *TripModel) RemoveMember(ctx context.Context, tripID string, userID string, requestingUserID string) error {
+	// Check if requesting user is an admin
+	requestingUserRole, err := tm.store.GetUserRole(ctx, tripID, requestingUserID)
+	if err != nil {
+		return err
+	}
+
+	if requestingUserRole != types.MemberRoleOwner && requestingUserID != userID {
+		return errors.ValidationFailed(
+			"Unauthorized",
+			"Only admins can remove other members",
+		)
+	}
+
+	// If removing an admin, check if they're the last one
+	currentRole, err := tm.store.GetUserRole(ctx, tripID, userID)
+	if err != nil {
+		return err
+	}
+
+	if currentRole == types.MemberRoleOwner {
+		members, err := tm.store.GetTripMembers(ctx, tripID)
+		if err != nil {
+			return err
+		}
+
+		adminCount := 0
+		for _, member := range members {
+			if member.Role == types.MemberRoleOwner {
+				adminCount++
+			}
+		}
+
+		if adminCount <= 1 {
+			return errors.ValidationFailed(
+				"Invalid operation",
+				"Cannot remove the last admin from the trip",
+			)
+		}
+	}
+
+	if err := tm.store.RemoveMember(ctx, tripID, userID); err != nil {
+		return errors.NewDatabaseError(err)
+	}
+
+	return nil
+}
+
+// GetTripMembers gets all active members of a trip
+func (tm *TripModel) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
+	members, err := tm.store.GetTripMembers(ctx, tripID)
+	if err != nil {
+		return nil, errors.NewDatabaseError(err)
+	}
+	return members, nil
+}
+
+// Helper function to validate roles
+func isValidRole(role types.MemberRole) bool {
+	return role == types.MemberRoleOwner || role == types.MemberRoleMember
+}
+
+// GetTripWithMembers gets a trip with its members
+func (tm *TripModel) GetTripWithMembers(ctx context.Context, id string) (*types.TripWithMembers, error) {
+	trip, err := tm.GetTripByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	members, err := tm.GetTripMembers(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.TripWithMembers{
+		Trip:    *trip,
+		Members: members,
+	}, nil
 }
