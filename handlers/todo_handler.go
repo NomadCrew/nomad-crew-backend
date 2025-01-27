@@ -30,7 +30,9 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
     var req types.TodoCreate
     if err := c.ShouldBindJSON(&req); err != nil {
         log.Errorw("Invalid request body", "error", err)
-        c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
@@ -44,16 +46,20 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
     }
 
     if err := h.todoModel.CreateTodo(c.Request.Context(), todo); err != nil {
-        c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     // Publish event
     payload, _ := json.Marshal(todo)
-    h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
+    if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
         Type:    types.EventTypeTodoCreated,
         Payload: payload,
-    })
+    }); err != nil {
+        log.Errorw("Failed to publish todo created event", "error", err)
+    }
 
     c.JSON(http.StatusCreated, todo)
 }
@@ -66,54 +72,69 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
     var req types.TodoUpdate
     if err := c.ShouldBindJSON(&req); err != nil {
         log.Errorw("Invalid request body", "error", err)
-        c.Error(errors.ValidationFailed("Invalid request body", err.Error()))
+        if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
     if err := h.todoModel.UpdateTodo(c.Request.Context(), todoID, userID, &req); err != nil {
-        c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     // Get updated todo for event payload
     todo, err := h.todoModel.GetTodo(c.Request.Context(), todoID)
     if err != nil {
-        c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     // Publish event
     payload, _ := json.Marshal(todo)
-    h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
+    if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
         Type:    types.EventTypeTodoUpdated,
         Payload: payload,
-    })
+    }); err != nil {
+        log.Errorw("Failed to publish todo updated event", "error", err)
+    }
 
     c.JSON(http.StatusOK, todo)
 }
 
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
+    log := logger.GetLogger()
     todoID := c.Param("id")
     userID := c.GetString("user_id")
 
     // Get todo for event payload before deletion
     todo, err := h.todoModel.GetTodo(c.Request.Context(), todoID)
     if err != nil {
-        c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     if err := h.todoModel.DeleteTodo(c.Request.Context(), todoID, userID); err != nil {
-        c.Error(err)
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
     // Publish event
     payload, _ := json.Marshal(map[string]string{"id": todoID})
-    h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
+    if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
         Type:    types.EventTypeTodoDeleted,
         Payload: payload,
-    })
+    }); err != nil {
+        log.Errorw("Failed to publish todo deleted event", "error", err)
+    }
 
     c.JSON(http.StatusOK, gin.H{
         "message": "Todo deleted successfully",
