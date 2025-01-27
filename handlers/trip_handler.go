@@ -427,20 +427,11 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 
 func (h *TripHandler) StreamEvents(c *gin.Context) {
     tripID := c.Param("id")
+    log := logger.GetLogger()
 
-    // Verify trip access
-    role, err := h.tripModel.GetUserRole(c.Request.Context(), tripID, c.GetString("user_id"))
-    if err != nil || role == types.MemberRoleNone {
-        log := logger.GetLogger()
-        if err := c.Error(errors.AuthenticationFailed("Not authorized to access this trip")); err != nil {
-            log.Errorw("Failed to add auth error", "error", err)
-        }
-        return
-    }
-
-    if role != types.MemberRoleOwner {
-        log := logger.GetLogger()
-        if err := c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status")); err != nil {
+    role := c.GetString("user_role")
+    if role == "" {
+        if err := c.Error(errors.AuthenticationFailed("Role not found in context")); err != nil {
             log.Errorw("Failed to add auth error", "error", err)
         }
         return
@@ -455,11 +446,13 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
     // Create context-aware channel
     eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID)
     if err != nil {
-        _ = c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status"))
+        if err := c.Error(errors.InternalServerError("Failed to subscribe to events")); err != nil {
+            log.Errorw("Failed to add error", "error", err)
+        }
         return
     }
 
-    // Send keep-alive pulses
+    // Send keep-alive pulses and handle events
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
 

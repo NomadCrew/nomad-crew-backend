@@ -78,9 +78,30 @@ type TripUpdate struct {
 }
 
 type TripSearchCriteria struct {
-	Destination   string    `json:"destination"`
-	StartDateFrom time.Time `json:"startDateFrom"`
-	StartDateTo   time.Time `json:"startDateTo"`
+    Destination   string    `json:"destination"`
+    StartDateFrom time.Time `json:"startDateFrom"`
+    StartDateTo   time.Time `json:"startDateTo"`
+    Keywords      []string  `json:"keywords,omitempty"`
+    Limit         int       `json:"limit"`
+    Offset        int       `json:"offset"`
+}
+
+type TripListCriteria struct {
+    UserID    string    `json:"userId,omitempty"`
+    Status    []string  `json:"status,omitempty"`
+    StartDate time.Time `json:"startDate,omitempty"`
+    EndDate   time.Time `json:"endDate,omitempty"`
+    Limit     int       `json:"limit"`
+    Offset    int       `json:"offset"`
+}
+
+type PaginatedTrips struct {
+    Trips      []*Trip `json:"trips"`
+    Pagination struct {
+        Total  int `json:"total"`
+        Limit  int `json:"limit"`
+        Offset int `json:"offset"`
+    } `json:"pagination"`
 }
 
 type TripWithMembers struct {

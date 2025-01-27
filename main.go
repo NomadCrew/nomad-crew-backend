@@ -1,7 +1,6 @@
 package main
 
 import (
-	"time"
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
@@ -12,6 +11,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"time"
 )
 
 func main() {
@@ -39,11 +39,11 @@ func main() {
 
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-    eventService := services.NewRedisEventService(redisClient)
+	eventService := services.NewRedisEventService(redisClient)
 
 	// Handlers
 	tripModel := models.NewTripModel(tripDB)
-    todoModel := models.NewTodoModel(todoDB, tripModel)
+	todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 
@@ -57,14 +57,18 @@ func main() {
 	{
 		trips.Use(middleware.AuthMiddleware(cfg))
 
-		// Core trip routes
-		trips.POST("", tripHandler.CreateTripHandler)         // Create trip
-		trips.GET("/:id", tripHandler.GetTripHandler)         // Get trip by ID
-		trips.PUT("/:id", tripHandler.UpdateTripHandler)      // Update trip
-		trips.DELETE("/:id", tripHandler.DeleteTripHandler)   // Delete trip
-		trips.GET("/list", tripHandler.ListUserTripsHandler)  // List trips
-		trips.POST("/search", tripHandler.SearchTripsHandler) // Search trips
+		// List and search endpoints
+		trips.GET("/list", tripHandler.ListUserTripsHandler)           // GET all trips related to the user
+		trips.POST("/search", tripHandler.SearchTripsHandler) // POST /v1/trips/search with request body
+
+		// Core trip management
+		trips.POST("", tripHandler.CreateTripHandler)       // Create trip
+		trips.GET("/:id", tripHandler.GetTripHandler)       // Get trip by ID
+		trips.PUT("/:id", tripHandler.UpdateTripHandler)    // Update trip
+		trips.DELETE("/:id", tripHandler.DeleteTripHandler) // Delete trip
 		trips.PATCH("/:id/status", tripHandler.UpdateTripStatusHandler)
+
+		// Event streaming
 		trips.GET("/:id/stream",
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
 			tripHandler.StreamEvents)
@@ -72,17 +76,17 @@ func main() {
 		// Member management routes
 		memberRoutes := trips.Group("/:id/members")
 		{
-			// Add members (admin only)
+			// Add members (owner only)
 			memberRoutes.POST("",
 				middleware.RequireRole(tripModel, types.MemberRoleOwner),
 				tripHandler.AddMemberHandler)
 
-			// Update member role (admin only)
+			// Update member role (owner only)
 			memberRoutes.PUT("/:userId/role",
 				middleware.RequireRole(tripModel, types.MemberRoleOwner),
 				tripHandler.UpdateMemberRoleHandler)
 
-			// Remove member (admin or self)
+			// Remove member (owner or self)
 			memberRoutes.DELETE("/:userId", tripHandler.RemoveMemberHandler)
 
 			// Get trip members (any member)
@@ -103,15 +107,15 @@ func main() {
 
 // setupTodoRoutes sets up todo-related routes
 func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, tripModel *models.TripModel, rateLimitService *services.RateLimitService) {
-	todos := r.Group("/v1/trips/:tripId/todos")
-    todos.Use(
-        middleware.AuthMiddleware(cfg),
-        middleware.RateLimiter(
-            rateLimitService.GetRedisClient(),
-            100,
-            time.Minute,
-        ),
-    )
+	todos := r.Group("/v1/trips/:id/todos")
+	todos.Use(
+		middleware.AuthMiddleware(cfg),
+		middleware.RateLimiter(
+			rateLimitService.GetRedisClient(),
+			100,
+			time.Minute,
+		),
+	)
 	{
 		todos.POST("", th.CreateTodoHandler)
 		todos.GET("", th.ListTodosHandler)
