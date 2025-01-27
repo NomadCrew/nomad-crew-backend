@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v4"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type TripDB struct {
@@ -24,60 +25,55 @@ func (tdb *TripDB) GetPool() *pgxpool.Pool {
 }
 
 func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, error) {
-	log := logger.GetLogger()
+    log := logger.GetLogger()
+    var tripID string
 
-	// Start transaction
-	tx, err := tdb.GetPool().Begin(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
+    err := WithTx(ctx, tdb.GetPool(), func(tx pgx.Tx) error {
+        // Create trip
+        err := tx.QueryRow(ctx, `
+            INSERT INTO trips (
+                name, description, start_date, end_date, 
+                destination, created_by, status, background_image_url
+            ) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            RETURNING id`,
+            trip.Name,
+            trip.Description,
+            trip.StartDate,
+            trip.EndDate,
+            trip.Destination,
+            trip.CreatedBy,
+            string(trip.Status),
+            trip.BackgroundImageURL,
+        ).Scan(&tripID)
 
-	// Create trip
-	var tripID string
-	err = tx.QueryRow(ctx, `
-        INSERT INTO trips (
-            name, description, start_date, end_date, 
-            destination, created_by, status, background_image_url
-        ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
-        RETURNING id`,
-		trip.Name,
-		trip.Description,
-		trip.StartDate,
-		trip.EndDate,
-		trip.Destination,
-		trip.CreatedBy,
-		string(trip.Status),
-		trip.BackgroundImageURL,
-	).Scan(&tripID)
+        if err != nil {
+            log.Errorw("Failed to create trip", "error", err)
+            return err
+        }
 
-	if err != nil {
-		log.Errorw("Failed to create trip", "error", err)
-		return "", err
-	}
+        // Add creator as admin
+        _, err = tx.Exec(ctx, `
+            INSERT INTO trip_memberships (trip_id, user_id, role, status)
+            VALUES ($1, $2, $3, $4)`,
+            tripID,
+            trip.CreatedBy,
+            types.MemberRoleAdmin,
+            types.MembershipStatusActive,
+        )
+        if err != nil {
+            log.Errorw("Failed to add creator as admin", "error", err)
+            return err
+        }
 
-	// Add creator as admin
-	_, err = tx.Exec(ctx, `
-        INSERT INTO trip_memberships (trip_id, user_id, role, status)
-        VALUES ($1, $2, $3, $4)`,
-		tripID,
-		trip.CreatedBy,
-		types.MemberRoleAdmin,
-		types.MembershipStatusActive,
-	)
-	if err != nil {
-		log.Errorw("Failed to add creator as admin", "error", err)
-		return "", err
-	}
+        return nil
+    })
 
-	// Commit transaction
-	if err = tx.Commit(ctx); err != nil {
-		log.Errorw("Failed to commit transaction", "error", err)
-		return "", err
-	}
+    if err != nil {
+        return "", err
+    }
 
-	return tripID, nil
+    return tripID, nil
 }
 
 func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) {
