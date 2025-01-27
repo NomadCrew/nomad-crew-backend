@@ -74,12 +74,12 @@ func main() {
 		{
 			// Add members (admin only)
 			memberRoutes.POST("",
-				middleware.RequireRole(tripModel, types.MemberRoleAdmin),
+				middleware.RequireRole(tripModel, types.MemberRoleOwner),
 				tripHandler.AddMemberHandler)
 
 			// Update member role (admin only)
 			memberRoutes.PUT("/:userId/role",
-				middleware.RequireRole(tripModel, types.MemberRoleAdmin),
+				middleware.RequireRole(tripModel, types.MemberRoleOwner),
 				tripHandler.UpdateMemberRoleHandler)
 
 			// Remove member (admin or self)

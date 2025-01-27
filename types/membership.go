@@ -5,7 +5,8 @@ import "time"
 type MemberRole string
 
 const (
-    MemberRoleAdmin  MemberRole = "ADMIN"
+    MemberRoleNone   MemberRole = "NONE"
+    MemberRoleOwner  MemberRole = "OWNER"
     MemberRoleMember MemberRole = "MEMBER"
 )
 
