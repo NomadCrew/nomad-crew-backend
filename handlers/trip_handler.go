@@ -54,6 +54,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
     var req CreateTripRequest
     if err := c.ShouldBindJSON(&req); err != nil {
+        log.Errorw("Invalid request body", "error", err)
         if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
             log.Errorw("Failed to add validation error", "error", err)
         }
@@ -171,10 +172,12 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
     }
 
     payload, _ := json.Marshal(trip)
-    h.eventService.Publish(c.Request.Context(), tripID, types.Event{
+    if err := h.eventService.Publish(c.Request.Context(), tripID, types.Event{
         Type:    types.EventTypeTripUpdated,
         Payload: payload,
-    })
+    }); err != nil {
+        log.Errorw("Failed to publish trip update event", "error", err)
+    }
 
     c.JSON(http.StatusOK, gin.H{"message": "Trip updated successfully"})
 }
@@ -426,8 +429,12 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
     tripID := c.Param("id")
 
     // Verify trip access
-    if _, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID); err != nil {
-        c.Error(errors.AuthenticationFailed("Not authorized to access this trip"))
+    role, err := h.tripModel.GetUserRole(c.Request.Context(), tripID, c.GetString("user_id"))
+    if err != nil || role == types.MemberRoleNone {
+        log := logger.GetLogger()
+        if err := c.Error(errors.AuthenticationFailed("Not authorized to access this trip")); err != nil {
+            log.Errorw("Failed to add auth error", "error", err)
+        }
         return
     }
 

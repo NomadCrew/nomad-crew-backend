@@ -142,11 +142,13 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 }
 
 func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
+    log := logger.GetLogger()
     var params types.ListTodosParams
     if err := c.ShouldBindQuery(&params); err != nil {
-        log := logger.GetLogger()
         log.Errorw("Invalid query parameters", "error", err)
-        c.Error(errors.ValidationFailed("invalid query parameters", err.Error()))
+        if err := c.Error(errors.ValidationFailed("invalid query parameters", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
         return
     }
 
@@ -169,7 +171,10 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
         params.Offset,
     )
     if err != nil {
-        c.Error(err)
+        log := logger.GetLogger()
+        if err := c.Error(err); err != nil {
+            log.Errorw("Failed to add model error", "error", err)
+        }
         return
     }
 
@@ -183,7 +188,10 @@ func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
 
     // Verify trip access
     if _, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, 1, 0); err != nil {
-        c.Error(errors.AuthenticationFailed("Not authorized to access this trip's todos"))
+        log := logger.GetLogger()
+        if err := c.Error(errors.AuthenticationFailed("Not authorized to access this trip's todos")); err != nil {
+            log.Errorw("Failed to add auth error", "error", err)
+        }
         return
     }
 
