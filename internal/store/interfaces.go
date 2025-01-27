@@ -26,3 +26,11 @@ type TripStore interface {
     GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
     GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error)
 }
+
+type TodoStore interface {
+    CreateTodo(ctx context.Context, todo *types.Todo) error
+    GetTodo(ctx context.Context, id string) (*types.Todo, error)
+    UpdateTodo(ctx context.Context, id string, update *types.TodoUpdate) error
+    ListTodos(ctx context.Context, tripID string) ([]*types.Todo, error)
+    DeleteTodo(ctx context.Context, id string, userID string) error
+} 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"encoding/json"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
@@ -15,15 +16,19 @@ import (
 )
 
 type TripHandler struct {
-    tripModel *models.TripModel
+    tripModel    *models.TripModel
+    eventService types.EventPublisher
 }
 
 type UpdateTripStatusRequest struct {
     Status string `json:"status" binding:"required"`
 }
 
-func NewTripHandler(model *models.TripModel) *TripHandler {
-    return &TripHandler{tripModel: model}
+func NewTripHandler(model *models.TripModel, eventService types.EventPublisher) *TripHandler {
+    return &TripHandler{
+        tripModel:    model,
+        eventService: eventService,
+    }
 }
 
 // CreateTripRequest represents the request body for creating a trip
@@ -38,6 +43,13 @@ type CreateTripRequest struct {
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
     log := logger.GetLogger()
     cfg, err := config.LoadConfig()
+    if err != nil {
+        log.Errorw("Failed to load config", "error", err)
+        if err := c.Error(errors.InternalServerError("Failed to load configuration")); err != nil {
+            log.Errorw("Failed to add internal server error", "error", err)
+        }
+        return
+    }
     pexelsClient := pexels.NewClient(cfg.PexelsAPIKey)
 
     var req CreateTripRequest
@@ -157,6 +169,12 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
         }
         return
     }
+
+    payload, _ := json.Marshal(trip)
+    h.eventService.Publish(c.Request.Context(), tripID, types.Event{
+        Type:    types.EventTypeTripUpdated,
+        Payload: payload,
+    })
 
     c.JSON(http.StatusOK, gin.H{"message": "Trip updated successfully"})
 }
@@ -402,4 +420,47 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, trip)
+}
+
+func (h *TripHandler) StreamEvents(c *gin.Context) {
+    tripID := c.Param("id")
+
+    // Verify trip access
+    if _, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID); err != nil {
+        c.Error(errors.AuthenticationFailed("Not authorized to access this trip"))
+        return
+    }
+
+    // Set SSE headers
+    c.Header("Content-Type", "text/event-stream")
+    c.Header("Cache-Control", "no-cache")
+    c.Header("Connection", "keep-alive")
+    c.Header("Transfer-Encoding", "chunked")
+
+    // Create context-aware channel
+    eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID)
+    if err != nil {
+            c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status"))
+        return
+    }
+
+    // Send keep-alive pulses
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-c.Request.Context().Done():
+            return
+        case <-ticker.C:
+            c.SSEvent("ping", nil)
+            c.Writer.Flush()
+        case event, ok := <-eventChan:
+            if !ok {
+                return
+            }
+            c.SSEvent("event", event)
+            c.Writer.Flush()
+        }
+    }
 }

@@ -93,6 +93,14 @@ func NewDatabaseError(err error) *AppError {
 	}
 }
 
+func InternalServerError(message string) *AppError {
+	return &AppError{
+		Type:       ServerError,
+		Message:    message,
+		HTTPStatus: http.StatusInternalServerError,
+	}
+}
+
 func getHTTPStatus(errType ErrorType) int {
 	switch errType {
 	case ValidationError:
