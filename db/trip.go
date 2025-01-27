@@ -203,17 +203,16 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 func (tdb *TripDB) SoftDeleteTrip(ctx context.Context, id string) error {
 	log := logger.GetLogger()
 	query := `
-        UPDATE metadata 
-        SET deleted_at = CURRENT_TIMESTAMP 
-        WHERE table_name = 'trips' AND record_id = $1`
+        INSERT INTO metadata (table_name, record_id, deleted_at)
+        VALUES ('trips', $1, CURRENT_TIMESTAMP)
+        ON CONFLICT (table_name, record_id) 
+        DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+        RETURNING record_id`
 
-	result, err := tdb.client.GetPool().Exec(ctx, query, id)
+	var returnedID string
+	err := tdb.client.GetPool().QueryRow(ctx, query, id).Scan(&returnedID)
 	if err != nil {
 		log.Errorw("Failed to delete trip", "tripId", id, "error", err)
-		return err
-	}
-
-	if result.RowsAffected() == 0 {
 		return errors.NotFound("Trip", id)
 	}
 

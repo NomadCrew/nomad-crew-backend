@@ -116,8 +116,14 @@ func TestTripDB_Integration(t *testing.T) {
                 }
             }()
         
-            // Clean up in correct order
-            tables := []string{"metadata", "locations", "expenses", "trips", "categories"}
+            tables := []string{
+                "trip_memberships",
+                "metadata",
+                "locations",
+                "expenses", 
+                "trips",
+                "categories",
+            }
             for _, table := range tables {
                 _, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))
                 require.NoError(t, err)
