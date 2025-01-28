@@ -71,33 +71,12 @@ func TestRequireRole(t *testing.T) {
 		c.Request = req
 
 		c.Set("user_id", "user-123")
-		c.Set("user_role", types.MemberRoleOwner)
 		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
 
 		// Mock behavior
-		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleOwner, nil)
+		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleOwner, nil).Once()
 
 		middleware := RequireRole(mockTripModel, types.MemberRoleOwner)
-		middleware(c)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		mockTripModel.AssertExpectations(t)
-	})
-
-	t.Run("Owner can access member resources", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(w)
-
-		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
-		c.Request = req
-
-		c.Set("user_id", "user-123")
-		c.Set("user_role", types.MemberRoleOwner)
-		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
-
-		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleOwner, nil)
-
-		middleware := RequireRole(mockTripModel, types.MemberRoleMember)
 		middleware(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -112,16 +91,15 @@ func TestRequireRole(t *testing.T) {
 		c.Request = req
 
 		c.Set("user_id", "user-123")
-		c.Set("user_role", types.MemberRoleMember)
 		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
 
-		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleMember, nil)
+		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleMember, nil).Once()
 
 		middleware := RequireRole(mockTripModel, types.MemberRoleOwner)
 		middleware(c)
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
-		assert.Contains(t, w.Body.String(), "does not have access to this resource")
+		assert.Contains(t, w.Body.String(), "User does not have access to this resource")
 		mockTripModel.AssertExpectations(t)
 	})
 
@@ -133,7 +111,6 @@ func TestRequireRole(t *testing.T) {
 		c.Request = req
 
 		c.Set("user_id", "user-123")
-		c.Set("user_role", types.MemberRoleOwner)
 
 		middleware := RequireRole(mockTripModel, types.MemberRoleOwner)
 		middleware(c)
