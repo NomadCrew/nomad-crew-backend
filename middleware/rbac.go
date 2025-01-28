@@ -54,7 +54,7 @@ func RequireRole(tripModel models.TripModelInterface, requiredRole types.MemberR
             )
             c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
                 "error":   "Forbidden",
-                "message": "Insufficient permissions",
+                "message": "User does not have access to this resource",
             })
             return
         }
