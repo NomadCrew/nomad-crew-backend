@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 )
 
 type MockTripModel struct {
@@ -54,6 +55,9 @@ func (m *MockTripModel) SearchTrips(ctx context.Context, criteria types.TripSear
 }
 
 func TestRequireRole(t *testing.T) {
+	// Initialize logger
+	logger.InitLogger()
+	defer logger.Close()
 
 	// Mocking dependencies
 	mockTripModel := &MockTripModel{}
@@ -63,21 +67,29 @@ func TestRequireRole(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+		c.Request = req
+
 		c.Set("user_id", "user-123")
 		c.Set("user_role", types.MemberRoleOwner)
 		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
 
+		// Mock behavior
 		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleOwner, nil)
 
 		middleware := RequireRole(mockTripModel, types.MemberRoleOwner)
 		middleware(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		mockTripModel.AssertExpectations(t)
 	})
 
 	t.Run("Owner can access member resources", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+		c.Request = req
 
 		c.Set("user_id", "user-123")
 		c.Set("user_role", types.MemberRoleOwner)
@@ -89,11 +101,15 @@ func TestRequireRole(t *testing.T) {
 		middleware(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		mockTripModel.AssertExpectations(t)
 	})
 
 	t.Run("Member cannot access owner resources", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+		c.Request = req
 
 		c.Set("user_id", "user-123")
 		c.Set("user_role", types.MemberRoleMember)
@@ -106,11 +122,15 @@ func TestRequireRole(t *testing.T) {
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Contains(t, w.Body.String(), "does not have access to this resource")
+		mockTripModel.AssertExpectations(t)
 	})
 
 	t.Run("Missing trip ID", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips", nil)
+		c.Request = req
 
 		c.Set("user_id", "user-123")
 		c.Set("user_role", types.MemberRoleOwner)
@@ -125,6 +145,9 @@ func TestRequireRole(t *testing.T) {
 	t.Run("Missing user ID", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+		c.Request = req
 
 		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
 
