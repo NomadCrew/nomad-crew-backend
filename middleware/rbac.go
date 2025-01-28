@@ -18,16 +18,13 @@ func RequireRole(tripModel models.TripModelInterface, requiredRole types.MemberR
         userID := c.GetString("user_id")
 
         if tripID == "" || userID == "" {
-            log.Warnw("Missing trip ID or user ID",
-                "tripID", tripID,
-                "userID", userID,
-            )
+            log.Warnw("Unauthorized: Missing trip or user ID", "tripID", tripID, "userID", userID)
             c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
                 "error":   "Unauthorized",
-                "message": "Missing trip ID or user ID",
+                "message": "User ID or Trip ID missing in request",
             })
             return
-        }
+        }        
 
         // Fetch user role
         role, err := tripModel.GetUserRole(c.Request.Context(), tripID, userID)
