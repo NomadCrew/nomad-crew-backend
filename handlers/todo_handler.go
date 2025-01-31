@@ -24,6 +24,8 @@ func NewTodoHandler(model *models.TodoModel, eventService types.EventPublisher) 
 	}
 }
 
+// CreateTodoHandler
+// Uses the trip ID from the parent route (c.Param("id")).
 func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -35,6 +37,16 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 		}
 		return
 	}
+
+	// Get trip ID from the parent route ("/trips/:id/todos")
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Error("Trip ID missing in URL parameters")
+		c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required"))
+		return
+	}
+	// Override the TripID from the request to ensure consistency.
+	req.TripID = tripID
 
 	userID := c.GetString("user_id")
 
@@ -64,10 +76,19 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, todo)
 }
 
+// UpdateTodoHandler
+// Extracts trip ID from the parent route and todo ID from c.Param("todoId").
 func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	todoID := c.Param("id")
+	tripID := c.Param("id")
+	todoID := c.Param("todoId")
 	userID := c.GetString("user_id")
+
+	if tripID == "" || todoID == "" {
+		log.Error("Missing trip ID or todo ID in URL parameters")
+		c.Error(errors.ValidationFailed("Missing parameters", "trip ID and todo ID are required"))
+		return
+	}
 
 	var req types.TodoUpdate
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -80,7 +101,7 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 
 	if err := h.todoModel.UpdateTodo(c.Request.Context(), todoID, userID, &req); err != nil {
 		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
+			log.Errorw("Failed to update todo", "error", err)
 		}
 		return
 	}
@@ -89,7 +110,7 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	todo, err := h.todoModel.GetTodo(c.Request.Context(), todoID)
 	if err != nil {
 		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
+			log.Errorw("Failed to retrieve updated todo", "error", err)
 		}
 		return
 	}
@@ -106,23 +127,32 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, todo)
 }
 
+// DeleteTodoHandler
+// Uses trip ID from c.Param("id") and todo ID from c.Param("todoId").
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	todoID := c.Param("id")
+	tripID := c.Param("id")
+	todoID := c.Param("todoId")
 	userID := c.GetString("user_id")
+
+	if tripID == "" || todoID == "" {
+		log.Error("Missing trip ID or todo ID in URL parameters")
+		c.Error(errors.ValidationFailed("Missing parameters", "trip ID and todo ID are required"))
+		return
+	}
 
 	// Get todo for event payload before deletion
 	todo, err := h.todoModel.GetTodo(c.Request.Context(), todoID)
 	if err != nil {
 		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
+			log.Errorw("Failed to retrieve todo", "error", err)
 		}
 		return
 	}
 
 	if err := h.todoModel.DeleteTodo(c.Request.Context(), todoID, userID); err != nil {
 		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
+			log.Errorw("Failed to delete todo", "error", err)
 		}
 		return
 	}
@@ -141,12 +171,14 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	})
 }
 
+// ListTodosHandler
+// Uses trip ID from the parent route.
 func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	var params types.ListTodosParams
 	if err := c.ShouldBindQuery(&params); err != nil {
 		log.Errorw("Invalid query parameters", "error", err)
-		if err := c.Error(errors.ValidationFailed("invalid query parameters", err.Error())); err != nil {
+		if err := c.Error(errors.ValidationFailed("Invalid query parameters", err.Error())); err != nil {
 			log.Errorw("Failed to add validation error", "error", err)
 		}
 		return
@@ -161,6 +193,11 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	}
 
 	tripID := c.Param("id")
+	if tripID == "" {
+		log.Error("Trip ID missing in URL parameters")
+		c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required"))
+		return
+	}
 	userID := c.GetString("user_id")
 
 	response, err := h.todoModel.ListTripTodos(
@@ -171,7 +208,7 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 		params.Offset,
 	)
 	if err != nil {
-		log := logger.GetLogger()
+		log.Errorw("Failed to list todos", "error", err)
 		if err := c.Error(err); err != nil {
 			log.Errorw("Failed to add model error", "error", err)
 		}
@@ -181,14 +218,21 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// StreamTodoEvents
+// Uses trip ID from the parent route to subscribe to the todo event stream.
 func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 
+	if tripID == "" {
+		log.Error("Trip ID missing in URL parameters")
+		c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required"))
+		return
+	}
+
 	// Verify trip access
 	if _, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, 1, 0); err != nil {
-		log := logger.GetLogger()
 		if err := c.Error(errors.AuthenticationFailed("Not authorized to access this trip's todos")); err != nil {
 			log.Errorw("Failed to add auth error", "error", err)
 		}
@@ -202,13 +246,12 @@ func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
 	c.Header("Transfer-Encoding", "chunked")
 
 	// Subscribe to trip's todo events
-	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID)
+	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
 	if err != nil {
-		log.Errorw("Failed to subscribe to todo events",
-			"tripId", tripID,
-			"error", err,
-		)
-		_ = c.Error(err)
+		log.Errorw("Failed to subscribe to todo events", "tripId", tripID, "error", err)
+		if err := c.Error(err); err != nil {
+			log.Errorw("Failed to add subscription error", "error", err)
+		}
 		return
 	}
 
@@ -219,27 +262,16 @@ func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
 	for {
 		select {
 		case <-c.Request.Context().Done():
-			log.Debugw("Client disconnected",
-				"tripId", tripID,
-				"userId", userID,
-			)
+			log.Debugw("Client disconnected", "tripId", tripID, "userId", userID)
 			return
-
 		case <-ticker.C:
-			// Send keep-alive
 			c.SSEvent("ping", nil)
 			c.Writer.Flush()
-
 		case event, ok := <-eventChan:
 			if !ok {
-				log.Debugw("Event channel closed",
-					"tripId", tripID,
-					"userId", userID,
-				)
+				log.Debugw("Event channel closed", "tripId", tripID, "userId", userID)
 				return
 			}
-
-			// Only send todo-related events
 			switch event.Type {
 			case types.EventTypeTodoCreated,
 				types.EventTypeTodoUpdated,

@@ -16,6 +16,7 @@ CREATE TABLE metadata (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP,
+    deleted_by UUID,
     UNIQUE (table_name, record_id)
 );
 

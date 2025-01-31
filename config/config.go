@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
@@ -18,14 +17,18 @@ type RedisConfig struct {
 	DB       int
 }
 
+type SSEConfig struct {
+	ApiKey string
+}
+
 type Config struct {
 	DatabaseConnectionString string
 	JwtSecretKey             string
 	SupabaseAnonKey          string
 	Port                     string
-	DB                       *db.DatabaseClient
 	PexelsAPIKey             string
 	Redis                    RedisConfig
+	SSE                      SSEConfig
 }
 
 func LoadConfig() (*Config, error) {
@@ -49,34 +52,19 @@ func LoadConfig() (*Config, error) {
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDB,
 		},
+		SSE: SSEConfig{
+			ApiKey: os.Getenv("SUPABASE_ANON_KEY"),
+		},
 	}
-
-	log.Debug("DB_CONNECTION_STRING: ", cfg.DatabaseConnectionString)
-	log.Debug("SUPABASE_ANON_KEY: ", cfg.SupabaseAnonKey)
-	log.Debug("JWT_SECRET_KEY: ",
-		strings.Repeat("*", len(cfg.JwtSecretKey)),
-	)
-	log.Debug("PORT: ", cfg.Port)
 
 	if cfg.DatabaseConnectionString == "" || cfg.SupabaseAnonKey == "" || cfg.JwtSecretKey == "" || cfg.Port == "" {
 		log.Fatal("Error: one or more environment variables are not set")
 		return nil, errors.New("one or more environment variables are not set")
 	}
 
-	pool := connectToDB(cfg.DatabaseConnectionString, context.Background())
-	cfg.DB = db.NewDatabaseClient(pool)
-
-	if cfg.DatabaseConnectionString == "" {
-		return nil, errors.New("missing DB_CONNECTION_STRING environment variable")
-	}
-	if cfg.JwtSecretKey == "" {
-		return nil, errors.New("missing JWT_SECRET_KEY environment variable")
-	}
-	if cfg.Port == "" {
-		return nil, errors.New("missing PORT environment variable")
-	}
-	if cfg.PexelsAPIKey == "" {
-		return nil, errors.New("missing PEXELS_API_KEY environment variable")
+	if cfg.SSE.ApiKey == "" {
+		log.Fatal("SSE_API_KEY environment variable is required")
+		return nil, errors.New("SSE_API_KEY not set")
 	}
 
 	log.Infow("Configuration loaded",

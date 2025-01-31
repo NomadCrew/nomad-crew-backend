@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"time"
+
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
@@ -10,8 +13,8 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"time"
 )
 
 func main() {
@@ -26,9 +29,17 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize database dependencies
-	tripDB := db.NewTripDB(cfg.DB)
-	todoDB := db.NewTodoDB(cfg.DB)
+	// Initialize database connection directly
+	pool, err := pgxpool.Connect(context.Background(), cfg.DatabaseConnectionString)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
+
+	// Initialize database dependencies with concrete implementation
+	dbClient := db.NewDatabaseClient(pool)
+	tripDB := db.NewTripDB(dbClient)
+	todoDB := db.NewTodoDB(dbClient)
 
 	// Initialize Redis client
 	redisClient := redis.NewClient(&redis.Options{
@@ -39,13 +50,22 @@ func main() {
 
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	eventService := services.NewRedisEventService(redisClient)
+	eventService := services.NewEventService(services.EventServiceConfig{
+		MaxConnPerTrip: 100,
+		MaxConnPerUser: 5,
+	})
 
 	// Handlers
 	tripModel := models.NewTripModel(tripDB)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
+
+	// SSE Configuration
+	sseConfig := middleware.SSEConfig{
+		AllowedOrigins: []string{"*"}, // Consider configuring based on environment
+		MaxConnections: 100,
+	}
 
 	// Router setup
 	r := gin.Default()
@@ -58,7 +78,7 @@ func main() {
 		trips.Use(middleware.AuthMiddleware(cfg))
 
 		// List and search endpoints
-		trips.GET("/list", tripHandler.ListUserTripsHandler)           // GET all trips related to the user
+		trips.GET("/list", tripHandler.ListUserTripsHandler)  // GET all trips related to the user
 		trips.POST("/search", tripHandler.SearchTripsHandler) // POST /v1/trips/search with request body
 
 		// Core trip management
@@ -70,6 +90,7 @@ func main() {
 
 		// Event streaming
 		trips.GET("/:id/stream",
+			middleware.SSEMiddleware(sseConfig),
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
 			tripHandler.StreamEvents)
 
@@ -97,7 +118,7 @@ func main() {
 	}
 
 	// Todo routes setup
-	setupTodoRoutes(r, todoHandler, cfg, tripModel, rateLimitService)
+	setupTodoRoutes(r, todoHandler, cfg, tripModel, rateLimitService, sseConfig)
 
 	log.Infof("Starting server on port %s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
@@ -106,7 +127,8 @@ func main() {
 }
 
 // setupTodoRoutes sets up todo-related routes
-func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, tripModel *models.TripModel, rateLimitService *services.RateLimitService) {
+func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, tripModel *models.TripModel, rateLimitService *services.RateLimitService, sseConfig middleware.SSEConfig) {
+	// Use consistent parameter name with trip routes
 	todos := r.Group("/v1/trips/:id/todos")
 	todos.Use(
 		middleware.AuthMiddleware(cfg),
@@ -119,9 +141,11 @@ func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config
 	{
 		todos.POST("", th.CreateTodoHandler)
 		todos.GET("", th.ListTodosHandler)
-		todos.PUT("/:id", th.UpdateTodoHandler)
-		todos.DELETE("/:id", th.DeleteTodoHandler)
+		// Use distinct parameter name for todo ID
+		todos.PUT("/:todoId", th.UpdateTodoHandler)
+		todos.DELETE("/:todoId", th.DeleteTodoHandler)
 		todos.GET("/stream",
+			middleware.SSEMiddleware(sseConfig),
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
 			th.StreamTodoEvents)
 	}
