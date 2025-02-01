@@ -75,16 +75,6 @@ func LoadConfig() (*Config, error) {
 	return cfg, nil
 }
 
-func connectToDB(connectionString string, ctx context.Context) *pgxpool.Pool {
-	log := logger.GetLogger()
-	pool, err := pgxpool.Connect(ctx, connectionString)
-	if err != nil {
-		log.Fatalf("Unable to connect to database: %v", err)
-	}
-	log.Info("Successfully connected to database")
-	return pool
-}
-
 func maskSensitiveURL(url string) string {
 	if url == "" {
 		return ""
