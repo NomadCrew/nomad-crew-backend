@@ -42,7 +42,9 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	if tripID == "" {
 		log.Error("Trip ID missing in URL parameters")
-		c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required"))
+		if err := c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
 		return
 	}
 	// Override the TripID from the request to ensure consistency.
@@ -86,7 +88,9 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 
 	if tripID == "" || todoID == "" {
 		log.Error("Missing trip ID or todo ID in URL parameters")
-		c.Error(errors.ValidationFailed("Missing parameters", "trip ID and todo ID are required"))
+		if err := c.Error(errors.ValidationFailed("Missing parameters", "trip ID and todo ID are required")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
 		return
 	}
 
@@ -137,7 +141,9 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 
 	if tripID == "" || todoID == "" {
 		log.Error("Missing trip ID or todo ID in URL parameters")
-		c.Error(errors.ValidationFailed("Missing parameters", "trip ID and todo ID are required"))
+		if err := c.Error(errors.ValidationFailed("Missing parameters", "trip ID and todo ID are required")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
 		return
 	}
 
@@ -195,7 +201,9 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	if tripID == "" {
 		log.Error("Trip ID missing in URL parameters")
-		c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required"))
+		if err := c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
 		return
 	}
 	userID := c.GetString("user_id")
@@ -227,7 +235,9 @@ func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
 
 	if tripID == "" {
 		log.Error("Trip ID missing in URL parameters")
-		c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required"))
+		if err := c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
 		return
 	}
 
