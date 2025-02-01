@@ -1,14 +1,12 @@
 package config
 
 import (
-	"context"
 	"errors"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type RedisConfig struct {
