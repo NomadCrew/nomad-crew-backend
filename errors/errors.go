@@ -3,6 +3,8 @@ package errors
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 )
 
 type ErrorType string
@@ -84,11 +86,13 @@ func AuthenticationFailed(message string) *AppError {
 }
 
 func NewDatabaseError(err error) *AppError {
+	// Log original error but return sanitized message
+	logger.GetLogger().Errorw("Database error", "error", err)
 	return &AppError{
 		Type:       DatabaseError,
 		Message:    "Database operation failed",
-		Detail:     err.Error(),
-		HTTPStatus: http.StatusInternalServerError,
+		Detail:     "Please try again later",
+		HTTPStatus: 500,
 		Raw:        err,
 	}
 }

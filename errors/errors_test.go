@@ -49,7 +49,7 @@ func TestAuthenticationFailed(t *testing.T) {
 }
 
 func TestNewDatabaseError(t *testing.T) {
-    originalErr := fmt.Errorf("connection failed")
+    originalErr := fmt.Errorf("Please try again later")
     err := NewDatabaseError(originalErr)
     assert.Equal(t, DatabaseError, err.Type)
     assert.Equal(t, "Database operation failed", err.Message)

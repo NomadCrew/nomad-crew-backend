@@ -127,7 +127,7 @@ func (tm *TripModel) SearchTrips(ctx context.Context, criteria types.TripSearchC
 // Helper functions for validation
 func validateTrip(trip *types.Trip) error {
 	var validationErrors []string
-	now := time.Now().Truncate(24 * time.Hour)
+	now := time.Now().UTC()
 
 	if trip.Name == "" {
 		validationErrors = append(validationErrors, "trip name is required")

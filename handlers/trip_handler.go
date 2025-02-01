@@ -427,6 +427,7 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 
 func (h *TripHandler) StreamEvents(c *gin.Context) {
     tripID := c.Param("id")
+    userID := c.GetString("user_id")
     log := logger.GetLogger()
 
     role := c.GetString("user_role")
@@ -444,7 +445,7 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
     c.Header("Transfer-Encoding", "chunked")
 
     // Create context-aware channel
-    eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID)
+    eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
     if err != nil {
         if err := c.Error(errors.InternalServerError("Failed to subscribe to events")); err != nil {
             log.Errorw("Failed to add error", "error", err)
