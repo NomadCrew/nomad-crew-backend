@@ -50,10 +50,8 @@ func main() {
 
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	eventService := services.NewEventService(services.EventServiceConfig{
-		MaxConnPerTrip: 100,
-		MaxConnPerUser: 5,
-	})
+	// Use the new Redis-based event service.
+	eventService := services.NewRedisEventService(redisClient)
 
 	// Handlers
 	tripModel := models.NewTripModel(tripDB)
@@ -61,7 +59,7 @@ func main() {
 	tripHandler := handlers.NewTripHandler(tripModel, eventService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 
-	// SSE Configuration
+	// SSE Configuration (if you wish to keep SSE endpoints)
 	sseConfig := middleware.SSEConfig{
 		AllowedOrigins: []string{"*"}, // Consider configuring based on environment
 		MaxConnections: 100,
@@ -78,21 +76,29 @@ func main() {
 		trips.Use(middleware.AuthMiddleware(cfg))
 
 		// List and search endpoints
-		trips.GET("/list", tripHandler.ListUserTripsHandler)  // GET all trips related to the user
-		trips.POST("/search", tripHandler.SearchTripsHandler) // POST /v1/trips/search with request body
+		trips.GET("/list", tripHandler.ListUserTripsHandler)   // GET all trips related to the user
+		trips.POST("/search", tripHandler.SearchTripsHandler)    // POST /v1/trips/search with request body
 
 		// Core trip management
-		trips.POST("", tripHandler.CreateTripHandler)       // Create trip
-		trips.GET("/:id", tripHandler.GetTripHandler)       // Get trip by ID
-		trips.PUT("/:id", tripHandler.UpdateTripHandler)    // Update trip
-		trips.DELETE("/:id", tripHandler.DeleteTripHandler) // Delete trip
+		trips.POST("", tripHandler.CreateTripHandler)            // Create trip
+		trips.GET("/:id", tripHandler.GetTripHandler)             // Get trip by ID
+		trips.PUT("/:id", tripHandler.UpdateTripHandler)          // Update trip
+		trips.DELETE("/:id", tripHandler.DeleteTripHandler)       // Delete trip
 		trips.PATCH("/:id/status", tripHandler.UpdateTripStatusHandler)
 
-		// Event streaming
+		// Event streaming endpoints:
+		// Existing SSE endpoint:
 		trips.GET("/:id/stream",
 			middleware.SSEMiddleware(sseConfig),
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			tripHandler.StreamEvents)
+			tripHandler.StreamEvents,
+		)
+		// New WebSocket endpoint:
+		trips.GET("/:id/ws",
+			middleware.AuthMiddleware(cfg),
+			middleware.RequireRole(tripModel, types.MemberRoleMember),
+			tripHandler.WSStreamEvents,
+		)
 
 		// Member management routes
 		memberRoutes := trips.Group("/:id/members")
@@ -100,12 +106,14 @@ func main() {
 			// Add members (owner only)
 			memberRoutes.POST("",
 				middleware.RequireRole(tripModel, types.MemberRoleOwner),
-				tripHandler.AddMemberHandler)
+				tripHandler.AddMemberHandler,
+			)
 
 			// Update member role (owner only)
 			memberRoutes.PUT("/:userId/role",
 				middleware.RequireRole(tripModel, types.MemberRoleOwner),
-				tripHandler.UpdateMemberRoleHandler)
+				tripHandler.UpdateMemberRoleHandler,
+			)
 
 			// Remove member (owner or self)
 			memberRoutes.DELETE("/:userId", tripHandler.RemoveMemberHandler)
@@ -113,7 +121,8 @@ func main() {
 			// Get trip members (any member)
 			memberRoutes.GET("",
 				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				tripHandler.GetTripMembersHandler)
+				tripHandler.GetTripMembersHandler,
+			)
 		}
 	}
 
@@ -126,9 +135,9 @@ func main() {
 	}
 }
 
-// setupTodoRoutes sets up todo-related routes
+// setupTodoRoutes sets up todo-related routes.
 func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, tripModel *models.TripModel, rateLimitService *services.RateLimitService, sseConfig middleware.SSEConfig) {
-	// Use consistent parameter name with trip routes
+	// Use consistent parameter name with trip routes.
 	todos := r.Group("/v1/trips/:id/todos")
 	todos.Use(
 		middleware.AuthMiddleware(cfg),
@@ -141,12 +150,13 @@ func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config
 	{
 		todos.POST("", th.CreateTodoHandler)
 		todos.GET("", th.ListTodosHandler)
-		// Use distinct parameter name for todo ID
+		// Use distinct parameter name for todo ID.
 		todos.PUT("/:todoId", th.UpdateTodoHandler)
 		todos.DELETE("/:todoId", th.DeleteTodoHandler)
 		todos.GET("/stream",
 			middleware.SSEMiddleware(sseConfig),
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			th.StreamTodoEvents)
+			th.StreamTodoEvents,
+		)
 	}
 }
