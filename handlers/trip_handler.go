@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+    "context"
 	"time"
 	"encoding/json"
 
@@ -12,7 +13,9 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+    "github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/gin-gonic/gin"
+    "github.com/gorilla/websocket"
 )
 
 type TripHandler struct {
@@ -472,4 +475,124 @@ func (h *TripHandler) StreamEvents(c *gin.Context) {
             c.Writer.Flush()
         }
     }
+}
+
+// upgrader is used to upgrade HTTP connections to WebSocket connections.
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	// For production, adjust the origin check as needed.
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+// WSStreamEvents upgrades the HTTP connection to a WebSocket and streams events.
+// It both sends events from the Redis-based event service to the client
+// and reads client messages to publish them as events.
+func (h *TripHandler) WSStreamEvents(c *gin.Context) {
+	tripID := c.Param("id")
+	userID := c.GetString("user_id")
+	log := logger.GetLogger()
+
+	if tripID == "" || userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tripID and userID are required"})
+		return
+	}
+
+	// Upgrade the connection to a WebSocket.
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Error("failed to upgrade connection: ", err)
+		return
+	}
+	defer conn.Close()
+
+	// Subscribe to the event channel for this trip.
+	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
+	if err != nil {
+		log.Error("failed to subscribe to events: ", err)
+		conn.WriteMessage(websocket.TextMessage, []byte("failed to subscribe to events"))
+		return
+	}
+
+	// Create an EventRouter instance.
+	// (In a production app, you might initialize this once and inject it.)
+	eventRouter := services.NewEventRouter()
+	// Example: Register a handler for USER_MESSAGE events.
+	eventRouter.Register("USER_MESSAGE", func(ctx context.Context, event types.Event) {
+		// Process the user message here (e.g., persist to database, moderation, etc.)
+		log.Infof("Processing USER_MESSAGE event: %s", event.ID)
+		// In this example, we do nothing extra.
+	})
+
+	// Use a ticker to send periodic pings.
+	pingTicker := time.NewTicker(30 * time.Second)
+	defer pingTicker.Stop()
+
+	// Create a cancellable context.
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+
+	// Start a goroutine to read messages from the connection.
+	// This catches client-initiated closures or errors.
+	go func() {
+		for {
+			// We call ReadMessage twice in two separate goroutines to support duplex.
+			// If any error occurs, we cancel the context.
+			if _, _, err := conn.ReadMessage(); err != nil {
+				cancel()
+				return
+			}
+		}
+	}()
+
+	// Start another goroutine to handle client messages.
+	// When a message is received, it is published as a USER_MESSAGE event.
+	go func() {
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				cancel()
+				return
+			}
+
+			evt := types.Event{
+				Type:      "USER_MESSAGE",
+				Payload:   message,
+				Timestamp: time.Now(),
+			}
+
+			// Route the event locally (execute any server-side processing).
+			eventRouter.Route(ctx, evt)
+
+			// Publish the event to the Redis channel for distribution.
+			if err := h.eventService.Publish(ctx, tripID, evt); err != nil {
+				log.Error("failed to publish event: ", err)
+			}
+		}
+	}()
+
+	// Main loop: send ping messages and forward events from Redis to the client.
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-pingTicker.C:
+			if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				log.Error("failed to send ping: ", err)
+				return
+			}
+		case event, ok := <-eventChan:
+			if !ok {
+				// Subscription closed.
+				return
+			}
+			// Write the event as JSON over the WebSocket.
+			if err := conn.WriteJSON(event); err != nil {
+				log.Error("failed to write event: ", err)
+				return
+			}
+		}
+	}
 }
