@@ -29,27 +29,27 @@ const (
 )
 
 type ServerConfig struct {
-	Environment    Environment `mapstructure:"environment" yaml:"environment"`
-	Port           string      `mapstructure:"port" yaml:"port"`
-	AllowedOrigins []string    `mapstructure:"allowed_origins" yaml:"allowed_origins"`
-	Version        string      `mapstructure:"VERSION"`
-	JwtSecretKey   string      `mapstructure:"jwt_secret_key" yaml:"jwt_secret_key"`
+    Environment    Environment `mapstructure:"ENVIRONMENT" yaml:"environment"`
+    Port           string      `mapstructure:"PORT" yaml:"port"`
+    AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS" yaml:"allowed_origins"`
+    Version        string      `mapstructure:"VERSION" yaml:"version"`
+    JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY" yaml:"jwt_secret_key"`
 }
 
 type DatabaseConfig struct {
-	Host           string `mapstructure:"host" yaml:"host"`
-	Port           int    `mapstructure:"port" yaml:"port"`
-	User           string `mapstructure:"user" yaml:"user"`
-	Password       string `mapstructure:"password" yaml:"password"`
-	Name           string `mapstructure:"name" yaml:"name"`
-	MaxConnections int    `mapstructure:"max_connections" yaml:"max_connections"`
-	SSLMode        string `mapstructure:"ssl_mode" yaml:"ssl_mode"`
+    Host           string `mapstructure:"HOST" yaml:"host"`
+    Port           int    `mapstructure:"PORT" yaml:"port"`
+    User           string `mapstructure:"USER" yaml:"user"`
+    Password       string `mapstructure:"PASSWORD" yaml:"password"`
+    Name           string `mapstructure:"NAME" yaml:"name"`
+    MaxConnections int    `mapstructure:"MAX_CONNECTIONS" yaml:"max_connections"`
+    SSLMode        string `mapstructure:"SSL_MODE" yaml:"ssl_mode"`
 }
 
 type RedisConfig struct {
-	Address  string `mapstructure:"address" yaml:"address"`
-	Password string `mapstructure:"password" yaml:"password"`
-	DB       int    `mapstructure:"db" yaml:"db"`
+	Address  string `mapstructure:"ADDRESS" yaml:"address"`
+	Password string `mapstructure:"PASSWORD" yaml:"password"`
+	DB       int    `mapstructure:"DB" yaml:"db"`
 }
 
 type ExternalServices struct {
@@ -59,10 +59,10 @@ type ExternalServices struct {
 }
 
 type Config struct {
-	Server           ServerConfig     `mapstructure:"server" yaml:"server"`
-	Database         DatabaseConfig   `mapstructure:"database" yaml:"database"`
-	Redis            RedisConfig      `mapstructure:"redis" yaml:"redis"`
-	ExternalServices ExternalServices `mapstructure:"external_services" yaml:"external_services"`
+	Server           ServerConfig     `mapstructure:"SERVER" yaml:"server"`
+	Database         DatabaseConfig   `mapstructure:"DATABASE" yaml:"database"`
+	Redis            RedisConfig      `mapstructure:"REDIS" yaml:"redis"`
+	ExternalServices ExternalServices `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
 }
 
 func (c *Config) IsDevelopment() bool {
@@ -75,32 +75,49 @@ func (c *Config) IsProduction() bool {
 
 func LoadConfig() (*Config, error) {
 	v := viper.New()
-	log := logger.GetLogger()
+    log := logger.GetLogger()
 
-	// Set defaults for development
-	v.SetDefault("ENVIRONMENT", EnvDevelopment)
-	v.SetDefault("PORT", "8080")
-	v.SetDefault("ALLOWED_ORIGINS", []string{"*"})
-	v.SetDefault("VERSION", "0.0.0-dev")
-	v.SetDefault("DB_MAX_CONNECTIONS", 20)
-	v.SetDefault("REDIS_DB", 0)
+    // Set defaults
+    v.SetDefault("SERVER.ENVIRONMENT", EnvDevelopment)
+    v.SetDefault("SERVER.PORT", "8080")
+    v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
+    v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
+    v.SetDefault("REDIS.DB", 0)
 
-	// Configuration sources priority:
-	// 1. Environment variables
-	// 2. Config file (config.<environment>.yaml)
-	// 3. Defaults
+    v.AutomaticEnv()
+    v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	v.AutomaticEnv()
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.BindEnv("database.host", "DB_HOST")
-	v.BindEnv("database.port", "DB_PORT")
-	v.BindEnv("database.user", "DB_USER")
-	v.BindEnv("database.password", "DB_PASSWORD")
-	v.BindEnv("database.name", "DB_NAME")
-	v.BindEnv("database.ssl_mode", "DB_SSL_MODE")
-	v.BindEnv("redis.address", "REDIS_ADDRESS")
-	v.BindEnv("redis.password", "REDIS_PASSWORD")
-	v.BindEnv("redis.db", "REDIS_DB")
+    // Server config bindings
+    v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT")
+    v.BindEnv("SERVER.PORT", "PORT")
+    v.BindEnv("SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS")
+    v.BindEnv("SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY")
+
+    // Database config bindings
+    v.BindEnv("DATABASE.HOST", "DB_HOST")
+    v.BindEnv("DATABASE.PORT", "DB_PORT")
+    v.BindEnv("DATABASE.USER", "DB_USER")
+    v.BindEnv("DATABASE.PASSWORD", "DB_PASSWORD")
+    v.BindEnv("DATABASE.NAME", "DB_NAME")
+    v.BindEnv("DATABASE.SSL_MODE", "DB_SSL_MODE")
+    
+    // Redis config bindings
+    v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS")
+    v.BindEnv("REDIS.PASSWORD", "REDIS_PASSWORD")
+    v.BindEnv("REDIS.DB", "REDIS_DB")
+
+    // External services bindings
+    v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY")
+    v.BindEnv("EXTERNAL_SERVICES.PEXELS_API_KEY", "PEXELS_API_KEY")
+    v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY")
+
+    // Add debug logging
+    log.Infof("Environment variables loaded: %+v", map[string]interface{}{
+        "SERVER_PORT": v.GetString("SERVER.PORT"),
+        "SERVER_ENV": v.GetString("SERVER.ENVIRONMENT"),
+        "DB_HOST": v.GetString("DATABASE.HOST"),
+        "ALLOWED_ORIGINS": v.GetString("SERVER.ALLOWED_ORIGINS"),
+    })
 
 	// Try to read config file based on environment
 	env := v.GetString("ENVIRONMENT")
