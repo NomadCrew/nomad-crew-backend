@@ -53,7 +53,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		}
 		return
 	}
-	pexelsClient := pexels.NewClient(cfg.PexelsAPIKey)
+	pexelsClient := pexels.NewClient(cfg.ExternalServices.PexelsAPIKey)
 
 	var req CreateTripRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -426,55 +426,6 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, trip)
-}
-
-func (h *TripHandler) StreamEvents(c *gin.Context) {
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
-	log := logger.GetLogger()
-
-	role := c.GetString("user_role")
-	if role == "" {
-		if err := c.Error(errors.AuthenticationFailed("Role not found in context")); err != nil {
-			log.Errorw("Failed to add auth error", "error", err)
-		}
-		return
-	}
-
-	// Set SSE headers
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("Transfer-Encoding", "chunked")
-
-	// Create context-aware channel
-	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
-	if err != nil {
-		if err := c.Error(errors.InternalServerError("Failed to subscribe to events")); err != nil {
-			log.Errorw("Failed to add error", "error", err)
-		}
-		return
-	}
-
-	// Send keep-alive pulses and handle events
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-c.Request.Context().Done():
-			return
-		case <-ticker.C:
-			c.SSEvent("ping", nil)
-			c.Writer.Flush()
-		case event, ok := <-eventChan:
-			if !ok {
-				return
-			}
-			c.SSEvent("event", event)
-			c.Writer.Flush()
-		}
-	}
 }
 
 // upgrader is used to upgrade HTTP connections to WebSocket connections.

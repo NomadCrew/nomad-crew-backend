@@ -1,89 +1,246 @@
 package config
 
 import (
-	"errors"
-	"os"
-	"strconv"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/spf13/viper"
 )
 
-type RedisConfig struct {
-	Address  string
-	Password string
-	DB       int
+type Environment string
+
+const (
+	EnvDevelopment Environment = "development"
+	EnvProduction  Environment = "production"
+
+	// Secrets path
+	secretPath = "nomadcrew/prod/secrets"
+
+	// Validation constants
+	minJWTLength      = 32
+	minPasswordLength = 16
+	minKeyLength      = 8
+)
+
+type ServerConfig struct {
+	Environment    Environment `mapstructure:"ENVIRONMENT"`
+	Port           string      `mapstructure:"PORT"`
+	AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS"`
+	Version        string      `mapstructure:"VERSION"`
+	JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY"`
 }
 
-type SSEConfig struct {
-	ApiKey string
+type DatabaseConfig struct {
+	ConnectionString string `mapstructure:"DB_CONNECTION_STRING"`
+	MaxConnections   int    `mapstructure:"DB_MAX_CONNECTIONS"`
+}
+
+type RedisConfig struct {
+	Address  string `mapstructure:"REDIS_ADDRESS"`
+	Password string `mapstructure:"REDIS_PASSWORD"`
+	DB       int    `mapstructure:"REDIS_DB"`
+}
+
+type ExternalServices struct {
+	GeoapifyKey     string `mapstructure:"GEOAPIFY_KEY"`
+	PexelsAPIKey    string `mapstructure:"PEXELS_API_KEY"`
+	SupabaseAnonKey string `mapstructure:"SUPABASE_ANON_KEY"`
 }
 
 type Config struct {
-	DatabaseConnectionString string
-	JwtSecretKey             string
-	SupabaseAnonKey          string
-	Port                     string
-	PexelsAPIKey             string
-	Redis                    RedisConfig
-	SSE                      SSEConfig
+	Server           ServerConfig     `mapstructure:",squash"`
+	Database         DatabaseConfig   `mapstructure:",squash"`
+	Redis            RedisConfig      `mapstructure:",squash"`
+	ExternalServices ExternalServices `mapstructure:",squash"`
+}
+
+func (c *Config) IsDevelopment() bool {
+	return c.Server.Environment == EnvDevelopment
+}
+
+func (c *Config) IsProduction() bool {
+	return c.Server.Environment == EnvProduction
 }
 
 func LoadConfig() (*Config, error) {
+	v := viper.New()
 	log := logger.GetLogger()
 
-	redisDBStr := os.Getenv("REDIS_DB")
-	redisDB, err := strconv.Atoi(redisDBStr)
-	if err != nil {
-		log.Fatalf("Error converting REDIS_DB to int: %v", err)
-		return nil, errors.New("invalid REDIS_DB environment variable")
+	// Set defaults for development
+	v.SetDefault("ENVIRONMENT", EnvDevelopment)
+	v.SetDefault("PORT", "8080")
+	v.SetDefault("ALLOWED_ORIGINS", []string{"*"})
+	v.SetDefault("VERSION", "0.0.0-dev")
+	v.SetDefault("DB_MAX_CONNECTIONS", 20)
+	v.SetDefault("REDIS_DB", 0)
+
+	// Configuration sources priority:
+	// 1. Environment variables
+	// 2. Config file (config.<environment>.yaml)
+	// 3. Defaults
+
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Try to read config file based on environment
+	env := v.GetString("ENVIRONMENT")
+	v.SetConfigName("config." + env)
+	v.AddConfigPath(".")
+	v.AddConfigPath("/etc/nomadcrew/")
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to read config: %w", err)
+		}
+		log.Info("No config file found, using environment variables and defaults")
 	}
 
-	cfg := &Config{
-		DatabaseConnectionString: os.Getenv("DB_CONNECTION_STRING"),
-		SupabaseAnonKey:          os.Getenv("SUPABASE_ANON_KEY"),
-		JwtSecretKey:             os.Getenv("JWT_SECRET_KEY"),
-		Port:                     os.Getenv("PORT"),
-		PexelsAPIKey:             os.Getenv("PEXELS_API_KEY"),
-		Redis: RedisConfig{
-			Address:  os.Getenv("REDIS_ADDRESS"),
-			Password: os.Getenv("REDIS_PASSWORD"),
-			DB:       redisDB,
-		},
-		SSE: SSEConfig{
-			ApiKey: os.Getenv("SUPABASE_ANON_KEY"),
-		},
+	// Load AWS secrets in production
+	if env == string(EnvProduction) {
+		if err := loadAWSSecrets(v); err != nil {
+			return nil, fmt.Errorf("failed to load AWS secrets: %w", err)
+		}
 	}
 
-	if cfg.DatabaseConnectionString == "" || cfg.SupabaseAnonKey == "" || cfg.JwtSecretKey == "" || cfg.Port == "" {
-		log.Fatal("Error: one or more environment variables are not set")
-		return nil, errors.New("one or more environment variables are not set")
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("config unmarshal failed: %w", err)
 	}
 
-	if cfg.SSE.ApiKey == "" {
-		log.Fatal("SSE_API_KEY environment variable is required")
-		return nil, errors.New("SSE_API_KEY not set")
+	// Validate configuration
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
 	}
 
-	log.Infow("Configuration loaded",
-		"database_connection", maskSensitiveURL(cfg.DatabaseConnectionString),
-		"jwt_key_length", len(cfg.JwtSecretKey),
-		"port", cfg.Port,
-	)
-	return cfg, nil
+	return &cfg, nil
 }
 
-func maskSensitiveURL(url string) string {
-	if url == "" {
-		return ""
+func loadAWSSecrets(v *viper.Viper) error {
+	ctx := context.Background()
+
+	// Load AWS configuration from environment
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to load AWS config: %w", err)
 	}
-	parts := strings.Split(url, "@")
-	if len(parts) != 2 {
-		return "invalid-url-format"
+
+	// Create Secrets Manager client
+	client := secretsmanager.NewFromConfig(cfg)
+
+	// Get secret
+	secretID := secretPath
+	secret, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: &secretID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to load secret %s: %w", secretPath, err)
 	}
-	credentials := strings.Split(parts[0], "://")
-	if len(credentials) != 2 {
-		return "invalid-url-format"
+
+	// Parse secrets JSON
+	var secrets map[string]string
+	if err := json.Unmarshal([]byte(*secret.SecretString), &secrets); err != nil {
+		return fmt.Errorf("failed to parse secrets: %w", err)
 	}
-	return credentials[0] + "://*****:*****@" + parts[1]
+
+	// Set secrets in Viper
+	for key, value := range secrets {
+		v.Set(key, value)
+	}
+
+	return nil
+}
+
+func validateConfig(cfg *Config) error {
+	var errors []string
+
+	// Production-specific validations
+	if cfg.IsProduction() {
+		if containsWildcard(cfg.Server.AllowedOrigins) {
+			errors = append(errors, "ALLOWED_ORIGINS should not contain wildcard in production")
+		}
+
+		if len(cfg.Server.JwtSecretKey) < minJWTLength {
+			errors = append(errors, fmt.Sprintf("JWT_SECRET_KEY must be at least %d characters in production", minJWTLength))
+		}
+
+		if err := validateConnectionString(cfg.Database.ConnectionString); err != nil {
+			errors = append(errors, err.Error())
+		}
+
+		if len(cfg.Redis.Password) < minPasswordLength {
+			errors = append(errors, fmt.Sprintf("REDIS_PASSWORD must be at least %d characters in production", minPasswordLength))
+		}
+
+		if err := validateExternalServices(&cfg.ExternalServices); err != nil {
+			errors = append(errors, err.Error())
+		}
+	}
+
+	// Common validations
+	if cfg.Server.Port == "" {
+		errors = append(errors, "PORT is required")
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("configuration validation failed:\n- %s", strings.Join(errors, "\n- "))
+	}
+
+	return nil
+}
+
+func validateConnectionString(connStr string) error {
+	if connStr == "" {
+		return fmt.Errorf("DB_CONNECTION_STRING is required")
+	}
+
+	u, err := url.Parse(connStr)
+	if err != nil {
+		return fmt.Errorf("invalid DB_CONNECTION_STRING format: %w", err)
+	}
+
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return fmt.Errorf("DB_CONNECTION_STRING must use postgres:// or postgresql:// scheme")
+	}
+
+	if u.User == nil || u.User.Username() == "" {
+		return fmt.Errorf("DB_CONNECTION_STRING must contain username")
+	}
+
+	_, hasPassword := u.User.Password()
+	if !hasPassword {
+		return fmt.Errorf("DB_CONNECTION_STRING must contain password")
+	}
+
+	return nil
+}
+
+func validateExternalServices(services *ExternalServices) error {
+	if len(services.SupabaseAnonKey) < minKeyLength {
+		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
+	}
+
+	if len(services.GeoapifyKey) < minKeyLength {
+		return fmt.Errorf("GEOAPIFY_KEY is invalid or too short")
+	}
+
+	if len(services.PexelsAPIKey) < minKeyLength {
+		return fmt.Errorf("PEXELS_API_KEY is invalid or too short")
+	}
+
+	return nil
+}
+
+func containsWildcard(origins []string) bool {
+	for _, o := range origins {
+		if o == "*" {
+			return true
+		}
+	}
+	return false
 }

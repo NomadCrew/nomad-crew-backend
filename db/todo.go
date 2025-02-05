@@ -3,12 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
-
-	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v4"
 )
 
@@ -203,19 +199,4 @@ func (tdb *TodoDB) GetTodo(ctx context.Context, id string) (*types.Todo, error) 
 	}
 
 	return &todo, nil
-}
-
-func SSEMiddleware(cfg *config.Config) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		apiKey := c.GetHeader("apikey")
-		if apiKey != "" {
-			if apiKey != cfg.SSE.ApiKey {
-				c.AbortWithStatusJSON(401, gin.H{"error": "Invalid API key"})
-				return
-			}
-			c.Next()
-			return
-		}
-		middleware.AuthMiddleware(cfg)(c)
-	}
 }

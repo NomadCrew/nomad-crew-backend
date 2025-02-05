@@ -1,0 +1,19 @@
+environment: development
+port: 8080
+allowed_origins: ["*"]
+version: 0.0.0-dev
+aws_region: ""
+
+database:
+  connection_string: "postgres://user:pass@localhost:5432/dbname"
+  max_connections: 20
+
+redis:
+  address: "localhost:6379"
+  password: ""
+  db: 0
+
+external_services:
+  geoapify_key: "your_geoapify_key"
+  pexels_api_key: "your_pexels_key"
+  supabase_anon_key: "your_supabase_key"

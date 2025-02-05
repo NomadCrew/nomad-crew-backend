@@ -1,0 +1,14 @@
+environment: production
+port: 8080
+allowed_origins: # Set through environment variables
+version: # Set through CI/CD pipeline
+aws_region: # Set through environment variables
+
+database:
+  connection_string: # Set through AWS Secrets Manager
+  max_connections: 50
+
+redis:
+  address: # Set through ElastiCache endpoint
+  password: # Set through AWS Secrets Manager
+  db: 0

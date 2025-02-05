@@ -153,7 +153,7 @@ extension_frame = ttk.LabelFrame(root, text="Select File Extensions")
 extension_frame.pack(pady=10, fill="both", expand=True)
 extension_list = tk.Listbox(
     extension_frame, selectmode='multiple', height=6, width=30)
-for ext in ['py', 'go', 'java', 'js', 'txt', 'sql', 'ts', 'tsx', 'jsx', 'html', 'css', 'json', 'toml']:  # Add more extensions as needed
+for ext in ['py', 'go', 'java', 'js', 'txt', 'sql', 'ts', 'tsx', 'jsx', 'html', 'css', 'json', 'toml', 'yaml']:  # Add more extensions as needed
     extension_list.insert(tk.END, ext)
 extension_list.pack(fill='both', expand=True)
 
