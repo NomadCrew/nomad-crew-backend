@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
@@ -33,12 +33,32 @@ func main() {
 	}
 
 	// Initialize database connection directly
-	poolConfig, err := pgxpool.ParseConfig(cfg.Database.ConnectionString)
-	if err != nil {
-		log.Fatalf("Failed to parse database config: %v", err)
-	}
-	poolConfig.ConnConfig.TLSConfig = &tls.Config{
-		ServerName: strings.Split(cfg.Database.ConnectionString, " ")[0],
+	var poolConfig *pgxpool.Config
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.Name,
+		cfg.Database.SSLMode,
+	)
+
+	if cfg.Server.Environment == config.EnvProduction {
+		poolConfig, err = pgxpool.ParseConfig(connStr)
+		if err != nil {
+			log.Fatalf("Failed to parse database config: %v", err)
+		}
+		poolConfig.ConnConfig.TLSConfig = &tls.Config{
+			ServerName: cfg.Database.Host,
+		}
+	} else {
+		// Development configuration with plain TCP connection
+		devConnStr := connStr
+
+		poolConfig, err = pgxpool.ParseConfig(devConnStr)
+		if err != nil {
+			log.Fatalf("Failed to parse database config: %v", err)
+		}
 	}
 	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
 	if err != nil {

@@ -29,22 +29,27 @@ const (
 )
 
 type ServerConfig struct {
-	Environment    Environment `mapstructure:"ENVIRONMENT"`
-	Port           string      `mapstructure:"PORT"`
-	AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS"`
+	Environment    Environment `mapstructure:"environment" yaml:"environment"`
+	Port           string      `mapstructure:"port" yaml:"port"`
+	AllowedOrigins []string    `mapstructure:"allowed_origins" yaml:"allowed_origins"`
 	Version        string      `mapstructure:"VERSION"`
-	JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY"`
+	JwtSecretKey   string      `mapstructure:"jwt_secret_key" yaml:"jwt_secret_key"`
 }
 
 type DatabaseConfig struct {
-	ConnectionString string `mapstructure:"DB_CONNECTION_STRING"`
-	MaxConnections   int    `mapstructure:"DB_MAX_CONNECTIONS"`
+	Host           string `mapstructure:"host" yaml:"host"`
+	Port           int    `mapstructure:"port" yaml:"port"`
+	User           string `mapstructure:"user" yaml:"user"`
+	Password       string `mapstructure:"password" yaml:"password"`
+	Name           string `mapstructure:"name" yaml:"name"`
+	MaxConnections int    `mapstructure:"max_connections" yaml:"max_connections"`
+	SSLMode        string `mapstructure:"ssl_mode" yaml:"ssl_mode"`
 }
 
 type RedisConfig struct {
-	Address  string `mapstructure:"REDIS_ADDRESS"`
-	Password string `mapstructure:"REDIS_PASSWORD"`
-	DB       int    `mapstructure:"REDIS_DB"`
+	Address  string `mapstructure:"address" yaml:"address"`
+	Password string `mapstructure:"password" yaml:"password"`
+	DB       int    `mapstructure:"db" yaml:"db"`
 }
 
 type ExternalServices struct {
@@ -54,10 +59,10 @@ type ExternalServices struct {
 }
 
 type Config struct {
-	Server           ServerConfig     `mapstructure:",squash"`
-	Database         DatabaseConfig   `mapstructure:",squash"`
-	Redis            RedisConfig      `mapstructure:",squash"`
-	ExternalServices ExternalServices `mapstructure:",squash"`
+	Server           ServerConfig     `mapstructure:"server" yaml:"server"`
+	Database         DatabaseConfig   `mapstructure:"database" yaml:"database"`
+	Redis            RedisConfig      `mapstructure:"redis" yaml:"redis"`
+	ExternalServices ExternalServices `mapstructure:"external_services" yaml:"external_services"`
 }
 
 func (c *Config) IsDevelopment() bool {
@@ -87,6 +92,15 @@ func LoadConfig() (*Config, error) {
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.BindEnv("database.host", "DB_HOST")
+	v.BindEnv("database.port", "DB_PORT")
+	v.BindEnv("database.user", "DB_USER")
+	v.BindEnv("database.password", "DB_PASSWORD")
+	v.BindEnv("database.name", "DB_NAME")
+	v.BindEnv("database.ssl_mode", "DB_SSL_MODE")
+	v.BindEnv("redis.address", "REDIS_ADDRESS")
+	v.BindEnv("redis.password", "REDIS_PASSWORD")
+	v.BindEnv("redis.db", "REDIS_DB")
 
 	// Try to read config file based on environment
 	env := v.GetString("ENVIRONMENT")
@@ -169,7 +183,14 @@ func validateConfig(cfg *Config) error {
 			errors = append(errors, fmt.Sprintf("JWT_SECRET_KEY must be at least %d characters in production", minJWTLength))
 		}
 
-		if err := validateConnectionString(cfg.Database.ConnectionString); err != nil {
+		if err := validateConnectionString(fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Database.Host,
+			cfg.Database.Port,
+			cfg.Database.User,
+			cfg.Database.Password,
+			cfg.Database.Name,
+			cfg.Database.SSLMode,
+		)); err != nil {
 			errors = append(errors, err.Error())
 		}
 
@@ -183,7 +204,7 @@ func validateConfig(cfg *Config) error {
 	}
 
 	// Common validations
-	if cfg.Server.Port == "" {
+	if cfg.Server.Port == "0" {
 		errors = append(errors, "PORT is required")
 	}
 

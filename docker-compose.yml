@@ -11,10 +11,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nomadcrew"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:latest
@@ -37,7 +37,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DB_CONNECTION_STRING: ${DB_CONNECTION_STRING}
+      DB_HOST: ${DB_HOST:-postgres}  # Use postgres as default in Docker
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-admin123}
+      DB_NAME: ${DB_NAME:-nomadcrew}
+      DB_SSL_MODE: ${DB_SSL_MODE:-disable}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       PORT: ${PORT}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}

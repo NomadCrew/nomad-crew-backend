@@ -1,12 +1,17 @@
-environment: development
-port: 8080
-allowed_origins: ["*"]
-version: 0.0.0-dev
-aws_region: ""
+server:
+  environment: development
+  port: '8080'
+  allowed_origins: ["*"]
+  jwt_secret_key: "dev-secret-key"
 
 database:
-  connection_string: "postgres://user:pass@localhost:5432/dbname"
+  host: postgres
+  port: '5432'
+  user: postgres
+  password: admin123
+  name: nomadcrew
   max_connections: 20
+  ssl_mode: disable
 
 redis:
   address: "localhost:6379"
