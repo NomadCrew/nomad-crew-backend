@@ -33,7 +33,7 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 
 		// Verify Supabase API key.
 		apiKey := c.GetHeader("apikey")
-		if apiKey != cfg.SupabaseAnonKey {
+		if apiKey != cfg.ExternalServices.SupabaseAnonKey {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "Invalid API key",
 			})

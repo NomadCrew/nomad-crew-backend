@@ -1,0 +1,24 @@
+server:
+  environment: development
+  port: '8080'
+  allowed_origins: ["*"]
+  jwt_secret_key: "dev-secret-key"
+
+database:
+  host: postgres
+  port: '5432'
+  user: postgres
+  password: admin123
+  name: nomadcrew
+  max_connections: 20
+  ssl_mode: disable
+
+redis:
+  address: "localhost:6379"
+  password: ""
+  db: 0
+
+external_services:
+  geoapify_key: "your_geoapify_key"
+  pexels_api_key: "your_pexels_key"
+  supabase_anon_key: "your_supabase_key"

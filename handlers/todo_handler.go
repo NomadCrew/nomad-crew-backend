@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -224,71 +223,4 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
-}
-
-// StreamTodoEvents
-// Uses trip ID from the parent route to subscribe to the todo event stream.
-func (h *TodoHandler) StreamTodoEvents(c *gin.Context) {
-	log := logger.GetLogger()
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
-
-	if tripID == "" {
-		log.Error("Trip ID missing in URL parameters")
-		if err := c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
-
-	// Verify trip access
-	if _, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, 1, 0); err != nil {
-		if err := c.Error(errors.AuthenticationFailed("Not authorized to access this trip's todos")); err != nil {
-			log.Errorw("Failed to add auth error", "error", err)
-		}
-		return
-	}
-
-	// Set SSE headers
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("Transfer-Encoding", "chunked")
-
-	// Subscribe to trip's todo events
-	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
-	if err != nil {
-		log.Errorw("Failed to subscribe to todo events", "tripId", tripID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add subscription error", "error", err)
-		}
-		return
-	}
-
-	// Send keep-alive pulses and handle events
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-c.Request.Context().Done():
-			log.Debugw("Client disconnected", "tripId", tripID, "userId", userID)
-			return
-		case <-ticker.C:
-			c.SSEvent("ping", nil)
-			c.Writer.Flush()
-		case event, ok := <-eventChan:
-			if !ok {
-				log.Debugw("Event channel closed", "tripId", tripID, "userId", userID)
-				return
-			}
-			switch event.Type {
-			case types.EventTypeTodoCreated,
-				types.EventTypeTodoUpdated,
-				types.EventTypeTodoDeleted:
-				c.SSEvent("event", event)
-				c.Writer.Flush()
-			}
-		}
-	}
 }
