@@ -50,6 +50,7 @@ func main() {
 		}
 		poolConfig.ConnConfig.TLSConfig = &tls.Config{
 			ServerName: cfg.Database.Host,
+			MinVersion: tls.VersionTLS12,
 		}
 	} else {
 		// Development configuration with plain TCP connection
@@ -81,6 +82,7 @@ func main() {
 	if cfg.Server.Environment == config.EnvProduction {
 		redisOptions.TLSConfig = &tls.Config{
 			ServerName: cfg.Redis.Address,
+			MinVersion: tls.VersionTLS12,
 		}
 	}
 

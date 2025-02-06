@@ -19,9 +19,6 @@ const (
 	EnvDevelopment Environment = "development"
 	EnvProduction  Environment = "production"
 
-	// Secrets path
-	secretPath = "nomadcrew/prod/secrets"
-
 	// Validation constants
 	minJWTLength      = 32
 	minPasswordLength = 16
@@ -171,6 +168,11 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// Add AWS secrets path binding
+	if err := v.BindEnv("AWS_SECRETS_PATH", "AWS_SECRETS_PATH"); err != nil {
+		return nil, fmt.Errorf("failed to bind AWS_SECRETS_PATH: %w", err)
+	}
+
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("config unmarshal failed: %w", err)
@@ -197,12 +199,15 @@ func loadAWSSecrets(v *viper.Viper) error {
 	client := secretsmanager.NewFromConfig(cfg)
 
 	// Get secret
-	secretID := secretPath
+	secretID := v.GetString("AWS_SECRETS_PATH")
+	if secretID == "" {
+		secretID = "nomadcrew/prod/secrets" // Default value if not set
+	}
 	secret, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: &secretID,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to load secret %s: %w", secretPath, err)
+		return fmt.Errorf("failed to load secret %s: %w", secretID, err)
 	}
 
 	// Parse secrets JSON

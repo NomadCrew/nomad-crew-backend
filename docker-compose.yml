@@ -53,6 +53,7 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}  # Default for local development
       SERVER_ENVIRONMENT: "development"
       ALLOWED_ORIGINS: "*"
+      AWS_SECRETS_PATH: ${AWS_SECRETS_PATH:-nomadcrew/prod/secrets}
     depends_on:
       postgres:
         condition: service_healthy
