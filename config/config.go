@@ -29,21 +29,21 @@ const (
 )
 
 type ServerConfig struct {
-    Environment    Environment `mapstructure:"ENVIRONMENT" yaml:"environment"`
-    Port           string      `mapstructure:"PORT" yaml:"port"`
-    AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS" yaml:"allowed_origins"`
-    Version        string      `mapstructure:"VERSION" yaml:"version"`
-    JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY" yaml:"jwt_secret_key"`
+	Environment    Environment `mapstructure:"ENVIRONMENT" yaml:"environment"`
+	Port           string      `mapstructure:"PORT" yaml:"port"`
+	AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS" yaml:"allowed_origins"`
+	Version        string      `mapstructure:"VERSION" yaml:"version"`
+	JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY" yaml:"jwt_secret_key"`
 }
 
 type DatabaseConfig struct {
-    Host           string `mapstructure:"HOST" yaml:"host"`
-    Port           int    `mapstructure:"PORT" yaml:"port"`
-    User           string `mapstructure:"USER" yaml:"user"`
-    Password       string `mapstructure:"PASSWORD" yaml:"password"`
-    Name           string `mapstructure:"NAME" yaml:"name"`
-    MaxConnections int    `mapstructure:"MAX_CONNECTIONS" yaml:"max_connections"`
-    SSLMode        string `mapstructure:"SSL_MODE" yaml:"ssl_mode"`
+	Host           string `mapstructure:"HOST" yaml:"host"`
+	Port           int    `mapstructure:"PORT" yaml:"port"`
+	User           string `mapstructure:"USER" yaml:"user"`
+	Password       string `mapstructure:"PASSWORD" yaml:"password"`
+	Name           string `mapstructure:"NAME" yaml:"name"`
+	MaxConnections int    `mapstructure:"MAX_CONNECTIONS" yaml:"max_connections"`
+	SSLMode        string `mapstructure:"SSL_MODE" yaml:"ssl_mode"`
 }
 
 type RedisConfig struct {
@@ -75,49 +75,81 @@ func (c *Config) IsProduction() bool {
 
 func LoadConfig() (*Config, error) {
 	v := viper.New()
-    log := logger.GetLogger()
+	log := logger.GetLogger()
 
-    // Set defaults
-    v.SetDefault("SERVER.ENVIRONMENT", EnvDevelopment)
-    v.SetDefault("SERVER.PORT", "8080")
-    v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
-    v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
-    v.SetDefault("REDIS.DB", 0)
+	// Set defaults
+	v.SetDefault("SERVER.ENVIRONMENT", EnvDevelopment)
+	v.SetDefault("SERVER.PORT", "8080")
+	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
+	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
+	v.SetDefault("REDIS.DB", 0)
 
-    v.AutomaticEnv()
-    v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-    // Server config bindings
-    v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT")
-    v.BindEnv("SERVER.PORT", "PORT")
-    v.BindEnv("SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS")
-    v.BindEnv("SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY")
+	// Server config bindings
+	if err := v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT"); err != nil {
+		return nil, fmt.Errorf("failed to bind SERVER.ENVIRONMENT: %w", err)
+	}
+	if err := v.BindEnv("SERVER.PORT", "PORT"); err != nil {
+		return nil, fmt.Errorf("failed to bind SERVER.PORT: %w", err)
+	}
+	if err := v.BindEnv("SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS"); err != nil {
+		return nil, fmt.Errorf("failed to bind SERVER.ALLOWED_ORIGINS: %w", err)
+	}
+	if err := v.BindEnv("SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind SERVER.JWT_SECRET_KEY: %w", err)
+	}
 
-    // Database config bindings
-    v.BindEnv("DATABASE.HOST", "DB_HOST")
-    v.BindEnv("DATABASE.PORT", "DB_PORT")
-    v.BindEnv("DATABASE.USER", "DB_USER")
-    v.BindEnv("DATABASE.PASSWORD", "DB_PASSWORD")
-    v.BindEnv("DATABASE.NAME", "DB_NAME")
-    v.BindEnv("DATABASE.SSL_MODE", "DB_SSL_MODE")
-    
-    // Redis config bindings
-    v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS")
-    v.BindEnv("REDIS.PASSWORD", "REDIS_PASSWORD")
-    v.BindEnv("REDIS.DB", "REDIS_DB")
+	// Database config bindings
+	if err := v.BindEnv("DATABASE.HOST", "DB_HOST"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.HOST: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.PORT", "DB_PORT"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.PORT: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.USER", "DB_USER"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.USER: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.PASSWORD", "DB_PASSWORD"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.PASSWORD: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.NAME", "DB_NAME"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.NAME: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.SSL_MODE", "DB_SSL_MODE"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.SSL_MODE: %w", err)
+	}
 
-    // External services bindings
-    v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY")
-    v.BindEnv("EXTERNAL_SERVICES.PEXELS_API_KEY", "PEXELS_API_KEY")
-    v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY")
+	// Redis config bindings
+	if err := v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.ADDRESS: %w", err)
+	}
+	if err := v.BindEnv("REDIS.PASSWORD", "REDIS_PASSWORD"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.PASSWORD: %w", err)
+	}
+	if err := v.BindEnv("REDIS.DB", "REDIS_DB"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.DB: %w", err)
+	}
 
-    // Add debug logging
-    log.Infof("Environment variables loaded: %+v", map[string]interface{}{
-        "SERVER_PORT": v.GetString("SERVER.PORT"),
-        "SERVER_ENV": v.GetString("SERVER.ENVIRONMENT"),
-        "DB_HOST": v.GetString("DATABASE.HOST"),
-        "ALLOWED_ORIGINS": v.GetString("SERVER.ALLOWED_ORIGINS"),
-    })
+	// External services bindings
+	if err := v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.GEOAPIFY_KEY: %w", err)
+	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.PEXELS_API_KEY", "PEXELS_API_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.PEXELS_API_KEY: %w", err)
+	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
+	}
+
+	// Add debug logging
+	log.Infof("Environment variables loaded: %+v", map[string]interface{}{
+		"SERVER_PORT":     v.GetString("SERVER.PORT"),
+		"SERVER_ENV":      v.GetString("SERVER.ENVIRONMENT"),
+		"DB_HOST":         v.GetString("DATABASE.HOST"),
+		"ALLOWED_ORIGINS": v.GetString("SERVER.ALLOWED_ORIGINS"),
+	})
 
 	// Try to read config file based on environment
 	env := v.GetString("ENVIRONMENT")
