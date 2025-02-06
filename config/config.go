@@ -173,6 +173,12 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind AWS_SECRETS_PATH: %w", err)
 	}
 
+	// In LoadConfig() function, add validation
+	awsSecretsPath := v.GetString("AWS_SECRETS_PATH")
+	if awsSecretsPath == "" {
+		return nil, fmt.Errorf("AWS_SECRETS_PATH environment variable must be set")
+	}
+
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("config unmarshal failed: %w", err)
@@ -187,6 +193,11 @@ func LoadConfig() (*Config, error) {
 }
 
 func loadAWSSecrets(v *viper.Viper) error {
+	secretPath := v.GetString("AWS_SECRETS_PATH")
+	if secretPath == "" {
+		return fmt.Errorf("AWS secrets path not configured")
+	}
+
 	ctx := context.Background()
 
 	// Load AWS configuration from environment
@@ -199,10 +210,7 @@ func loadAWSSecrets(v *viper.Viper) error {
 	client := secretsmanager.NewFromConfig(cfg)
 
 	// Get secret
-	secretID := v.GetString("AWS_SECRETS_PATH")
-	if secretID == "" {
-		secretID = "nomadcrew/prod/secrets" // Default value if not set
-	}
+	secretID := secretPath
 	secret, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: &secretID,
 	})
