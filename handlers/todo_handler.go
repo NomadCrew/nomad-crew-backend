@@ -67,11 +67,18 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 
 	// Publish event
 	payload, _ := json.Marshal(todo)
+	log.Debugw("Todo created, publishing event",
+		"todoID", todo.ID,
+		"tripID", todo.TripID,
+		"payloadSize", len(payload))
+
 	if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
 		Type:    types.EventTypeTodoCreated,
 		Payload: payload,
 	}); err != nil {
-		log.Errorw("Failed to publish todo created event", "error", err)
+		log.Errorw("Failed to publish todo created event",
+			"error", err,
+			"tripID", todo.TripID)
 	}
 
 	c.JSON(http.StatusCreated, todo)

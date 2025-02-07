@@ -5,6 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
@@ -25,6 +28,15 @@ func main() {
 	logger.InitLogger()
 	log := logger.GetLogger()
 	defer logger.Close()
+
+	// Handle shutdown signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Info("Shutting down gracefully...")
+	}()
 
 	// Load configuration and DB connection
 	cfg, err := config.LoadConfig()
@@ -87,14 +99,15 @@ func main() {
 	}
 
 	redisClient := redis.NewClient(redisOptions)
+	defer redisClient.Close()
 
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	// Use the new Redis-based event service.
 	eventService := services.NewRedisEventService(redisClient)
+	weatherService := services.NewWeatherService(eventService)
 
 	// Handlers
-	tripModel := models.NewTripModel(tripDB)
+	tripModel := models.NewTripModel(tripDB, weatherService)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
@@ -107,6 +120,12 @@ func main() {
 	wsConfig := middleware.WSConfig{
 		AllowedOrigins: cfg.Server.AllowedOrigins,
 		CheckOrigin: func(r *http.Request) bool {
+			// Allow all origins in development
+			if cfg.Server.Environment == config.EnvDevelopment {
+				return true
+			}
+
+			// Strict check in production
 			origin := r.Header.Get("Origin")
 			for _, allowed := range cfg.Server.AllowedOrigins {
 				if origin == allowed {
@@ -137,9 +156,9 @@ func main() {
 		// Event streaming endpoints:
 		// New WebSocket endpoint:
 		trips.GET("/:id/ws",
+			middleware.WSMiddleware(wsConfig),
 			middleware.AuthMiddleware(cfg),
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			middleware.WSMiddleware(wsConfig),
 			tripHandler.WSStreamEvents,
 		)
 
@@ -167,14 +186,39 @@ func main() {
 				tripHandler.GetTripMembersHandler,
 			)
 		}
+
+		// Add new route
+		trips.PATCH("/:id/trigger-weather-update", tripHandler.TriggerWeatherUpdateHandler)
 	}
 
 	// Todo routes setup
 	setupTodoRoutes(r, todoHandler, cfg, rateLimitService)
 
-	log.Infof("Starting server on port %s", cfg.Server.Port)
-	if err := r.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	// Create server
+	srv := &http.Server{
+		Addr:    ":" + cfg.Server.Port,
+		Handler: r,
+	}
+
+	// Run server in goroutine
+	go func() {
+		log.Infof("Starting server on port %s", cfg.Server.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	<-sigChan
+	log.Info("Shutting down gracefully...")
+
+	// Create shutdown context with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	// Shutdown server
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 }
 

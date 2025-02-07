@@ -9,15 +9,20 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 type TripModel struct {
-	store store.TripStore
+	store          store.TripStore
+	WeatherService *services.WeatherService
 }
 
-func NewTripModel(store store.TripStore) *TripModel {
-	return &TripModel{store: store}
+func NewTripModel(store store.TripStore, weatherService *services.WeatherService) *TripModel {
+	return &TripModel{
+		store:          store,
+		WeatherService: weatherService,
+	}
 }
 
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
@@ -232,7 +237,18 @@ func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus 
 
 	// Update the status in the database
 	update := types.TripUpdate{Status: newStatus}
-	return tm.store.UpdateTrip(ctx, id, update)
+	if err := tm.store.UpdateTrip(ctx, id, update); err != nil {
+		return err
+	}
+	if newStatus == types.TripStatusActive || newStatus == types.TripStatusPlanning {
+		trip, err := tm.GetTripByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		tm.WeatherService.StartWeatherUpdates(ctx, id, trip.Destination)
+	}
+
+	return nil
 }
 
 // AddMember adds a new member to a trip with role validation

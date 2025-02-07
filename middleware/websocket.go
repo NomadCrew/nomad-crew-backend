@@ -28,7 +28,6 @@ func WSMiddleware(cfg WSConfig) gin.HandlerFunc {
 			c.AbortWithStatusJSON(400, gin.H{"error": "WebSocket upgrade failed"})
 			return
 		}
-		defer conn.Close()
 
 		// Store connection in context
 		c.Set("wsConnection", conn)
