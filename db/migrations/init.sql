@@ -27,7 +27,7 @@ CREATE TABLE trips (
     description TEXT,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    destination VARCHAR(255),
+    destination JSONB,
     status VARCHAR(50) NOT NULL DEFAULT 'PLANNING' CHECK (status IN ('PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED')),
     created_by UUID NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

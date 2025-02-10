@@ -137,7 +137,7 @@ func validateTrip(trip *types.Trip) error {
 	if trip.Name == "" {
 		validationErrors = append(validationErrors, "trip name is required")
 	}
-	if trip.Destination == "" {
+	if trip.Destination.Address == "" {
 		validationErrors = append(validationErrors, "trip destination is required")
 	}
 	if trip.StartDate.IsZero() {
@@ -181,8 +181,9 @@ func validateTrip(trip *types.Trip) error {
 func validateTripUpdate(update *types.TripUpdate) error {
 	var validationErrors []string
 
-	if !update.StartDate.IsZero() && !update.EndDate.IsZero() &&
-		update.EndDate.Before(update.StartDate) {
+	if update.StartDate != nil && update.EndDate != nil &&
+		!(*update.StartDate).IsZero() && !(*update.EndDate).IsZero() &&
+		(*update.EndDate).Before(*update.StartDate) {
 		validationErrors = append(validationErrors, "trip end date cannot be before start date")
 	}
 

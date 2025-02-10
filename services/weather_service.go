@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ func NewWeatherService(eventService types.EventPublisher) *WeatherService {
 	}
 }
 
-func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination string) {
+func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
 	s.activeTrips.Store(tripID, destination)
 
 	ticker := time.NewTicker(15 * time.Minute)
@@ -49,62 +50,100 @@ func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string,
 	}()
 }
 
-func (s *WeatherService) updateWeather(ctx context.Context, tripID string, destination string) {
-    log := logger.GetLogger()
+func (s *WeatherService) updateWeather(ctx context.Context, tripID string, destination types.Destination) {
+	log := logger.GetLogger()
 
-    log.Debugw("Initiating weather update",
-        "tripID", tripID,
-        "destination", destination)
+	log.Debugw("Initiating weather update",
+		"tripID", tripID,
+		"destination", destination)
 
-    // Get coordinates
-    lat, lon, err := s.getCoordinates(destination)
-    if err != nil {
-        log.Errorw("Failed to get coordinates",
-            "destination", destination,
-            "error", err,
-        )
-        return
-    }
+	// Get coordinates
+	var lat, lon float64
+	if destination.Coordinates != nil {
+		lat = destination.Coordinates.Lat
+		lon = destination.Coordinates.Lng
+	} else {
+		// Fall back to geocoding if no coordinates
+		var err error
+		lat, lon, err = s.getCoordinates(destination.Address)
+		if err != nil {
+			log.Errorw("Failed to get coordinates",
+				"destination", destination,
+				"error", err,
+			)
+			return
+		}
+	}
 
-    // Get weather
-    weather, err := s.getCurrentWeather(lat, lon)
-    if err != nil {
-        log.Errorw("Failed to get weather",
-            "destination", destination,
-            "error", err,
-        )
-        return
-    }
+	weather, err := s.getCurrentWeather(lat, lon)
+	log.Infow("Fetching weather data",
+		"lat", lat,
+		"lon", lon)
+	if err != nil {
+		log.Errorw("Failed to get weather",
+			"destination", destination,
+			"error", err,
+		)
+		return
+	}
 
-    log.Infow("Weather data retrieved",
-        "temp", weather.Temperature,
-        "weatherCode", weather.WeatherCode)
+	log.Infow("Weather data retrieved",
+		"temperature", weather.Temperature2m,
+		"humidity", weather.RelativeHumidity2m,
+		"weatherCode", weather.WeatherCode,
+		"timestamp", weather.Timestamp)
 
-    // Add trip ID to weather info
-    weather.TripID = tripID
+	// Add trip ID to weather info
+	weather.TripID = tripID
 
-    // Publish update
-    payload, _ := json.Marshal(weather)
-    err = s.eventService.Publish(ctx, tripID, types.Event{
-        Type:      types.EventTypeWeatherUpdated,
-        Payload:   payload,
-        Timestamp: time.Now(),
-    })
+	// Publish update
+	payload, _ := json.Marshal(weather)
+	err = s.eventService.Publish(ctx, tripID, types.Event{
+		Type:      types.EventTypeWeatherUpdated,
+		Payload:   payload,
+		Timestamp: time.Now(),
+	})
 
-    if err != nil {
-        log.Errorw("Failed to publish weather update",
-            "tripID", tripID,
-            "error", err,
-        )
-    }
+	if err != nil {
+		log.Errorw("Failed to publish weather update",
+			"tripID", tripID,
+			"error", err,
+		)
+	}
 
-    log.Debugw("Published weather update event",
-        "tripID", tripID,
-        "payloadSize", len(payload))
+	log.Debugw("Published weather update event",
+		"tripID", tripID,
+		"payloadSize", len(payload))
 }
 
 // getCoordinates fetches the latitude and longitude for a given city/place name
 func (s *WeatherService) getCoordinates(city string) (float64, float64, error) {
+	log := logger.GetLogger()
+
+	// Primary geocoding service
+	lat, lon, err := s.getPrimaryCoordinates(city)
+	if err == nil {
+		return lat, lon, nil
+	}
+
+	log.Warnw("Primary geocoding failed, falling back to Nominatim",
+		"city", city,
+		"error", err)
+
+	// Fallback to Nominatim
+	lat, lon, err = s.getNominatimCoordinates(city)
+	if err == nil {
+		return lat, lon, nil
+	}
+
+	log.Errorw("Both geocoding services failed",
+		"city", city,
+		"error", err)
+
+	return 0, 0, fmt.Errorf("no location found for: %s", city)
+}
+
+func (s *WeatherService) getPrimaryCoordinates(city string) (float64, float64, error) {
 	baseURL := "https://geocoding-api.open-meteo.com/v1/search"
 	params := url.Values{}
 	params.Add("name", city)
@@ -142,13 +181,70 @@ func (s *WeatherService) getCoordinates(city string) (float64, float64, error) {
 	return geoResp.Results[0].Latitude, geoResp.Results[0].Longitude, nil
 }
 
+func (s *WeatherService) getNominatimCoordinates(city string) (float64, float64, error) {
+	baseURL := "https://nominatim.openstreetmap.org/search"
+	params := url.Values{}
+	params.Add("q", city)
+	params.Add("format", "json")
+	params.Add("limit", "1")
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s?%s", baseURL, params.Encode()), nil)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// Set a custom User-Agent as required by Nominatim's usage policy
+	req.Header.Set("User-Agent", "NomadCrewWeatherService/1.0")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("nominatim api error: %s", resp.Status)
+	}
+
+	var nominatimResp []struct {
+		Lat string `json:"lat"`
+		Lon string `json:"lon"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&nominatimResp); err != nil {
+		return 0, 0, err
+	}
+
+	if len(nominatimResp) == 0 {
+		return 0, 0, fmt.Errorf("no location found for: %s", city)
+	}
+
+	lat, err := strconv.ParseFloat(nominatimResp[0].Lat, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid latitude: %s", nominatimResp[0].Lat)
+	}
+
+	lon, err := strconv.ParseFloat(nominatimResp[0].Lon, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid longitude: %s", nominatimResp[0].Lon)
+	}
+
+	return lat, lon, nil
+}
+
 // getCurrentWeather fetches current weather using Open-Meteo API
 func (s *WeatherService) getCurrentWeather(lat, lon float64) (*types.WeatherInfo, error) {
 	baseURL := "https://api.open-meteo.com/v1/forecast"
 	params := url.Values{}
 	params.Add("latitude", fmt.Sprintf("%f", lat))
 	params.Add("longitude", fmt.Sprintf("%f", lon))
-	params.Add("current_weather", "true")
+	params.Add("current", "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,rain,showers,snowfall,weather_code,cloud_cover")
+
+	log := logger.GetLogger()
+	log.Infow("Fetching detailed weather data",
+		"lat", lat,
+		"lon", lon,
+		"params", params.Encode())
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s?%s", baseURL, params.Encode()), nil)
 	if err != nil {
@@ -166,40 +262,50 @@ func (s *WeatherService) getCurrentWeather(lat, lon float64) (*types.WeatherInfo
 	}
 
 	var forecast struct {
-		CurrentWeather struct {
-			Temperature   float64 `json:"temperature"`
-			WindSpeed     float64 `json:"windspeed"`
-			WindDirection float64 `json:"winddirection"`
-			WeatherCode   int     `json:"weathercode"`
-			Time          string  `json:"time"`
-		} `json:"current_weather"`
+		Current struct {
+			Time                string  `json:"time"`
+			Temperature2m       float64 `json:"temperature_2m"`
+			RelativeHumidity2m  int     `json:"relative_humidity_2m"`
+			ApparentTemperature float64 `json:"apparent_temperature"`
+			IsDay               int     `json:"is_day"`
+			Rain                float64 `json:"rain"`
+			Showers             float64 `json:"showers"`
+			Snowfall            float64 `json:"snowfall"`
+			WeatherCode         int     `json:"weather_code"`
+			CloudCover          int     `json:"cloud_cover"`
+		} `json:"current"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&forecast); err != nil {
 		return nil, err
 	}
 
-	timestamp, err := time.Parse("2006-01-02T15:04", forecast.CurrentWeather.Time)
+	timestamp, err := time.Parse("2006-01-02T15:04", forecast.Current.Time)
 	if err != nil {
 		return nil, err
 	}
 
 	return &types.WeatherInfo{
-		Temperature:   forecast.CurrentWeather.Temperature,
-		WindSpeed:     forecast.CurrentWeather.WindSpeed,
-		WindDirection: forecast.CurrentWeather.WindDirection,
-		WeatherCode:   forecast.CurrentWeather.WeatherCode,
-		Timestamp:     timestamp,
+		Temperature2m:       forecast.Current.Temperature2m,
+		RelativeHumidity2m:  forecast.Current.RelativeHumidity2m,
+		ApparentTemperature: forecast.Current.ApparentTemperature,
+		IsDay:               forecast.Current.IsDay == 1,
+		Rain:                forecast.Current.Rain,
+		Showers:             forecast.Current.Showers,
+		Snowfall:            forecast.Current.Snowfall,
+		WeatherCode:         forecast.Current.WeatherCode,
+		CloudCover:          forecast.Current.CloudCover,
+		Timestamp:           timestamp,
 	}, nil
 }
 
-func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination string) {
-    log := logger.GetLogger()
-    
-    // Execute weather update regardless of active status
-    log.Infow("Triggering immediate weather update", 
-        "tripID", tripID,
-        "destination", destination)
-        
-    s.updateWeather(ctx, tripID, destination)
+func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) {
+	log := logger.GetLogger()
+
+	// Execute weather update regardless of active status
+	log.Infow("Triggering immediate weather update",
+		"tripID", tripID,
+		"destination", destination)
+
+	s.updateWeather(ctx, tripID, destination)
 }

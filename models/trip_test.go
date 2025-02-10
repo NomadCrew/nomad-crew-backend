@@ -84,11 +84,13 @@ func TestTripModel_CreateTrip(t *testing.T) {
 	validTrip := &types.Trip{
 		Name:        "Test Trip",
 		Description: "Test Description",
-		Destination: "Test Destination",
-		StartDate:   time.Now().Add(24 * time.Hour),
-		EndDate:     time.Now().Add(48 * time.Hour),
-		CreatedBy:   testUserID,
-		Status:      types.TripStatusPlanning,
+		Destination: types.Destination{
+			Address: "Test Destination",
+		},
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		CreatedBy: testUserID,
+		Status:    types.TripStatusPlanning,
 	}
 
 	t.Run("successful creation", func(t *testing.T) {
@@ -127,10 +129,12 @@ func TestTripModel_GetTripByID(t *testing.T) {
 		ID:          testTripID,
 		Name:        "Test Trip",
 		Description: "Test Description",
-		Destination: "Test Destination",
-		StartDate:   time.Now().Add(24 * time.Hour),
-		EndDate:     time.Now().Add(48 * time.Hour),
-		CreatedBy:   testUserID,
+		Destination: types.Destination{
+			Address: "Test Destination",
+		},
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		CreatedBy: testUserID,
 	}
 
 	t.Run("successful retrieval", func(t *testing.T) {
@@ -161,23 +165,31 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 		ID:          testTripID,
 		Name:        "Test Trip",
 		Description: "Test Description",
-		Destination: "Test Destination",
-		StartDate:   time.Now().Add(24 * time.Hour),
-		EndDate:     time.Now().Add(48 * time.Hour),
-		CreatedBy:   testUserID,
+		Destination: types.Destination{
+			Address: "Test Destination",
+		},
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		CreatedBy: testUserID,
 	}
 
 	update := &types.TripUpdate{
-		Name:        "Updated Trip",
-		Description: "Updated Description",
-		Destination: "Updated Destination",
-		StartDate:   time.Now().Add(24 * time.Hour),
-		EndDate:     time.Now().Add(48 * time.Hour),
+		Name:        stringPtr("Updated Trip"),
+		Description: stringPtr("Updated Description"),
+		Destination: &types.Destination{
+			Address: "Updated Destination",
+		},
+		StartDate: timePtr(time.Now().Add(24 * time.Hour)),
+		EndDate:   timePtr(time.Now().Add(48 * time.Hour)),
 	}
 
 	t.Run("successful update", func(t *testing.T) {
 		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("UpdateTrip", ctx, testTripID, *update).Return(nil).Once()
+		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
+			return *update.Name == "Updated Trip" &&
+				*update.Description == "Updated Description" &&
+				update.Destination.Address == "Updated Destination"
+		})).Return(nil).Once()
 		err := tripModel.UpdateTrip(ctx, testTripID, update)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
@@ -193,9 +205,11 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 	})
 
 	t.Run("validation error - invalid dates", func(t *testing.T) {
-		invalidUpdate := *update
-		invalidUpdate.StartDate = time.Now().Add(48 * time.Hour)
-		invalidUpdate.EndDate = time.Now().Add(24 * time.Hour)
+		invalidUpdate := types.TripUpdate{
+			Destination: &types.Destination{Address: "Invalid"},
+			StartDate:   timePtr(time.Now().Add(48 * time.Hour)),
+			EndDate:     timePtr(time.Now().Add(24 * time.Hour)),
+		}
 		err := tripModel.UpdateTrip(ctx, testTripID, &invalidUpdate)
 		assert.Error(t, err)
 		assert.Equal(t, errors.ValidationError, err.(*errors.AppError).Type)
@@ -211,10 +225,12 @@ func TestTripModel_DeleteTrip(t *testing.T) {
 		ID:          testTripID,
 		Name:        "Test Trip",
 		Description: "Test Description",
-		Destination: "Test Destination",
-		StartDate:   time.Now().Add(24 * time.Hour),
-		EndDate:     time.Now().Add(48 * time.Hour),
-		CreatedBy:   testUserID,
+		Destination: types.Destination{
+			Address: "Test Destination",
+		},
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		CreatedBy: testUserID,
 	}
 
 	t.Run("successful deletion", func(t *testing.T) {
@@ -246,11 +262,13 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 		ID:          testTripID,
 		Name:        "Test Trip",
 		Description: "Test Description",
-		Destination: "Test Destination",
-		StartDate:   time.Now().Add(24 * time.Hour),
-		EndDate:     time.Now().Add(48 * time.Hour),
-		CreatedBy:   testUserID,
-		Status:      types.TripStatusPlanning,
+		Destination: types.Destination{
+			Address: "Test Destination",
+		},
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		CreatedBy: testUserID,
+		Status:    types.TripStatusPlanning,
 	}
 
 	t.Run("valid transition - planning to active", func(t *testing.T) {
@@ -328,12 +346,14 @@ func TestTripModel_SearchTrips(t *testing.T) {
 
 	searchResults := []*types.Trip{
 		{
-			ID:          testTripID,
-			Name:        "Paris Trip",
-			Destination: "Paris",
-			CreatedBy:   testUserID,
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
+			ID:   testTripID,
+			Name: "Paris Trip",
+			Destination: types.Destination{
+				Address: "Paris",
+			},
+			CreatedBy: testUserID,
+			StartDate: time.Now().Add(24 * time.Hour),
+			EndDate:   time.Now().Add(48 * time.Hour),
 		},
 	}
 
@@ -347,7 +367,7 @@ func TestTripModel_SearchTrips(t *testing.T) {
 		result, err := tripModel.SearchTrips(ctx, criteria)
 		assert.NoError(t, err)
 		assert.Len(t, result, 1)
-		assert.Equal(t, "Paris", result[0].Destination)
+		assert.Equal(t, "Paris", result[0].Destination.Address)
 		mockStore.AssertExpectations(t)
 	})
 
@@ -397,10 +417,12 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 			name: "empty name",
 			trip: &types.Trip{
 				Description: "Test Description",
-				Destination: "Paris",
-				StartDate:   now.Add(24 * time.Hour),
-				EndDate:     now.Add(48 * time.Hour),
-				CreatedBy:   testUserID,
+				Destination: types.Destination{
+					Address: "Paris",
+				},
+				StartDate: now.Add(24 * time.Hour),
+				EndDate:   now.Add(48 * time.Hour),
+				CreatedBy: testUserID,
 			},
 			expectError: "trip name is required",
 		},
@@ -420,10 +442,12 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 			trip: &types.Trip{
 				Name:        "Test Trip",
 				Description: "Test Description",
-				Destination: "Paris",
-				StartDate:   now.Add(48 * time.Hour),
-				EndDate:     now.Add(24 * time.Hour),
-				CreatedBy:   testUserID,
+				Destination: types.Destination{
+					Address: "Paris",
+				},
+				StartDate: now.Add(48 * time.Hour),
+				EndDate:   now.Add(24 * time.Hour),
+				CreatedBy: testUserID,
 			},
 			expectError: "trip end date cannot be before start date",
 		},
@@ -432,9 +456,11 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 			trip: &types.Trip{
 				Name:        "Test Trip",
 				Description: "Test Description",
-				Destination: "Paris",
-				StartDate:   now.Add(24 * time.Hour),
-				EndDate:     now.Add(48 * time.Hour),
+				Destination: types.Destination{
+					Address: "Paris",
+				},
+				StartDate: now.Add(24 * time.Hour),
+				EndDate:   now.Add(48 * time.Hour),
 			},
 			expectError: "trip creator ID is required",
 		},
@@ -443,11 +469,13 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 			trip: &types.Trip{
 				Name:        "Test Trip",
 				Description: "Test Description",
-				Destination: "Paris",
-				StartDate:   now.Add(24 * time.Hour),
-				EndDate:     now.Add(48 * time.Hour),
-				CreatedBy:   testUserID,
-				Status:      "INVALID_STATUS",
+				Destination: types.Destination{
+					Address: "Paris",
+				},
+				StartDate: now.Add(24 * time.Hour),
+				EndDate:   now.Add(48 * time.Hour),
+				CreatedBy: testUserID,
+				Status:    "INVALID_STATUS",
 			},
 			expectError: "invalid trip status",
 		},
@@ -473,11 +501,13 @@ func TestTripModel_EdgeCases(t *testing.T) {
 			ID:          testTripID,
 			Name:        "World Tour",
 			Description: "Year-long trip",
-			Destination: "Multiple",
-			StartDate:   now,
-			EndDate:     now.AddDate(1, 0, 0), // One year later
-			CreatedBy:   testUserID,
-			Status:      types.TripStatusPlanning,
+			Destination: types.Destination{
+				Address: "Multiple",
+			},
+			StartDate: now,
+			EndDate:   now.AddDate(1, 0, 0), // One year later
+			CreatedBy: testUserID,
+			Status:    types.TripStatusPlanning,
 		}
 
 		mockStore.On("CreateTrip", ctx, *longTrip).Return(testTripID, nil).Once()
@@ -490,11 +520,13 @@ func TestTripModel_EdgeCases(t *testing.T) {
 			ID:          testTripID,
 			Name:        "Day Trip",
 			Description: "Single day trip",
-			Destination: "Nearby",
-			StartDate:   now,
-			EndDate:     now.Add(23 * time.Hour), // Same day
-			CreatedBy:   testUserID,
-			Status:      types.TripStatusPlanning,
+			Destination: types.Destination{
+				Address: "Nearby",
+			},
+			StartDate: now,
+			EndDate:   now.Add(23 * time.Hour), // Same day
+			CreatedBy: testUserID,
+			Status:    types.TripStatusPlanning,
 		}
 
 		mockStore.On("CreateTrip", ctx, *sameDayTrip).Return(testTripID, nil).Once()
@@ -506,10 +538,12 @@ func TestTripModel_EdgeCases(t *testing.T) {
 		pastTrip := &types.Trip{
 			Name:        "Past Trip",
 			Description: "Trip starting in past",
-			Destination: "Somewhere",
-			StartDate:   now.AddDate(0, 0, -1), // Yesterday
-			EndDate:     now.AddDate(0, 0, 5),
-			CreatedBy:   testUserID,
+			Destination: types.Destination{
+				Address: "Somewhere",
+			},
+			StartDate: now.AddDate(0, 0, -1), // Yesterday
+			EndDate:   now.AddDate(0, 0, 5),
+			CreatedBy: testUserID,
 		}
 
 		err := tripModel.CreateTrip(ctx, pastTrip)
@@ -594,4 +628,12 @@ func TestTripModel_StatusTransitionEdgeCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func stringPtr(s string) *string {
+	return &s
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
 }

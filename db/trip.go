@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -133,30 +134,35 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 	var args []interface{}
 	argPosition := 1
 
-	// Update fields
-	if update.Name != "" {
+	// Update fields - need to check for nil pointers
+	if update.Name != nil && *update.Name != "" {
 		setFields = append(setFields, fmt.Sprintf("name = $%d", argPosition))
-		args = append(args, update.Name)
+		args = append(args, *update.Name)
 		argPosition++
 	}
-	if update.Description != "" {
+	if update.Description != nil && *update.Description != "" {
 		setFields = append(setFields, fmt.Sprintf("description = $%d", argPosition))
-		args = append(args, update.Description)
+		args = append(args, *update.Description)
 		argPosition++
 	}
-	if update.Destination != "" {
+	if update.Destination != nil {
+		// Handle JSONB destination
+		destJSON, err := json.Marshal(update.Destination)
+		if err != nil {
+			return fmt.Errorf("failed to marshal destination: %w", err)
+		}
 		setFields = append(setFields, fmt.Sprintf("destination = $%d", argPosition))
-		args = append(args, update.Destination)
+		args = append(args, destJSON)
 		argPosition++
 	}
-	if !update.StartDate.IsZero() {
+	if update.StartDate != nil && !update.StartDate.IsZero() {
 		setFields = append(setFields, fmt.Sprintf("start_date = $%d", argPosition))
-		args = append(args, update.StartDate)
+		args = append(args, *update.StartDate)
 		argPosition++
 	}
-	if !update.EndDate.IsZero() {
+	if update.EndDate != nil && !update.EndDate.IsZero() {
 		setFields = append(setFields, fmt.Sprintf("end_date = $%d", argPosition))
-		args = append(args, update.EndDate)
+		args = append(args, *update.EndDate)
 		argPosition++
 	}
 	if update.Status != "" {

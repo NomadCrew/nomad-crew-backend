@@ -34,11 +34,12 @@ func NewTripHandler(model *models.TripModel, eventService types.EventPublisher) 
 
 // CreateTripRequest represents the request body for creating a trip
 type CreateTripRequest struct {
-	Name        string    `json:"name" binding:"required"`
-	Description string    `json:"description"`
-	Destination string    `json:"destination" binding:"required"`
-	StartDate   time.Time `json:"startDate" binding:"required"`
-	EndDate     time.Time `json:"endDate" binding:"required"`
+	Name        string            `json:"name" binding:"required"`
+	Description string            `json:"description"`
+	Destination types.Destination `json:"destination" binding:"required"`
+	StartDate   time.Time         `json:"startDate" binding:"required"`
+	EndDate     time.Time         `json:"endDate" binding:"required"`
+	Status      types.TripStatus  `json:"status"`
 }
 
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
@@ -80,9 +81,11 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		CreatedBy:   userID.(string),
 		Status:      types.TripStatusPlanning,
 	}
-	log.Infow("Creating trip", "trip", trip)
+	log.Infow("Processing trip creation",
+		"raw_request", req,
+		"parsed_destination", trip.Destination)
 
-	imageURL, err := pexelsClient.SearchDestinationImage(trip.Destination)
+	imageURL, err := pexelsClient.SearchDestinationImage(trip.Destination.Address)
 	if err != nil {
 		log.Warnw("Failed to fetch background image", "error", err)
 		// Continue without image - don't fail the trip creation
@@ -430,90 +433,90 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // It both sends events from the Redis-based event service to the client
 // and reads client messages to publish them as events.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
-    conn := c.MustGet("wsConnection").(*websocket.Conn)
-    tripID := c.Param("id")
-    userID := c.GetString("user_id")
-    log := logger.GetLogger()
-    ctx := c.Request.Context()
+	conn := c.MustGet("wsConnection").(*websocket.Conn)
+	tripID := c.Param("id")
+	userID := c.GetString("user_id")
+	log := logger.GetLogger()
+	ctx := c.Request.Context()
 
-    log.Infow("WebSocket connection established",
-        "tripID", tripID,
-        "userID", userID,
-        "remoteAddr", conn.RemoteAddr())
+	log.Infow("WebSocket connection established",
+		"tripID", tripID,
+		"userID", userID,
+		"remoteAddr", conn.RemoteAddr())
 
-    // Subscribe to Redis events
-    eventChan, err := h.eventService.Subscribe(ctx, tripID, userID)
-    if err != nil {
-        log.Errorw("Failed to subscribe to events",
-            "error", err,
-            "tripID", tripID)
-        conn.Close()
-        return
-    }
+	// Subscribe to Redis events
+	eventChan, err := h.eventService.Subscribe(ctx, tripID, userID)
+	if err != nil {
+		log.Errorw("Failed to subscribe to events",
+			"error", err,
+			"tripID", tripID)
+		conn.Close()
+		return
+	}
 
-    // Goroutine to forward events to client
-    go func() {
-        for event := range eventChan {
-            msg, err := json.Marshal(event)
-            if err != nil {
-                log.Errorw("Failed to marshal event",
-                    "error", err,
-                    "eventType", event.Type)
-                continue
-            }
+	// Goroutine to forward events to client
+	go func() {
+		for event := range eventChan {
+			msg, err := json.Marshal(event)
+			if err != nil {
+				log.Errorw("Failed to marshal event",
+					"error", err,
+					"eventType", event.Type)
+				continue
+			}
 
-            if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-                log.Errorw("Failed to send event to client",
-                    "error", err,
-                    "client", conn.RemoteAddr())
-                return
-            }
-        }
-    }()
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Errorw("Failed to send event to client",
+					"error", err,
+					"client", conn.RemoteAddr())
+				return
+			}
+		}
+	}()
 
-    // Keep connection alive
-    for {
-        _, _, err := conn.ReadMessage()
-        if err != nil {
-            if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-                log.Warnw("WebSocket closed unexpectedly",
-                    "error", err,
-                    "client", conn.RemoteAddr())
-            }
-            break
-        }
-    }
+	// Keep connection alive
+	for {
+		_, _, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+				log.Warnw("WebSocket closed unexpectedly",
+					"error", err,
+					"client", conn.RemoteAddr())
+			}
+			break
+		}
+	}
 
-    log.Info("WebSocket connection closed")
-    conn.Close()
+	log.Info("WebSocket connection closed")
+	conn.Close()
 }
 
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
-    log := logger.GetLogger()
-    tripID := c.Param("id")
-    userID := c.GetString("user_id")
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	userID := c.GetString("user_id")
 
-    // Verify trip ownership
-    trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
-    if err != nil {
-        log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
-        if err := c.Error(err); err != nil {
-            log.Errorw("Failed to add model error", "error", err)
-        }
-        return
-    }
+	// Verify trip ownership
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+	if err != nil {
+		log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
+		if err := c.Error(err); err != nil {
+			log.Errorw("Failed to add model error", "error", err)
+		}
+		return
+	}
 
-    if trip.CreatedBy != userID {
-        if err := c.Error(errors.AuthenticationFailed("Not authorized to trigger weather update")); err != nil {
-            log.Errorw("Failed to add authentication error", "error", err)
-        }
-        return
-    }
+	if trip.CreatedBy != userID {
+		if err := c.Error(errors.AuthenticationFailed("Not authorized to trigger weather update")); err != nil {
+			log.Errorw("Failed to add authentication error", "error", err)
+		}
+		return
+	}
 
-    // Pass trip destination directly to avoid activeTrips dependency
-    h.tripModel.WeatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination)
+	// Pass trip destination directly to avoid activeTrips dependency
+	h.tripModel.WeatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination)
 
-    c.JSON(http.StatusOK, gin.H{
-        "message": "Weather update triggered successfully",
-    })
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Weather update triggered successfully",
+	})
 }
