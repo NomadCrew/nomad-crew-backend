@@ -39,6 +39,11 @@ func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
 	}
 
 	trip.ID = id
+
+	if trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning {
+		tm.WeatherService.StartWeatherUpdates(context.Background(), trip.ID, trip.Destination)
+	}
+
 	return nil
 }
 
@@ -246,7 +251,7 @@ func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus 
 		if err != nil {
 			return err
 		}
-		tm.WeatherService.StartWeatherUpdates(ctx, id, trip.Destination)
+		tm.WeatherService.StartWeatherUpdates(context.Background(), id, trip.Destination)
 	}
 
 	return nil

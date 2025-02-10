@@ -17,7 +17,13 @@ import (
 type WeatherService struct {
 	eventService types.EventPublisher
 	client       *http.Client
-	activeTrips  sync.Map
+	activeTrips  sync.Map // map[tripID]*tripSubscribers
+}
+
+type tripSubscribers struct {
+	count       int
+	cancel      context.CancelFunc
+	destination types.Destination
 }
 
 func NewWeatherService(eventService types.EventPublisher) *WeatherService {
@@ -26,6 +32,38 @@ func NewWeatherService(eventService types.EventPublisher) *WeatherService {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+	}
+}
+
+func (s *WeatherService) IncrementSubscribers(tripID string, dest types.Destination) {
+	actual, _ := s.activeTrips.LoadOrStore(tripID, &tripSubscribers{
+		destination: dest,
+	})
+
+	subs := actual.(*tripSubscribers)
+	subs.count++
+
+	// Start updates on first subscriber
+	if subs.count == 1 {
+		ctx, cancel := context.WithCancel(context.Background())
+		subs.cancel = cancel
+		go s.startUpdates(ctx, tripID, dest)
+	}
+}
+
+func (s *WeatherService) DecrementSubscribers(tripID string) {
+	actual, ok := s.activeTrips.Load(tripID)
+	if !ok {
+		return
+	}
+
+	subs := actual.(*tripSubscribers)
+	subs.count--
+
+	// Stop updates when last subscriber leaves
+	if subs.count <= 0 {
+		subs.cancel()
+		s.activeTrips.Delete(tripID)
 	}
 }
 
@@ -50,12 +88,26 @@ func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string,
 	}()
 }
 
+func (s *WeatherService) startUpdates(ctx context.Context, tripID string, dest types.Destination) {
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	// Initial update
+	s.updateWeather(ctx, tripID, dest)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.updateWeather(ctx, tripID, dest)
+		}
+	}
+}
+
 func (s *WeatherService) updateWeather(ctx context.Context, tripID string, destination types.Destination) {
 	log := logger.GetLogger()
-
-	log.Debugw("Initiating weather update",
-		"tripID", tripID,
-		"destination", destination)
+	log.Infow("Starting weather update", "tripID", tripID, "destination", destination.Address)
 
 	// Get coordinates
 	var lat, lon float64
@@ -98,22 +150,28 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 
 	// Publish update
 	payload, _ := json.Marshal(weather)
-	err = s.eventService.Publish(ctx, tripID, types.Event{
-		Type:      types.EventTypeWeatherUpdated,
-		Payload:   payload,
-		Timestamp: time.Now(),
-	})
 
-	if err != nil {
-		log.Errorw("Failed to publish weather update",
+	if apiErr := s.eventService.Publish(ctx, tripID, types.Event{
+		Type:    types.EventTypeWeatherUpdated,
+		Payload: payload,
+	}); apiErr != nil {
+		log.Errorw("Event publish failed",
 			"tripID", tripID,
-			"error", err,
+			"error", apiErr,
+			"event_type", types.EventTypeWeatherUpdated,
+		)
+	} else {
+		log.Infow("Successfully published weather update",
+			"tripID", tripID,
+			"event_size", len(payload),
 		)
 	}
 
-	log.Debugw("Published weather update event",
+	log.Debugw("Weather update completed",
 		"tripID", tripID,
-		"payloadSize", len(payload))
+		"temperature", weather.Temperature2m,
+		"timestamp", weather.Timestamp,
+	)
 }
 
 // getCoordinates fetches the latitude and longitude for a given city/place name

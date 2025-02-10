@@ -444,6 +444,18 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		"userID", userID,
 		"remoteAddr", conn.RemoteAddr())
 
+	// Get trip destination
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+	if err != nil {
+		log.Errorw("Failed to get trip for weather updates", "error", err)
+		conn.Close()
+		return
+	}
+
+	// Start tracking connection
+	h.tripModel.WeatherService.IncrementSubscribers(tripID, trip.Destination)
+	defer h.tripModel.WeatherService.DecrementSubscribers(tripID)
+
 	// Subscribe to Redis events
 	eventChan, err := h.eventService.Subscribe(ctx, tripID, userID)
 	if err != nil {
