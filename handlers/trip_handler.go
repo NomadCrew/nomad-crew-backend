@@ -448,7 +448,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
 	if err != nil {
 		log.Errorw("Failed to get trip for weather updates", "error", err)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Errorw("Failed to close WebSocket connection", "error", err)
+		}
 		return
 	}
 
@@ -462,7 +464,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		log.Errorw("Failed to subscribe to events",
 			"error", err,
 			"tripID", tripID)
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Errorw("Failed to close WebSocket connection", "error", err)
+		}
 		return
 	}
 
@@ -500,7 +504,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 	}
 
 	log.Info("WebSocket connection closed")
-	conn.Close()
+	if err := conn.Close(); err != nil {
+		log.Errorw("Failed to close WebSocket connection", "error", err)
+	}
 }
 
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
