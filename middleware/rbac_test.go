@@ -4,14 +4,15 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 type MockTripModel struct {
@@ -52,6 +53,18 @@ func (m *MockTripModel) ListUserTrips(ctx context.Context, userID string) ([]*ty
 func (m *MockTripModel) SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error) {
 	args := m.Called(ctx, criteria)
 	return args.Get(0).([]*types.Trip), args.Error(1)
+}
+
+func TestMain(m *testing.M) {
+	// Initialize test logger that writes to stdout
+	logger.Init(&logger.Config{
+		Environment: "test",
+		LogLevel:    "error",
+		Output:      "stdout",
+	})
+
+	code := m.Run()
+	os.Exit(code)
 }
 
 func TestRequireRole(t *testing.T) {

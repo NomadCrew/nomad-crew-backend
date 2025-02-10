@@ -288,9 +288,10 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 	paramCount := 1
 
 	if criteria.Destination != "" {
-		conditions = append(conditions, fmt.Sprintf("t.destination ILIKE $%d", paramCount))
+		// Use JSONB operator to search address field
+		conditions = append(conditions, fmt.Sprintf("destination->>'address' ILIKE $%d", paramCount))
 		params = append(params, "%"+criteria.Destination+"%")
-		paramCount++ // nolint:ineffassign
+		paramCount++
 	}
 
 	if !criteria.StartDateFrom.IsZero() {

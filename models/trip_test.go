@@ -15,6 +15,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 )
 
 type MockTripStore struct {
@@ -78,7 +79,11 @@ var _ store.TripStore = (*mocks.MockTripStore)(nil)
 
 func TestTripModel_CreateTrip(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	
+	// Initialize WeatherService with mock event publisher
+	weatherService := services.NewWeatherService(nil)
+	tripModel := NewTripModel(mockStore, weatherService)
+	
 	ctx := context.Background()
 
 	validTrip := &types.Trip{

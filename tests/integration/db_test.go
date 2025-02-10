@@ -185,7 +185,7 @@ func TestTripDB_Integration(t *testing.T) {
 
 		fetchedTrip, err := tripDB.GetTrip(ctx, id)
 		require.NoError(t, err)
-		require.Equal(t, update.Name, fetchedTrip.Name)
+		require.Equal(t, "Updated Trip", fetchedTrip.Name)
 		require.Equal(t, update.Description, fetchedTrip.Description)
 		require.Equal(t, update.Destination, fetchedTrip.Destination)
 	})
