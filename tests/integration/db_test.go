@@ -170,24 +170,24 @@ func TestTripDB_Integration(t *testing.T) {
 			CreatedBy:   testUserUUID,
 			Status:      types.TripStatusPlanning,
 		}
-
+	
 		id, err := tripDB.CreateTrip(ctx, trip)
 		require.NoError(t, err)
-
+	
 		update := types.TripUpdate{
 			Name:        ptr("Updated Trip"),
 			Description: ptr("Updated Description"),
 			Destination: &types.Destination{Address: "Updated Location"},
 		}
-
+	
 		err = tripDB.UpdateTrip(ctx, id, update)
 		require.NoError(t, err)
-
+	
 		fetchedTrip, err := tripDB.GetTrip(ctx, id)
 		require.NoError(t, err)
-		require.Equal(t, "Updated Trip", fetchedTrip.Name)
-		require.Equal(t, update.Description, fetchedTrip.Description)
-		require.Equal(t, update.Destination, fetchedTrip.Destination)
+		require.Equal(t, *update.Name, fetchedTrip.Name)
+		require.Equal(t, *update.Description, fetchedTrip.Description)
+		require.Equal(t, update.Destination.Address, fetchedTrip.Destination.Address)
 	})
 
 	t.Run("List User Trips", func(t *testing.T) {

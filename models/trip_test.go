@@ -13,9 +13,9 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/NomadCrew/nomad-crew-backend/services"
 )
 
 type MockTripStore struct {
@@ -79,11 +79,11 @@ var _ store.TripStore = (*mocks.MockTripStore)(nil)
 
 func TestTripModel_CreateTrip(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	
+
 	// Initialize WeatherService with mock event publisher
 	weatherService := services.NewWeatherService(nil)
 	tripModel := NewTripModel(mockStore, weatherService)
-	
+
 	ctx := context.Background()
 
 	validTrip := &types.Trip{
@@ -277,7 +277,12 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 	}
 
 	t.Run("valid transition - planning to active", func(t *testing.T) {
+		// First call expectation - for status check
 		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
+
+		// Second call expectation - for weather service update
+		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
+
 		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
 			return update.Status == types.TripStatusActive
 		})).Return(nil).Once()

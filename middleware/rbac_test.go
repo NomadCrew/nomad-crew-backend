@@ -3,7 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"	
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -55,9 +55,10 @@ func (m *MockTripModel) SearchTrips(ctx context.Context, criteria types.TripSear
 }
 
 func TestRequireRole(t *testing.T) {
-	// Initialize logger
-	logger.InitLogger()
-	defer logger.Close()
+	// Use test logger configuration
+	logger.IsTest = true
+    logger.InitLogger()
+    defer logger.Close()
 
 	// Mocking dependencies
 	mockTripModel := &MockTripModel{}
