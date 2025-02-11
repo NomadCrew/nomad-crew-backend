@@ -13,6 +13,7 @@ var (
     once   sync.Once
 )
 
+// IsTest is used to detect test environment
 var IsTest bool
 
 func InitLogger() {
@@ -39,6 +40,13 @@ func InitLogger() {
         }
         logger = zapLogger.Sugar()
     })
+}
+
+func GetLogger() *zap.SugaredLogger {
+	if logger == nil {
+		InitLogger() // Ensure initialization if not already done
+	}
+	return logger
 }
 
 func Close() error {
