@@ -25,25 +25,25 @@ func NewTripModel(store store.TripStore, weatherService types.WeatherServiceInte
 }
 
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
-	log := logger.GetLogger()
-	if err := validateTrip(trip); err != nil {
-		return err
-	}
+    log := logger.GetLogger()
+    if err := validateTrip(trip); err != nil {
+        return err
+    }
 
-	id, err := tm.store.CreateTrip(ctx, *trip)
+    id, err := tm.store.CreateTrip(ctx, *trip)
 
-	if err != nil {
-		log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
-		return errors.NewDatabaseError(err)
-	}
+    if err != nil {
+        log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
+        return errors.NewDatabaseError(err)
+    }
 
-	trip.ID = id
+    trip.ID = id
 
-	if trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning {
-		tm.WeatherService.StartWeatherUpdates(context.Background(), trip.ID, trip.Destination)
-	}
+    if tm.WeatherService != nil && (trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning) {
+        tm.WeatherService.StartWeatherUpdates(context.Background(), trip.ID, trip.Destination)
+    }
 
-	return nil
+    return nil
 }
 
 func (tm *TripModel) GetTripByID(ctx context.Context, id string) (*types.Trip, error) {
