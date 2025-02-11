@@ -9,20 +9,19 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 type TripModel struct {
-	store          store.TripStore
-	WeatherService *services.WeatherService
+    store          store.TripStore
+    WeatherService types.WeatherServiceInterface
 }
 
-func NewTripModel(store store.TripStore, weatherService *services.WeatherService) *TripModel {
-	return &TripModel{
-		store:          store,
-		WeatherService: weatherService,
-	}
+func NewTripModel(store store.TripStore, weatherService types.WeatherServiceInterface) *TripModel {
+    return &TripModel{
+        store:          store,
+        WeatherService: weatherService,
+    }
 }
 
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {

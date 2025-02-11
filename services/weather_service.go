@@ -26,6 +26,8 @@ type tripSubscribers struct {
 	destination types.Destination
 }
 
+var _ types.WeatherServiceInterface = (*WeatherService)(nil)
+
 func NewWeatherService(eventService types.EventPublisher) *WeatherService {
 	return &WeatherService{
 		eventService: eventService,

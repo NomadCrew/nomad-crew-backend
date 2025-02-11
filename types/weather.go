@@ -2,6 +2,7 @@ package types
 
 import (
 	"time"
+	"context"
 )
 
 type WeatherInfo struct {
@@ -21,4 +22,11 @@ type WeatherInfo struct {
 type WeatherServiceError struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
+}
+
+type WeatherServiceInterface interface {
+    StartWeatherUpdates(ctx context.Context, tripID string, destination Destination)
+    IncrementSubscribers(tripID string, dest Destination)
+    DecrementSubscribers(tripID string)
+    TriggerImmediateUpdate(ctx context.Context, tripID string, destination Destination)
 }
