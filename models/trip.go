@@ -13,28 +13,37 @@ import (
 )
 
 type TripModel struct {
-	store store.TripStore
+    store          store.TripStore
+    WeatherService types.WeatherServiceInterface
 }
 
-func NewTripModel(store store.TripStore) *TripModel {
-	return &TripModel{store: store}
+func NewTripModel(store store.TripStore, weatherService types.WeatherServiceInterface) *TripModel {
+    return &TripModel{
+        store:          store,
+        WeatherService: weatherService,
+    }
 }
 
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
-	log := logger.GetLogger()
-	if err := validateTrip(trip); err != nil {
-		return err
-	}
+    log := logger.GetLogger()
+    if err := validateTrip(trip); err != nil {
+        return err
+    }
 
-	id, err := tm.store.CreateTrip(ctx, *trip)
+    id, err := tm.store.CreateTrip(ctx, *trip)
 
-	if err != nil {
-		log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
-		return errors.NewDatabaseError(err)
-	}
+    if err != nil {
+        log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
+        return errors.NewDatabaseError(err)
+    }
 
-	trip.ID = id
-	return nil
+    trip.ID = id
+
+    if tm.WeatherService != nil && (trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning) {
+        tm.WeatherService.StartWeatherUpdates(context.Background(), trip.ID, trip.Destination)
+    }
+
+    return nil
 }
 
 func (tm *TripModel) GetTripByID(ctx context.Context, id string) (*types.Trip, error) {
@@ -132,7 +141,7 @@ func validateTrip(trip *types.Trip) error {
 	if trip.Name == "" {
 		validationErrors = append(validationErrors, "trip name is required")
 	}
-	if trip.Destination == "" {
+	if trip.Destination.Address == "" {
 		validationErrors = append(validationErrors, "trip destination is required")
 	}
 	if trip.StartDate.IsZero() {
@@ -176,8 +185,9 @@ func validateTrip(trip *types.Trip) error {
 func validateTripUpdate(update *types.TripUpdate) error {
 	var validationErrors []string
 
-	if !update.StartDate.IsZero() && !update.EndDate.IsZero() &&
-		update.EndDate.Before(update.StartDate) {
+	if update.StartDate != nil && update.EndDate != nil &&
+		!(*update.StartDate).IsZero() && !(*update.EndDate).IsZero() &&
+		(*update.EndDate).Before(*update.StartDate) {
 		validationErrors = append(validationErrors, "trip end date cannot be before start date")
 	}
 
@@ -232,7 +242,18 @@ func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus 
 
 	// Update the status in the database
 	update := types.TripUpdate{Status: newStatus}
-	return tm.store.UpdateTrip(ctx, id, update)
+	if err := tm.store.UpdateTrip(ctx, id, update); err != nil {
+		return err
+	}
+	if newStatus == types.TripStatusActive || newStatus == types.TripStatusPlanning {
+		trip, err := tm.GetTripByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		tm.WeatherService.StartWeatherUpdates(context.Background(), id, trip.Destination)
+	}
+
+	return nil
 }
 
 // AddMember adds a new member to a trip with role validation

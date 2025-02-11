@@ -18,6 +18,9 @@ type RedisEventService struct {
 
 // NewRedisEventService returns a new instance of RedisEventService.
 func NewRedisEventService(redisClient *redis.Client) *RedisEventService {
+	logger.GetLogger().Infow("Initializing Redis event service",
+		"redisAddress", redisClient.Options().Addr,
+		"dbNumber", redisClient.Options().DB)
 	return &RedisEventService{
 		redisClient: redisClient,
 	}
@@ -39,6 +42,10 @@ func (r *RedisEventService) Publish(ctx context.Context, tripID string, event ty
 	}
 
 	channel := fmt.Sprintf("trip:%s", tripID)
+	logger.GetLogger().Debugw("Publishing event to Redis",
+		"channel", channel,
+		"eventType", event.Type,
+		"payloadSize", len(data))
 	return r.redisClient.Publish(ctx, channel, data).Err()
 }
 
@@ -46,6 +53,10 @@ func (r *RedisEventService) Publish(ctx context.Context, tripID string, event ty
 // It returns a Go channel on which events will be sent.
 func (r *RedisEventService) Subscribe(ctx context.Context, tripID string, userID string) (<-chan types.Event, error) {
 	channelName := fmt.Sprintf("trip:%s", tripID)
+	logger.GetLogger().Debugw("Subscribing to Redis channel",
+		"channel", channelName,
+		"userID", userID)
+
 	pubsub := r.redisClient.Subscribe(ctx, channelName)
 
 	// Create a channel for our events.

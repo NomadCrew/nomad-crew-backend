@@ -31,8 +31,12 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log := logger.GetLogger()
 
-		// Verify Supabase API key.
-		apiKey := c.GetHeader("apikey")
+		// 1. API Key Check
+		apiKey := c.Query("apikey") // First check query params
+		if apiKey == "" {
+			apiKey = c.GetHeader("apikey") // Fallback to header
+		}
+
 		if apiKey != cfg.ExternalServices.SupabaseAnonKey {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "Invalid API key",
@@ -40,16 +44,22 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Extract and validate Bearer token.
-		authHeader := c.GetHeader("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		// 2. Token Handling
+		tokenString := c.Query("token")
+		if tokenString == "" {
+			// Fallback to header-based auth
+			authHeader := c.GetHeader("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+			}
+		}
+
+		if tokenString == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid authorization header",
+				"error": "Missing authentication token",
 			})
 			return
 		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 		claims, err := validateSupabaseToken(tokenString)
 		if err != nil {

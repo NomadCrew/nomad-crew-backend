@@ -26,3 +26,7 @@ type EventPublisher interface {
     Publish(ctx context.Context, channel string, event Event) error
     Subscribe(ctx context.Context, tripID string, userID string) (<-chan Event, error)
 }
+
+const (
+    EventTypeWeatherUpdated EventType = "WEATHER_UPDATED"
+)

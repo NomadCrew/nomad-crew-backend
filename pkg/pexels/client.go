@@ -10,64 +10,64 @@ import (
 const pexelsAPIBaseURL = "https://api.pexels.com/v1"
 
 type Client struct {
-    apiKey     string
-    httpClient *http.Client
+	apiKey     string
+	httpClient *http.Client
 }
 
 type SearchResponse struct {
-    Photos []Photo `json:"photos"`
+	Photos []Photo `json:"photos"`
 }
 
 type Photo struct {
-    ID     int    `json:"id"`
-    Source Source `json:"src"`
+	ID     int    `json:"id"`
+	Source Source `json:"src"`
 }
 
 type Source struct {
-    Landscape string `json:"landscape"`
+	Landscape string `json:"landscape"`
 }
 
 func NewClient(apiKey string) *Client {
-    return &Client{
-        apiKey:     apiKey,
-        httpClient: &http.Client{},
-    }
+	return &Client{
+		apiKey:     apiKey,
+		httpClient: &http.Client{},
+	}
 }
 
-func (c *Client) SearchDestinationImage(destination string) (string, error) {
-    endpoint := fmt.Sprintf("%s/search", pexelsAPIBaseURL)
-    
-    // Build query params
-    params := url.Values{}
-    params.Add("query", destination)
-    params.Add("per_page", "1")
-    params.Add("orientation", "landscape")
-    
-    req, err := http.NewRequest("GET", fmt.Sprintf("%s?%s", endpoint, params.Encode()), nil)
-    if err != nil {
-        return "", fmt.Errorf("failed to create request: %w", err)
-    }
+func (c *Client) SearchDestinationImage(query string) (string, error) {
+	endpoint := fmt.Sprintf("%s/search", pexelsAPIBaseURL)
 
-    req.Header.Set("Authorization", c.apiKey)
+	// Build query params
+	params := url.Values{}
+	params.Add("query", query)
+	params.Add("per_page", "1")
+	params.Add("orientation", "landscape")
 
-    resp, err := c.httpClient.Do(req)
-    if err != nil {
-        return "", fmt.Errorf("failed to execute request: %w", err)
-    }
-    defer resp.Body.Close()
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s?%s", endpoint, params.Encode()), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
 
-    if resp.StatusCode != http.StatusOK {
-        return "", fmt.Errorf("pexels API returned status: %d", resp.StatusCode)
-    }
+	req.Header.Set("Authorization", c.apiKey)
 
-    var searchResp SearchResponse
-    if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
-        return "", fmt.Errorf("failed to decode response: %w", err)
-    }
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
 
-    if len(searchResp.Photos) == 0 {
-        return "", nil
-    }
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("pexels API returned status: %d", resp.StatusCode)
+	}
 
-    return searchResp.Photos[0].Source.Landscape, nil
+	var searchResp SearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(searchResp.Photos) == 0 {
+		return "", nil
+	}
+
+	return searchResp.Photos[0].Source.Landscape, nil
 }

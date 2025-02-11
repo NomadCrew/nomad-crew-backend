@@ -139,7 +139,7 @@ func TestTripDB_Integration(t *testing.T) {
 		trip := types.Trip{
 			Name:        "Test Trip",
 			Description: "Test Description",
-			Destination: "Test Location",
+			Destination: types.Destination{Address: "Test Location"},
 			StartDate:   time.Now().Add(24 * time.Hour),
 			EndDate:     time.Now().Add(48 * time.Hour),
 			CreatedBy:   testUserUUID,
@@ -164,30 +164,30 @@ func TestTripDB_Integration(t *testing.T) {
 		trip := types.Trip{
 			Name:        "Update Test Trip",
 			Description: "Original Description",
-			Destination: "Original Location",
+			Destination: types.Destination{Address: "Original Location"},
 			StartDate:   time.Now().Add(24 * time.Hour),
 			EndDate:     time.Now().Add(48 * time.Hour),
 			CreatedBy:   testUserUUID,
 			Status:      types.TripStatusPlanning,
 		}
-
+	
 		id, err := tripDB.CreateTrip(ctx, trip)
 		require.NoError(t, err)
-
+	
 		update := types.TripUpdate{
-			Name:        "Updated Trip",
-			Description: "Updated Description",
-			Destination: "Updated Location",
+			Name:        ptr("Updated Trip"),
+			Description: ptr("Updated Description"),
+			Destination: &types.Destination{Address: "Updated Location"},
 		}
-
+	
 		err = tripDB.UpdateTrip(ctx, id, update)
 		require.NoError(t, err)
-
+	
 		fetchedTrip, err := tripDB.GetTrip(ctx, id)
 		require.NoError(t, err)
-		require.Equal(t, update.Name, fetchedTrip.Name)
-		require.Equal(t, update.Description, fetchedTrip.Description)
-		require.Equal(t, update.Destination, fetchedTrip.Destination)
+		require.Equal(t, *update.Name, fetchedTrip.Name)
+		require.Equal(t, *update.Description, fetchedTrip.Description)
+		require.Equal(t, update.Destination.Address, fetchedTrip.Destination.Address)
 	})
 
 	t.Run("List User Trips", func(t *testing.T) {
@@ -195,7 +195,7 @@ func TestTripDB_Integration(t *testing.T) {
 			trip := types.Trip{
 				Name:        fmt.Sprintf("List Test Trip %d", i),
 				Description: "Test Description",
-				Destination: "Test Location",
+				Destination: types.Destination{Address: "Test Location"},
 				StartDate:   time.Now().Add(24 * time.Hour),
 				EndDate:     time.Now().Add(48 * time.Hour),
 				CreatedBy:   testUserUUID,
@@ -218,7 +218,7 @@ func TestTripDB_Integration(t *testing.T) {
 		trip := types.Trip{
 			Name:        "Status Test Trip",
 			Description: "Testing status transitions",
-			Destination: "Test Location",
+			Destination: types.Destination{Address: "Test Location"},
 			StartDate:   time.Now().Add(24 * time.Hour),
 			EndDate:     time.Now().Add(48 * time.Hour),
 			CreatedBy:   testUserUUID,
@@ -258,7 +258,7 @@ func TestTripDB_Integration(t *testing.T) {
 		trip1 := types.Trip{
 			Name:        "Trip to Delete",
 			Description: "This trip will be deleted",
-			Destination: "Deletion Test",
+			Destination: types.Destination{Address: "Deletion Test"},
 			StartDate:   time.Now().Add(24 * time.Hour),
 			EndDate:     time.Now().Add(48 * time.Hour),
 			CreatedBy:   testUserUUID,
@@ -268,7 +268,7 @@ func TestTripDB_Integration(t *testing.T) {
 		trip2 := types.Trip{
 			Name:        "Trip to Keep",
 			Description: "This trip will remain",
-			Destination: "Deletion Test",
+			Destination: types.Destination{Address: "Deletion Test"},
 			StartDate:   time.Now().Add(24 * time.Hour),
 			EndDate:     time.Now().Add(48 * time.Hour),
 			CreatedBy:   testUserUUID,
@@ -302,7 +302,7 @@ func TestTripDB_Integration(t *testing.T) {
 			{
 				Name:        "Paris Summer Trip",
 				Description: "Summer vacation in Paris",
-				Destination: "Paris",
+				Destination: types.Destination{Address: "Paris"},
 				StartDate:   time.Now().Add(30 * 24 * time.Hour),
 				EndDate:     time.Now().Add(37 * 24 * time.Hour),
 				CreatedBy:   testUserUUID,
@@ -311,7 +311,7 @@ func TestTripDB_Integration(t *testing.T) {
 			{
 				Name:        "London Business Trip",
 				Description: "Business meeting in London",
-				Destination: "London",
+				Destination: types.Destination{Address: "London"},
 				StartDate:   time.Now().Add(60 * 24 * time.Hour),
 				EndDate:     time.Now().Add(63 * 24 * time.Hour),
 				CreatedBy:   testUserUUID,
@@ -320,7 +320,7 @@ func TestTripDB_Integration(t *testing.T) {
 			{
 				Name:        "Paris Winter Trip",
 				Description: "Winter in Paris",
-				Destination: "Paris",
+				Destination: types.Destination{Address: "Paris"},
 				StartDate:   time.Now().Add(180 * 24 * time.Hour),
 				EndDate:     time.Now().Add(187 * 24 * time.Hour),
 				CreatedBy:   testUserUUID,
@@ -341,7 +341,7 @@ func TestTripDB_Integration(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, results, 2)
 			for _, trip := range results {
-				require.Equal(t, "Paris", trip.Destination)
+				require.Equal(t, "Paris", trip.Destination.Address)
 			}
 		})
 
@@ -382,4 +382,9 @@ func TestTripDB_Integration(t *testing.T) {
 func isValidUUID(u string) bool {
 	_, err := uuid.Parse(u)
 	return err == nil && strings.Contains(u, "-")
+}
+
+// Helper to create string pointers
+func ptr(s string) *string {
+	return &s
 }

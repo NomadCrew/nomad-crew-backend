@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
-	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -36,11 +34,12 @@ func NewTripHandler(model *models.TripModel, eventService types.EventPublisher) 
 
 // CreateTripRequest represents the request body for creating a trip
 type CreateTripRequest struct {
-	Name        string    `json:"name" binding:"required"`
-	Description string    `json:"description"`
-	Destination string    `json:"destination" binding:"required"`
-	StartDate   time.Time `json:"startDate" binding:"required"`
-	EndDate     time.Time `json:"endDate" binding:"required"`
+	Name        string            `json:"name" binding:"required"`
+	Description string            `json:"description"`
+	Destination types.Destination `json:"destination" binding:"required"`
+	StartDate   time.Time         `json:"startDate" binding:"required"`
+	EndDate     time.Time         `json:"endDate" binding:"required"`
+	Status      types.TripStatus  `json:"status"`
 }
 
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
@@ -82,9 +81,11 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		CreatedBy:   userID.(string),
 		Status:      types.TripStatusPlanning,
 	}
-	log.Infow("Creating trip", "trip", trip)
+	log.Infow("Processing trip creation",
+		"raw_request", req,
+		"parsed_destination", trip.Destination)
 
-	imageURL, err := pexelsClient.SearchDestinationImage(trip.Destination)
+	imageURL, err := pexelsClient.SearchDestinationImage(trip.Destination.Address)
 	if err != nil {
 		log.Warnw("Failed to fetch background image", "error", err)
 		// Continue without image - don't fail the trip creation
@@ -428,127 +429,112 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, trip)
 }
 
-// upgrader is used to upgrade HTTP connections to WebSocket connections.
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// For production, adjust the origin check as needed.
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
 // WSStreamEvents upgrades the HTTP connection to a WebSocket and streams events.
 // It both sends events from the Redis-based event service to the client
 // and reads client messages to publish them as events.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
+	conn := c.MustGet("wsConnection").(*websocket.Conn)
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 	log := logger.GetLogger()
+	ctx := c.Request.Context()
 
-	if tripID == "" || userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "tripID and userID are required"})
-		return
-	}
+	log.Infow("WebSocket connection established",
+		"tripID", tripID,
+		"userID", userID,
+		"remoteAddr", conn.RemoteAddr())
 
-	// Upgrade the connection to a WebSocket.
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	// Get trip destination
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
 	if err != nil {
-		log.Error("failed to upgrade connection: ", err)
-		return
-	}
-	defer conn.Close()
-
-	// Subscribe to the event channel for this trip.
-	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
-	if err != nil {
-		log.Errorf("Failed to subscribe to events: %v", err)
-		if err := conn.WriteMessage(websocket.TextMessage, []byte("failed to subscribe to events")); err != nil {
-			log.Errorf("Failed to send subscription error message: %v", err)
+		log.Errorw("Failed to get trip for weather updates", "error", err)
+		if err := conn.Close(); err != nil {
+			log.Errorw("Failed to close WebSocket connection", "error", err)
 		}
 		return
 	}
 
-	// Create an EventRouter instance.
-	// (In a production app, you might initialize this once and inject it.)
-	eventRouter := services.NewEventRouter()
-	eventRouter.Register("USER_MESSAGE", func(ctx context.Context, event types.Event) {
-		log.Infof("Processing USER_MESSAGE event: %s", event.ID)
-	})
+	// Start tracking connection
+	h.tripModel.WeatherService.IncrementSubscribers(tripID, trip.Destination)
+	defer h.tripModel.WeatherService.DecrementSubscribers(tripID)
 
-	// Use a ticker to send periodic pings.
-	pingTicker := time.NewTicker(30 * time.Second)
-	defer pingTicker.Stop()
-
-	// Create a cancellable context.
-	ctx, cancel := context.WithCancel(c.Request.Context())
-	defer cancel()
-
-	// Start a goroutine to read messages from the connection.
-	// This catches client-initiated closures or errors.
-	go func() {
-		for {
-			// We call ReadMessage twice in two separate goroutines to support duplex.
-			// If any error occurs, we cancel the context.
-			if _, _, err := conn.ReadMessage(); err != nil {
-				cancel()
-				return
-			}
+	// Subscribe to Redis events
+	eventChan, err := h.eventService.Subscribe(ctx, tripID, userID)
+	if err != nil {
+		log.Errorw("Failed to subscribe to events",
+			"error", err,
+			"tripID", tripID)
+		if err := conn.Close(); err != nil {
+			log.Errorw("Failed to close WebSocket connection", "error", err)
 		}
-	}()
+		return
+	}
 
-	// Start another goroutine to handle client messages.
-	// When a message is received, it is published as a USER_MESSAGE event.
+	// Goroutine to forward events to client
 	go func() {
-		for {
-			_, message, err := conn.ReadMessage()
+		for event := range eventChan {
+			msg, err := json.Marshal(event)
 			if err != nil {
-				cancel()
+				log.Errorw("Failed to marshal event",
+					"error", err,
+					"eventType", event.Type)
+				continue
+			}
+
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Errorw("Failed to send event to client",
+					"error", err,
+					"client", conn.RemoteAddr())
 				return
-			}
-
-			evt := types.Event{
-				Type:      "USER_MESSAGE",
-				Payload:   message,
-				Timestamp: time.Now(),
-			}
-
-			// Route the event locally (execute any server-side processing).
-			eventRouter.Route(ctx, evt)
-
-			// Publish the event to the Redis channel for distribution.
-			if err := h.eventService.Publish(ctx, tripID, evt); err != nil {
-				log.Error("failed to publish event: ", err)
-			}
-
-			// Handle WebSocket message sending
-			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
-				log.Errorf("WebSocket write error: %v", err)
-				break
 			}
 		}
 	}()
 
-	// Main loop: send ping messages and forward events from Redis to the client.
+	// Keep connection alive
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-pingTicker.C:
-			if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-				log.Errorf("Failed to send ping: %v", err)
-				return
+		_, _, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+				log.Warnw("WebSocket closed unexpectedly",
+					"error", err,
+					"client", conn.RemoteAddr())
 			}
-		case event, ok := <-eventChan:
-			if !ok {
-				// Subscription closed.
-				return
-			}
-			// Write the event as JSON over the WebSocket.
-			if err := conn.WriteJSON(event); err != nil {
-				log.Errorf("Failed to write event: %v", err)
-				return
-			}
+			break
 		}
 	}
+
+	log.Info("WebSocket connection closed")
+	if err := conn.Close(); err != nil {
+		log.Errorw("Failed to close WebSocket connection", "error", err)
+	}
+}
+
+func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	// Verify trip ownership
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+	if err != nil {
+		log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
+		if err := c.Error(err); err != nil {
+			log.Errorw("Failed to add model error", "error", err)
+		}
+		return
+	}
+
+	if trip.CreatedBy != userID {
+		if err := c.Error(errors.AuthenticationFailed("Not authorized to trigger weather update")); err != nil {
+			log.Errorw("Failed to add authentication error", "error", err)
+		}
+		return
+	}
+
+	// Pass trip destination directly to avoid activeTrips dependency
+	h.tripModel.WeatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Weather update triggered successfully",
+	})
 }

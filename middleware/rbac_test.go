@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 type MockTripModel struct {
@@ -55,9 +55,10 @@ func (m *MockTripModel) SearchTrips(ctx context.Context, criteria types.TripSear
 }
 
 func TestRequireRole(t *testing.T) {
-	// Initialize logger
-	logger.InitLogger()
-	defer logger.Close()
+	// Use test logger configuration
+	logger.IsTest = true
+    logger.InitLogger()
+    defer logger.Close()
 
 	// Mocking dependencies
 	mockTripModel := &MockTripModel{}
