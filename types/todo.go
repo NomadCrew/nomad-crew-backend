@@ -1,8 +1,6 @@
 package types
 
-import (
-    "time"
-)
+import "time"
 
 type TodoStatus string
 
@@ -16,14 +14,23 @@ type Todo struct {
     TripID    string     `json:"tripId"`
     Text      string     `json:"text"`
     Status    TodoStatus `json:"status"`
+    Required  bool       `json:"required"`
     CreatedBy string     `json:"createdBy"`
     CreatedAt time.Time  `json:"createdAt"`
     UpdatedAt time.Time  `json:"updatedAt"`
 }
 
+// ListTodosParams extends PaginationParams with todo-specific filters
+type ListTodosParams struct {
+    PaginationParams
+    TripID string     `form:"tripId" binding:"required"`
+    Status TodoStatus `form:"status"`
+}
+
 type TodoCreate struct {
     TripID    string `json:"tripId" binding:"required"`
     Text      string `json:"text" binding:"required"`
+    Required  bool   `json:"required"`
 }
 
 type TodoUpdate struct {
@@ -31,8 +38,6 @@ type TodoUpdate struct {
     Text   *string    `json:"text,omitempty"`
 }
 
-
-// Add Ptr methods for status constants
 func (s TodoStatus) Ptr() *TodoStatus {
     return &s
 }

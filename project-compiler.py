@@ -33,6 +33,15 @@ def compile_files(directory, extensions, output_file, progress_callback=None):
 
                 if not ('charting_library' in filepath or 'datafeed' in filepath) and not is_ignored(filepath, spec, directory):
                     if file != 'package-lock.json' and file != 'yarn.lock' and any(file.endswith(f".{ext}") for ext in extensions):
+                        # Skip test files and directories
+                        rel_path = os.path.relpath(filepath, directory)
+                        path_parts = rel_path.split(os.sep)
+                        if any(part.lower() in {'test', 'tests'} for part in path_parts):
+                            continue
+                        filename_base = os.path.splitext(file)[0].lower()
+                        if filename_base.startswith('test_') or filename_base.endswith('_test'):
+                            continue
+                            
                         file_count += 1
                         all_files.append(filepath)  # Track file path
 

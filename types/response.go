@@ -25,3 +25,9 @@ type Pagination struct {
     Offset int `json:"offset"`
     Total  int `json:"total"`
 }
+
+type AuditLogParams struct {
+    Limit     int         `form:"limit,default=20"`
+    Offset    int         `form:"offset,default=0"`
+    EventType EventType   `form:"eventType"`
+}
