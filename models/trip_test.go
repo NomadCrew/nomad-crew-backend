@@ -234,9 +234,15 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 			Destination: types.Destination{Address: "Updated Destination"},
 		}, nil).Once()
 
+		// Add event publishing expectation
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.MatchedBy(func(event types.Event) bool {
+			return event.Type == types.EventTypeTripUpdated
+		})).Return(nil).Once()
+
 		err := tripModel.UpdateTrip(ctx, testTripID, update)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("not found", func(t *testing.T) {
