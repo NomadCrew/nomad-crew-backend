@@ -12,6 +12,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 type WeatherService struct {
@@ -70,7 +71,9 @@ func (s *WeatherService) DecrementSubscribers(tripID string) {
 }
 
 func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
-	s.activeTrips.Store(tripID, destination)
+	s.activeTrips.LoadOrStore(tripID, &tripSubscribers{
+		destination: destination,
+	})
 
 	ticker := time.NewTicker(15 * time.Minute)
 	go func() {
@@ -111,13 +114,11 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 	log := logger.GetLogger()
 	log.Infow("Starting weather update", "tripID", tripID, "destination", destination.Address)
 
-	// Get coordinates
 	var lat, lon float64
 	if destination.Coordinates != nil {
 		lat = destination.Coordinates.Lat
 		lon = destination.Coordinates.Lng
 	} else {
-		// Fall back to geocoding if no coordinates
 		var err error
 		lat, lon, err = s.getCoordinates(destination.Address)
 		if err != nil {
@@ -141,20 +142,33 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 		return
 	}
 
-	log.Infow("Weather data retrieved",
-		"temperature", weather.Temperature2m,
-		"humidity", weather.RelativeHumidity2m,
-		"weatherCode", weather.WeatherCode,
-		"timestamp", weather.Timestamp)
-
-	// Add trip ID to weather info
 	weather.TripID = tripID
 
-	// Publish update
-	payload, _ := json.Marshal(weather)
+	payload, err := json.Marshal(weather)
+	if err != nil {
+		log.Errorw("Failed to marshal weather data",
+			"error", err,
+			"tripId", tripID,
+		)
+		return
+	}
+
+	log.Debugw("Publishing weather update event",
+		"tripID", tripID,
+		"payloadSize", len(payload))
 
 	if apiErr := s.eventService.Publish(ctx, tripID, types.Event{
-		Type:    types.EventTypeWeatherUpdated,
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.New().String(),
+			Type:      types.EventTypeWeatherUpdated,
+			TripID:    tripID,
+			UserID:    "system",
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "weather_service",
+		},
 		Payload: payload,
 	}); apiErr != nil {
 		log.Errorw("Event publish failed",
@@ -162,18 +176,11 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 			"error", apiErr,
 			"event_type", types.EventTypeWeatherUpdated,
 		)
-	} else {
-		log.Infow("Successfully published weather update",
-			"tripID", tripID,
-			"event_size", len(payload),
-		)
 	}
 
-	log.Debugw("Weather update completed",
+	log.Debugw("Weather event published successfully",
 		"tripID", tripID,
-		"temperature", weather.Temperature2m,
-		"timestamp", weather.Timestamp,
-	)
+		"eventType", types.EventTypeWeatherUpdated)
 }
 
 // getCoordinates fetches the latitude and longitude for a given city/place name
@@ -298,10 +305,12 @@ func (s *WeatherService) getCurrentWeather(lat, lon float64) (*types.WeatherInfo
 	params := url.Values{}
 	params.Add("latitude", fmt.Sprintf("%f", lat))
 	params.Add("longitude", fmt.Sprintf("%f", lon))
-	params.Add("current", "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,rain,showers,snowfall,weather_code,cloud_cover")
+	params.Add("current", "temperature_2m,weather_code")
+	params.Add("hourly", "temperature_2m,rain,showers,weather_code")
+	params.Add("forecast_days", "2") // Get 48-hour forecast
 
 	log := logger.GetLogger()
-	log.Infow("Fetching detailed weather data",
+	log.Infow("Fetching weather data",
 		"lat", lat,
 		"lon", lon,
 		"params", params.Encode())
@@ -323,39 +332,42 @@ func (s *WeatherService) getCurrentWeather(lat, lon float64) (*types.WeatherInfo
 
 	var forecast struct {
 		Current struct {
-			Time                string  `json:"time"`
-			Temperature2m       float64 `json:"temperature_2m"`
-			RelativeHumidity2m  int     `json:"relative_humidity_2m"`
-			ApparentTemperature float64 `json:"apparent_temperature"`
-			IsDay               int     `json:"is_day"`
-			Rain                float64 `json:"rain"`
-			Showers             float64 `json:"showers"`
-			Snowfall            float64 `json:"snowfall"`
-			WeatherCode         int     `json:"weather_code"`
-			CloudCover          int     `json:"cloud_cover"`
+			Time          string  `json:"time"`
+			Temperature2m float64 `json:"temperature_2m"`
+			WeatherCode   int     `json:"weather_code"`
 		} `json:"current"`
+		Hourly struct {
+			Time          []string  `json:"time"`
+			Temperature2m []float64 `json:"temperature_2m"`
+			Rain          []float64 `json:"rain"`
+			Showers       []float64 `json:"showers"`
+			WeatherCode   []int     `json:"weather_code"`
+		} `json:"hourly"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&forecast); err != nil {
 		return nil, err
 	}
 
-	timestamp, err := time.Parse("2006-01-02T15:04", forecast.Current.Time)
-	if err != nil {
-		return nil, err
+	// Convert hourly forecast
+	hourlyForecast := make([]types.HourlyWeather, len(forecast.Hourly.Time))
+	for i := range forecast.Hourly.Time {
+		timestamp, err := time.Parse("2006-01-02T15:04", forecast.Hourly.Time[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse time: %w", err)
+		}
+		hourlyForecast[i] = types.HourlyWeather{
+			Timestamp:     timestamp,
+			Temperature2m: forecast.Hourly.Temperature2m[i],
+			WeatherCode:   forecast.Hourly.WeatherCode[i],
+			Precipitation: forecast.Hourly.Rain[i] + forecast.Hourly.Showers[i],
+		}
 	}
 
 	return &types.WeatherInfo{
-		Temperature2m:       forecast.Current.Temperature2m,
-		RelativeHumidity2m:  forecast.Current.RelativeHumidity2m,
-		ApparentTemperature: forecast.Current.ApparentTemperature,
-		IsDay:               forecast.Current.IsDay == 1,
-		Rain:                forecast.Current.Rain,
-		Showers:             forecast.Current.Showers,
-		Snowfall:            forecast.Current.Snowfall,
-		WeatherCode:         forecast.Current.WeatherCode,
-		CloudCover:          forecast.Current.CloudCover,
-		Timestamp:           timestamp,
+		Temperature2m:  forecast.Current.Temperature2m,
+		WeatherCode:    forecast.Current.WeatherCode,
+		HourlyForecast: hourlyForecast,
 	}, nil
 }
 
@@ -367,5 +379,6 @@ func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID stri
 		"tripID", tripID,
 		"destination", destination)
 
+	// Directly call updateWeather instead of fetchWeatherData
 	s.updateWeather(ctx, tripID, destination)
 }

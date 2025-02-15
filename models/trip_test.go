@@ -78,23 +78,23 @@ func (m *MockTripStore) SearchTrips(ctx context.Context, criteria types.TripSear
 var _ store.TripStore = (*mocks.MockTripStore)(nil)
 
 type MockWeatherService struct {
-    mock.Mock
+	mock.Mock
 }
 
 func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
-    m.Called(ctx, tripID, destination)
+	m.Called(ctx, tripID, destination)
 }
 
 func (m *MockWeatherService) IncrementSubscribers(tripID string, dest types.Destination) {
-    m.Called(tripID, dest)
+	m.Called(tripID, dest)
 }
 
 func (m *MockWeatherService) DecrementSubscribers(tripID string) {
-    m.Called(tripID)
+	m.Called(tripID)
 }
 
 func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) {
-    m.Called(ctx, tripID, destination)
+	m.Called(ctx, tripID, destination)
 }
 
 func TestTripModel_CreateTrip(t *testing.T) {
@@ -102,7 +102,8 @@ func TestTripModel_CreateTrip(t *testing.T) {
 
 	// Initialize WeatherService with mock event publisher
 	weatherService := services.NewWeatherService(nil)
-	tripModel := NewTripModel(mockStore, weatherService)
+	mockEventPublisher := new(mocks.MockEventPublisher)
+	tripModel := NewTripModel(mockStore, weatherService, mockEventPublisher)
 
 	ctx := context.Background()
 
@@ -147,7 +148,7 @@ func TestTripModel_CreateTrip(t *testing.T) {
 
 func TestTripModel_GetTripByID(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 
 	expectedTrip := &types.Trip{
@@ -183,7 +184,7 @@ func TestTripModel_GetTripByID(t *testing.T) {
 
 func TestTripModel_UpdateTrip(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 
 	existingTrip := &types.Trip{
@@ -243,7 +244,7 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 
 func TestTripModel_DeleteTrip(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 
 	existingTrip := &types.Trip{
@@ -279,43 +280,37 @@ func TestTripModel_DeleteTrip(t *testing.T) {
 // Add this after the existing test cases in models/trip_test.go
 
 func TestTripModel_UpdateTripStatus(t *testing.T) {
-    mockStore := new(mocks.MockTripStore)
-    mockWeather := new(MockWeatherService)
-    tripModel := NewTripModel(mockStore, mockWeather)
-    ctx := context.Background()
+	mockStore := new(mocks.MockTripStore)
+	mockWeather := new(MockWeatherService)
+	tripModel := NewTripModel(mockStore, mockWeather, nil)
+	ctx := context.Background()
 
-    baseTrip := &types.Trip{
-        ID:          testTripID,
-        Name:        "Test Trip",
-        Description: "Test Description",
-        Destination: types.Destination{
-            Address: "Test Location",
-        },
-        StartDate: time.Now().Add(24 * time.Hour),
-        EndDate:   time.Now().Add(48 * time.Hour),
-        CreatedBy: testUserID,
-        Status:    types.TripStatusPlanning,
-    }
+	baseTrip := &types.Trip{
+		ID:          testTripID,
+		Name:        "Test Trip",
+		Description: "Test Description",
+		Destination: types.Destination{
+			Address: "Test Location",
+		},
+		StartDate: time.Now().Add(24 * time.Hour),
+		EndDate:   time.Now().Add(48 * time.Hour),
+		CreatedBy: testUserID,
+		Status:    types.TripStatusPlanning,
+	}
 
-    t.Run("valid transition - planning to active", func(t *testing.T) {
-        // First call expectation - for status check
-        mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
-        
-        // Second call expectation - for weather service update
-        mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
-        
-        mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
-            return update.Status == types.TripStatusActive
-        })).Return(nil).Once()
+	t.Run("valid transition - planning to active", func(t *testing.T) {
+		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
+		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
+			return update.Status == types.TripStatusActive
+		})).Return(nil).Once()
 
-        // Expect weather service call
-        mockWeather.On("StartWeatherUpdates", ctx, testTripID, baseTrip.Destination).Once()
+		mockWeather.On("StartWeatherUpdates", ctx, testTripID, baseTrip.Destination).Once()
 
-        err := tripModel.UpdateTripStatus(ctx, testTripID, types.TripStatusActive)
-        assert.NoError(t, err)
-        mockStore.AssertExpectations(t)
-        mockWeather.AssertExpectations(t)
-    })
+		err := tripModel.UpdateTripStatus(ctx, testTripID, types.TripStatusActive)
+		assert.NoError(t, err)
+		mockStore.AssertExpectations(t)
+		mockWeather.AssertExpectations(t)
+	})
 
 	t.Run("invalid transition - completed to active", func(t *testing.T) {
 		completedTrip := *baseTrip
@@ -332,7 +327,7 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 
 func TestTripModel_ListUserTrips(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 
 	trips := []*types.Trip{
@@ -376,7 +371,7 @@ func TestTripModel_ListUserTrips(t *testing.T) {
 
 func TestTripModel_SearchTrips(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 
 	searchResults := []*types.Trip{
@@ -439,7 +434,7 @@ func TestTripModel_SearchTrips(t *testing.T) {
 
 func TestTripModel_CreateTrip_Validation(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 	now := time.Now()
 
@@ -527,7 +522,7 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 
 func TestTripModel_EdgeCases(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 	now := time.Now()
 
@@ -590,7 +585,7 @@ func TestTripModel_EdgeCases(t *testing.T) {
 
 func TestTripModel_StatusTransitionEdgeCases(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil)
+	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 	now := time.Now()
 

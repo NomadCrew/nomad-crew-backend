@@ -97,6 +97,75 @@ components:
         startDateTo:
           type: string
           format: date
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+            - TRIP_CREATED
+            - TRIP_UPDATED
+            - TRIP_DELETED
+            - TODO_CREATED
+            - TODO_UPDATED
+            - TODO_DELETED
+            - WEATHER_UPDATED
+            - MEMBER_ADDED
+            - MEMBER_REMOVED
+        tripId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        payload:
+          type: object
+    TripUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        destination:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PLANNING, ACTIVE, COMPLETED, CANCELLED]
+  parameters:
+    TripID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserID:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 security:
   - BearerAuth: []
 paths:
@@ -372,3 +441,25 @@ paths:
           description: Member not found
       security:
         - BearerAuth: []
+  /trips/{id}/ws:
+    get:
+      summary: WebSocket connection for real-time trip updates
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      security:
+        - BearerAuth: []
+      responses:
+        101:
+          description: Switching Protocols to WebSocket
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+  /trips/{id}/trigger-weather-update:
+    patch:
+      summary: Force immediate weather update
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      responses:
+        200:
+          description: Weather update triggered
+        403:
+          $ref: '#/components/responses/ForbiddenError'
