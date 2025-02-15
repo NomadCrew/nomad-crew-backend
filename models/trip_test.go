@@ -271,40 +271,40 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 
 func TestTripModel_DeleteTrip(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil, nil)
+	mockEventPublisher := new(mocks.MockEventPublisher)
+	tripModel := NewTripModel(mockStore, nil, mockEventPublisher)
 	ctx := context.Background()
 
-	existingTrip := &types.Trip{
-		ID:          testTripID,
-		Name:        "Test Trip",
-		Description: "Test Description",
-		Destination: types.Destination{
-			Address: "Test Destination",
-		},
-		StartDate: time.Now().Add(24 * time.Hour),
-		EndDate:   time.Now().Add(48 * time.Hour),
-		CreatedBy: testUserID,
-	}
-
 	t.Run("successful deletion", func(t *testing.T) {
+		existingTrip := &types.Trip{
+			ID:        testTripID,
+			CreatedBy: testUserID,
+		}
+
 		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
 		mockStore.On("SoftDeleteTrip", ctx, testTripID).Return(nil).Once()
+
+		// Add event expectation
+		mockEventPublisher.On("Publish", mock.Anything, testTripID,
+			mock.MatchedBy(func(event types.Event) bool {
+				return event.Type == types.EventTypeTripDeleted
+			})).Return(nil).Once()
+
 		err := tripModel.DeleteTrip(ctx, testTripID)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t) // Verify event publisher
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		nonExistentID := "non-existent-id"
-		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, assert.AnError).Once()
+		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, &TripError{Code: ErrTripNotFound}).Once()
 		err := tripModel.DeleteTrip(ctx, nonExistentID)
 		assert.Error(t, err)
-		assert.Equal(t, errors.NotFoundError, err.(*errors.AppError).Type)
+		assert.Equal(t, ErrTripNotFound, err.(*TripError).Code)
 		mockStore.AssertExpectations(t)
 	})
 }
-
-// Add this after the existing test cases in models/trip_test.go
 
 func TestTripModel_UpdateTripStatus(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
