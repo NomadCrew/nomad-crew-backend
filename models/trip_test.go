@@ -329,7 +329,10 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
 		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
 			return update.Status == types.TripStatusActive
-		})).Return(nil).Once()
+		})).Return(
+			&types.Trip{ID: testTripID, Status: types.TripStatusActive},
+			nil,
+		).Once()
 
 		mockWeather.On("StartWeatherUpdates", ctx, testTripID, baseTrip.Destination).Once()
 
