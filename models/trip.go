@@ -226,38 +226,28 @@ func (tm *TripModel) validateStatusTransition(trip *types.Trip, newStatus types.
 }
 
 func (tm *TripModel) UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error {
-	// Validate the update fields
 	if err := validateTripUpdate(update); err != nil {
 		return err
 	}
 
-	// First check if trip exists
 	currentTrip, err := tm.GetTripByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// Replace the status validation block with:
 	if update.Status != "" {
 		if err := tm.validateStatusTransition(currentTrip, update.Status); err != nil {
 			return err
 		}
 	}
 
-	err = tm.store.UpdateTrip(ctx, id, *update)
+	updatedTrip, err := tm.store.UpdateTrip(ctx, id, *update)
 	if err != nil {
 		return errors.NewDatabaseError(err)
 	}
 
-	// Emit update event
-	updatedTrip, err := tm.GetTripByID(ctx, id)
-	if err == nil {
-		if err := tm.emitEvent(ctx, id, types.EventTypeTripUpdated, updatedTrip, EventContext{UserID: ""}); err != nil {
-			tm.log.Errorw("Failed to emit trip updated event",
-				"error", err,
-				"tripId", id,
-			)
-		}
+	if err := tm.emitEvent(ctx, id, types.EventTypeTripUpdated, updatedTrip, EventContext{UserID: ""}); err != nil {
+		tm.log.Errorw("Failed to emit trip updated event", "error", err, "tripId", id)
 	}
 
 	return nil
@@ -385,7 +375,7 @@ func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus 
 
 	// Update the status in the database
 	update := types.TripUpdate{Status: newStatus}
-	if err := tm.store.UpdateTrip(ctx, id, update); err != nil {
+	if _, err := tm.store.UpdateTrip(ctx, id, update); err != nil {
 		return err
 	}
 

@@ -58,6 +58,6 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) erro
 type TripRepository interface {
 	Create(ctx context.Context, trip *types.Trip) (string, error)
 	GetByID(ctx context.Context, id string) (*types.Trip, error)
-	Update(ctx context.Context, id string, update *types.TripUpdate) error
+	Update(ctx context.Context, id string, update *types.TripUpdate) (*types.Trip, error)
 	Delete(ctx context.Context, id string) error
 }

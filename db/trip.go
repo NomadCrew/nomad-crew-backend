@@ -111,7 +111,7 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 	return &trip, nil
 }
 
-func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) error {
+func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) (*types.Trip, error) {
 	log := logger.GetLogger()
 
 	// Retrieve the current status for validation
@@ -119,7 +119,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 	err := tdb.client.GetPool().QueryRow(ctx, "SELECT status FROM trips WHERE id = $1", id).Scan(&currentStatusStr)
 	if err != nil {
 		log.Errorw("Failed to fetch current status for trip", "tripId", id, "error", err)
-		return fmt.Errorf("unable to fetch current status for trip %s: %v", id, err)
+		return nil, fmt.Errorf("unable to fetch current status for trip %s: %v", id, err)
 	}
 
 	currentStatus := types.TripStatus(currentStatusStr)
@@ -127,7 +127,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 	// Ensure status transition is valid
 	if update.Status != "" && !currentStatus.IsValidTransition(update.Status) {
 		log.Errorw("Invalid status transition", "tripId", id, "currentStatus", currentStatus, "requestedStatus", update.Status)
-		return fmt.Errorf("invalid status transition: %s -> %s", currentStatus, update.Status)
+		return nil, fmt.Errorf("invalid status transition: %s -> %s", currentStatus, update.Status)
 	}
 
 	var setFields []string
@@ -149,7 +149,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 		// Handle JSONB destination
 		destJSON, err := json.Marshal(update.Destination)
 		if err != nil {
-			return fmt.Errorf("failed to marshal destination: %w", err)
+			return nil, fmt.Errorf("failed to marshal destination: %w", err)
 		}
 		setFields = append(setFields, fmt.Sprintf("destination = $%d", argPosition))
 		args = append(args, destJSON)
@@ -174,7 +174,7 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 	setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
 
 	if len(setFields) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	query := fmt.Sprintf(`
@@ -193,17 +193,17 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 	err = tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&updatedStatusStr)
 	if err != nil {
 		log.Errorw("Failed to update trip", "tripId", id, "error", err)
-		return err
+		return nil, err
 	}
 
 	// Verify status matches expected value
 	if update.Status != "" && updatedStatusStr != string(update.Status) {
 		log.Errorw("Mismatch in updated status", "tripId", id, "expected", update.Status, "got", updatedStatusStr)
-		return fmt.Errorf("status mismatch: expected %s, got %s", update.Status, updatedStatusStr)
+		return nil, fmt.Errorf("status mismatch: expected %s, got %s", update.Status, updatedStatusStr)
 	}
 
 	log.Infow("Trip updated successfully", "tripId", id, "newStatus", updatedStatusStr)
-	return nil
+	return tdb.GetTrip(ctx, id)
 }
 
 func (tdb *TripDB) SoftDeleteTrip(ctx context.Context, id string) error {

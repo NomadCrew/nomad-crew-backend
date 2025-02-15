@@ -48,9 +48,12 @@ func (m *MockTripStore) GetTrip(ctx context.Context, id string) (*types.Trip, er
 	return args.Get(0).(*types.Trip), args.Error(1)
 }
 
-func (m *MockTripStore) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) error {
+func (m *MockTripStore) UpdateTrip(ctx context.Context, id string, update types.TripUpdate) (*types.Trip, error) {
 	args := m.Called(ctx, id, update)
-	return args.Error(0)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Trip), args.Error(1)
 }
 
 func (m *MockTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
@@ -223,7 +226,13 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 			return *update.Name == "Updated Trip" &&
 				*update.Description == "Updated Description" &&
 				update.Destination.Address == "Updated Destination"
-		})).Return(nil).Once()
+		})).Return(&types.Trip{
+			ID:          testTripID,
+			Name:        "Updated Trip",
+			Description: "Updated Description",
+			Destination: types.Destination{Address: "Updated Destination"},
+		}, nil).Once()
+
 		err := tripModel.UpdateTrip(ctx, testTripID, update)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)

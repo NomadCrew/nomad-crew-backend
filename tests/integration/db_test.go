@@ -170,19 +170,19 @@ func TestTripDB_Integration(t *testing.T) {
 			CreatedBy:   testUserUUID,
 			Status:      types.TripStatusPlanning,
 		}
-	
+
 		id, err := tripDB.CreateTrip(ctx, trip)
 		require.NoError(t, err)
-	
+
 		update := types.TripUpdate{
 			Name:        ptr("Updated Trip"),
 			Description: ptr("Updated Description"),
 			Destination: &types.Destination{Address: "Updated Location"},
 		}
-	
-		err = tripDB.UpdateTrip(ctx, id, update)
+
+		_, err = tripDB.UpdateTrip(ctx, id, update)
 		require.NoError(t, err)
-	
+
 		fetchedTrip, err := tripDB.GetTrip(ctx, id)
 		require.NoError(t, err)
 		require.Equal(t, *update.Name, fetchedTrip.Name)
@@ -232,7 +232,7 @@ func TestTripDB_Integration(t *testing.T) {
 		update := types.TripUpdate{
 			Status: types.TripStatusActive,
 		}
-		err = tripDB.UpdateTrip(ctx, id, update)
+		_, err = tripDB.UpdateTrip(ctx, id, update)
 		require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
 
 		fetchedTrip, err := tripDB.GetTrip(ctx, id)
@@ -241,7 +241,7 @@ func TestTripDB_Integration(t *testing.T) {
 
 		// Transition to Completed
 		update.Status = types.TripStatusCompleted
-		err = tripDB.UpdateTrip(ctx, id, update)
+		_, err = tripDB.UpdateTrip(ctx, id, update)
 		require.NoError(t, err, "Expected status transition to COMPLETED to succeed")
 
 		fetchedTrip, err = tripDB.GetTrip(ctx, id)
@@ -250,7 +250,7 @@ func TestTripDB_Integration(t *testing.T) {
 
 		// Invalid Transition: Completed -> Active
 		update.Status = types.TripStatusActive
-		err = tripDB.UpdateTrip(ctx, id, update)
+		_, err = tripDB.UpdateTrip(ctx, id, update)
 		require.Error(t, err, "Expected error for invalid transition from COMPLETED to ACTIVE")
 	})
 
