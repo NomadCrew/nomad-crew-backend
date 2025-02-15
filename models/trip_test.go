@@ -181,11 +181,11 @@ func TestTripModel_GetTripByID(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		nonExistentID := "non-existent-id"
-		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, errors.NotFoundError).Once()
+		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, &TripError{Code: ErrTripNotFound}).Once()
 		trip, err := tripModel.GetTripByID(ctx, nonExistentID)
 		assert.Error(t, err)
 		assert.Nil(t, trip)
-		assert.Equal(t, errors.NotFoundError, err.(*TripError).Code)
+		assert.Equal(t, ErrTripNotFound, err.(*TripError).Code)
 		mockStore.AssertExpectations(t)
 	})
 }
