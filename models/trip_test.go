@@ -195,7 +195,8 @@ func TestTripModel_GetTripByID(t *testing.T) {
 
 func TestTripModel_UpdateTrip(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil, nil)
+	mockEventPublisher := new(mocks.MockEventPublisher)
+	tripModel := NewTripModel(mockStore, nil, mockEventPublisher)
 	ctx := context.Background()
 
 	existingTrip := &types.Trip{
