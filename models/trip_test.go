@@ -247,10 +247,13 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		nonExistentID := "non-existent-id"
-		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, assert.AnError).Once()
+		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, &TripError{Code: ErrTripNotFound}).Once()
 		err := tripModel.UpdateTrip(ctx, nonExistentID, update)
 		assert.Error(t, err)
-		assert.Equal(t, errors.NotFoundError, err.(*errors.AppError).Type)
+
+		tripErr, ok := err.(*TripError)
+		assert.True(t, ok)
+		assert.Equal(t, ErrTripNotFound, tripErr.Code)
 		mockStore.AssertExpectations(t)
 	})
 
