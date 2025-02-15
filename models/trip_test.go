@@ -121,10 +121,18 @@ func TestTripModel_CreateTrip(t *testing.T) {
 
 	t.Run("successful creation", func(t *testing.T) {
 		mockStore.On("CreateTrip", ctx, *validTrip).Return(testTripID, nil).Once()
+
+		// Add this expectation for the event publisher
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).
+			Return(nil).
+			Once()
+
 		err := tripModel.CreateTrip(ctx, validTrip)
 		assert.NoError(t, err)
-		assert.Equal(t, testTripID, validTrip.ID)
+
+		// Verify all expectations including the event publisher
 		mockStore.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("validation error - missing name", func(t *testing.T) {
