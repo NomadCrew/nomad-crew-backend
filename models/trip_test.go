@@ -326,7 +326,7 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 	}
 
 	t.Run("valid transition - planning to active", func(t *testing.T) {
-		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
+		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Twice()
 		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
 			return update.Status == types.TripStatusActive
 		})).Return(
@@ -458,6 +458,20 @@ func TestTripModel_SearchTrips(t *testing.T) {
 		result, err := tripModel.SearchTrips(ctx, criteria)
 		assert.NoError(t, err)
 		assert.Empty(t, result)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("successful search", func(t *testing.T) {
+		criteria := types.TripSearchCriteria{Destination: "Paris"}
+		mockStore.On("SearchTrips", ctx, criteria).Return(
+			[]*types.Trip{searchResults[0]}, // Results
+			nil,                             // Error
+		).Once()
+
+		results, err := tripModel.SearchTrips(ctx, criteria)
+		assert.NoError(t, err)
+		assert.Len(t, results, 1)
+		assert.Equal(t, searchResults[0], results[0])
 		mockStore.AssertExpectations(t)
 	})
 }
