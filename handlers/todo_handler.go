@@ -3,12 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type TodoHandler struct {
@@ -73,7 +75,17 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 		"payloadSize", len(payload))
 
 	if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
-		Type:    types.EventTypeTodoCreated,
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.NewString(),
+			Type:      types.EventTypeTodoCreated,
+			TripID:    todo.TripID,
+			UserID:    userID,
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "todo_handler",
+		},
 		Payload: payload,
 	}); err != nil {
 		log.Errorw("Failed to publish todo created event",
@@ -128,7 +140,17 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	// Publish event
 	payload, _ := json.Marshal(todo)
 	if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
-		Type:    types.EventTypeTodoUpdated,
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.NewString(),
+			Type:      types.EventTypeTodoUpdated,
+			TripID:    todo.TripID,
+			UserID:    userID,
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "todo_handler",
+		},
 		Payload: payload,
 	}); err != nil {
 		log.Errorw("Failed to publish todo updated event", "error", err)
@@ -172,7 +194,17 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	// Publish event
 	payload, _ := json.Marshal(map[string]string{"id": todoID})
 	if err := h.eventService.Publish(c.Request.Context(), todo.TripID, types.Event{
-		Type:    types.EventTypeTodoDeleted,
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.NewString(),
+			Type:      types.EventTypeTodoDeleted,
+			TripID:    todo.TripID,
+			UserID:    userID,
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "todo_handler",
+		},
 		Payload: payload,
 	}); err != nil {
 		log.Errorw("Failed to publish todo deleted event", "error", err)

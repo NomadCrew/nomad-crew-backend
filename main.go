@@ -107,7 +107,7 @@ func main() {
 	weatherService := services.NewWeatherService(eventService)
 
 	// Handlers
-	tripModel := models.NewTripModel(tripDB, weatherService)
+	tripModel := models.NewTripModel(tripDB, weatherService, eventService)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)

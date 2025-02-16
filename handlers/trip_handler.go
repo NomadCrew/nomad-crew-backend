@@ -9,10 +9,12 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -177,13 +179,40 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 
 	payload, _ := json.Marshal(trip)
 	if err := h.eventService.Publish(c.Request.Context(), tripID, types.Event{
-		Type:    types.EventTypeTripUpdated,
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.New().String(),
+			Type:      types.EventTypeTripUpdated,
+			TripID:    tripID,
+			UserID:    userID,
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "trip_handler",
+		},
 		Payload: payload,
 	}); err != nil {
 		log.Errorw("Failed to publish trip update event", "error", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Trip updated successfully"})
+}
+
+func (h *TripHandler) handleModelError(c *gin.Context, err error) {
+	if tripErr, ok := err.(*models.TripError); ok {
+		switch tripErr.Code {
+		case models.ErrTripNotFound:
+			c.Error(errors.NotFound(tripErr.Message, tripErr.Details))
+		case models.ErrTripAccess:
+			c.Error(errors.AuthenticationFailed(tripErr.Details))
+		case models.ErrTripValidation:
+			c.Error(errors.ValidationFailed(tripErr.Message, tripErr.Details))
+		default:
+			c.Error(errors.InternalServerError("trip operation failed"))
+		}
+	} else {
+		c.Error(err)
+	}
 }
 
 func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
@@ -212,24 +241,18 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	// Verify trip ownership
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
+		h.handleModelError(c, err)
 		return
 	}
 
 	if trip.CreatedBy != userID {
-		if err := c.Error(errors.AuthenticationFailed("Not authorized to update this trip's status")); err != nil {
-			log.Errorw("Failed to add authentication error", "error", err)
-		}
+		h.handleModelError(c, h.tripModel.TripAccessDenied(tripID, userID, types.MemberRoleOwner))
 		return
 	}
 
 	// Update status
 	if err := h.tripModel.UpdateTripStatus(c.Request.Context(), tripID, newStatus); err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
+		h.handleModelError(c, err)
 		return
 	}
 
@@ -433,7 +456,7 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // It both sends events from the Redis-based event service to the client
 // and reads client messages to publish them as events.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
-	conn := c.MustGet("wsConnection").(*websocket.Conn)
+	conn := c.MustGet("wsConnection").(*middleware.SafeConn)
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 	log := logger.GetLogger()
@@ -444,7 +467,7 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		"userID", userID,
 		"remoteAddr", conn.RemoteAddr())
 
-	// Get trip destination
+	// Get trip destination for weather updates
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
 	if err != nil {
 		log.Errorw("Failed to get trip for weather updates", "error", err)
@@ -454,11 +477,7 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		return
 	}
 
-	// Start tracking connection
-	h.tripModel.WeatherService.IncrementSubscribers(tripID, trip.Destination)
-	defer h.tripModel.WeatherService.DecrementSubscribers(tripID)
-
-	// Subscribe to Redis events
+	// Subscribe to Redis events FIRST
 	eventChan, err := h.eventService.Subscribe(ctx, tripID, userID)
 	if err != nil {
 		log.Errorw("Failed to subscribe to events",
@@ -470,15 +489,33 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		return
 	}
 
-	// Goroutine to forward events to client
+	// THEN start tracking connection
+	h.tripModel.WeatherService.IncrementSubscribers(tripID, trip.Destination)
+	defer h.tripModel.WeatherService.DecrementSubscribers(tripID)
+
+	// Forward events to client
 	go func() {
 		for event := range eventChan {
+			log.Debugw("Received event from channel",
+				"eventType", event.Type,
+				"eventID", event.ID,
+				"tripID", tripID)
+
 			msg, err := json.Marshal(event)
 			if err != nil {
 				log.Errorw("Failed to marshal event",
 					"error", err,
 					"eventType", event.Type)
 				continue
+			}
+
+			log.Debugw("Sending weather update to client",
+				"client", conn.RemoteAddr(),
+				"msgSize", len(msg))
+
+			if middleware.ConnIsClosed(conn) {
+				log.Debugw("Connection already closed", "client", conn.RemoteAddr())
+				return
 			}
 
 			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
@@ -510,31 +547,18 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 }
 
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
-	userID := c.GetString("user_id")
-
-	// Verify trip ownership
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
 	if err != nil {
-		log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
+		c.Error(err)
 		return
 	}
 
-	if trip.CreatedBy != userID {
-		if err := c.Error(errors.AuthenticationFailed("Not authorized to trigger weather update")); err != nil {
-			log.Errorw("Failed to add authentication error", "error", err)
-		}
-		return
-	}
+	h.tripModel.WeatherService.TriggerImmediateUpdate(
+		c.Request.Context(),
+		tripID,
+		trip.Destination,
+	)
 
-	// Pass trip destination directly to avoid activeTrips dependency
-	h.tripModel.WeatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Weather update triggered successfully",
-	})
+	c.Status(http.StatusAccepted)
 }

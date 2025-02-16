@@ -91,17 +91,17 @@ func (m Money) Currency() Currency {
 
 // Add adds two monetary values of the same currency
 func (m Money) Add(other Money) (*Money, error) {
-	if m.currency != other.currency {
-		return nil, errors.ValidationFailed(
-			"currency mismatch",
-			fmt.Sprintf("cannot add %s to %s", other.currency, m.currency),
-		)
-	}
+    if m.currency != other.currency {
+        return nil, errors.ValidationFailed(
+            ErrCurrencyMismatch,
+            fmt.Sprintf("cannot add %s to %s", other.currency, m.currency),
+        )
+    }
 
-	return &Money{
-		amount:   m.amount.Add(other.amount),
-		currency: m.currency,
-	}, nil
+    return &Money{
+        amount:   m.amount.Add(other.amount),
+        currency: m.currency,
+    }, nil
 }
 
 // Subtract subtracts two monetary values of the same currency
@@ -189,4 +189,55 @@ func (m Money) IsGreaterThan(other Money) (bool, error) {
 // private helpers
 func isValidCurrency(currency Currency) bool {
 	return validCurrencies[currency]
+}
+
+const (
+    ErrInvalidAmount   = "INVALID_AMOUNT"
+    ErrInvalidCurrency = "INVALID_CURRENCY"
+    ErrCurrencyMismatch = "CURRENCY_MISMATCH"
+)
+
+type ValidationResult struct {
+    Valid bool
+    Code  string
+    Message string
+}
+
+func (m Money) Validate() ValidationResult {
+    if m.amount.LessThan(decimal.Zero) {
+        return ValidationResult{
+            Valid:   false,
+            Code:    ErrInvalidAmount,
+            Message: "amount cannot be negative",
+        }
+    }
+    
+    if !isValidCurrency(m.currency) {
+        return ValidationResult{
+            Valid:   false,
+            Code:    ErrInvalidCurrency,
+            Message: fmt.Sprintf("currency %s is not supported", m.currency),
+        }
+    }
+
+    return ValidationResult{Valid: true}
+}
+
+func NewMoneyFromInt(amount int64, currency Currency) (*Money, error) {
+    return NewMoney(decimal.NewFromInt(amount), currency)
+}
+
+
+func (m Money) IsPositive() bool {
+    return m.amount.GreaterThan(decimal.Zero)
+}
+
+func (m Money) Compare(other Money) (int, error) {
+    if m.currency != other.currency {
+        return 0, errors.ValidationFailed(
+            ErrCurrencyMismatch,
+            fmt.Sprintf("cannot compare %s with %s", m.currency, other.currency),
+        )
+    }
+    return m.amount.Cmp(other.amount), nil
 }

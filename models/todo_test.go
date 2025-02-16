@@ -51,7 +51,7 @@ func (m *MockTodoStore) GetTodo(ctx context.Context, id string) (*types.Todo, er
 func TestTodoModel_CreateTodo(t *testing.T) {
 	mockStore := new(MockTodoStore)
 	mockTripStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockTripStore, nil)
+	tripModel := NewTripModel(mockTripStore, nil, nil)
 	model := NewTodoModel(mockStore, tripModel)
 	ctx := context.Background()
 
@@ -87,7 +87,7 @@ func TestTodoModel_CreateTodo(t *testing.T) {
 func TestTodoModel_ListTripTodos(t *testing.T) {
 	mockStore := new(MockTodoStore)
 	mockTripStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockTripStore, nil)
+	tripModel := NewTripModel(mockTripStore, nil, nil)
 	model := NewTodoModel(mockStore, tripModel)
 	ctx := context.Background()
 
@@ -134,7 +134,7 @@ func TestTodoModel_ListTripTodos_Error(t *testing.T) {
 	t.Run("unauthorized access", func(t *testing.T) {
 		mockStore := new(MockTodoStore)
 		mockTripStore := new(mocks.MockTripStore)
-		tripModel := NewTripModel(mockTripStore, nil)
+		tripModel := NewTripModel(mockTripStore, nil, nil)
 		model := NewTodoModel(mockStore, tripModel)
 		ctx := context.Background()
 
@@ -155,7 +155,7 @@ func TestTodoModel_ListTripTodos_Error(t *testing.T) {
 	t.Run("database error", func(t *testing.T) {
 		mockStore := new(MockTodoStore)
 		mockTripStore := new(mocks.MockTripStore)
-		tripModel := NewTripModel(mockTripStore, nil)
+		tripModel := NewTripModel(mockTripStore, nil, nil)
 		model := NewTodoModel(mockStore, tripModel)
 		ctx := context.Background()
 

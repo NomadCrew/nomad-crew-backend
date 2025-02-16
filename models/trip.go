@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,101 +11,251 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
-type TripModel struct {
-    store          store.TripStore
-    WeatherService types.WeatherServiceInterface
+const (
+	ErrTripValidation          = "TRIP_VALIDATION"
+	ErrTripNotFound            = "TRIP_NOT_FOUND"
+	ErrTripStatusConflict      = "TRIP_STATUS_CONFLICT"
+	ErrTripAccess              = "TRIP_ACCESS_DENIED"
+	ErrTripMembership          = "TRIP_MEMBERSHIP"
+	ErrInvalidStatusTransition = "INVALID_STATUS_TRANSITION"
+)
+
+type TripError struct {
+	Code      string
+	Message   string
+	Details   string
+	TripID    string
+	UserID    string
+	Operation string
+	Timestamp time.Time
 }
 
-func NewTripModel(store store.TripStore, weatherService types.WeatherServiceInterface) *TripModel {
-    return &TripModel{
-        store:          store,
-        WeatherService: weatherService,
-    }
+func (e *TripError) Error() string {
+	return fmt.Sprintf("[%s] %s: %s", e.Code, e.Message, e.Details)
+}
+
+func (tm *TripModel) newTripError(code string, msg string, details string, tripID string, userID string, op string) error {
+	return &TripError{
+		Code:      code,
+		Message:   msg,
+		Details:   details,
+		TripID:    tripID,
+		UserID:    userID,
+		Operation: op,
+		Timestamp: time.Now(),
+	}
+}
+
+// Helper methods for common trip errors
+func (tm *TripModel) tripNotFound(tripID string) error {
+	return tm.newTripError(
+		ErrTripNotFound,
+		"Trip not found",
+		fmt.Sprintf("Trip with ID %s does not exist", tripID),
+		tripID,
+		"",
+		"lookup",
+	)
+}
+
+func (tm *TripModel) TripAccessDenied(tripID string, userID string, requiredRole types.MemberRole) error {
+	return tm.newTripError(
+		ErrTripAccess,
+		"Access denied",
+		fmt.Sprintf("User %s requires role %s for trip %s", userID, requiredRole, tripID),
+		tripID,
+		userID,
+		"access_check",
+	)
+}
+
+type TripModel struct {
+	store          store.TripStore
+	WeatherService types.WeatherServiceInterface
+	eventService   types.EventPublisher
+	log            *zap.SugaredLogger
+}
+
+func NewTripModel(store store.TripStore, weatherService types.WeatherServiceInterface, eventService types.EventPublisher) *TripModel {
+	return &TripModel{
+		store:          store,
+		WeatherService: weatherService,
+		eventService:   eventService,
+		log:            logger.GetLogger(),
+	}
+}
+
+type EventContext struct {
+	CorrelationID string
+	CausationID   string
+	UserID        string
+}
+
+func (tm *TripModel) emitEvent(ctx context.Context, tripID string, eventType types.EventType, payload interface{}, eventCtx EventContext) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event payload: %w", err)
+	}
+
+	event := types.Event{
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.New().String(),
+			Type:      eventType,
+			TripID:    tripID,
+			UserID:    eventCtx.UserID,
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source:        "trip_model",
+			CorrelationID: eventCtx.CorrelationID,
+			CausationID:   eventCtx.CausationID,
+		},
+		Payload: data,
+	}
+
+	return tm.eventService.Publish(ctx, tripID, event)
 }
 
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
-    log := logger.GetLogger()
-    if err := validateTrip(trip); err != nil {
-        return err
-    }
+	log := logger.GetLogger()
+	if err := validateTrip(trip); err != nil {
+		return err
+	}
 
-    id, err := tm.store.CreateTrip(ctx, *trip)
+	id, err := tm.store.CreateTrip(ctx, *trip)
 
-    if err != nil {
-        log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
-        return errors.NewDatabaseError(err)
-    }
+	if err != nil {
+		log.Debug("Generated trip ID: %s (length: %d)", id, len(id))
+		return errors.NewDatabaseError(err)
+	}
 
-    trip.ID = id
+	trip.ID = id
 
-    if tm.WeatherService != nil && (trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning) {
-        tm.WeatherService.StartWeatherUpdates(context.Background(), trip.ID, trip.Destination)
-    }
+	if err := tm.emitEvent(ctx, id, types.EventTypeTripCreated, trip, EventContext{UserID: trip.CreatedBy}); err != nil {
+		tm.log.Errorw("Failed to emit trip created event",
+			"error", err,
+			"tripId", id,
+		)
+	}
 
-    return nil
+	if tm.WeatherService != nil &&
+		(trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning) {
+		tm.WeatherService.StartWeatherUpdates(context.Background(), trip.ID, trip.Destination)
+	}
+
+	return nil
 }
 
 func (tm *TripModel) GetTripByID(ctx context.Context, id string) (*types.Trip, error) {
 	trip, err := tm.store.GetTrip(ctx, id)
 	if err != nil {
-		return nil, errors.NotFound("Trip", id)
+		return nil, tm.tripNotFound(id)
 	}
 	return trip, nil
 }
 
+type StatusTransition struct {
+	FromStatus types.TripStatus
+	ToStatus   types.TripStatus
+	Validation func(trip *types.Trip) error
+}
+
+func getAllowedTransitions() []StatusTransition {
+	return []StatusTransition{
+		{
+			FromStatus: types.TripStatusPlanning,
+			ToStatus:   types.TripStatusActive,
+			Validation: func(trip *types.Trip) error {
+				if trip.EndDate.Before(time.Now()) {
+					return errors.ValidationFailed(
+						"invalid status transition",
+						"cannot activate a trip that has already ended",
+					)
+				}
+				return nil
+			},
+		},
+		{
+			FromStatus: types.TripStatusActive,
+			ToStatus:   types.TripStatusCompleted,
+			Validation: func(trip *types.Trip) error {
+				if trip.EndDate.After(time.Now()) {
+					return errors.ValidationFailed(
+						"invalid status transition",
+						"cannot complete a trip before its end date",
+					)
+				}
+				return nil
+			},
+		},
+		// Add other valid transitions here
+	}
+}
+
+func (tm *TripModel) validateStatusTransition(trip *types.Trip, newStatus types.TripStatus) error {
+	if !trip.Status.IsValidTransition(newStatus) {
+		return tm.newTripError(
+			ErrInvalidStatusTransition,
+			"Invalid status transition",
+			fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus),
+			trip.ID,
+			"",
+			"status_validation",
+		)
+	}
+
+	for _, transition := range getAllowedTransitions() {
+		if transition.FromStatus == trip.Status && transition.ToStatus == newStatus {
+			if err := transition.Validation(trip); err != nil {
+				return tm.newTripError(
+					ErrTripValidation,
+					"Transition validation failed",
+					err.Error(),
+					trip.ID,
+					"",
+					"status_validation",
+				)
+			}
+		}
+	}
+	return nil
+}
+
 func (tm *TripModel) UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error {
-	// Validate the update fields
 	if err := validateTripUpdate(update); err != nil {
 		return err
 	}
 
-	// First check if trip exists
 	currentTrip, err := tm.GetTripByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// If updating status, validate status transition
 	if update.Status != "" {
-		if !currentTrip.Status.IsValidTransition(update.Status) {
-			return errors.ValidationFailed(
-				"Invalid status transition",
-				fmt.Sprintf("Cannot transition from %s to %s", currentTrip.Status, update.Status),
-			)
-		}
-		// Additional business rule validations
-		now := time.Now()
-		switch update.Status {
-		case types.TripStatusActive:
-			if currentTrip.EndDate.Before(now) {
-				return errors.ValidationFailed(
-					"Invalid status transition",
-					"Cannot activate a trip that has already ended",
-				)
-			}
-		case types.TripStatusCompleted:
-			if currentTrip.EndDate.After(now) {
-				return errors.ValidationFailed(
-					"Invalid status transition",
-					"Cannot complete a trip before its end date",
-				)
-			}
+		if err := tm.validateStatusTransition(currentTrip, update.Status); err != nil {
+			return err
 		}
 	}
 
-	err = tm.store.UpdateTrip(ctx, id, *update)
+	updatedTrip, err := tm.store.UpdateTrip(ctx, id, *update)
 	if err != nil {
 		return errors.NewDatabaseError(err)
+	}
+
+	if err := tm.emitEvent(ctx, id, types.EventTypeTripUpdated, updatedTrip, EventContext{UserID: ""}); err != nil {
+		tm.log.Errorw("Failed to emit trip updated event", "error", err, "tripId", id)
 	}
 
 	return nil
 }
 
 func (tm *TripModel) DeleteTrip(ctx context.Context, id string) error {
-	// First check if trip exists
-	_, err := tm.GetTripByID(ctx, id)
+	currentTrip, err := tm.GetTripByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -112,6 +263,13 @@ func (tm *TripModel) DeleteTrip(ctx context.Context, id string) error {
 	err = tm.store.SoftDeleteTrip(ctx, id)
 	if err != nil {
 		return errors.NewDatabaseError(err)
+	}
+
+	if err := tm.emitEvent(ctx, id, types.EventTypeTripDeleted, currentTrip, EventContext{UserID: currentTrip.CreatedBy}); err != nil {
+		tm.log.Errorw("Failed to emit trip deleted event",
+			"error", err,
+			"tripId", id,
+		)
 	}
 
 	return nil
@@ -211,45 +369,33 @@ func (tm *TripModel) UpdateTripStatus(ctx context.Context, id string, newStatus 
 		return err
 	}
 
-	// Validate status transition
-	if !currentTrip.Status.IsValidTransition(newStatus) {
-		return errors.ValidationFailed(
-			"invalid status transition",
-			fmt.Sprintf("cannot transition from %s to %s", currentTrip.Status, newStatus),
-		)
-	}
-
-	// Additional business rules
-	now := time.Now()
-	switch newStatus {
-	case types.TripStatusActive:
-		// Can only activate future or ongoing trips
-		if currentTrip.EndDate.Before(now) {
-			return errors.ValidationFailed(
-				"invalid status transition",
-				"cannot activate a trip that has already ended",
-			)
-		}
-	case types.TripStatusCompleted:
-		// Can only complete trips that have ended
-		if currentTrip.EndDate.After(now) {
-			return errors.ValidationFailed(
-				"invalid status transition",
-				"cannot complete a trip before its end date",
-			)
-		}
+	// Replace validation block with:
+	if err := tm.validateStatusTransition(currentTrip, newStatus); err != nil {
+		return err
 	}
 
 	// Update the status in the database
 	update := types.TripUpdate{Status: newStatus}
-	if err := tm.store.UpdateTrip(ctx, id, update); err != nil {
+	if _, err := tm.store.UpdateTrip(ctx, id, update); err != nil {
 		return err
 	}
+
+	// Fetch updated trip for event and weather updates
+	trip, err := tm.GetTripByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Emit status updated event
+	if err := tm.emitEvent(ctx, id, types.EventTypeTripStatusUpdated, trip, EventContext{UserID: ""}); err != nil {
+		tm.log.Errorw("Failed to emit trip status updated event",
+			"error", err,
+			"tripId", id,
+		)
+	}
+
+	// Start weather updates if needed
 	if newStatus == types.TripStatusActive || newStatus == types.TripStatusPlanning {
-		trip, err := tm.GetTripByID(ctx, id)
-		if err != nil {
-			return err
-		}
 		tm.WeatherService.StartWeatherUpdates(context.Background(), id, trip.Destination)
 	}
 
@@ -268,9 +414,13 @@ func (tm *TripModel) AddMember(ctx context.Context, tripID string, userID string
 
 	// Verify the role is valid
 	if !isValidRole(role) {
-		return errors.ValidationFailed(
+		return tm.newTripError(
+			ErrTripValidation,
 			"Invalid role",
 			fmt.Sprintf("Role %s is not valid", role),
+			tripID,
+			userID,
+			"add_member",
 		)
 	}
 
@@ -283,6 +433,14 @@ func (tm *TripModel) AddMember(ctx context.Context, tripID string, userID string
 
 	if err := tm.store.AddMember(ctx, membership); err != nil {
 		return errors.NewDatabaseError(err)
+	}
+
+	if err := tm.emitEvent(ctx, tripID, types.EventTypeMemberAdded, membership, EventContext{UserID: userID}); err != nil {
+		tm.log.Errorw("Failed to emit member added event",
+			"error", err,
+			"tripId", tripID,
+			"userId", userID,
+		)
 	}
 
 	return nil
@@ -333,6 +491,19 @@ func (tm *TripModel) UpdateMemberRole(ctx context.Context, tripID string, userID
 		return errors.NewDatabaseError(err)
 	}
 
+	// Emit event
+	payload := map[string]interface{}{
+		"userId":  userID,
+		"newRole": newRole,
+	}
+	if err := tm.emitEvent(ctx, tripID, types.EventTypeMemberRoleUpdated, payload, EventContext{UserID: requestingUserID}); err != nil {
+		tm.log.Errorw("Failed to emit member role updated event",
+			"error", err,
+			"tripId", tripID,
+			"userId", userID,
+		)
+	}
+
 	return nil
 }
 
@@ -345,10 +516,7 @@ func (tm *TripModel) RemoveMember(ctx context.Context, tripID string, userID str
 	}
 
 	if requestingUserRole != types.MemberRoleOwner && requestingUserID != userID {
-		return errors.ValidationFailed(
-			"Unauthorized",
-			"Only admins can remove other members",
-		)
+		return tm.TripAccessDenied(tripID, requestingUserID, types.MemberRoleOwner)
 	}
 
 	// If removing an admin, check if they're the last one
@@ -358,28 +526,26 @@ func (tm *TripModel) RemoveMember(ctx context.Context, tripID string, userID str
 	}
 
 	if currentRole == types.MemberRoleOwner {
-		members, err := tm.store.GetTripMembers(ctx, tripID)
-		if err != nil {
-			return err
-		}
-
-		adminCount := 0
-		for _, member := range members {
-			if member.Role == types.MemberRoleOwner {
-				adminCount++
+		if rule, ok := tm.getMembershipRules()["remove_owner"]; ok {
+			if err := rule.Validate(ctx, tm, tripID, userID, requestingUserID); err != nil {
+				return err
 			}
-		}
-
-		if adminCount <= 1 {
-			return errors.ValidationFailed(
-				"Invalid operation",
-				"Cannot remove the last admin from the trip",
-			)
 		}
 	}
 
 	if err := tm.store.RemoveMember(ctx, tripID, userID); err != nil {
 		return errors.NewDatabaseError(err)
+	}
+
+	payload := map[string]interface{}{
+		"removedUserId": userID,
+	}
+	if err := tm.emitEvent(ctx, tripID, types.EventTypeMemberRemoved, payload, EventContext{UserID: requestingUserID}); err != nil {
+		tm.log.Errorw("Failed to emit member removed event",
+			"error", err,
+			"tripId", tripID,
+			"userId", userID,
+		)
 	}
 
 	return nil
@@ -415,4 +581,38 @@ func (tm *TripModel) GetTripWithMembers(ctx context.Context, id string) (*types.
 		Trip:    *trip,
 		Members: members,
 	}, nil
+}
+
+type MembershipRule struct {
+	Operation string
+	Validate  func(ctx context.Context, tm *TripModel, tripID, userID, requestingUserID string) error
+}
+
+func (tm *TripModel) getMembershipRules() map[string]MembershipRule {
+	return map[string]MembershipRule{
+		"remove_owner": {
+			Operation: "remove_owner",
+			Validate: func(ctx context.Context, tm *TripModel, tripID, userID, requestingUserID string) error {
+				members, err := tm.store.GetTripMembers(ctx, tripID)
+				if err != nil {
+					return err
+				}
+
+				adminCount := 0
+				for _, member := range members {
+					if member.Role == types.MemberRoleOwner {
+						adminCount++
+					}
+				}
+
+				if adminCount <= 1 {
+					return errors.ValidationFailed(
+						"Invalid operation",
+						"Cannot remove the last admin from the trip",
+					)
+				}
+				return nil
+			},
+		},
+	}
 }
