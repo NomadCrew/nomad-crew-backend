@@ -200,7 +200,7 @@ func getAllowedTransitions() []StatusTransition {
 func (tm *TripModel) validateStatusTransition(trip *types.Trip, newStatus types.TripStatus) error {
 	if !trip.Status.IsValidTransition(newStatus) {
 		return tm.newTripError(
-			ErrTripStatusConflict,
+			ErrInvalidStatusTransition,
 			"Invalid status transition",
 			fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus),
 			trip.ID,
