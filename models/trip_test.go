@@ -337,10 +337,15 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 
 		mockWeather.On("StartWeatherUpdates", ctx, testTripID, baseTrip.Destination).Once()
 
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.MatchedBy(func(event types.Event) bool {
+			return event.Type == types.EventTypeTripStatusUpdated
+		})).Return(nil).Once()
+
 		err := tripModel.UpdateTripStatus(ctx, testTripID, types.TripStatusActive)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
 		mockWeather.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("invalid transition - completed to active", func(t *testing.T) {
