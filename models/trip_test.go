@@ -622,8 +622,16 @@ func TestTripModel_EdgeCases(t *testing.T) {
 		}
 
 		mockStore.On("CreateTrip", ctx, *sameDayTrip).Return(testTripID, nil).Once()
+
+		// Add missing expectations
+		mockWeather.On("StartWeatherUpdates", mock.Anything, testTripID, sameDayTrip.Destination).Once()
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
+
 		err := tripModel.CreateTrip(ctx, sameDayTrip)
 		assert.NoError(t, err)
+		mockStore.AssertExpectations(t)
+		mockWeather.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("start date in past", func(t *testing.T) {
