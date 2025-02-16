@@ -309,7 +309,8 @@ func TestTripModel_DeleteTrip(t *testing.T) {
 func TestTripModel_UpdateTripStatus(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
 	mockWeather := new(MockWeatherService)
-	tripModel := NewTripModel(mockStore, mockWeather, nil)
+	mockEventPublisher := new(mocks.MockEventPublisher)
+	tripModel := NewTripModel(mockStore, mockWeather, mockEventPublisher)
 	ctx := context.Background()
 
 	baseTrip := &types.Trip{
@@ -629,7 +630,9 @@ func TestTripModel_EdgeCases(t *testing.T) {
 
 func TestTripModel_StatusTransitionEdgeCases(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil, nil)
+	mockWeather := new(MockWeatherService)
+	mockEventPublisher := new(mocks.MockEventPublisher)
+	tripModel := NewTripModel(mockStore, mockWeather, mockEventPublisher)
 	ctx := context.Background()
 	now := time.Now()
 
