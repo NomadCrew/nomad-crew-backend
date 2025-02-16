@@ -581,23 +581,30 @@ func TestTripModel_EdgeCases(t *testing.T) {
 	now := time.Now()
 
 	t.Run("trip spanning multiple years", func(t *testing.T) {
-		longTrip := &types.Trip{
+		multiYearTrip := &types.Trip{
 			ID:          testTripID,
-			Name:        "World Tour",
-			Description: "Year-long trip",
+			Name:        "Multi-Year Trip",
+			Description: "Trip spanning multiple calendar years",
 			Destination: types.Destination{
 				Address: "Multiple",
 			},
-			StartDate: now,
-			EndDate:   now.AddDate(1, 0, 0), // One year later
+			StartDate: time.Date(2025, time.December, 20, 0, 0, 0, 0, time.UTC),
+			EndDate:   time.Date(2026, time.January, 5, 0, 0, 0, 0, time.UTC),
 			CreatedBy: testUserID,
 			Status:    types.TripStatusPlanning,
 		}
 
-		mockStore.On("CreateTrip", ctx, *longTrip).Return(testTripID, nil).Once()
+		mockStore.On("CreateTrip", ctx, *multiYearTrip).Return(testTripID, nil).Once()
+
+		// Add these expectations
+		mockWeather.On("StartWeatherUpdates", mock.Anything, testTripID, multiYearTrip.Destination).Once()
 		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
-		err := tripModel.CreateTrip(ctx, longTrip)
+
+		err := tripModel.CreateTrip(ctx, multiYearTrip)
 		assert.NoError(t, err)
+		mockStore.AssertExpectations(t)
+		mockWeather.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("same day trip", func(t *testing.T) {
