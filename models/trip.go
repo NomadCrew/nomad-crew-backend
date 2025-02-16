@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	ErrTripValidation     = "TRIP_VALIDATION"
-	ErrTripNotFound       = "TRIP_NOT_FOUND"
-	ErrTripStatusConflict = "TRIP_STATUS_CONFLICT"
-	ErrTripAccess         = "TRIP_ACCESS_DENIED"
-	ErrTripMembership     = "TRIP_MEMBERSHIP"
+	ErrTripValidation          = "TRIP_VALIDATION"
+	ErrTripNotFound            = "TRIP_NOT_FOUND"
+	ErrTripStatusConflict      = "TRIP_STATUS_CONFLICT"
+	ErrTripAccess              = "TRIP_ACCESS_DENIED"
+	ErrTripMembership          = "TRIP_MEMBERSHIP"
+	ErrInvalidStatusTransition = "INVALID_STATUS_TRANSITION"
 )
 
 type TripError struct {

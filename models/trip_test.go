@@ -356,7 +356,9 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 
 		err := tripModel.UpdateTripStatus(ctx, testTripID, types.TripStatusActive)
 		assert.Error(t, err)
-		assert.Equal(t, errors.ValidationError, err.(*errors.AppError).Type)
+		tripErr, ok := err.(*TripError)
+		assert.True(t, ok)
+		assert.Equal(t, ErrInvalidStatusTransition, tripErr.Code)
 		mockStore.AssertExpectations(t)
 	})
 }
