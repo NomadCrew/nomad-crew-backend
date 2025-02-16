@@ -677,7 +677,7 @@ func TestTripModel_StatusTransitionEdgeCases(t *testing.T) {
 			tripStartDate: now.Add(24 * time.Hour),
 			tripEndDate:   now.Add(48 * time.Hour),
 			expectError:   true,
-			errorContains: "Invalid status transition",
+			errorContains: "cannot complete a trip before its end date",
 		},
 		{
 			name:          "cannot activate past trip",
@@ -686,7 +686,7 @@ func TestTripModel_StatusTransitionEdgeCases(t *testing.T) {
 			tripStartDate: now.Add(-48 * time.Hour),
 			tripEndDate:   now.Add(-24 * time.Hour),
 			expectError:   true,
-			errorContains: "Invalid status transition",
+			errorContains: "cannot activate a trip that has already ended",
 		},
 		{
 			name:          "cannot reactivate completed trip",
