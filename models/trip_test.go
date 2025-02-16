@@ -574,7 +574,9 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 
 func TestTripModel_EdgeCases(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	tripModel := NewTripModel(mockStore, nil, nil)
+	mockWeather := new(MockWeatherService)
+	mockEventPublisher := new(mocks.MockEventPublisher)
+	tripModel := NewTripModel(mockStore, mockWeather, mockEventPublisher)
 	ctx := context.Background()
 	now := time.Now()
 
@@ -593,6 +595,7 @@ func TestTripModel_EdgeCases(t *testing.T) {
 		}
 
 		mockStore.On("CreateTrip", ctx, *longTrip).Return(testTripID, nil).Once()
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 		err := tripModel.CreateTrip(ctx, longTrip)
 		assert.NoError(t, err)
 	})
