@@ -10,7 +10,9 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
@@ -294,15 +296,15 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 		paramCount++
 	}
 
-	if !criteria.StartDateFrom.IsZero() {
+	if !criteria.StartDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", paramCount))
-		params = append(params, criteria.StartDateFrom)
+		params = append(params, criteria.EndDate)
 		paramCount++ // nolint:ineffassign
 	}
 
-	if !criteria.StartDateTo.IsZero() {
+	if !criteria.StartDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", paramCount))
-		params = append(params, criteria.StartDateTo)
+		params = append(params, criteria.EndDate)
 		paramCount++ // nolint:ineffassign
 	}
 
@@ -492,4 +494,126 @@ func (tdb *TripDB) GetUserRole(ctx context.Context, tripID string, userID string
 	}
 
 	return role, nil
+}
+
+func (tdb *TripDB) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
+	query := `
+        SELECT id, email, raw_user_meta_data 
+        FROM auth.users 
+        WHERE email = $1 AND NOT is_sso_user`
+
+	var user types.SupabaseUser
+	err := tdb.GetPool().QueryRow(ctx, query, email).Scan(
+		&user.ID,
+		&user.Email,
+		&user.UserMetadata,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, models.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to lookup user: %w", err)
+	}
+
+	return &user, nil
+}
+
+func (tdb *TripDB) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
+	query := `
+        INSERT INTO trip_invitations (
+            trip_id, inviter_id, invitee_email, status, expires_at
+        ) VALUES ($1, $2, $3, $4, $5)
+        RETURNING id`
+
+	err := tdb.client.GetPool().QueryRow(
+		ctx, query,
+		invitation.TripID,
+		invitation.InviterID,
+		invitation.InviteeEmail,
+		types.InvitationStatusPending,
+		invitation.ExpiresAt,
+	).Scan(&invitation.ID)
+
+	if err != nil {
+		return fmt.Errorf("failed to create invitation: %w", err)
+	}
+
+	return nil
+}
+
+func (tdb *TripDB) GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error) {
+	query := `
+        SELECT id, trip_id, inviter_id, invitee_email, status, created_at, expires_at
+        FROM trip_invitations
+        WHERE id = $1`
+
+	invitation := &types.TripInvitation{}
+	err := tdb.client.GetPool().QueryRow(ctx, query, invitationID).Scan(
+		&invitation.ID,
+		&invitation.TripID,
+		&invitation.InviterID,
+		&invitation.InviteeEmail,
+		&invitation.Status,
+		&invitation.CreatedAt,
+		&invitation.ExpiresAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NotFound("Invitation", invitationID)
+		}
+		return nil, fmt.Errorf("failed to get invitation: %w", err)
+	}
+
+	return invitation, nil
+}
+
+func (tdb *TripDB) UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error {
+	query := `
+        UPDATE trip_invitations
+        SET status = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING id`
+
+	var returnedID string
+	err := tdb.client.GetPool().QueryRow(ctx, query, status, invitationID).Scan(&returnedID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return errors.NotFound("Invitation", invitationID)
+		}
+		return fmt.Errorf("failed to update invitation status: %w", err)
+	}
+
+	return nil
+}
+
+func (tdb *TripDB) BeginTx(ctx context.Context) (store.Transaction, error) {
+	tx, err := tdb.GetPool().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	return &txWrapper{tx: tx}, nil
+}
+
+type txWrapper struct {
+	tx pgx.Tx
+}
+
+func (t *txWrapper) Commit() error {
+	return t.tx.Commit(context.Background())
+}
+
+func (t *txWrapper) Rollback() error {
+	return t.tx.Rollback(context.Background())
+}
+
+// Commit satisfies store.TripStore interface (no-op at this level)
+func (tdb *TripDB) Commit() error {
+	return nil // Transactions are committed via the Transaction interface
+}
+
+// Rollback satisfies store.TripStore interface (no-op at this level)
+func (tdb *TripDB) Rollback() error {
+	return nil // Transactions are rolled back via the Transaction interface
 }

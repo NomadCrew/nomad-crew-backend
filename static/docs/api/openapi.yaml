@@ -463,3 +463,21 @@ paths:
           description: Weather update triggered
         403:
           $ref: '#/components/responses/ForbiddenError'
+  /trips/{id}/invitations:
+    post:
+      summary: Invite a member to the trip
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '201':
+          description: Invitation created successfully

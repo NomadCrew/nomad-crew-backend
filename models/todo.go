@@ -9,14 +9,15 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 )
 
 type TodoModel struct {
 	store     store.TodoStore
-	tripModel *TripModel
+	tripModel *trip.TripModel
 }
 
-func NewTodoModel(store store.TodoStore, tripModel *TripModel) *TodoModel {
+func NewTodoModel(store store.TodoStore, tripModel *trip.TripModel) *TodoModel {
 	return &TodoModel{
 		store:     store,
 		tripModel: tripModel,

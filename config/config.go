@@ -31,6 +31,7 @@ type ServerConfig struct {
 	AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS" yaml:"allowed_origins"`
 	Version        string      `mapstructure:"VERSION" yaml:"version"`
 	JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY" yaml:"jwt_secret_key"`
+	FrontendURL    string      `mapstructure:"FRONTEND_URL" yaml:"frontend_url"`
 }
 
 type DatabaseConfig struct {
@@ -53,6 +54,7 @@ type ExternalServices struct {
 	GeoapifyKey     string `mapstructure:"GEOAPIFY_KEY"`
 	PexelsAPIKey    string `mapstructure:"PEXELS_API_KEY"`
 	SupabaseAnonKey string `mapstructure:"SUPABASE_ANON_KEY"`
+	SupabaseURL	 	string `mapstructure:"SUPABASE_URL"`
 }
 
 type Config struct {

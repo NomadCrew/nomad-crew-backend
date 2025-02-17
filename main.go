@@ -16,11 +16,13 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
+	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/supabase-community/supabase-go"
 )
 
 func main() {
@@ -101,15 +103,30 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 
+	// Initialize Supabase client
+	supabaseClient, err := supabase.NewClient(
+		cfg.ExternalServices.SupabaseAnonKey,
+		cfg.ExternalServices.SupabaseURL,
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize Supabase client: %v", err)
+	}
+
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
 	eventService := services.NewRedisEventService(redisClient)
 	weatherService := services.NewWeatherService(eventService)
 
 	// Handlers
-	tripModel := models.NewTripModel(tripDB, weatherService, eventService)
+	tripModel := trip.NewTripModel(
+		tripDB,
+		weatherService,
+		eventService,
+		supabaseClient,
+	)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
-	tripHandler := handlers.NewTripHandler(tripModel, eventService)
+	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 
 	// Router setup

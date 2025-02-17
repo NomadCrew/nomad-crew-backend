@@ -41,6 +41,11 @@ const (
 	EventTypeMemberAdded       EventType = CategoryMember + "_ADDED"
 	EventTypeMemberRoleUpdated EventType = CategoryMember + "_ROLE_UPDATED"
 	EventTypeMemberRemoved     EventType = CategoryMember + "_REMOVED"
+
+	// Invitation events
+	EventTypeInvitationCreated       EventType = CategoryTrip + "_INVITATION_CREATED"
+	EventTypeInvitationAccepted      EventType = CategoryTrip + "_INVITATION_ACCEPTED"
+	EventTypeInvitationStatusUpdated EventType = "invitation_status_updated"
 )
 
 // Base event interface
@@ -97,4 +102,27 @@ type EventPublisher interface {
 type EventHandler interface {
 	HandleEvent(ctx context.Context, event Event) error
 	SupportedEvents() []EventType
+}
+
+type MemberRoleUpdatedEvent struct {
+	MemberID  string     `json:"memberId"`
+	OldRole   MemberRole `json:"oldRole"`
+	NewRole   MemberRole `json:"newRole"`
+	UpdatedBy string     `json:"updatedBy"`
+}
+
+type MemberRemovedEvent struct {
+	RemovedUserID string `json:"removedUserId"`
+	RemovedBy     string `json:"removedBy"`
+}
+
+type InvitationCreatedEvent struct {
+	InvitationID string    `json:"invitationId"`
+	InviteeEmail string    `json:"inviteeEmail"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+}
+
+type InvitationStatusUpdatedEvent struct {
+	InvitationID string           `json:"invitationId"`
+	NewStatus    InvitationStatus `json:"newStatus"`
 }

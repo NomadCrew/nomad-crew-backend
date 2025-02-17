@@ -1,36 +1,37 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
-	"github.com/NomadCrew/nomad-crew-backend/models"
-	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
+	trip "github.com/NomadCrew/nomad-crew-backend/models/trip"
+	tcommand "github.com/NomadCrew/nomad-crew-backend/models/trip/command"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/supabase-community/supabase-go"
 )
 
 type TripHandler struct {
-	tripModel    *models.TripModel
+	tripModel    *trip.TripModel
 	eventService types.EventPublisher
+	supabase     *supabase.Client
 }
 
 type UpdateTripStatusRequest struct {
 	Status string `json:"status" binding:"required"`
 }
 
-func NewTripHandler(model *models.TripModel, eventService types.EventPublisher) *TripHandler {
+func NewTripHandler(model *trip.TripModel, eventService types.EventPublisher, supabase *supabase.Client) *TripHandler {
 	return &TripHandler{
 		tripModel:    model,
 		eventService: eventService,
+		supabase:     supabase,
 	}
 }
 
@@ -45,292 +46,238 @@ type CreateTripRequest struct {
 }
 
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		log.Errorw("Failed to load config", "error", err)
-		if err := c.Error(errors.InternalServerError("Failed to load configuration")); err != nil {
-			log.Errorw("Failed to add internal server error", "error", err)
-		}
-		return
-	}
-	pexelsClient := pexels.NewClient(cfg.ExternalServices.PexelsAPIKey)
-
-	var req CreateTripRequest
+	var req types.Trip
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid request body", "error", err)
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+		c.Error(errors.ValidationFailed("invalid_request", err.Error()))
 		return
 	}
 
-	// Get user ID from context (set by auth middleware)
-	userID, exists := c.Get("user_id")
-	if !exists {
-		if err := c.Error(errors.AuthenticationFailed("User not authenticated")); err != nil {
-			log.Errorw("Failed to add authentication error", "error", err)
-		}
-		return
+	cmd := &tcommand.CreateTripCommand{
+		BaseCommand: tcommand.BaseCommand{
+			UserID: c.GetString("user_id"),
+			Ctx:    h.tripModel.GetCommandContext(),
+		},
+		Trip: &req,
 	}
 
-	trip := &types.Trip{
-		Name:        req.Name,
-		Description: req.Description,
-		Destination: req.Destination,
-		StartDate:   req.StartDate,
-		EndDate:     req.EndDate,
-		CreatedBy:   userID.(string),
-		Status:      types.TripStatusPlanning,
-	}
-	log.Infow("Processing trip creation",
-		"raw_request", req,
-		"parsed_destination", trip.Destination)
-
-	imageURL, err := pexelsClient.SearchDestinationImage(trip.Destination.Address)
+	result, err := cmd.Execute(c.Request.Context())
 	if err != nil {
-		log.Warnw("Failed to fetch background image", "error", err)
-		// Continue without image - don't fail the trip creation
-	}
-
-	trip.BackgroundImageURL = imageURL
-
-	if err := h.tripModel.CreateTrip(c.Request.Context(), trip); err != nil {
-		log.Errorw("Failed to create trip", "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
+		h.handleModelError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, trip)
+	// Publish creation events
+	for _, event := range result.Events {
+		if err := h.eventService.Publish(c, result.Data.(*types.Trip).ID, event); err != nil {
+			logger.GetLogger().Errorw("Failed to publish create event", "error", err)
+		}
+	}
+
+	c.JSON(http.StatusCreated, result.Data)
 }
 
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 
-	// Get trip with members
-	trip, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID)
+	cmd := &tcommand.GetTripCommand{
+		BaseCommand: tcommand.BaseCommand{
+			UserID: userID,
+			Ctx:    h.tripModel.GetCommandContext(),
+		},
+		TripID: tripID,
+	}
+
+	result, err := cmd.Execute(c.Request.Context())
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
-		}
+		h.handleModelError(c, err)
 		return
 	}
 
-	// Verify user has access to this trip
-	hasAccess := false
-	for _, member := range trip.Members {
-		if member.UserID == userID {
-			hasAccess = true
-			break
-		}
-	}
-
-	if !hasAccess {
-		if err := c.Error(errors.AuthenticationFailed("Not authorized to view this trip")); err != nil {
-			log.Errorw("Failed to add authentication error", "error", err)
-		}
-		return
-	}
-
-	c.JSON(http.StatusOK, trip)
+	c.JSON(http.StatusOK, result.Data)
 }
 
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+    log := logger.GetLogger()
+    tripID := c.Param("id")
+    userID := c.GetString("user_id")
 
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
-	if err != nil {
-		log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    var update types.TripUpdate
+    if err := c.ShouldBindJSON(&update); err != nil {
+        c.Error(errors.ValidationFailed("Invalid update data", err.Error()))
+        return
+    }
 
-	// Verify ownership
-	if trip.CreatedBy != userID {
-		if err := c.Error(errors.AuthenticationFailed("Not authorized to update this trip")); err != nil {
-			log.Errorw("Failed to add authentication error", "error", err)
-		}
-		return
-	}
+    cmd := &tcommand.UpdateTripCommand{
+        BaseCommand: tcommand.BaseCommand{
+            UserID: userID,
+            Ctx:    h.tripModel.GetCommandContext(),
+        },
+        TripID: tripID,
+        Update: &update,
+    }
 
-	var update types.TripUpdate
-	if err := c.ShouldBindJSON(&update); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
+    result, err := cmd.Execute(c.Request.Context())
+    if err != nil {
+        h.handleModelError(c, err)
+        return
+    }
 
-	if err := h.tripModel.UpdateTrip(c.Request.Context(), tripID, &update); err != nil {
-		log.Errorw("Failed to update trip", "tripId", tripID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    // Process command result events
+    for _, event := range result.Events {
+        if err := h.eventService.Publish(c, tripID, event); err != nil {
+            log.Errorw("Failed to publish update event", "error", err)
+        }
+    }
 
-	payload, _ := json.Marshal(trip)
-	if err := h.eventService.Publish(c.Request.Context(), tripID, types.Event{
-		BaseEvent: types.BaseEvent{
-			ID:        uuid.New().String(),
-			Type:      types.EventTypeTripUpdated,
-			TripID:    tripID,
-			UserID:    userID,
-			Timestamp: time.Now(),
-			Version:   1,
-		},
-		Metadata: types.EventMetadata{
-			Source: "trip_handler",
-		},
-		Payload: payload,
-	}); err != nil {
-		log.Errorw("Failed to publish trip update event", "error", err)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Trip updated successfully"})
+    c.JSON(http.StatusOK, result.Data)
 }
 
-func (h *TripHandler) handleModelError(c *gin.Context, err error) {
-	if tripErr, ok := err.(*models.TripError); ok {
-		switch tripErr.Code {
-		case models.ErrTripNotFound:
-			c.Error(errors.NotFound(tripErr.Message, tripErr.Details))
-		case models.ErrTripAccess:
-			c.Error(errors.AuthenticationFailed(tripErr.Details))
-		case models.ErrTripValidation:
-			c.Error(errors.ValidationFailed(tripErr.Message, tripErr.Details))
-		default:
-			c.Error(errors.InternalServerError("trip operation failed"))
-		}
-	} else {
-		c.Error(err)
-	}
-}
-
+// UpdateTripStatusHandler updates trip status using command pattern
 func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	log := logger.GetLogger()
+
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 
-	// Parse request body
 	var req UpdateTripStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+		log.Errorw("Invalid status update request", "error", err)
+		c.Error(errors.ValidationFailed("Invalid request", err.Error()))
 		return
 	}
 
-	// Convert string to TripStatus and validate
-	newStatus := types.TripStatus(req.Status)
-	if !newStatus.IsValid() {
-		if err := c.Error(errors.ValidationFailed("Invalid status", "Status must be one of: PLANNING, ACTIVE, COMPLETED, CANCELLED")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
+	// Create and execute command
+	cmd := &tcommand.UpdateTripStatusCommand{
+		BaseCommand: tcommand.BaseCommand{
+			UserID: userID,
+			Ctx:    h.tripModel.GetCommandContext(),
+		},
+		TripID:    tripID,
+		NewStatus: types.TripStatus(req.Status),
 	}
 
-	// Verify trip ownership
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+	result, err := cmd.Execute(c.Request.Context())
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	if trip.CreatedBy != userID {
-		h.handleModelError(c, h.tripModel.TripAccessDenied(tripID, userID, types.MemberRoleOwner))
-		return
-	}
-
-	// Update status
-	if err := h.tripModel.UpdateTripStatus(c.Request.Context(), tripID, newStatus); err != nil {
-		h.handleModelError(c, err)
-		return
-	}
-
+	updatedTrip := result.Data.(*types.Trip)
 	c.JSON(http.StatusOK, gin.H{
-		"message": fmt.Sprintf("Trip status updated to %s", newStatus),
+		"message": "Trip status updated successfully",
+		"data":    updatedTrip,
 	})
 }
 
-func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
+func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 	log := logger.GetLogger()
-	userID := c.GetString("user_id")
 
-	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userID)
-	if err != nil {
-		log.Errorw("Failed to list trips", "userId", userID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
+	var response types.ErrorResponse
+	var statusCode int
+
+	switch e := err.(type) {
+	case *errors.AppError:
+		response.Code = string(e.Type)
+		response.Message = e.Message
+		response.Error = e.Detail
+		statusCode = e.HTTPStatus
+	default:
+		log.Errorw("Unexpected error", "error", err)
+		response.Code = "INTERNAL_ERROR"
+		response.Message = "An unexpected error occurred"
+		response.Error = "Internal server error"
+		statusCode = http.StatusInternalServerError
 	}
 
-	c.JSON(http.StatusOK, trips)
+	c.JSON(statusCode, response)
+}
+
+// Helper function to map TripError codes to HTTP status codes
+func mapErrorToStatusCode(code string) int {
+	switch code {
+	case errors.ErrorTypeTripNotFound:
+		return http.StatusNotFound
+	case errors.ErrorTypeTripAccessDenied:
+		return http.StatusForbidden
+	case errors.ErrorTypeValidation, errors.ErrorTypeInvalidStatusTransition:
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
+    cmd := &tcommand.ListTripsCommand{
+        BaseCommand: tcommand.BaseCommand{
+            UserID: c.GetString("user_id"),
+            Ctx:    h.tripModel.GetCommandContext(),
+        },
+    }
+
+    result, err := cmd.Execute(c.Request.Context())
+    if err != nil {
+        h.handleModelError(c, err)
+        return
+    }
+
+    c.JSON(http.StatusOK, result.Data)
 }
 
 func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+    tripID := c.Param("id")
+    userID := c.GetString("user_id")
 
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
-	if err != nil {
-		log.Errorw("Failed to get trip", "tripId", tripID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    cmd := &tcommand.DeleteTripCommand{
+        BaseCommand: tcommand.BaseCommand{
+            UserID: userID,
+            Ctx:    h.tripModel.GetCommandContext(),
+        },
+        TripID: tripID,
+    }
 
-	// Verify ownership
-	if trip.CreatedBy != userID {
-		if err := c.Error(errors.AuthenticationFailed("Not authorized to delete this trip")); err != nil {
-			log.Errorw("Failed to add authentication error", "error", err)
-		}
-		return
-	}
+    result, err := cmd.Execute(c.Request.Context())
+    if err != nil {
+        h.handleModelError(c, err)
+        return
+    }
 
-	if err := h.tripModel.DeleteTrip(c.Request.Context(), tripID); err != nil {
-		log.Errorw("Failed to delete trip", "tripId", tripID, "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    // Publish deletion events
+    for _, event := range result.Events {
+        if err := h.eventService.Publish(c, tripID, event); err != nil {
+            logger.GetLogger().Errorw("Failed to publish delete event", "error", err)
+        }
+    }
 
-	c.JSON(http.StatusOK, gin.H{"message": "Trip deleted successfully"})
+    c.Status(http.StatusNoContent)
 }
 
 func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
-	log := logger.GetLogger()
+    log := logger.GetLogger()
 
-	var criteria types.TripSearchCriteria
-	if err := c.ShouldBindJSON(&criteria); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid search criteria", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
+    var criteria types.TripSearchCriteria
+    if err := c.ShouldBindJSON(&criteria); err != nil {
+        if err := c.Error(errors.ValidationFailed("Invalid search criteria", err.Error())); err != nil {
+            log.Errorw("Failed to add validation error", "error", err)
+        }
+        return
+    }
 
-	trips, err := h.tripModel.SearchTrips(c.Request.Context(), criteria)
-	if err != nil {
-		log.Errorw("Failed to search trips", "error", err)
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
-		return
-	}
+    cmd := &tcommand.SearchTripsCommand{
+        BaseCommand: tcommand.BaseCommand{
+            UserID: c.GetString("user_id"),
+            Ctx:    h.tripModel.GetCommandContext(),
+        },
+        Criteria: criteria,
+    }
 
-	c.JSON(http.StatusOK, trips)
+    result, err := cmd.Execute(c.Request.Context())
+    if err != nil {
+        h.handleModelError(c, err)
+        return
+    }
+
+    c.JSON(http.StatusOK, result.Data)
 }
 
 type AddMemberRequest struct {
@@ -356,8 +303,13 @@ func (h *TripHandler) AddMemberHandler(c *gin.Context) {
 		return
 	}
 
-	// Add the member
-	err := h.tripModel.AddMember(c.Request.Context(), tripID, req.UserID, req.Role)
+	membership := &types.TripMembership{
+		TripID: tripID,
+		UserID: req.UserID,
+		Role:   req.Role,
+	}
+
+	err := h.tripModel.AddMember(c.Request.Context(), membership)
 	if err != nil {
 		if err := c.Error(err); err != nil {
 			log.Errorw("Failed to add member error", "error", err)
@@ -375,7 +327,6 @@ func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	userID := c.Param("userId")
-	requestingUserID := c.GetString("user_id")
 
 	var req UpdateMemberRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -385,12 +336,17 @@ func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
 		return
 	}
 
-	err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, userID, req.Role, requestingUserID)
+	result, err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, userID, req.Role)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to update member role error", "error", err)
-		}
+		c.Error(err)
 		return
+	}
+
+	// Handle successful command events
+	for _, event := range result.Events {
+		if pubErr := h.eventService.Publish(c.Request.Context(), event.TripID, event); pubErr != nil {
+			log.Errorw("Failed to publish role update event", "error", pubErr)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -400,22 +356,33 @@ func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
 
 // RemoveMemberHandler handles removing a member from a trip
 func (h *TripHandler) RemoveMemberHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
-	userID := c.Param("userId")
-	requestingUserID := c.GetString("user_id")
+	userID := c.GetString("user_id")
+	memberID := c.Param("memberId")
 
-	err := h.tripModel.RemoveMember(c.Request.Context(), tripID, userID, requestingUserID)
+	cmd := &tcommand.RemoveMemberCommand{
+		BaseCommand: tcommand.BaseCommand{
+			UserID: userID,
+			Ctx:    h.tripModel.GetCommandContext(),
+		},
+		TripID:   tripID,
+		MemberID: memberID,
+	}
+
+	result, err := cmd.Execute(c.Request.Context())
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to remove member error", "error", err)
-		}
+		h.handleModelError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Member removed successfully",
-	})
+	// Publish removal events
+	for _, event := range result.Events {
+		if err := h.eventService.Publish(c, tripID, event); err != nil {
+			logger.GetLogger().Errorw("Failed to publish member removal event", "error", err)
+		}
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 // GetTripMembersHandler handles getting all members of a trip
@@ -457,6 +424,24 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // and reads client messages to publish them as events.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 	conn := c.MustGet("wsConnection").(*middleware.SafeConn)
+	defer conn.Close()
+
+	// Add heartbeat
+	conn.SetPingHandler(func(string) error {
+		return conn.WriteControl(websocket.PongMessage, []byte{}, time.Now().Add(10*time.Second))
+	})
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	go func() {
+		for range ticker.C {
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}()
+
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 	log := logger.GetLogger()
@@ -467,18 +452,28 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		"userID", userID,
 		"remoteAddr", conn.RemoteAddr())
 
-	// Get trip destination for weather updates
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
+	// Create cancellable context for cleanup
+	wsCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Get trip for weather updates
+	trip, err := h.tripModel.GetTripByID(wsCtx, tripID)
 	if err != nil {
 		log.Errorw("Failed to get trip for weather updates", "error", err)
+		if err := conn.WriteJSON(types.ErrorResponse{
+			Error: "Failed to initialize connection",
+			Code:  "INITIALIZATION_ERROR",
+		}); err != nil {
+			log.Errorw("Failed to send error message", "error", err)
+		}
 		if err := conn.Close(); err != nil {
 			log.Errorw("Failed to close WebSocket connection", "error", err)
 		}
 		return
 	}
 
-	// Subscribe to Redis events FIRST
-	eventChan, err := h.eventService.Subscribe(ctx, tripID, userID)
+	// Subscribe to events FIRST
+	eventChan, err := h.eventService.Subscribe(wsCtx, tripID, userID)
 	if err != nil {
 		log.Errorw("Failed to subscribe to events",
 			"error", err,
@@ -490,59 +485,66 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 	}
 
 	// THEN start tracking connection
-	h.tripModel.WeatherService.IncrementSubscribers(tripID, trip.Destination)
-	defer h.tripModel.WeatherService.DecrementSubscribers(tripID)
+	h.tripModel.GetCommandContext().WeatherSvc.IncrementSubscribers(tripID, trip.Destination)
+	defer h.tripModel.GetCommandContext().WeatherSvc.DecrementSubscribers(tripID)
 
-	// Forward events to client
+	// Ping/Pong handling
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	})
+
+	// Message handling goroutine
 	go func() {
-		for event := range eventChan {
-			log.Debugw("Received event from channel",
-				"eventType", event.Type,
-				"eventID", event.ID,
-				"tripID", tripID)
-
-			msg, err := json.Marshal(event)
-			if err != nil {
-				log.Errorw("Failed to marshal event",
-					"error", err,
-					"eventType", event.Type)
-				continue
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorw("Recovered from panic in event handler", "panic", r)
 			}
+		}()
 
-			log.Debugw("Sending weather update to client",
-				"client", conn.RemoteAddr(),
-				"msgSize", len(msg))
-
-			if middleware.ConnIsClosed(conn) {
-				log.Debugw("Connection already closed", "client", conn.RemoteAddr())
+		for {
+			select {
+			case <-wsCtx.Done():
 				return
-			}
+			case event, ok := <-eventChan:
+				if !ok {
+					return
+				}
 
-			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				log.Errorw("Failed to send event to client",
-					"error", err,
-					"client", conn.RemoteAddr())
-				return
+				if middleware.ConnIsClosed(conn) {
+					return
+				}
+
+				msg, err := json.Marshal(event)
+				if err != nil {
+					log.Errorw("Failed to marshal event",
+						"error", err,
+						"eventType", event.Type)
+					continue
+				}
+
+				if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+					log.Errorw("Failed to send event to client",
+						"error", err,
+						"client", conn.RemoteAddr())
+					return
+				}
 			}
 		}
 	}()
 
-	// Keep connection alive
-	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-				log.Warnw("WebSocket closed unexpectedly",
-					"error", err,
-					"client", conn.RemoteAddr())
-			}
-			break
-		}
-	}
+	// Keep-alive loop
+	ticker = time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 
-	log.Info("WebSocket connection closed")
-	if err := conn.Close(); err != nil {
-		log.Errorw("Failed to close WebSocket connection", "error", err)
+	for {
+		select {
+		case <-wsCtx.Done():
+			return
+		case <-ticker.C:
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
 	}
 }
 
@@ -554,11 +556,90 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 		return
 	}
 
-	h.tripModel.WeatherService.TriggerImmediateUpdate(
+	h.tripModel.GetCommandContext().WeatherSvc.TriggerImmediateUpdate(
 		c.Request.Context(),
 		tripID,
 		trip.Destination,
 	)
 
 	c.Status(http.StatusAccepted)
+}
+
+// InviteMemberHandler handles member invitations using command pattern
+func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	var req types.TripInvitation
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Errorw("Invalid invitation request", "error", err)
+		c.Error(errors.ValidationFailed("Invalid request", err.Error()))
+		return
+	}
+
+	// Populate invitation data
+	req.TripID = tripID
+	req.InviterID = userID
+	req.Status = types.InvitationStatusPending
+	req.ExpiresAt = time.Now().Add(7 * 24 * time.Hour)
+
+	// Create and execute command
+	cmd := &tcommand.InviteMemberCommand{
+		BaseCommand: tcommand.BaseCommand{
+			UserID: userID,
+			Ctx:    h.tripModel.GetCommandContext(),
+		},
+		Invitation: &req,
+	}
+
+	result, err := cmd.Execute(c.Request.Context())
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	// Publish events from command result
+	for _, event := range result.Events {
+		if err := h.eventService.Publish(c.Request.Context(), tripID, event); err != nil {
+			log.Errorw("Failed to publish event", "error", err)
+		}
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Invitation sent successfully",
+		"data":    result.Data,
+	})
+}
+
+func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
+	invitationID := c.Param("invitationId")
+	userID := c.GetString("user_id")
+
+	// Execute accept invitation command
+	cmd := &tcommand.AcceptInvitationCommand{
+		BaseCommand: tcommand.BaseCommand{
+			UserID: userID,
+			Ctx:    h.tripModel.GetCommandContext(),
+		},
+		InvitationID: invitationID,
+	}
+
+	result, err := cmd.Execute(c.Request.Context())
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	// Publish events from command result
+	for _, event := range result.Events {
+		if err := h.eventService.Publish(c.Request.Context(), event.ID, event); err != nil {
+			logger.GetLogger().Errorw("Failed to publish event", "error", err)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Invitation accepted successfully",
+		"tripId":  result.Data.(*types.TripMembership).TripID,
+	})
 }

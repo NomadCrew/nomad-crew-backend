@@ -4,13 +4,13 @@ import (
 	"net/http"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+    tripinterfaces "github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
 // RequireRole enforces role-based access control for a specific route
-func RequireRole(tripModel models.TripModelInterface, requiredRole types.MemberRole) gin.HandlerFunc {
+func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types.MemberRole) gin.HandlerFunc {
     return func(c *gin.Context) {
         log := logger.GetLogger()
 
