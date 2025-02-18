@@ -8,6 +8,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 type UpdateInvitationStatusCommand struct {
@@ -54,6 +55,7 @@ func (c *UpdateInvitationStatusCommand) Execute(ctx context.Context) (*interface
 		Success: true,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeInvitationStatusUpdated,
 				TripID:    invitation.TripID,
 				UserID:    c.UserID,

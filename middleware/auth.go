@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -57,8 +58,8 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		)
 
 		if apiKey != cfg.ExternalServices.SupabaseAnonKey {
-			log.Warnw("API key mismatch", 
-				"received", apiKey, 
+			log.Warnw("API key mismatch",
+				"received", apiKey,
 				"expected", cfg.ExternalServices.SupabaseAnonKey)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "Invalid API key",
@@ -97,6 +98,10 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		c.Set("user_email", claims.Email)
 		c.Set("user_role", claims.Role)
 		c.Set("user_metadata", claims.UserMetadata)
+
+		// And also add it to the standard request context:
+		ctx := context.WithValue(c.Request.Context(), "user_id", claims.Subject)
+		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()
 	}

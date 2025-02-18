@@ -481,3 +481,23 @@ paths:
       responses:
         '201':
           description: Invitation created successfully
+  /trips/invitations/accept:
+    post:
+      summary: Accept a trip invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: JWT invitation token
+      responses:
+        '200':
+          description: Successfully accepted invitation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'

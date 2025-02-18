@@ -84,7 +84,7 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 	log := logger.GetLogger()
 	query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at
+               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
         FROM trips t
         LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
         WHERE t.id = $1 AND m.deleted_at IS NULL`
@@ -103,6 +103,7 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 		&trip.CreatedBy,
 		&trip.CreatedAt,
 		&trip.UpdatedAt,
+		&trip.BackgroundImageURL,
 	)
 	if err != nil {
 		log.Errorw("Failed to get trip", "tripId", id, "error", err)

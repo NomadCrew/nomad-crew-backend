@@ -54,7 +54,7 @@ type ExternalServices struct {
 	GeoapifyKey     string `mapstructure:"GEOAPIFY_KEY"`
 	PexelsAPIKey    string `mapstructure:"PEXELS_API_KEY"`
 	SupabaseAnonKey string `mapstructure:"SUPABASE_ANON_KEY"`
-	SupabaseURL	 	string `mapstructure:"SUPABASE_URL"`
+	SupabaseURL     string `mapstructure:"SUPABASE_URL"`
 }
 
 type Config struct {
@@ -82,6 +82,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
 	v.SetDefault("REDIS.DB", 0)
+	v.SetDefault("LOG_LEVEL", "info")
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -151,10 +152,10 @@ func LoadConfig() (*Config, error) {
 	})
 
 	// Try to read config file based on environment
-	env := v.GetString("ENVIRONMENT")
-	v.SetConfigName("config." + env)
+	env := v.GetString("SERVER.ENVIRONMENT")
+	v.SetConfigName("config." + strings.ToLower(env))
+	v.AddConfigPath("./config")
 	v.AddConfigPath(".")
-	v.AddConfigPath("/etc/nomadcrew/")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

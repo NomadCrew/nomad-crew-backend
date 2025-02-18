@@ -41,11 +41,13 @@ func NewTripModel(
 func (tm *TripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
 	cmd := &command.CreateTripCommand{
 		BaseCommand: command.BaseCommand{
-			UserID: trip.CreatedBy,
+			UserID: getUserIdFromContext(ctx),
 			Ctx:    tm.GetCommandContext(),
 		},
 		Trip: trip,
 	}
+
+	trip.CreatedBy = cmd.UserID
 
 	result, err := cmd.Execute(ctx)
 	if err != nil {
@@ -236,6 +238,7 @@ func (tm *TripModel) tripNotFound(tripID string) error {
 }
 
 func (tm *TripModel) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
+	invitation.InviterID = getUserIdFromContext(ctx)
 	return tm.store.CreateInvitation(ctx, invitation)
 }
 
@@ -257,7 +260,6 @@ func (tm *TripModel) ListUserTrips(ctx context.Context, userID string) ([]*types
 			UserID: userID,
 			Ctx:    tm.cmdCtx,
 		},
-		UserID: userID,
 	}
 
 	result, err := cmd.Execute(ctx)

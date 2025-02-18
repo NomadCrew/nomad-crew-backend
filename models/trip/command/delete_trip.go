@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/shared"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	"github.com/google/uuid"
 )
 
 type DeleteTripCommand struct {
@@ -44,7 +45,7 @@ func (c *DeleteTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 		return nil, err
 	}
 
-	// Emit event
+	// Emit event using the shared emitter
 	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
 	if err := emitter.EmitTripEvent(
 		ctx,
@@ -60,6 +61,7 @@ func (c *DeleteTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 		Success: true,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeTripDeleted,
 				TripID:    c.TripID,
 				UserID:    c.UserID,

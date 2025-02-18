@@ -8,6 +8,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 type AcceptInvitationCommand struct {
@@ -46,7 +47,7 @@ func (c *AcceptInvitationCommand) Execute(ctx context.Context) (*interfaces.Comm
 		return nil, err
 	}
 
-	// 4. Update invitation status
+	// Update invitation status
 	if err := c.Ctx.Store.UpdateInvitationStatus(ctx, c.InvitationID, types.InvitationStatusAccepted); err != nil {
 		return nil, err
 	}
@@ -58,6 +59,7 @@ func (c *AcceptInvitationCommand) Execute(ctx context.Context) (*interfaces.Comm
 		Data:    membership,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeInvitationAccepted,
 				TripID:    invitation.TripID,
 				UserID:    c.UserID,

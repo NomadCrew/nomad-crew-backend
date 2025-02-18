@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type EventType string
@@ -120,9 +121,17 @@ type InvitationCreatedEvent struct {
 	InvitationID string    `json:"invitationId"`
 	InviteeEmail string    `json:"inviteeEmail"`
 	ExpiresAt    time.Time `json:"expiresAt"`
+	AcceptanceURL string    `json:"acceptanceURL"`
 }
 
 type InvitationStatusUpdatedEvent struct {
 	InvitationID string           `json:"invitationId"`
 	NewStatus    InvitationStatus `json:"newStatus"`
+}
+
+type InvitationClaims struct {
+	InvitationID string `json:"invitationId"`
+	TripID       string `json:"tripId"`
+	InviteeEmail string `json:"inviteeEmail"`
+	jwt.RegisteredClaims
 }

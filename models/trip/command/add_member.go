@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 type AddMemberCommand struct {
@@ -65,6 +66,7 @@ func (c *AddMemberCommand) Execute(ctx context.Context) (*interfaces.CommandResu
 		Data:    membership,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeMemberAdded,
 				TripID:    c.TripID,
 				UserID:    c.UserID,

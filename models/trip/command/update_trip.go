@@ -11,6 +11,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/shared"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 type UpdateTripCommand struct {
@@ -77,7 +78,7 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 		return nil, err
 	}
 
-	// Emit event
+	// Emit event using the emitter (which also publishes a copy)
 	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
 	eventErr := emitter.EmitTripEvent(ctx, c.TripID, types.EventTypeTripUpdated, updatedTrip, c.UserID)
 	if eventErr != nil {
@@ -96,6 +97,7 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 		Data:    updatedTrip,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeTripUpdated,
 				TripID:    c.TripID,
 				UserID:    c.UserID,

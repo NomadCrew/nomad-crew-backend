@@ -9,14 +9,13 @@ import (
 
 type ListTripsCommand struct {
 	BaseCommand
-	UserID string
 }
 
 func (c *ListTripsCommand) Validate(ctx context.Context) error {
-    if c.UserID == "" {
-        return errors.ValidationFailed("user_id_required", "User ID is required")
-    }
-    return nil
+	if c.BaseCommand.UserID == "" {
+		return errors.ValidationFailed("user_id_required", "User ID is required")
+	}
+	return nil
 }
 
 func (c *ListTripsCommand) ValidatePermissions(ctx context.Context) error {
@@ -29,7 +28,7 @@ func (c *ListTripsCommand) Execute(ctx context.Context) (*interfaces.CommandResu
 		return nil, err
 	}
 
-	trips, err := c.Ctx.Store.ListUserTrips(ctx, c.UserID)
+	trips, err := c.Ctx.Store.ListUserTrips(ctx, c.BaseCommand.UserID)
 	if err != nil {
 		return nil, errors.NewDatabaseError(err)
 	}

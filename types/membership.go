@@ -74,4 +74,5 @@ type TripInvitation struct {
 	Status       InvitationStatus `json:"status"`
 	CreatedAt    time.Time        `json:"createdAt"`
 	ExpiresAt    time.Time        `json:"expiresAt"`
+	Token		 string           `json:"token"`
 }

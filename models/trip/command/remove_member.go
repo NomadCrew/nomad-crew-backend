@@ -10,6 +10,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/shared"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 type RemoveMemberCommand struct {
@@ -77,7 +78,7 @@ func (c *RemoveMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		return nil, err
 	}
 
-	// Emit event
+	// Emit event via the shared emitter
 	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
 	payload, _ := json.Marshal(types.MemberRemovedEvent{
 		RemovedUserID: c.MemberID,
@@ -97,6 +98,7 @@ func (c *RemoveMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		Success: true,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeMemberRemoved,
 				TripID:    c.TripID,
 				UserID:    c.MemberID,
