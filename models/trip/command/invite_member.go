@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type InviteMemberCommand struct {
@@ -19,6 +21,10 @@ type InviteMemberCommand struct {
 }
 
 func (c *InviteMemberCommand) Validate(ctx context.Context) error {
+	logger.GetLogger().Debugw("Validating invitation",
+		"inviteeEmail", c.Invitation.InviteeEmail,
+		"tripID", c.Invitation.TripID,
+		"expiresAt", c.Invitation.ExpiresAt)
 	if c.Invitation.TripID == "" {
 		return errors.ValidationFailed("trip_id_required", "Trip ID is required")
 	}
@@ -58,21 +64,52 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		return nil, err
 	}
 
-	// Generate invitation token before creation
-	token := c.generateInvitationJWT()
+	// Get trip details for email
+	trip, err := c.Ctx.Store.GetTrip(ctx, c.Invitation.TripID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate JWT token
+	token, err := c.generateInvitationJWT()
+	if err != nil {
+		return nil, err
+	}
 	c.Invitation.Token = token
 
 	if err := c.Ctx.Store.CreateInvitation(ctx, c.Invitation); err != nil {
 		return nil, err
 	}
 
-	// Build the acceptance URL to include in the email
+	// Build acceptance URL
 	acceptanceURL := fmt.Sprintf("%s/accept-invite/%s",
 		c.Ctx.Config.FrontendURL,
 		token,
 	)
 
+	// Send invitation email
+	emailData := types.EmailData{
+		To:      c.Invitation.InviteeEmail,
+		Subject: fmt.Sprintf("You're invited to join %s on NomadCrew", trip.Name),
+		TemplateData: map[string]interface{}{
+			"UserEmail":     c.Invitation.InviteeEmail,
+			"TripName":      trip.Name,
+			"AcceptanceURL": acceptanceURL,
+		},
+	}
+
+	if err := c.Ctx.EmailSvc.SendInvitationEmail(ctx, emailData); err != nil {
+		// Log error but don't fail the command - we can retry email sending
+		log := logger.GetLogger()
+		log.Errorw("Failed to send invitation email",
+			"error", err,
+			"inviteeEmail", c.Invitation.InviteeEmail,
+			"tripId", c.Invitation.TripID)
+	}
+
+	// Create event payload
 	payload, _ := json.Marshal(types.InvitationCreatedEvent{
+		EventID:       uuid.NewString(),
 		InvitationID:  c.Invitation.ID,
 		InviteeEmail:  c.Invitation.InviteeEmail,
 		ExpiresAt:     c.Invitation.ExpiresAt,
@@ -84,6 +121,7 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		Data:    c.Invitation,
 		Events: []types.Event{{
 			BaseEvent: types.BaseEvent{
+				ID:        uuid.NewString(),
 				Type:      types.EventTypeInvitationCreated,
 				TripID:    c.Invitation.TripID,
 				UserID:    c.UserID,
@@ -95,7 +133,12 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 	}, nil
 }
 
-func (c *InviteMemberCommand) generateInvitationJWT() string {
+func (c *InviteMemberCommand) generateInvitationJWT() (string, error) {
+	if c.Ctx.Config == nil || c.Ctx.Config.JwtSecretKey == "" {
+		logger.GetLogger().Error("Missing JWT secret configuration")
+		return "", errors.New("configuration_error", "missing JWT secret configuration", "JwtSecretKey is not configured")
+	}
+
 	claims := &types.InvitationClaims{
 		InvitationID: c.Invitation.ID,
 		TripID:       c.Invitation.TripID,
@@ -104,7 +147,12 @@ func (c *InviteMemberCommand) generateInvitationJWT() string {
 			ExpiresAt: jwt.NewNumericDate(c.Invitation.ExpiresAt),
 		},
 	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, _ := token.SignedString([]byte(c.Ctx.Config.JwtSecretKey))
-	return signedToken
+	signedToken, err := token.SignedString([]byte(c.Ctx.Config.JwtSecretKey))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return signedToken, nil
 }

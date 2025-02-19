@@ -118,10 +118,11 @@ type MemberRemovedEvent struct {
 }
 
 type InvitationCreatedEvent struct {
-	InvitationID string    `json:"invitationId"`
-	InviteeEmail string    `json:"inviteeEmail"`
-	ExpiresAt    time.Time `json:"expiresAt"`
-	AcceptanceURL string    `json:"acceptanceURL"`
+	EventID       string    `json:"event_id"`
+	InvitationID  string    `json:"invitation_id"`
+	InviteeEmail  string    `json:"invitee_email"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	AcceptanceURL string    `json:"acceptance_url"`
 }
 
 type InvitationStatusUpdatedEvent struct {

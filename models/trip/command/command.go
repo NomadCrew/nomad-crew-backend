@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
@@ -31,13 +32,17 @@ func NewCommandContext(
 	eventBus types.EventPublisher,
 	weatherSvc types.WeatherServiceInterface,
 	supabaseClient *supabase.Client,
+	config *config.ServerConfig,
+	emailsvc types.EmailService,
 ) *interfaces.CommandContext {
 	return &interfaces.CommandContext{
 		Store:          store,
 		EventBus:       eventBus,
 		WeatherSvc:     weatherSvc,
 		SupabaseClient: supabaseClient,
+		Config:         config,
 		RequestData:    &sync.Map{},
+		EmailSvc:       emailsvc,
 	}
 }
 

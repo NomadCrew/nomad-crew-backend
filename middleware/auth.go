@@ -36,26 +36,11 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			"isWebSocket", strings.Contains(c.Request.Header.Get("Upgrade"), "websocket"),
 		)
 
-		// Log all authentication parameters
-		log.Debugw("Auth parameters",
-			"queryApikey", c.Query("apikey"),
-			"headerApikey", c.GetHeader("apikey"),
-			"queryToken", c.Query("token"),
-			"headerToken", c.GetHeader("Authorization"),
-			"userId", c.Query("userId"),
-		)
-
 		// 1. API Key Check
 		apiKey := c.Query("apikey")
 		if apiKey == "" {
 			apiKey = c.GetHeader("apikey")
 		}
-
-		log.Debugw("API key validation",
-			"received", apiKey,
-			"expectedPrefix", cfg.ExternalServices.SupabaseAnonKey[:8]+"...",
-			"match", apiKey == cfg.ExternalServices.SupabaseAnonKey,
-		)
 
 		if apiKey != cfg.ExternalServices.SupabaseAnonKey {
 			log.Warnw("API key mismatch",

@@ -16,6 +16,7 @@ type CommandContext struct {
 	SupabaseClient *supabase.Client
 	Config         *config.ServerConfig
 	RequestData    *sync.Map
+	EmailSvc       types.EmailService
 }
 
 // Add these methods directly to the interfaces package

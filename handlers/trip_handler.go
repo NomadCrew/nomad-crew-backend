@@ -161,6 +161,11 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 		NewStatus: types.TripStatus(req.Status),
 	}
 
+	log.Debugw("Command context state before execution",
+		"emailSvcExists", cmd.Ctx.EmailSvc != nil,
+		"configExists", cmd.Ctx.Config != nil,
+		"storeExists", cmd.Ctx.Store != nil)
+
 	result, err := cmd.Execute(c.Request.Context())
 	if err != nil {
 		h.handleModelError(c, err)
@@ -195,20 +200,6 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 	}
 
 	c.JSON(statusCode, response)
-}
-
-// Helper function to map TripError codes to HTTP status codes
-func mapErrorToStatusCode(code string) int {
-	switch code {
-	case errors.ErrorTypeTripNotFound:
-		return http.StatusNotFound
-	case errors.ErrorTypeTripAccessDenied:
-		return http.StatusForbidden
-	case errors.ErrorTypeValidation, errors.ErrorTypeInvalidStatusTransition:
-		return http.StatusBadRequest
-	default:
-		return http.StatusInternalServerError
-	}
 }
 
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
@@ -569,32 +560,50 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
-// InviteMemberHandler handles member invitations using command pattern
 func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 
-	var req types.TripInvitation
-	if err := c.ShouldBindJSON(&req); err != nil {
+	type InviteMemberRequest struct {
+		Data struct {
+			Email string `json:"email"`
+			Role  string `json:"role"`
+		} `json:"data"`
+	}
+
+	var reqPayload InviteMemberRequest
+	if err := c.ShouldBindJSON(&reqPayload); err != nil {
 		log.Errorw("Invalid invitation request", "error", err)
-		c.Error(errors.ValidationFailed("Invalid request", err.Error()))
+		c.Error(errors.ValidationFailed("invalid_request", err.Error()))
 		return
 	}
 
-	// Populate invitation data
-	req.TripID = tripID
-	req.InviterID = userID
-	req.Status = types.InvitationStatusPending
-	req.ExpiresAt = time.Now().Add(7 * 24 * time.Hour)
+	invitation := &types.TripInvitation{
+		InviteeEmail: reqPayload.Data.Email,
+		TripID:       tripID,
+		InviterID:    userID,
+		Status:       types.InvitationStatusPending,
+		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+	}
 
-	// Create and execute command
+	if reqPayload.Data.Role != "" {
+		invitation.Role = types.MemberRole(reqPayload.Data.Role)
+	} else {
+		invitation.Role = types.MemberRoleMember
+	}
+
 	cmd := &tcommand.InviteMemberCommand{
 		BaseCommand: tcommand.BaseCommand{
 			UserID: userID,
 			Ctx:    h.tripModel.GetCommandContext(),
 		},
-		Invitation: &req,
+		Invitation: invitation,
+	}
+
+	if cmd.Ctx.Config == nil {
+		c.Error(errors.InternalServerError("Server configuration missing"))
+		return
 	}
 
 	result, err := cmd.Execute(c.Request.Context())
@@ -603,7 +612,7 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 		return
 	}
 
-	// Publish events from command result
+	// Publish events from command result.
 	for _, event := range result.Events {
 		if err := h.eventService.Publish(c.Request.Context(), tripID, event); err != nil {
 			log.Errorw("Failed to publish event", "error", err)

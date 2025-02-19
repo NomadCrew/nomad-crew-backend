@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"net/http"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -21,6 +23,19 @@ var upgrader = websocket.Upgrader{
 type SafeConn struct {
 	*websocket.Conn
 	closed int32 // atomic flag
+	mu     sync.Mutex
+}
+
+func (sc *SafeConn) WriteMessage(messageType int, data []byte) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	return sc.Conn.WriteMessage(messageType, data)
+}
+
+func (sc *SafeConn) WriteControl(messageType int, data []byte, deadline time.Time) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	return sc.Conn.WriteControl(messageType, data, deadline)
 }
 
 func (sc *SafeConn) Close() error {
@@ -52,7 +67,7 @@ func WSMiddleware(cfg WSConfig) gin.HandlerFunc {
 			return
 		}
 
-		// Store connection in context
+		// Store connection in context wrapped as a SafeConn
 		c.Set("wsConnection", &SafeConn{Conn: conn})
 		c.Next()
 	}

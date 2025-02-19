@@ -117,13 +117,16 @@ func main() {
 	rateLimitService := services.NewRateLimitService(redisClient)
 	eventService := services.NewRedisEventService(redisClient)
 	weatherService := services.NewWeatherService(eventService)
+	emailService := services.NewEmailService(&cfg.Email)
 
 	// Handlers
 	tripModel := trip.NewTripModel(
 		tripDB,
-		weatherService,
 		eventService,
+		weatherService,
 		supabaseClient,
+		&cfg.Server,
+		emailService,
 	)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient)
@@ -204,8 +207,8 @@ func main() {
 			)
 		}
 
-		// Add new route
 		trips.PATCH("/:id/trigger-weather-update", tripHandler.TriggerWeatherUpdateHandler)
+		trips.POST("/:id/invitations", tripHandler.InviteMemberHandler)
 	}
 
 	// Todo routes setup

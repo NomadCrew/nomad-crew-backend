@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/command"
@@ -17,24 +18,30 @@ type TripModel struct {
 	mu     sync.RWMutex
 	cmdCtx *interfaces.CommandContext
 	store  store.TripStore
+	config *config.ServerConfig
 }
 
 var _ interfaces.TripModelInterface = (*TripModel)(nil)
 
 func NewTripModel(
 	store store.TripStore,
-	weatherSvc types.WeatherServiceInterface,
 	eventBus types.EventPublisher,
+	weatherSvc types.WeatherServiceInterface,
 	supabaseClient *supabase.Client,
+	config *config.ServerConfig,
+	emailSvc types.EmailService,
 ) *TripModel {
 	return &TripModel{
 		store: store,
-		cmdCtx: &interfaces.CommandContext{
-			Store:          store,
-			EventBus:       eventBus,
-			WeatherSvc:     weatherSvc,
-			SupabaseClient: supabaseClient,
-		},
+		cmdCtx: command.NewCommandContext(
+			store,
+			eventBus,
+			weatherSvc,
+			supabaseClient,
+			config,
+			emailSvc,
+		),
+		config: config,
 	}
 }
 
