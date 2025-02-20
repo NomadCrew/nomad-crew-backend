@@ -13,6 +13,7 @@ require (
 	github.com/lestrrat-go/jwx/v2 v2.1.3
 	github.com/prometheus/client_golang v1.14.0
 	github.com/redis/go-redis/v9 v9.7.0
+	github.com/resend/resend-go/v2 v2.15.0
 	github.com/shopspring/decimal v1.2.0
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
@@ -114,7 +115,6 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/resend/resend-go/v2 v2.15.0 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect

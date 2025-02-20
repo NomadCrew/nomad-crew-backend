@@ -14,6 +14,9 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+// Add at package level
+type contextKey string
+
 // SupabaseClaims represents the expected claims in a Supabase JWT.
 type SupabaseClaims struct {
 	Subject     string `json:"sub"`
@@ -85,7 +88,7 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		c.Set("user_metadata", claims.UserMetadata)
 
 		// And also add it to the standard request context:
-		ctx := context.WithValue(c.Request.Context(), "user_id", claims.Subject)
+		ctx := context.WithValue(c.Request.Context(), contextKey("user_id"), claims.Subject)
 		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()
