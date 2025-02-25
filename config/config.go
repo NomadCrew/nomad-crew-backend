@@ -51,14 +51,14 @@ type RedisConfig struct {
 }
 
 type ExternalServices struct {
-	GeoapifyKey      string `mapstructure:"GEOAPIFY_KEY"`
-	PexelsAPIKey     string `mapstructure:"PEXELS_API_KEY"`
-	SupabaseAnonKey  string `mapstructure:"SUPABASE_ANON_KEY"`
-	SupabaseURL      string `mapstructure:"SUPABASE_URL"`
+	GeoapifyKey       string `mapstructure:"GEOAPIFY_KEY"`
+	PexelsAPIKey      string `mapstructure:"PEXELS_API_KEY"`
+	SupabaseAnonKey   string `mapstructure:"SUPABASE_ANON_KEY"`
+	SupabaseURL       string `mapstructure:"SUPABASE_URL"`
 	SupabaseJWTSecret string `mapstructure:"SUPABASE_JWT_SECRET"`
-	EmailFromAddress string `mapstructure:"EMAIL_FROM_ADDRESS"`
-	EmailFromName    string `mapstructure:"EMAIL_FROM_NAME"`
-	EmailBaseURL     string `mapstructure:"EMAIL_BASE_URL" default:"https://api.mailchannels.net"`
+	EmailFromAddress  string `mapstructure:"EMAIL_FROM_ADDRESS"`
+	EmailFromName     string `mapstructure:"EMAIL_FROM_NAME"`
+	EmailBaseURL      string `mapstructure:"EMAIL_BASE_URL" default:"https://api.mailchannels.net"`
 }
 
 type EmailConfig struct {

@@ -2,9 +2,9 @@
 package valueobjects
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
-	"encoding/json"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -97,30 +97,30 @@ func degreesToRadians(degrees float64) float64 {
 
 // Add new methods to make GeoPoint more useful:
 func (g GeoPoint) ToCoordinates() *types.Coordinates {
-    return &types.Coordinates{
-        Lat: g.latitude,
-        Lng: g.longitude,
-    }
+	return &types.Coordinates{
+		Lat: g.latitude,
+		Lng: g.longitude,
+	}
 }
 
 // Add MarshalJSON/UnmarshalJSON to control serialization
 func (g GeoPoint) MarshalJSON() ([]byte, error) {
-    return json.Marshal(struct {
-        Latitude  float64 `json:"lat"`
-        Longitude float64 `json:"lng"`
-    }{
-        Latitude:  g.latitude,
-        Longitude: g.longitude,
-    })
+	return json.Marshal(struct {
+		Latitude  float64 `json:"lat"`
+		Longitude float64 `json:"lng"`
+	}{
+		Latitude:  g.latitude,
+		Longitude: g.longitude,
+	})
 }
 
 // Add constructor from domain types
 func NewGeoPointFromCoordinates(coords *types.Coordinates) (*GeoPoint, error) {
-    if coords == nil {
-        return nil, errors.ValidationFailed(
-            "invalid coordinates",
-            "coordinates cannot be nil",
-        )
-    }
-    return NewGeoPoint(coords.Lat, coords.Lng)
+	if coords == nil {
+		return nil, errors.ValidationFailed(
+			"invalid coordinates",
+			"coordinates cannot be nil",
+		)
+	}
+	return NewGeoPoint(coords.Lat, coords.Lng)
 }

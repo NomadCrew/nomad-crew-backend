@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -39,7 +40,7 @@ func (tm *TripModelFacade) CreateTrip(ctx context.Context, trip *types.Trip) err
 	trip.ID = id
 	// Simulate publishing an event
 	if tm.eventPublisher != nil {
-		tm.eventPublisher.Publish(ctx, id, types.Event{
+		if err := tm.eventPublisher.Publish(ctx, id, types.Event{
 			BaseEvent: types.BaseEvent{
 				Type:      types.EventTypeTripCreated,
 				TripID:    id,
@@ -49,7 +50,10 @@ func (tm *TripModelFacade) CreateTrip(ctx context.Context, trip *types.Trip) err
 			Metadata: types.EventMetadata{
 				Source: "trip_model",
 			},
-		})
+		}); err != nil {
+			log := logger.GetLogger()
+			log.Warnw("Failed to publish trip created event", "error", err)
+		}
 	}
 	return nil
 }
@@ -71,7 +75,7 @@ func (tm *TripModelFacade) UpdateTrip(ctx context.Context, id string, update *ty
 	_, err = tm.store.UpdateTrip(ctx, id, *update)
 	// Simulate publishing an event
 	if err == nil && tm.eventPublisher != nil {
-		tm.eventPublisher.Publish(ctx, id, types.Event{
+		if err := tm.eventPublisher.Publish(ctx, id, types.Event{
 			BaseEvent: types.BaseEvent{
 				Type:      types.EventTypeTripUpdated,
 				TripID:    id,
@@ -81,7 +85,10 @@ func (tm *TripModelFacade) UpdateTrip(ctx context.Context, id string, update *ty
 			Metadata: types.EventMetadata{
 				Source: "trip_model",
 			},
-		})
+		}); err != nil {
+			log := logger.GetLogger()
+			log.Warnw("Failed to publish trip updated event", "error", err)
+		}
 	}
 	return err
 }
@@ -102,7 +109,7 @@ func (tm *TripModelFacade) DeleteTrip(ctx context.Context, id string) error {
 
 	// Publish event if deletion was successful
 	if tm.eventPublisher != nil {
-		tm.eventPublisher.Publish(ctx, id, types.Event{
+		if err := tm.eventPublisher.Publish(ctx, id, types.Event{
 			BaseEvent: types.BaseEvent{
 				Type:      types.EventTypeTripDeleted,
 				TripID:    id,
@@ -112,7 +119,10 @@ func (tm *TripModelFacade) DeleteTrip(ctx context.Context, id string) error {
 			Metadata: types.EventMetadata{
 				Source: "trip_model",
 			},
-		})
+		}); err != nil {
+			log := logger.GetLogger()
+			log.Warnw("Failed to publish trip deleted event", "error", err)
+		}
 	}
 
 	return nil
@@ -214,7 +224,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 
 	// Simulate publishing an event
 	if err == nil && tm.eventPublisher != nil {
-		tm.eventPublisher.Publish(ctx, tripID, types.Event{
+		if err := tm.eventPublisher.Publish(ctx, tripID, types.Event{
 			BaseEvent: types.BaseEvent{
 				Type:      types.EventTypeTripStatusUpdated,
 				TripID:    tripID,
@@ -224,7 +234,10 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 			Metadata: types.EventMetadata{
 				Source: "trip_model",
 			},
-		})
+		}); err != nil {
+			log := logger.GetLogger()
+			log.Warnw("Failed to publish trip status updated event", "error", err)
+		}
 	}
 
 	// Start weather updates if the trip is now active

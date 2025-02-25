@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -15,9 +14,6 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
-
-// Add at package level
-type contextKey string
 
 // SupabaseClaims represents the expected claims in a Supabase JWT.
 type SupabaseClaims struct {
@@ -107,7 +103,9 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 				c.Set("auth_error_response", enhancedResponse)
 
 				// Also set the standard error for consistent error handling
-				c.Error(apperrors.Unauthorized("token_expired", errorMessage))
+				if err := c.Error(apperrors.Unauthorized("token_expired", errorMessage)); err != nil {
+					log.Errorw("Failed to set error in context", "error", err)
+				}
 				c.Abort()
 				return
 			}
@@ -135,58 +133,6 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 		c.Set("user_id", userID)
 		c.Next()
 	}
-}
-
-// validateSupabaseToken parses the token without signature verification and without
-// automatic claim validation, then performs manual checks for required claims.
-func validateSupabaseToken(tokenString, secret string) (*SupabaseClaims, error) {
-	token, err := jwt.Parse([]byte(tokenString),
-		jwt.WithVerify(true),
-		jwt.WithKey(jwa.HS256, []byte(secret)),
-		jwt.WithAcceptableSkew(30*time.Second),
-		jwt.WithValidator(jwt.ValidatorFunc(func(_ context.Context, t jwt.Token) jwt.ValidationError {
-			if time.Now().Add(-30 * time.Second).Before(t.Expiration()) {
-				return nil
-			}
-			return jwt.ErrTokenExpired()
-		})),
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("invalid token: %v", err)
-	}
-
-	// Map standard claims
-	claims := &SupabaseClaims{
-		Subject: token.Subject(),
-		Exp:     token.Expiration().Unix(),
-	}
-
-	// Extract custom claims
-	if email, ok := token.PrivateClaims()["email"].(string); ok {
-		claims.Email = email
-	}
-	if role, ok := token.PrivateClaims()["role"].(string); ok {
-		claims.Role = role
-	}
-	if metadata, ok := token.PrivateClaims()["user_metadata"].(map[string]interface{}); ok {
-		claims.UserMetadata = types.UserMetadata{
-			Username:       getStringValue(metadata, "username"),
-			FirstName:      getStringValue(metadata, "firstName"),
-			LastName:       getStringValue(metadata, "lastName"),
-			ProfilePicture: getStringValue(metadata, "avatar_url"),
-		}
-	}
-
-	return claims, nil
-}
-
-// getStringValue safely extracts a string value from a map.
-func getStringValue(m map[string]interface{}, key string) string {
-	if val, ok := m[key].(string); ok {
-		return val
-	}
-	return ""
 }
 
 // Modify your JWT validation logic
@@ -273,13 +219,6 @@ func maskToken(token string) string {
 	return token[:4] + "***" + token[len(token)-4:]
 }
 
-func maskSecret(secret string) string {
-	if len(secret) < 8 {
-		return "***"
-	}
-	return secret[:2] + "***" + secret[len(secret)-2:]
-}
-
 func getJWTClaims(token string) interface{} {
 	// Parse the token without validation to extract claims
 	tokenObj, err := jwt.Parse([]byte(token), jwt.WithVerify(false))
@@ -322,29 +261,4 @@ func ValidateTokenWithoutAbort(token string) (string, error) {
 	}
 
 	return userID, nil
-}
-
-func validateToken(token string) bool {
-	if token == "" {
-		return false
-	}
-
-	// Reuse existing JWT validation
-	_, err := validateJWT(token)
-	if err != nil {
-		return false
-	}
-
-	// Additional check for token expiration
-	claims, ok := getJWTClaims(token).(map[string]interface{})
-	if !ok {
-		return false
-	}
-
-	exp, ok := claims["exp"].(float64)
-	if !ok {
-		return false
-	}
-
-	return time.Now().Unix() < int64(exp)
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 )
@@ -52,13 +51,6 @@ type WSMetrics struct {
 	ErrorsTotal       *prometheus.CounterVec
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:    1024,
-	WriteBufferSize:   1024,
-	EnableCompression: true,
-	Subprotocols:      []string{"nomadcrew-v1"},
-}
-
 // Improve the SafeConn struct to better handle connection state
 type SafeConn struct {
 	*websocket.Conn
@@ -84,54 +76,6 @@ func DefaultWSConfig() WSConfig {
 		WriteWait:  5 * time.Second,  // Mobile networks can be slow
 		PongWait:   45 * time.Second, // Bit more generous for mobile clients
 		PingPeriod: 30 * time.Second, // More frequent pings for connection health
-	}
-}
-
-func initWSMetrics() *WSMetrics {
-	return &WSMetrics{
-		connectionCount: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "nomadcrew_ws_connections_total",
-			Help: "Number of active WebSocket connections",
-		}),
-		messageSize: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "nomadcrew_ws_message_size_bytes",
-			Help:    "Size of WebSocket messages in bytes",
-			Buckets: []float64{64, 128, 256, 512, 1024, 2048, 4096},
-		}),
-		messageLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "nomadcrew_ws_message_latency_seconds",
-			Help:    "Latency of WebSocket message processing",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25},
-		}),
-		errorCount: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "nomadcrew_ws_errors_total",
-			Help: "Total number of WebSocket errors",
-		}),
-		bufferUtilization: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "nomadcrew_ws_buffer_utilization",
-			Help: "Current WebSocket buffer utilization percentage",
-		}),
-		pingPongLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "nomadcrew_ws_ping_pong_latency_seconds",
-			Help:    "Latency of WebSocket ping/pong operations",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25},
-		}),
-		ConnectionsActive: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "nomadcrew_ws_connections_active",
-			Help: "Number of active WebSocket connections",
-		}),
-		MessagesReceived: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "nomadcrew_ws_messages_received_total",
-			Help: "Total number of WebSocket messages received",
-		}),
-		MessagesSent: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "nomadcrew_ws_messages_sent_total",
-			Help: "Total number of WebSocket messages sent",
-		}),
-		ErrorsTotal: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "nomadcrew_ws_errors_total",
-			Help: "Total number of WebSocket errors",
-		}, []string{"type"}),
 	}
 }
 
@@ -201,7 +145,9 @@ func (sc *SafeConn) writePump() {
 			if !ok {
 				log.Debugw("Write buffer channel closed", "userID", sc.UserID, "tripID", sc.TripID)
 				if sc.Conn != nil {
-					sc.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+					if err := sc.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+						log.Warnw("Error writing close message", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+					}
 				}
 				return
 			}
@@ -856,7 +802,9 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 		// Set the pong handler to keep the connection alive
 		conn.SetPongHandler(func(string) error {
 			// Update deadline when pong received
-			conn.SetReadDeadline(time.Now().Add(config.PongWait))
+			if err := conn.SetReadDeadline(time.Now().Add(config.PongWait)); err != nil {
+				log.Warnw("Failed to set read deadline in pong handler", "error", err, "userID", userID, "tripID", tripID)
+			}
 			log.Debugw("Pong received from client",
 				"userID", userID,
 				"tripID", tripID,
@@ -925,14 +873,19 @@ func contains(slice []string, item string) bool {
 // Enhanced backpressure monitoring
 func (sc *SafeConn) monitorBackpressure() {
 	log := logger.GetLogger()
-	log.Debugw("Starting backpressure monitor", "userID", sc.UserID, "tripID", sc.TripID)
 
 	// Safety check - if connection already has issues, exit early
-	if sc == nil || sc.done == nil || sc.writeBuffer == nil {
+	if sc == nil {
+		log.Warnw("Backpressure monitor initialized with nil connection")
+		return
+	}
+
+	log.Debugw("Starting backpressure monitor", "userID", sc.UserID, "tripID", sc.TripID)
+
+	if sc.done == nil || sc.writeBuffer == nil {
 		log.Warnw("Backpressure monitor initialized with nil values",
-			"sc_nil", sc == nil,
-			"done_chan_nil", sc != nil && sc.done == nil,
-			"write_buffer_nil", sc != nil && sc.writeBuffer == nil)
+			"done_chan_nil", sc.done == nil,
+			"write_buffer_nil", sc.writeBuffer == nil)
 		return
 	}
 

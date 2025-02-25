@@ -34,7 +34,9 @@ func (h *AuthHandler) RefreshTokenHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(errors.ValidationFailed("invalid_request", "Invalid request format"))
+		if err := c.Error(errors.ValidationFailed("invalid_request", "Invalid request format")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -44,7 +46,9 @@ func (h *AuthHandler) RefreshTokenHandler(c *gin.Context) {
 	session, err := h.supabase.Auth.RefreshToken(req.RefreshToken)
 	if err != nil {
 		log.Warnw("Failed to refresh token", "error", err)
-		c.Error(errors.Unauthorized("refresh_failed", "Failed to refresh token"))
+		if err := c.Error(errors.Unauthorized("refresh_failed", "Failed to refresh token")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 

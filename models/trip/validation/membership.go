@@ -17,7 +17,7 @@ func ValidateRoleTransition(oldRole, newRole types.MemberRole) error {
 
 func ValidateMembershipStatus(oldStatus, newStatus types.MembershipStatus) error {
 	if oldStatus == types.MembershipStatusInvited && newStatus != types.MembershipStatusActive {
-		return  errors.ValidationFailed(
+		return errors.ValidationFailed(
 			"status_transition",
 			"Invalid status transition for invited member",
 		)

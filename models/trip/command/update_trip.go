@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
+	tripinterfaces "github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/shared"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -43,7 +44,10 @@ func (c *UpdateTripCommand) ValidatePermissions(ctx context.Context) error {
 	return c.BaseCommand.ValidatePermissions(ctx, c.TripID, types.MemberRoleOwner)
 }
 
-func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandResult, error) {
+func (c *UpdateTripCommand) Execute(ctx context.Context) (*tripinterfaces.CommandResult, error) {
+	log := logger.GetLogger()
+
+	// Start a transaction
 	tx, err := c.Ctx.Store.BeginTx(ctx)
 	if err != nil {
 		return nil, errors.NewDatabaseError(err)
@@ -51,7 +55,9 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 
 	defer func() {
 		if r := recover(); r != nil {
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				log.Errorw("Failed to rollback transaction after panic", "error", err)
+			}
 		}
 	}()
 
@@ -74,7 +80,9 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 
 	updatedTrip, err := c.Ctx.Store.UpdateTrip(ctx, c.TripID, *c.Update)
 	if err != nil {
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Errorw("Failed to rollback transaction", "error", rollbackErr, "originalError", err)
+		}
 		return nil, err
 	}
 
@@ -82,7 +90,9 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
 	eventErr := emitter.EmitTripEvent(ctx, c.TripID, types.EventTypeTripUpdated, updatedTrip, c.UserID)
 	if eventErr != nil {
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Errorw("Failed to rollback transaction after event error", "error", rollbackErr, "originalError", eventErr)
+		}
 		return nil, errors.NewError(errors.ServerError, "event_publish_failed", "Failed to emit trip event", http.StatusInternalServerError)
 	}
 
@@ -92,7 +102,7 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 
 	payload, _ := json.Marshal(updatedTrip)
 
-	return &interfaces.CommandResult{
+	return &tripinterfaces.CommandResult{
 		Success: true,
 		Data:    updatedTrip,
 		Events: []types.Event{{
@@ -107,18 +117,4 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 			Payload: payload,
 		}},
 	}, nil
-}
-
-func createTripUpdatedEvent(tripID, userID string, trip *types.Trip) types.Event {
-	payload, _ := json.Marshal(trip)
-	return types.Event{
-		BaseEvent: types.BaseEvent{
-			Type:      types.EventTypeTripUpdated,
-			TripID:    tripID,
-			UserID:    userID,
-			Version:   1,
-			Timestamp: time.Now(),
-		},
-		Payload: payload,
-	}
 }

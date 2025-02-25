@@ -68,7 +68,11 @@ type CreateTripRequest struct {
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	var req types.Trip
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(errors.ValidationFailed("invalid_request", err.Error()))
+		log := logger.GetLogger()
+		log.Errorw("Invalid request", "error", err)
+		if err := c.Error(errors.ValidationFailed("invalid_request", err.Error())); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -127,7 +131,10 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 
 	var update types.TripUpdate
 	if err := c.ShouldBindJSON(&update); err != nil {
-		c.Error(errors.ValidationFailed("Invalid update data", err.Error()))
+		log.Errorw("Invalid update data", "error", err)
+		if err := c.Error(errors.ValidationFailed("Invalid update data", err.Error())); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -166,7 +173,9 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	var req UpdateTripStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Errorw("Invalid status update request", "error", err)
-		c.Error(errors.ValidationFailed("Invalid request", err.Error()))
+		if err := c.Error(errors.ValidationFailed("Invalid request", err.Error())); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -352,7 +361,9 @@ func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
 
 	result, err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, userID, req.Role)
 	if err != nil {
-		c.Error(err)
+		if err := c.Error(err); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -714,7 +725,10 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
 	if err != nil {
-		c.Error(err)
+		log := logger.GetLogger()
+		if err := c.Error(err); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -742,7 +756,9 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 	var reqPayload InviteMemberRequest
 	if err := c.ShouldBindJSON(&reqPayload); err != nil {
 		log.Errorw("Invalid invitation request", "error", err)
-		c.Error(errors.ValidationFailed("invalid_request", err.Error()))
+		if err := c.Error(errors.ValidationFailed("invalid_request", err.Error())); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
@@ -768,8 +784,8 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 		Invitation: invitation,
 	}
 
-	if cmd.Ctx.Config == nil {
-		c.Error(errors.InternalServerError("Server configuration missing"))
+	if err := c.Error(errors.InternalServerError("Server configuration missing")); err != nil {
+		log.Errorw("Failed to set error in context", "error", err)
 		return
 	}
 
@@ -797,21 +813,30 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 		Token string `json:"token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(errors.ValidationFailed("Invalid request", err.Error()))
+		log := logger.GetLogger()
+		if err := c.Error(errors.ValidationFailed("Invalid request", err.Error())); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
 	// Validate JWT
 	claims, err := auth.ValidateInvitationToken(req.Token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
 	if err != nil {
-		c.Error(errors.Unauthorized("invalid_token", "Invalid or expired invitation"))
+		log := logger.GetLogger()
+		if err := c.Error(errors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 
 	// Check user existence
 	_, err = h.tripModel.LookupUserByEmail(c.Request.Context(), claims.InviteeEmail)
 	if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.NotFoundError {
-		c.Error(errors.NewConflictError("unregistered_user", "User must complete registration first"))
+		log := logger.GetLogger()
+		if err := c.Error(errors.NewConflictError("unregistered_user", "User must complete registration first")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
 		return
 	}
 

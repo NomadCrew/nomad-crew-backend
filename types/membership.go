@@ -50,11 +50,11 @@ func (r MemberRole) IsAuthorizedFor(requiredRole MemberRole) bool {
 }
 
 func (r MemberRole) IsValid() bool {
-    switch r {
-    case MemberRoleOwner, MemberRoleAdmin, MemberRoleMember:
-        return true
-    }
-    return false
+	switch r {
+	case MemberRoleOwner, MemberRoleAdmin, MemberRoleMember:
+		return true
+	}
+	return false
 }
 
 type InvitationStatus string
@@ -70,9 +70,9 @@ type TripInvitation struct {
 	TripID       string           `json:"tripId"`
 	InviterID    string           `json:"inviterId"`
 	InviteeEmail string           `json:"inviteeEmail"`
-	Role 	   	 MemberRole       `json:"role"`
+	Role         MemberRole       `json:"role"`
 	Status       InvitationStatus `json:"status"`
 	CreatedAt    time.Time        `json:"createdAt"`
 	ExpiresAt    time.Time        `json:"expiresAt"`
-	Token		 string           `json:"token"`
+	Token        string           `json:"token"`
 }

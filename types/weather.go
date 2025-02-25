@@ -6,11 +6,11 @@ import (
 )
 
 type WeatherInfo struct {
-    TripID              string          `json:"tripId"`
-    Temperature2m       float64         `json:"temperature_2m"`
-    WeatherCode         int             `json:"weather_code"`
-    HourlyForecast []HourlyWeather `json:"hourly_forecast"`
-	Timestamp           time.Time       `json:"timestamp"`
+	TripID         string          `json:"tripId"`
+	Temperature2m  float64         `json:"temperature_2m"`
+	WeatherCode    int             `json:"weather_code"`
+	HourlyForecast []HourlyWeather `json:"hourly_forecast"`
+	Timestamp      time.Time       `json:"timestamp"`
 }
 
 type WeatherServiceError struct {
@@ -26,8 +26,8 @@ type WeatherServiceInterface interface {
 }
 
 type HourlyWeather struct {
-    Timestamp     time.Time `json:"timestamp"`
-    Temperature2m float64   `json:"temperature_2m"`
-    WeatherCode   int       `json:"weather_code"`
-    Precipitation float64   `json:"precipitation"`
+	Timestamp     time.Time `json:"timestamp"`
+	Temperature2m float64   `json:"temperature_2m"`
+	WeatherCode   int       `json:"weather_code"`
+	Precipitation float64   `json:"precipitation"`
 }

@@ -4,6 +4,6 @@ import "errors"
 
 // Model errors
 var (
-    ErrUserNotFound = errors.New("user not found")
-    // ... other model errors if any
+	ErrUserNotFound = errors.New("user not found")
+	// ... other model errors if any
 )

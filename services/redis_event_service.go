@@ -361,21 +361,21 @@ func (r *RedisEventService) PublishBatch(ctx context.Context, tripID string, eve
 
 // Add helper method for graceful shutdown
 func (r *RedisEventService) Shutdown(ctx context.Context) error {
-    r.log.Info("Shutting down event service")
+	r.log.Info("Shutting down event service")
 
-    // Close all active subscriptions
-    r.mu.Lock()
-    for key, sub := range r.subscriptions {
-        r.log.Debugw("Closing subscription during shutdown", "key", key)
-        sub.cancelCtx()
-        if err := sub.pubsub.Close(); err != nil {
-            r.log.Warnw("Error closing subscription", "key", key, "error", err)
-        }
-    }
-    r.subscriptions = make(map[string]subscription)
-    r.mu.Unlock()
+	// Close all active subscriptions
+	r.mu.Lock()
+	for key, sub := range r.subscriptions {
+		r.log.Debugw("Closing subscription during shutdown", "key", key)
+		sub.cancelCtx()
+		if err := sub.pubsub.Close(); err != nil {
+			r.log.Warnw("Error closing subscription", "key", key, "error", err)
+		}
+	}
+	r.subscriptions = make(map[string]subscription)
+	r.mu.Unlock()
 
-    return nil
+	return nil
 }
 
 // Add health check method
