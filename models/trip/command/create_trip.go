@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
+	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 )
@@ -25,7 +25,7 @@ func (c *CreateTripCommand) Validate(ctx context.Context) error {
 		return errors.ValidationFailed("trip_required", "Trip data is required")
 	}
 	if c.Trip.CreatedBy == "" {
-		return errors.ValidationFailed("creator_required", "Trip creator must be specified")
+		return errors.ValidationFailed("creator_required", "trip creator ID is required")
 	}
 	return validation.ValidateNewTrip(c.Trip)
 }

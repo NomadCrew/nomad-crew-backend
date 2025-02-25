@@ -31,7 +31,7 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 			log.Warnw("Unauthorized: Missing trip ID", "tripID", tripID)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "Unauthorized",
-				"message": "Trip ID missing in request",
+				"message": "User ID or Trip ID missing in request",
 			})
 			return
 		}
@@ -45,7 +45,7 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 			)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "Unauthorized",
-				"message": "User ID missing in request or authentication failed",
+				"message": "User ID or Trip ID missing in request",
 			})
 			return
 		}

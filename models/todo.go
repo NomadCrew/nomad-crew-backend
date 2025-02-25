@@ -9,15 +9,19 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 )
+
+// TripModelInterface defines the interface for trip model methods used by TodoModel
+type TripModelInterface interface {
+	GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error)
+}
 
 type TodoModel struct {
 	store     store.TodoStore
-	tripModel *trip.TripModel
+	tripModel TripModelInterface
 }
 
-func NewTodoModel(store store.TodoStore, tripModel *trip.TripModel) *TodoModel {
+func NewTodoModel(store store.TodoStore, tripModel TripModelInterface) *TodoModel {
 	return &TodoModel{
 		store:     store,
 		tripModel: tripModel,

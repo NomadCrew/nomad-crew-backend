@@ -276,6 +276,16 @@ func main() {
 		}
 	}
 
+	// Create auth handler
+	authHandler := handlers.NewAuthHandler(supabaseClient, cfg)
+
+	// Auth routes that don't require authentication
+	authRoutes := v1.Group("/auth")
+	// Don't add AuthMiddleware here - these routes are for unauthenticated users
+	{
+		authRoutes.POST("/refresh", authHandler.RefreshTokenHandler)
+	}
+
 	// Create server
 	srv := &http.Server{
 		Addr:              ":" + cfg.Server.Port,

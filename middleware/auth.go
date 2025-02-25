@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
@@ -85,9 +86,35 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 				"requestMethod", c.Request.Method,
 				"clientIP", c.ClientIP())
 
+			// Return a more user-friendly message if token is expired
+			errorMessage := "Invalid authentication token"
+			errorDetails := err.Error()
+
+			if strings.Contains(errorDetails, "token expired") || strings.Contains(errorDetails, "exp not satisfied") {
+				errorMessage = "Your session has expired"
+				errorDetails = "Please use your refresh token to obtain a new access token via the /v1/auth/refresh endpoint"
+
+				// Create enhanced response with additional info
+				enhancedResponse := gin.H{
+					"error":            errorMessage,
+					"details":          errorDetails,
+					"code":             "token_expired",
+					"refresh_endpoint": "/v1/auth/refresh",
+					"refresh_required": true,
+				}
+
+				// Store the enhanced response for the error handler
+				c.Set("auth_error_response", enhancedResponse)
+
+				// Also set the standard error for consistent error handling
+				c.Error(apperrors.Unauthorized("token_expired", errorMessage))
+				c.Abort()
+				return
+			}
+
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "Invalid authentication token",
-				"details": err.Error(),
+				"error":   errorMessage,
+				"details": errorDetails,
 			})
 			return
 		}
@@ -170,6 +197,17 @@ func validateJWT(tokenString string) (string, error) {
 	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
 	if err == nil {
 		log.Debugw("JWT header inspection", "header", tokenObj.PrivateClaims())
+
+		// Log expiration time to help with debugging
+		if !tokenObj.Expiration().IsZero() {
+			expiresAt := tokenObj.Expiration()
+			now := time.Now()
+			log.Debugw("Token expiration details",
+				"expires_at", expiresAt,
+				"current_time", now,
+				"is_expired", now.After(expiresAt),
+				"time_until_expiry", expiresAt.Sub(now).String())
+		}
 	}
 
 	// Get the Supabase JWT secret from config
@@ -191,6 +229,28 @@ func validateJWT(tokenString string) (string, error) {
 	)
 
 	if err != nil {
+		// Check specifically for token expiration
+		if strings.Contains(err.Error(), "exp not satisfied") {
+			expiryInfo := "Token has expired"
+
+			// Try to parse the token without validation to get expiry details
+			if expiredToken, parseErr := jwt.Parse([]byte(tokenString), jwt.WithVerify(false)); parseErr == nil {
+				if !expiredToken.Expiration().IsZero() {
+					expiredAt := expiredToken.Expiration()
+					now := time.Now()
+					expiryInfo = fmt.Sprintf("Token expired at %s (expired %s ago)",
+						expiredAt.Format(time.RFC3339),
+						now.Sub(expiredAt).String())
+
+					log.Debugw("Token expiration details",
+						"expired_at", expiredAt,
+						"current_time", now,
+						"expired_by", now.Sub(expiredAt).String())
+				}
+			}
+
+			return "", fmt.Errorf("token expired: %s", expiryInfo)
+		}
 		return "", fmt.Errorf("invalid token: %w", err)
 	}
 

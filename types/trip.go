@@ -87,12 +87,14 @@ type TripUpdate struct {
 }
 
 type TripSearchCriteria struct {
-	UserID      string
-	StartDate   time.Time
-	EndDate     time.Time
-	Limit       int
-	Offset      int
-	Destination string
+	UserID        string
+	StartDate     time.Time
+	EndDate       time.Time
+	StartDateFrom time.Time
+	StartDateTo   time.Time
+	Limit         int
+	Offset        int
+	Destination   string
 }
 
 type TripListCriteria struct {
