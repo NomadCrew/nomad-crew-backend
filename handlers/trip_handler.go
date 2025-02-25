@@ -489,7 +489,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 			"error", err,
 			"tripID", tripID,
 			"userID", userID)
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			log.Errorw("Error closing WebSocket connection", "error", closeErr, "tripID", tripID)
+		}
 		return
 	}
 
@@ -523,7 +525,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 		log.Errorw("Failed to get trip details",
 			"error", err,
 			"tripID", tripID)
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			log.Errorw("Error closing WebSocket connection", "error", closeErr, "tripID", tripID)
+		}
 		return
 	}
 

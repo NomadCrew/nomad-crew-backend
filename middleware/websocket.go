@@ -119,7 +119,9 @@ func (sc *SafeConn) writePump() {
 			"writeBuffer_nil", sc.writeBuffer == nil,
 			"conn_nil", sc.Conn == nil)
 		// Ensure connection is closed to clean up resources
-		sc.Close()
+		if err := sc.Close(); err != nil {
+			log.Errorw("Error closing connection", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+		}
 		return
 	}
 
