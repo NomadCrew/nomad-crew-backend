@@ -1,8 +1,9 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -135,7 +136,9 @@ func (sc *SafeConn) writePump() {
 
 		log.Debugw("Stopping write pump", "userID", sc.UserID, "tripID", sc.TripID)
 		ticker.Stop()
-		sc.Close()
+		if err := sc.Close(); err != nil {
+			log.Warnw("Error closing connection in write pump defer", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+		}
 	}()
 
 	for {
@@ -166,7 +169,9 @@ func (sc *SafeConn) writePump() {
 			if sc.Conn == nil {
 				sc.mu.Unlock()
 				log.Warnw("Nil connection in write pump", "userID", sc.UserID, "tripID", sc.TripID)
-				sc.Close() // Ensure cleanup
+				if err := sc.Close(); err != nil { // Ensure cleanup
+					log.Warnw("Error closing nil connection in write pump", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+				}
 				return
 			}
 
@@ -208,8 +213,10 @@ func (sc *SafeConn) writePump() {
 					sc.metrics.errorCount.Inc()
 				}
 
-				// Ensure connection is closed and resources cleaned up
-				sc.Close()
+				// Ensure connection is closed to clean up resources
+				if err := sc.Close(); err != nil {
+					log.Warnw("Error closing connection in write pump", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+				}
 				return
 			}
 
@@ -224,7 +231,7 @@ func (sc *SafeConn) writePump() {
 				}
 
 				// Only log periodic samples of message metrics to avoid verbose logging
-				if rand.Float64() < 0.01 { // Log ~1% of messages
+				if secureRandomFloat() < 0.01 { // Log ~1% of messages
 					log.Debugw("Message sent",
 						"userID", sc.UserID,
 						"tripID", sc.TripID,
@@ -245,7 +252,9 @@ func (sc *SafeConn) writePump() {
 			if sc.Conn == nil {
 				sc.mu.Unlock()
 				log.Warnw("Nil connection during ping", "userID", sc.UserID, "tripID", sc.TripID)
-				sc.Close() // Ensure cleanup
+				if err := sc.Close(); err != nil { // Ensure cleanup
+					log.Warnw("Error closing nil connection during ping", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+				}
 				return
 			}
 
@@ -278,8 +287,10 @@ func (sc *SafeConn) writePump() {
 				}
 				sc.mu.Unlock()
 
-				// Ensure connection is closed and resources cleaned up
-				sc.Close()
+				// Ensure connection is closed to clean up resources
+				if err := sc.Close(); err != nil {
+					log.Warnw("Error closing connection in write pump", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+				}
 				return
 			}
 			sc.mu.Unlock()
@@ -389,7 +400,9 @@ func (sc *SafeConn) readPump() {
 		}
 
 		log.Debugw("Stopping read pump", "userID", sc.UserID, "tripID", sc.TripID)
-		sc.Close()
+		if err := sc.Close(); err != nil {
+			log.Warnw("Error closing connection in read pump", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+		}
 	}()
 
 	// Check if Conn is nil
@@ -842,7 +855,9 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 
 		// Ensure connection is closed after handler completes
 		defer func() {
-			safeConn.Close()
+			if err := safeConn.Close(); err != nil {
+				log.Warnw("Error closing WebSocket connection", "error", err, "userID", userID)
+			}
 			if metrics != nil {
 				metrics.ConnectionsActive.Dec()
 			}
@@ -928,4 +943,15 @@ func (sc *SafeConn) monitorBackpressure() {
 func IsWebSocket(c *gin.Context) bool {
 	return strings.Contains(strings.ToLower(c.GetHeader("Connection")), "upgrade") &&
 		strings.EqualFold(c.GetHeader("Upgrade"), "websocket")
+}
+
+// secureRandomFloat returns a cryptographically secure random float64 between 0 and 1
+func secureRandomFloat() float64 {
+	var buf [8]byte
+	_, err := rand.Read(buf[:])
+	if err != nil {
+		// If crypto/rand fails, return 1.0 to ensure logging happens rather than silently failing
+		return 1.0
+	}
+	return float64(binary.LittleEndian.Uint64(buf[:])) / float64(1<<64)
 }

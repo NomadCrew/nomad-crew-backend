@@ -2,9 +2,10 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -457,7 +458,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 
 	if userID == "" || tripID == "" {
 		log.Error("Missing user or trip ID in WebSocket connection")
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Warnw("Error closing connection with missing IDs", "error", err)
+		}
 		return
 	}
 
@@ -687,11 +690,17 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 							"userID", userID)
 					}
 
+					// When write timeouts, we should terminate the websocket connection
+					if conn != nil {
+						if err := conn.Close(); err != nil {
+							log.Warnw("Error closing connection", "error", err, "userID", userID)
+						}
+					}
 					return
 				}
 
 				// Log occasional success for debugging
-				if rand.Float64() < 0.01 { // Log ~1% of successful sends
+				if secureRandomFloat() < 0.01 { // Log ~1% of successful sends
 					log.Debugw("Successfully sent event to client",
 						"eventType", event.Type,
 						"tripID", tripID,
@@ -705,7 +714,9 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 					"userID", userID)
 				// When write timeouts, we should terminate the websocket connection
 				if conn != nil {
-					conn.Close()
+					if err := conn.Close(); err != nil {
+						log.Warnw("Error closing connection", "error", err, "userID", userID)
+					}
 				}
 				return
 			}
@@ -804,9 +815,11 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	var req struct {
 		Token string `json:"token" binding:"required"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log := logger.GetLogger()
-		if err := c.Error(apperrors.ValidationFailed("Invalid request", err.Error())); err != nil {
+		log.Errorw("Invalid invitation acceptance request", "error", err)
+		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -817,16 +830,6 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	if err != nil {
 		log := logger.GetLogger()
 		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Check user existence
-	_, err = h.tripModel.LookupUserByEmail(c.Request.Context(), claims.InviteeEmail)
-	if appErr, ok := err.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
-		log := logger.GetLogger()
-		if err := c.Error(apperrors.NewConflictError("unregistered_user", "User must complete registration first")); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -848,21 +851,26 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	}
 
 	// Publish events from command result
+	log := logger.GetLogger()
 	for _, event := range result.Events {
 		if err := h.eventService.Publish(c.Request.Context(), event.TripID, event); err != nil {
-			logger.GetLogger().Errorw("Failed to publish event", "error", err)
+			log.Errorw("Failed to publish event", "error", err)
 		}
-	}
-
-	// Get full trip details
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), claims.TripID)
-	if err != nil {
-		h.handleModelError(c, err)
-		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Invitation accepted successfully",
-		"trip":    trip,
+		"data":    result.Data,
 	})
+}
+
+// secureRandomFloat returns a cryptographically secure random float64 between 0 and 1
+func secureRandomFloat() float64 {
+	var buf [8]byte
+	_, err := rand.Read(buf[:])
+	if err != nil {
+		// If crypto/rand fails, return 1.0 to ensure logging happens rather than silently failing
+		return 1.0
+	}
+	return float64(binary.LittleEndian.Uint64(buf[:])) / float64(1<<64)
 }
