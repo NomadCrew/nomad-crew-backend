@@ -97,11 +97,11 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 }
 
 // UpdateTodoHandler
-// Extracts trip ID from the parent route and todo ID from c.Param("todoId").
+// Extracts trip ID from the parent route and todo ID from c.Param("todoID").
 func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	todoID := c.Param("todoId")
+	todoID := c.Param("todoID")
 	userID := c.GetString("user_id")
 
 	if tripID == "" || todoID == "" {
@@ -160,11 +160,11 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 }
 
 // DeleteTodoHandler
-// Uses trip ID from c.Param("id") and todo ID from c.Param("todoId").
+// Uses trip ID from c.Param("id") and todo ID from c.Param("todoID").
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	todoID := c.Param("todoId")
+	todoID := c.Param("todoID")
 	userID := c.GetString("user_id")
 
 	if tripID == "" || todoID == "" {

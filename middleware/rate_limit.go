@@ -1,53 +1,56 @@
 package middleware
 
 import (
-    "context"
-    "fmt"
-    "time"
+	"fmt"
+	"net/http"
+	"time"
 
-    "github.com/gin-gonic/gin"
-    "github.com/redis/go-redis/v9"
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-func RateLimiter(redisClient *redis.Client, requests int, duration time.Duration) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        userID := c.GetString("user_id")
-        key := fmt.Sprintf("rate_limit:%s", userID)
-        ctx := context.Background()
+func WSRateLimiter(redisClient *redis.Client, maxConnPerUser int, window time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("user_id")
+		if userID == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "Authentication required",
+			})
+			return
+		}
 
-        // Initialize counter if not exists
-        exists, err := redisClient.Exists(ctx, key).Result()
-        if err != nil {
-            c.AbortWithStatus(500)
-            return
-        }
+		key := fmt.Sprintf("ws_conn:%s", userID)
 
-        if exists == 0 {
-            pipe := redisClient.Pipeline()
-            pipe.SetNX(ctx, key, 1, duration)
-            pipe.Expire(ctx, key, duration)
-            _, err = pipe.Exec(ctx)
-            if err != nil {
-                c.AbortWithStatus(500)
-                return
-            }
-        } else {
-            // Increment counter
-            count, err := redisClient.Incr(ctx, key).Result()
-            if err != nil {
-                c.AbortWithStatus(500)
-                return
-            }
+		// Use pipeline for atomic operations
+		pipe := redisClient.TxPipeline()
+		incr := pipe.Incr(c.Request.Context(), key)
+		pipe.Expire(c.Request.Context(), key, window)
 
-            if count > int64(requests) {
-                c.AbortWithStatusJSON(429, gin.H{
-                    "error": "Too many requests",
-                    "retry_after": duration.Seconds(),
-                })
-                return
-            }
-        }
+		_, err := pipe.Exec(c.Request.Context())
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error": "Rate limit check failed",
+			})
+			return
+		}
 
-        c.Next()
-    }
+		if incr.Val() > int64(maxConnPerUser) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error":       "Too many WebSocket connections",
+				"retry_after": window.Seconds(),
+			})
+			return
+		}
+
+		c.Set("ws_rate_key", key)
+
+		defer func() {
+			// Only decrement if WebSocket upgrade wasn't successful
+			if c.Writer.Status() != http.StatusSwitchingProtocols {
+				redisClient.Decr(c.Request.Context(), key)
+			}
+		}()
+
+		c.Next()
+	}
 }

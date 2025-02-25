@@ -300,6 +300,14 @@ func (tm *TripModel) GetInvitation(ctx context.Context, invitationID string) (*t
 }
 
 func (tm *TripModel) GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error) {
+	// Add validation to prevent empty ID errors
+	if tripID == "" {
+		return "", fmt.Errorf("cannot get user role with empty trip ID")
+	}
+	if userID == "" {
+		return "", fmt.Errorf("cannot get user role with empty user ID")
+	}
+
 	return tm.store.GetUserRole(ctx, tripID, userID)
 }
 

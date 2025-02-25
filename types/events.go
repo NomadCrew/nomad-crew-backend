@@ -7,7 +7,28 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	EventSerializeDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "event_serialize_seconds",
+		Help:    "Time spent serializing events",
+		Buckets: []float64{.0001, .0005, .001, .005, .01, .05},
+	})
+	EventSizeBytes = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "event_size_bytes",
+		Help:    "Serialized event sizes in bytes",
+		Buckets: []float64{64, 128, 256, 512, 1024, 2048, 4096},
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		EventSerializeDuration,
+		EventSizeBytes,
+	)
+}
 
 type EventType string
 

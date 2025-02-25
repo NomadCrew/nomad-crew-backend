@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/jackc/pgx/v4"
@@ -474,6 +475,35 @@ func (tdb *TripDB) GetTripMembers(ctx context.Context, tripID string) ([]types.T
 // GetUserRole gets a user's role in a trip
 func (tdb *TripDB) GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error) {
 	log := logger.GetLogger()
+
+	// Add debug logs to trace the user ID
+	log.Debugw("GetUserRole called",
+		"tripID", tripID,
+		"userID", userID,
+		"contextUserID", ctx.Value("user_id"),
+		"calledFrom", getCallerInfo())
+
+	// Add validation for empty input parameters
+	if tripID == "" {
+		log.Errorw("Cannot get user role with empty trip ID",
+			"tripID", tripID,
+			"userID", userID)
+		return "", fmt.Errorf("cannot get user role with empty trip ID")
+	}
+
+	if userID == "" {
+		log.Errorw("Cannot get user role with empty user ID",
+			"tripID", tripID,
+			"userID", userID,
+			"contextUserID", ctx.Value("user_id"))
+		return "", fmt.Errorf("cannot get user role with empty user ID")
+	}
+
+	// Debug log input parameters
+	log.Debugw("Querying for user role",
+		"tripID", tripID,
+		"userID", userID)
+
 	query := `
         SELECT role
         FROM trip_memberships
@@ -488,8 +518,8 @@ func (tdb *TripDB) GetUserRole(ctx context.Context, tripID string, userID string
 
 	if err != nil {
 		log.Errorw("Failed to get user role",
-			"tripId", tripID,
-			"userId", userID,
+			"tripID", tripID, // Changed from tripId to tripID for consistency
+			"userID", userID, // Changed from userId to userID for consistency
 			"error", err)
 		return "", fmt.Errorf("failed to get user role: %w", err)
 	}
@@ -617,4 +647,19 @@ func (tdb *TripDB) Commit() error {
 // Rollback satisfies store.TripStore interface (no-op at this level)
 func (tdb *TripDB) Rollback() error {
 	return nil // Transactions are rolled back via the Transaction interface
+}
+
+// getCallerInfo returns a string with information about the caller's stack
+func getCallerInfo() string {
+	stack := debug.Stack()
+	lines := strings.Split(string(stack), "\n")
+	// Try to find relevant call frame, skipping runtime frames
+	for i := 3; i < len(lines)-1; i += 2 {
+		if strings.Contains(lines[i], "trip.go") ||
+			strings.Contains(lines[i], "command.go") ||
+			strings.Contains(lines[i], "trip_handler.go") {
+			return lines[i]
+		}
+	}
+	return "unknown caller"
 }

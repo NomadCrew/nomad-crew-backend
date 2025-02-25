@@ -11,6 +11,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -30,139 +31,124 @@ type SupabaseClaims struct {
 	UserMetadata types.UserMetadata `json:"user_metadata"`
 }
 
+// CustomClaims represents the custom claims structure for JWT validation.
+type CustomClaims struct {
+	Subject string `json:"sub"`
+	// Add other claims as needed
+}
+
 // AuthMiddleware verifies the API key and validates the Bearer token.
-func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
+func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log := logger.GetLogger().With(
-			"path", c.Request.URL.Path,
-			"method", c.Request.Method,
-			"isWebSocket", strings.Contains(c.Request.Header.Get("Upgrade"), "websocket"),
-		)
+		var token string
+		log := logger.GetLogger()
 
-		// 1. API Key Check
-		apiKey := c.Query("apikey")
-		if apiKey == "" {
-			apiKey = c.GetHeader("apikey")
-		}
-
-		if apiKey != cfg.ExternalServices.SupabaseAnonKey {
-			log.Warnw("API key mismatch",
-				"received", apiKey,
-				"expected", cfg.ExternalServices.SupabaseAnonKey)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid API key",
-			})
-			return
-		}
-
-		// 2. Token Handling
-		tokenString := c.Query("token")
-		if tokenString == "" {
-			// Fallback to header-based auth
+		// WebSocket-specific token handling
+		if IsWebSocket(c) {
+			token = c.Query("token")
+			log.Debugw("WebSocket token extraction",
+				"tokenPresent", token != "",
+				"queryParams", c.Request.URL.Query(),
+				"path", c.Request.URL.Path)
+			if token == "" {
+				log.Warn("WebSocket connection missing token parameter")
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "WebSocket connections require ?token parameter",
+				})
+				return
+			}
+		} else {
+			// Standard Bearer token handling
 			authHeader := c.GetHeader("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
-				tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+				token = strings.TrimPrefix(authHeader, "Bearer ")
 			}
 		}
 
-		if tokenString == "" {
+		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Missing authentication token",
+				"error": "Authorization required",
 			})
 			return
 		}
 
-		claims, err := validateSupabaseToken(tokenString)
+		// Validate JWT token
+		log.Debugw("JWT validation attempt", "token", maskToken(token))
+		userID, err := validateJWT(token)
 		if err != nil {
-			log.Errorw("Token validation failed", "error", err)
+			// Enhanced error logging
+			log.Warnw("Invalid JWT token",
+				"error", err,
+				"token", maskToken(token),
+				"tokenLength", len(token),
+				"requestPath", c.Request.URL.Path,
+				"requestMethod", c.Request.Method,
+				"clientIP", c.ClientIP())
+
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": err.Error(),
+				"error":   "Invalid authentication token",
+				"details": err.Error(),
 			})
 			return
 		}
 
-		// Store user information in context.
-		c.Set("user_id", claims.Subject)
-		c.Set("user_email", claims.Email)
-		c.Set("user_role", claims.Role)
-		c.Set("user_metadata", claims.UserMetadata)
+		if userID == "" {
+			log.Errorw("Empty userID from valid JWT",
+				"tokenClaims", getJWTClaims(token),
+				"maskedToken", maskToken(token))
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error": "Authentication system error",
+			})
+			return
+		}
 
-		// And also add it to the standard request context:
-		ctx := context.WithValue(c.Request.Context(), contextKey("user_id"), claims.Subject)
-		c.Request = c.Request.WithContext(ctx)
-
+		log.Debugw("Authentication successful",
+			"userID", userID,
+			"isWebSocket", IsWebSocket(c))
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }
 
 // validateSupabaseToken parses the token without signature verification and without
 // automatic claim validation, then performs manual checks for required claims.
-func validateSupabaseToken(tokenString string) (*SupabaseClaims, error) {
-	log := logger.GetLogger()
+func validateSupabaseToken(tokenString, secret string) (*SupabaseClaims, error) {
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(secret)),
+		jwt.WithAcceptableSkew(30*time.Second),
+		jwt.WithValidator(jwt.ValidatorFunc(func(_ context.Context, t jwt.Token) jwt.ValidationError {
+			if time.Now().Add(-30 * time.Second).Before(t.Expiration()) {
+				return nil
+			}
+			return jwt.ErrTokenExpired()
+		})),
+	)
 
-	// Parse without verifying signature and disable automatic validation.
-	parsed, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false), jwt.WithValidate(false))
 	if err != nil {
-		return nil, fmt.Errorf("invalid token format: %v", err)
+		return nil, fmt.Errorf("invalid token: %v", err)
 	}
 
-	// Get expiration time and check if it exists
-	exp := parsed.Expiration()
-	if exp.IsZero() {
-		return nil, fmt.Errorf("missing exp claim")
-	}
-	if exp.Before(time.Now()) {
-		return nil, fmt.Errorf("token has expired")
-	}
-
-	// Extract email claim.
-	emailVal, ok := parsed.PrivateClaims()["email"]
-	if !ok {
-		return nil, fmt.Errorf("missing email claim")
-	}
-	email, ok := emailVal.(string)
-	if !ok {
-		return nil, fmt.Errorf("email claim is not a string")
-	}
-
-	// Extract role claim.
-	roleVal, ok := parsed.PrivateClaims()["role"]
-	if !ok {
-		return nil, fmt.Errorf("missing role claim")
-	}
-	role, ok := roleVal.(string)
-	if !ok {
-		return nil, fmt.Errorf("role claim is not a string")
-	}
-
+	// Map standard claims
 	claims := &SupabaseClaims{
-		Subject: parsed.Subject(),
-		Email:   email,
-		Role:    role,
-		Exp:     exp.Unix(),
+		Subject: token.Subject(),
+		Exp:     token.Expiration().Unix(),
 	}
 
-	// Extract user metadata, if available.
-	if metadata, ok := parsed.PrivateClaims()["user_metadata"].(map[string]interface{}); ok {
+	// Extract custom claims
+	if email, ok := token.PrivateClaims()["email"].(string); ok {
+		claims.Email = email
+	}
+	if role, ok := token.PrivateClaims()["role"].(string); ok {
+		claims.Role = role
+	}
+	if metadata, ok := token.PrivateClaims()["user_metadata"].(map[string]interface{}); ok {
 		claims.UserMetadata = types.UserMetadata{
 			Username:       getStringValue(metadata, "username"),
 			FirstName:      getStringValue(metadata, "firstName"),
 			LastName:       getStringValue(metadata, "lastName"),
 			ProfilePicture: getStringValue(metadata, "avatar_url"),
 		}
-	}
-
-	log.Debugw("Validated token claims",
-		"subject", claims.Subject,
-		"email", claims.Email,
-		"role", claims.Role,
-	)
-
-	if claims.Subject == "" {
-		return nil, fmt.Errorf("missing subject claim")
-	}
-	if claims.Role != "authenticated" {
-		return nil, fmt.Errorf("insufficient permissions")
 	}
 
 	return claims, nil
@@ -174,4 +160,131 @@ func getStringValue(m map[string]interface{}, key string) string {
 		return val
 	}
 	return ""
+}
+
+// Modify your JWT validation logic
+func validateJWT(tokenString string) (string, error) {
+	log := logger.GetLogger()
+
+	// First parse without verification to inspect the token
+	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
+	if err == nil {
+		log.Debugw("JWT header inspection", "header", tokenObj.PrivateClaims())
+	}
+
+	// Get the Supabase JWT secret from config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to load config for JWT validation: %w", err)
+	}
+
+	// Decode the base64 secret if needed
+	secret := cfg.ExternalServices.SupabaseJWTSecret
+	log.Debugw("Using Supabase JWT secret for validation", "secret_length", len(secret))
+
+	// Now parse with verification using the appropriate settings for Supabase tokens
+	tokenObj, err = jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(secret)),
+		jwt.WithValidate(true),
+		jwt.WithAcceptableSkew(30*time.Second),
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	// Extract the subject claim (user ID)
+	sub := tokenObj.Subject()
+	if sub == "" {
+		// If subject is empty, try to get from private claims
+		if subClaim, ok := tokenObj.PrivateClaims()["sub"].(string); ok {
+			sub = subClaim
+		}
+	}
+
+	return sub, nil
+}
+
+func maskToken(token string) string {
+	if len(token) < 8 {
+		return "***"
+	}
+	return token[:4] + "***" + token[len(token)-4:]
+}
+
+func maskSecret(secret string) string {
+	if len(secret) < 8 {
+		return "***"
+	}
+	return secret[:2] + "***" + secret[len(secret)-2:]
+}
+
+func getJWTClaims(token string) interface{} {
+	// Parse the token without validation to extract claims
+	tokenObj, err := jwt.Parse([]byte(token), jwt.WithVerify(false))
+	if err != nil {
+		return map[string]interface{}{
+			"error": fmt.Sprintf("failed to parse token: %v", err),
+		}
+	}
+
+	// Build a map of all claims
+	claims := make(map[string]interface{})
+
+	// Add standard claims
+	claims["sub"] = tokenObj.Subject()
+	claims["iss"] = tokenObj.Issuer()
+	if !tokenObj.Expiration().IsZero() {
+		claims["exp"] = tokenObj.Expiration().Unix()
+	}
+	if !tokenObj.IssuedAt().IsZero() {
+		claims["iat"] = tokenObj.IssuedAt().Unix()
+	}
+
+	// Add all private claims
+	for k, v := range tokenObj.PrivateClaims() {
+		claims[k] = v
+	}
+
+	return claims
+}
+
+func ValidateTokenWithoutAbort(token string) (string, error) {
+	if token == "" {
+		return "", fmt.Errorf("empty token")
+	}
+
+	// Reuse your existing JWT validation logic
+	userID, err := validateJWT(token)
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	return userID, nil
+}
+
+func validateToken(token string) bool {
+	if token == "" {
+		return false
+	}
+
+	// Reuse existing JWT validation
+	_, err := validateJWT(token)
+	if err != nil {
+		return false
+	}
+
+	// Additional check for token expiration
+	claims, ok := getJWTClaims(token).(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return false
+	}
+
+	return time.Now().Unix() < int64(exp)
 }

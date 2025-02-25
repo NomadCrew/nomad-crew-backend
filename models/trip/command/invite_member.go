@@ -82,7 +82,7 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 	}
 
 	// Build acceptance URL
-	acceptanceURL := fmt.Sprintf("%s/accept-invite/%s",
+	acceptanceURL := fmt.Sprintf("%s/invite/accept/%s",
 		c.Ctx.Config.FrontendURL,
 		token,
 	)

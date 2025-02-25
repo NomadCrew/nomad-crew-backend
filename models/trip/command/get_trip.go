@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
@@ -21,11 +22,23 @@ func (c *GetTripCommand) Validate(ctx context.Context) error {
 }
 
 func (c *GetTripCommand) ValidatePermissions(ctx context.Context) error {
+	// Add debug log
+	logger.GetLogger().Debugw("GetTripCommand.ValidatePermissions called",
+		"commandUserID", c.UserID,
+		"tripID", c.TripID,
+		"contextUserID", ctx.Value("user_id"))
+
 	// Require at least member access
 	return c.BaseCommand.ValidatePermissions(ctx, c.TripID, types.MemberRoleMember)
 }
 
 func (c *GetTripCommand) Execute(ctx context.Context) (*interfaces.CommandResult, error) {
+	// Add debug log
+	logger.GetLogger().Debugw("GetTripCommand.Execute called",
+		"commandUserID", c.UserID,
+		"tripID", c.TripID,
+		"contextUserID", ctx.Value("user_id"))
+
 	if err := c.Validate(ctx); err != nil {
 		return nil, err
 	}

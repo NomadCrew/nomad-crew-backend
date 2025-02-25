@@ -18,4 +18,5 @@ type HealthCheck struct {
     Components map[string]HealthComponent  `json:"components"`
     Version    string                      `json:"version"`
     Timestamp  string                      `json:"timestamp"`
+    Uptime     string                      `json:"uptime"`
 }
