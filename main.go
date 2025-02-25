@@ -319,24 +319,3 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 }
-
-// setupTodoRoutes sets up todo-related routes.
-func _setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, rateLimitService *services.RateLimitService) {
-	// Use consistent parameter name with trip routes.
-	todos := r.Group("/v1/trips/:id/todos")
-	todos.Use(
-		middleware.AuthMiddleware(&cfg.Server),
-		middleware.WSRateLimiter(
-			rateLimitService.GetRedisClient(),
-			100,
-			time.Minute,
-		),
-	)
-	{
-		todos.POST("", th.CreateTodoHandler)
-		todos.GET("", th.ListTodosHandler)
-		// Use distinct parameter name for todo ID.
-		todos.PUT("/:todoID", th.UpdateTodoHandler)
-		todos.DELETE("/:todoID", th.DeleteTodoHandler)
-	}
-}

@@ -100,8 +100,3 @@ func (c *CreateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 		}},
 	}, nil
 }
-
-func _generateTripID() string {
-	// Implementation from your ID generation service
-	return "TRIP_" + uuid.New().String()
-}

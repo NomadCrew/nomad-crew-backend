@@ -10,7 +10,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip/shared"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
 )
@@ -46,17 +45,6 @@ func NewCommandContext(
 		RequestData:    &sync.Map{},
 		EmailSvc:       emailsvc,
 	}
-}
-
-func (c *BaseCommand) _emitEvent(ctx context.Context, tripID string, eventType types.EventType, payload interface{}) error {
-	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
-	return emitter.EmitTripEvent(
-		ctx,
-		tripID,
-		eventType,
-		payload,
-		c.UserID,
-	)
 }
 
 func (c *BaseCommand) ValidatePermissions(ctx context.Context, tripID string, requiredRole types.MemberRole) error {

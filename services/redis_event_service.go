@@ -284,30 +284,6 @@ func (r *RedisEventService) processSubscription(
 	}
 }
 
-// Add cleanup method for stale subscriptions
-func (r *RedisEventService) _cleanupStaleSubscriptions() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for key, sub := range r.subscriptions {
-		select {
-		case <-sub.pubsub.Channel():
-			// Channel closed, remove subscription
-			sub.cancelCtx()
-			delete(r.subscriptions, key)
-		default:
-			// Check if subscription is still healthy
-			if err := sub.pubsub.Ping(context.Background()); err != nil {
-				r.log.Warnw("Removing unhealthy subscription",
-					"key", key,
-					"error", err)
-				sub.cancelCtx()
-				delete(r.subscriptions, key)
-			}
-		}
-	}
-}
-
 func (r *RedisEventService) RegisterHandler(eventType types.EventType, handler types.EventHandler) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
