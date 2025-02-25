@@ -63,11 +63,17 @@ func ValidateNewTrip(trip *types.Trip) error {
 	if trip.Name == "" {
 		return errors.ValidationFailed("name_required", "trip name is required")
 	}
+	if trip.Destination.Address == "" {
+		return errors.ValidationFailed("destination_required", "trip destination is required")
+	}
 	if trip.StartDate.Before(time.Now().AddDate(0, 0, -1)) {
 		return errors.ValidationFailed("invalid_start_date", "Start date must be in the future")
 	}
 	if trip.EndDate.Before(trip.StartDate) {
 		return errors.ValidationFailed("invalid_end_date", "End date must be after start date")
+	}
+	if trip.CreatedBy == "" {
+		return errors.ValidationFailed("creator_required", "trip creator ID is required")
 	}
 	return nil
 }

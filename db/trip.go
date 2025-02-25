@@ -307,6 +307,20 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 	if !criteria.EndDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.end_date <= $%d", paramCount))
 		params = append(params, criteria.EndDate)
+		paramCount++
+	}
+
+	// Handle date range filtering
+	if !criteria.StartDateFrom.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", paramCount))
+		params = append(params, criteria.StartDateFrom)
+		paramCount++
+	}
+
+	if !criteria.StartDateTo.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", paramCount))
+		params = append(params, criteria.StartDateTo)
+		paramCount++
 	}
 
 	// Add conditions to base query

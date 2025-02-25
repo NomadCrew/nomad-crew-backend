@@ -513,6 +513,9 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
+	// Setup mock to expect CreateTrip calls
+	mockStore.On("CreateTrip", mock.Anything, mock.Anything).Return("test-id", nil)
+
 	tests := []struct {
 		name        string
 		trip        *types.Trip
