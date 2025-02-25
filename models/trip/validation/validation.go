@@ -70,10 +70,13 @@ func ValidateNewTrip(trip *types.Trip) error {
 		return errors.ValidationFailed("invalid_start_date", "Start date must be in the future")
 	}
 	if trip.EndDate.Before(trip.StartDate) {
-		return errors.ValidationFailed("invalid_end_date", "End date must be after start date")
+		return errors.ValidationFailed("invalid_end_date", "trip end date cannot be before start date")
 	}
 	if trip.CreatedBy == "" {
 		return errors.ValidationFailed("creator_required", "trip creator ID is required")
+	}
+	if trip.Status != "" && !trip.Status.IsValid() {
+		return errors.ValidationFailed("invalid_status", "invalid trip status")
 	}
 	return nil
 }
