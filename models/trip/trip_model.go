@@ -3,7 +3,6 @@ package trip
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
@@ -15,7 +14,6 @@ import (
 )
 
 type TripModel struct {
-	mu     sync.RWMutex
 	cmdCtx *interfaces.CommandContext
 	store  store.TripStore
 	config *config.ServerConfig

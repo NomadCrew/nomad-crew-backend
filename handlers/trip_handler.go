@@ -1,17 +1,15 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/errors"
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
@@ -20,21 +18,15 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/supabase-community/supabase-go"
 )
 
-var (
-	jsonPool = sync.Pool{
-		New: func() interface{} {
-			return jsoniter.ConfigFastest.NewEncoder(nil)
-		},
-	}
-	bufPool = sync.Pool{
-		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 256))
-		},
-	}
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+// Define context keys
+const (
+	userIDKey contextKey = "user_id"
 )
 
 type TripHandler struct {
@@ -70,7 +62,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log := logger.GetLogger()
 		log.Errorw("Invalid request", "error", err)
-		if err := c.Error(errors.ValidationFailed("invalid_request", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -132,7 +124,7 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 	var update types.TripUpdate
 	if err := c.ShouldBindJSON(&update); err != nil {
 		log.Errorw("Invalid update data", "error", err)
-		if err := c.Error(errors.ValidationFailed("Invalid update data", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid update data", err.Error())); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -173,7 +165,7 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	var req UpdateTripStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Errorw("Invalid status update request", "error", err)
-		if err := c.Error(errors.ValidationFailed("Invalid request", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid request", err.Error())); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -214,7 +206,7 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 	var statusCode int
 
 	switch e := err.(type) {
-	case *errors.AppError:
+	case *apperrors.AppError:
 		response.Code = string(e.Type)
 		response.Message = e.Message
 		response.Error = e.Detail
@@ -280,7 +272,7 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 
 	var criteria types.TripSearchCriteria
 	if err := c.ShouldBindJSON(&criteria); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid search criteria", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid search criteria", err.Error())); err != nil {
 			log.Errorw("Failed to add validation error", "error", err)
 		}
 		return
@@ -320,7 +312,7 @@ func (h *TripHandler) AddMemberHandler(c *gin.Context) {
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid request body", err.Error())); err != nil {
 			log.Errorw("Failed to add validation error", "error", err)
 		}
 		return
@@ -353,7 +345,7 @@ func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
 
 	var req UpdateMemberRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid request body", err.Error())); err != nil {
 			log.Errorw("Failed to add validation error", "error", err)
 		}
 		return
@@ -479,13 +471,13 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 	defer cancel()
 
 	// Ensure the user_id is propagated to the new context
-	wsCtx = context.WithValue(wsCtx, "user_id", userID)
+	wsCtx = context.WithValue(wsCtx, userIDKey, userID)
 
 	// Debug log to confirm user_id is in the context
 	log.Debugw("User ID set in WebSocket context",
 		"userID", userID,
-		"contextHasUserID", wsCtx.Value("user_id") != nil,
-		"contextUserIDValue", wsCtx.Value("user_id"))
+		"contextHasUserID", wsCtx.Value(userIDKey) != nil,
+		"contextUserIDValue", wsCtx.Value(userIDKey))
 
 	// Subscribe to events
 	eventChan, err := h.eventService.Subscribe(wsCtx, tripID, userID)
@@ -756,7 +748,7 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 	var reqPayload InviteMemberRequest
 	if err := c.ShouldBindJSON(&reqPayload); err != nil {
 		log.Errorw("Invalid invitation request", "error", err)
-		if err := c.Error(errors.ValidationFailed("invalid_request", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -784,7 +776,7 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 		Invitation: invitation,
 	}
 
-	if err := c.Error(errors.InternalServerError("Server configuration missing")); err != nil {
+	if err := c.Error(apperrors.InternalServerError("Server configuration missing")); err != nil {
 		log.Errorw("Failed to set error in context", "error", err)
 		return
 	}
@@ -814,7 +806,7 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log := logger.GetLogger()
-		if err := c.Error(errors.ValidationFailed("Invalid request", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid request", err.Error())); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -824,7 +816,7 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	claims, err := auth.ValidateInvitationToken(req.Token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
 	if err != nil {
 		log := logger.GetLogger()
-		if err := c.Error(errors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
+		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -832,9 +824,9 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 
 	// Check user existence
 	_, err = h.tripModel.LookupUserByEmail(c.Request.Context(), claims.InviteeEmail)
-	if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.NotFoundError {
+	if appErr, ok := err.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
 		log := logger.GetLogger()
-		if err := c.Error(errors.NewConflictError("unregistered_user", "User must complete registration first")); err != nil {
+		if err := c.Error(apperrors.NewConflictError("unregistered_user", "User must complete registration first")); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return

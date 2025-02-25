@@ -285,7 +285,7 @@ func (r *RedisEventService) processSubscription(
 }
 
 // Add cleanup method for stale subscriptions
-func (r *RedisEventService) cleanupStaleSubscriptions() {
+func (r *RedisEventService) _cleanupStaleSubscriptions() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

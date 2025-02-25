@@ -48,7 +48,7 @@ func NewCommandContext(
 	}
 }
 
-func (c *BaseCommand) emitEvent(ctx context.Context, tripID string, eventType types.EventType, payload interface{}) error {
+func (c *BaseCommand) _emitEvent(ctx context.Context, tripID string, eventType types.EventType, payload interface{}) error {
 	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
 	return emitter.EmitTripEvent(
 		ctx,

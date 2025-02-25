@@ -321,7 +321,7 @@ func main() {
 }
 
 // setupTodoRoutes sets up todo-related routes.
-func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, rateLimitService *services.RateLimitService) {
+func _setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, rateLimitService *services.RateLimitService) {
 	// Use consistent parameter name with trip routes.
 	todos := r.Group("/v1/trips/:id/todos")
 	todos.Use(

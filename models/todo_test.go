@@ -7,7 +7,6 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
-	"github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -51,8 +50,6 @@ func (m *MockTodoStore) GetTodo(ctx context.Context, id string) (*types.Todo, er
 
 // TripModelAdapter adapts TripModelFacade to trip.TripModel for testing
 type TripModelAdapter struct {
-	facade *TripModelFacade
-	store  *mocks.MockTripStore
 }
 
 func NewTripModelAdapter(facade *TripModelFacade) *trip.TripModel {
