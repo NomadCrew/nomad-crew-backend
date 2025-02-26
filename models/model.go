@@ -38,6 +38,12 @@ func (tm *TripModelFacade) CreateTrip(ctx context.Context, trip *types.Trip) err
 		return err
 	}
 	trip.ID = id
+
+	// Start weather updates for the trip
+	if tm.weatherSvc != nil {
+		tm.weatherSvc.StartWeatherUpdates(ctx, id, trip.Destination)
+	}
+
 	// Simulate publishing an event
 	if tm.eventPublisher != nil {
 		if err := tm.eventPublisher.Publish(ctx, id, types.Event{
@@ -195,7 +201,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 	if !trip.Status.IsValidTransition(newStatus) {
 		return &TripError{
 			Code: ErrInvalidStatusTransition,
-			Msg:  fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus),
+			Msg:  fmt.Sprintf("Invalid status transition"),
 		}
 	}
 
@@ -205,14 +211,14 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 		if trip.EndDate.Before(time.Now()) {
 			return &TripError{
 				Code: ErrInvalidStatusTransition,
-				Msg:  "Cannot activate a trip that has already ended",
+				Msg:  "cannot activate a trip that has already ended",
 			}
 		}
 	case types.TripStatusCompleted:
 		if trip.EndDate.After(time.Now()) {
 			return &TripError{
 				Code: ErrInvalidStatusTransition,
-				Msg:  "Cannot complete a trip before its end date",
+				Msg:  "cannot complete a trip before its end date",
 			}
 		}
 	}

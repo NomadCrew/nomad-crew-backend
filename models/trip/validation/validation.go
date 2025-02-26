@@ -66,9 +66,16 @@ func ValidateNewTrip(trip *types.Trip) error {
 	if trip.Destination.Address == "" {
 		return errors.ValidationFailed("destination_required", "trip destination is required")
 	}
-	if trip.StartDate.Before(time.Now().AddDate(0, 0, -1)) {
-		return errors.ValidationFailed("invalid_start_date", "Start date must be in the future")
+
+	// Check if start date is in the past (compare dates only, not time)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	tripStartDay := time.Date(trip.StartDate.Year(), trip.StartDate.Month(), trip.StartDate.Day(), 0, 0, 0, 0, trip.StartDate.Location())
+
+	if tripStartDay.Before(today) {
+		return errors.ValidationFailed("invalid_start_date", "start date cannot be in the past")
 	}
+
 	if trip.EndDate.Before(trip.StartDate) {
 		return errors.ValidationFailed("invalid_end_date", "trip end date cannot be before start date")
 	}
