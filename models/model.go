@@ -2,7 +2,6 @@ package models
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
@@ -201,7 +200,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 	if !trip.Status.IsValidTransition(newStatus) {
 		return &TripError{
 			Code: ErrInvalidStatusTransition,
-			Msg:  fmt.Sprintf("Invalid status transition"),
+			Msg:  "Invalid status transition",
 		}
 	}
 
