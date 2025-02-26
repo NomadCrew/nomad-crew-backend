@@ -31,6 +31,7 @@ type ServerConfig struct {
 	AllowedOrigins []string    `mapstructure:"ALLOWED_ORIGINS" yaml:"allowed_origins"`
 	Version        string      `mapstructure:"VERSION" yaml:"version"`
 	JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY" yaml:"jwt_secret_key"`
+	FrontendURL    string      `mapstructure:"FRONTEND_URL" yaml:"frontend_url"`
 }
 
 type DatabaseConfig struct {
@@ -50,15 +51,28 @@ type RedisConfig struct {
 }
 
 type ExternalServices struct {
-	GeoapifyKey     string `mapstructure:"GEOAPIFY_KEY"`
-	PexelsAPIKey    string `mapstructure:"PEXELS_API_KEY"`
-	SupabaseAnonKey string `mapstructure:"SUPABASE_ANON_KEY"`
+	GeoapifyKey       string `mapstructure:"GEOAPIFY_KEY"`
+	PexelsAPIKey      string `mapstructure:"PEXELS_API_KEY"`
+	SupabaseAnonKey   string `mapstructure:"SUPABASE_ANON_KEY"`
+	SupabaseURL       string `mapstructure:"SUPABASE_URL"`
+	SupabaseJWTSecret string `mapstructure:"SUPABASE_JWT_SECRET"`
+	EmailFromAddress  string `mapstructure:"EMAIL_FROM_ADDRESS"`
+	EmailFromName     string `mapstructure:"EMAIL_FROM_NAME"`
+	EmailBaseURL      string `mapstructure:"EMAIL_BASE_URL" default:"https://api.mailchannels.net"`
+}
+
+type EmailConfig struct {
+	FromAddress  string `mapstructure:"FROM_ADDRESS" yaml:"from_address"`
+	FromName     string `mapstructure:"FROM_NAME" yaml:"from_name"`
+	BaseURL      string `mapstructure:"BASE_URL" yaml:"base_url"`
+	ResendAPIKey string `mapstructure:"RESEND_API_KEY" yaml:"resend_api_key"`
 }
 
 type Config struct {
 	Server           ServerConfig     `mapstructure:"SERVER" yaml:"server"`
 	Database         DatabaseConfig   `mapstructure:"DATABASE" yaml:"database"`
 	Redis            RedisConfig      `mapstructure:"REDIS" yaml:"redis"`
+	Email            EmailConfig      `mapstructure:"EMAIL" yaml:"email"`
 	ExternalServices ExternalServices `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
 }
 
@@ -80,6 +94,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
 	v.SetDefault("REDIS.DB", 0)
+	v.SetDefault("LOG_LEVEL", "info")
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -140,6 +155,16 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
 	}
 
+	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
+		return nil, fmt.Errorf("failed to bind EMAIL_FROM_ADDRESS: %w", err)
+	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_FROM_NAME", "EMAIL_FROM_NAME"); err != nil {
+		return nil, fmt.Errorf("failed to bind EMAIL_FROM_NAME: %w", err)
+	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_BASE_URL", "EMAIL_BASE_URL"); err != nil {
+		return nil, fmt.Errorf("failed to bind EMAIL_BASE_URL: %w", err)
+	}
+
 	// Add debug logging
 	log.Infof("Environment variables loaded: %+v", map[string]interface{}{
 		"SERVER_PORT":     v.GetString("SERVER.PORT"),
@@ -149,10 +174,10 @@ func LoadConfig() (*Config, error) {
 	})
 
 	// Try to read config file based on environment
-	env := v.GetString("ENVIRONMENT")
-	v.SetConfigName("config." + env)
+	env := v.GetString("SERVER.ENVIRONMENT")
+	v.SetConfigName("config." + strings.ToLower(env))
+	v.AddConfigPath("./config")
 	v.AddConfigPath(".")
-	v.AddConfigPath("/etc/nomadcrew/")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -187,6 +212,24 @@ func LoadConfig() (*Config, error) {
 	// Validate configuration
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Email config bindings
+	if err := v.BindEnv("EMAIL.FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
+		return nil, fmt.Errorf("failed to bind EMAIL.FROM_ADDRESS: %w", err)
+	}
+	if err := v.BindEnv("EMAIL.FROM_NAME", "EMAIL_FROM_NAME"); err != nil {
+		return nil, fmt.Errorf("failed to bind EMAIL.FROM_NAME: %w", err)
+	}
+	if err := v.BindEnv("EMAIL.RESEND_API_KEY", "RESEND_API_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
+	}
+
+	if len(cfg.Email.ResendAPIKey) < minKeyLength {
+		return nil, fmt.Errorf("RESEND_API_KEY is invalid or too short")
+	}
+	if cfg.Email.FromAddress == "" {
+		return nil, fmt.Errorf("FROM_ADDRESS is required")
 	}
 
 	return &cfg, nil

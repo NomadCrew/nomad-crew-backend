@@ -86,6 +86,19 @@ CREATE TABLE trip_memberships (
     UNIQUE(trip_id, user_id)
 );
 
+-- Create trip_invitations table
+CREATE TABLE trip_invitations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    inviter_id UUID NOT NULL,
+    invitee_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','ACCEPTED','DECLINED')),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create trip_todos table
 CREATE TABLE trip_todos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     trip_id UUID NOT NULL REFERENCES trips(id),
@@ -139,6 +152,12 @@ CREATE TRIGGER update_trip_todos_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Add trigger for trip_invitations
+CREATE TRIGGER update_trip_invitations_updated_at
+    BEFORE UPDATE ON trip_invitations
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- Add indexes for better performance
 CREATE INDEX idx_trips_created_by ON trips(created_by);
 CREATE INDEX idx_expenses_user_id ON expenses(user_id);
@@ -152,3 +171,5 @@ CREATE INDEX idx_trip_memberships_user ON trip_memberships(user_id);
 CREATE INDEX idx_trip_todos_trip ON trip_todos(trip_id);
 CREATE INDEX idx_trip_todos_status ON trip_todos(status);
 CREATE INDEX idx_trip_todos_created_by ON trip_todos(created_by);
+CREATE INDEX idx_trip_invitations_trip_id ON trip_invitations(trip_id);
+CREATE INDEX idx_trip_invitations_invitee_email ON trip_invitations(invitee_email);

@@ -95,7 +95,10 @@ func (s *EventService) sendHeartbeats() {
 				sub.lastActivity = now
 			default:
 				// Channel is blocked, will be handled by cleanup
-				log.Warnf("Dropping heartbeat for trip %s due to blocked channel", tripID)
+				log.Warnw("Dropping heartbeat due to blocked channel",
+					"tripID", tripID,
+					"userID", sub.userID,
+					"subscriberID", sub.lastEventID)
 			}
 		}
 	}

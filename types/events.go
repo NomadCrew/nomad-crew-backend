@@ -6,7 +6,29 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	EventSerializeDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "event_serialize_seconds",
+		Help:    "Time spent serializing events",
+		Buckets: []float64{.0001, .0005, .001, .005, .01, .05},
+	})
+	EventSizeBytes = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "event_size_bytes",
+		Help:    "Serialized event sizes in bytes",
+		Buckets: []float64{64, 128, 256, 512, 1024, 2048, 4096},
+	})
+)
+
+func init() {
+	prometheus.MustRegister(
+		EventSerializeDuration,
+		EventSizeBytes,
+	)
+}
 
 type EventType string
 
@@ -41,6 +63,11 @@ const (
 	EventTypeMemberAdded       EventType = CategoryMember + "_ADDED"
 	EventTypeMemberRoleUpdated EventType = CategoryMember + "_ROLE_UPDATED"
 	EventTypeMemberRemoved     EventType = CategoryMember + "_REMOVED"
+
+	// Invitation events
+	EventTypeInvitationCreated       EventType = CategoryTrip + "_INVITATION_CREATED"
+	EventTypeInvitationAccepted      EventType = CategoryTrip + "_INVITATION_ACCEPTED"
+	EventTypeInvitationStatusUpdated EventType = "invitation_status_updated"
 )
 
 // Base event interface
@@ -97,4 +124,36 @@ type EventPublisher interface {
 type EventHandler interface {
 	HandleEvent(ctx context.Context, event Event) error
 	SupportedEvents() []EventType
+}
+
+type MemberRoleUpdatedEvent struct {
+	MemberID  string     `json:"memberId"`
+	OldRole   MemberRole `json:"oldRole"`
+	NewRole   MemberRole `json:"newRole"`
+	UpdatedBy string     `json:"updatedBy"`
+}
+
+type MemberRemovedEvent struct {
+	RemovedUserID string `json:"removedUserId"`
+	RemovedBy     string `json:"removedBy"`
+}
+
+type InvitationCreatedEvent struct {
+	EventID       string    `json:"event_id"`
+	InvitationID  string    `json:"invitation_id"`
+	InviteeEmail  string    `json:"invitee_email"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	AcceptanceURL string    `json:"acceptance_url"`
+}
+
+type InvitationStatusUpdatedEvent struct {
+	InvitationID string           `json:"invitationId"`
+	NewStatus    InvitationStatus `json:"newStatus"`
+}
+
+type InvitationClaims struct {
+	InvitationID string `json:"invitationId"`
+	TripID       string `json:"tripId"`
+	InviteeEmail string `json:"inviteeEmail"`
+	jwt.RegisteredClaims
 }

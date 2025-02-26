@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -12,10 +13,12 @@ import (
 )
 
 type HealthService struct {
-	dbPool      *pgxpool.Pool
-	redisClient *redis.Client
-	version     string
-	log         *zap.SugaredLogger
+	dbPool            *pgxpool.Pool
+	redisClient       *redis.Client
+	version           string
+	log               *zap.SugaredLogger
+	activeConnections func() int
+	startTime         time.Time
 }
 
 func NewHealthService(dbPool *pgxpool.Pool, redisClient *redis.Client, version string) *HealthService {
@@ -24,6 +27,63 @@ func NewHealthService(dbPool *pgxpool.Pool, redisClient *redis.Client, version s
 		redisClient: redisClient,
 		version:     version,
 		log:         logger.GetLogger(),
+		startTime:   time.Now(),
+	}
+}
+
+func (h *HealthService) SetActiveConnectionsGetter(getter func() int) {
+	h.activeConnections = getter
+}
+
+func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthComponent {
+	// Check if Redis pubsub is working for WebSockets
+	const testChannel = "health:ws:test"
+	const testMessage = "ping"
+
+	// Create a test pubsub instance
+	pubsub := h.redisClient.Subscribe(ctx, testChannel)
+	defer pubsub.Close()
+
+	// Create a channel to receive the test message
+	msgChan := make(chan struct{})
+	go func() {
+		defer close(msgChan)
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil || msg.Payload != testMessage {
+			return
+		}
+		msgChan <- struct{}{}
+	}()
+
+	// Publish test message
+	if err := h.redisClient.Publish(ctx, testChannel, testMessage).Err(); err != nil {
+		h.log.Errorw("WebSocket health check failed to publish", "error", err)
+		return types.HealthComponent{
+			Status:  types.HealthStatusDegraded,
+			Details: "PubSub publish failed: " + err.Error(),
+		}
+	}
+
+	// Wait for message or timeout
+	select {
+	case <-msgChan:
+		// Success, message received
+	case <-time.After(2 * time.Second):
+		return types.HealthComponent{
+			Status:  types.HealthStatusDegraded,
+			Details: "PubSub message not received in time",
+		}
+	}
+
+	// Get active connection count if available
+	var activeConns int
+	if h.activeConnections != nil {
+		activeConns = h.activeConnections()
+	}
+
+	return types.HealthComponent{
+		Status:  types.HealthStatusUp,
+		Details: fmt.Sprintf("Active connections: %d", activeConns),
 	}
 }
 
@@ -36,7 +96,7 @@ func (h *HealthService) CheckHealth(ctx context.Context) types.HealthCheck {
 	components["database"] = dbStatus
 	if dbStatus.Status == types.HealthStatusDown {
 		overallStatus = types.HealthStatusDown
-	} else if dbStatus.Status == types.HealthStatusDegraded {
+	} else if dbStatus.Status == types.HealthStatusDegraded && overallStatus != types.HealthStatusDown {
 		overallStatus = types.HealthStatusDegraded
 	}
 
@@ -49,11 +109,21 @@ func (h *HealthService) CheckHealth(ctx context.Context) types.HealthCheck {
 		overallStatus = types.HealthStatusDegraded
 	}
 
+	// Add WebSocket health check
+	wsStatus := h.checkWebSocketHealth(ctx)
+	components["websocket"] = wsStatus
+	if wsStatus.Status == types.HealthStatusDown {
+		overallStatus = types.HealthStatusDown
+	} else if wsStatus.Status == types.HealthStatusDegraded && overallStatus != types.HealthStatusDown {
+		overallStatus = types.HealthStatusDegraded
+	}
+
 	return types.HealthCheck{
 		Status:     overallStatus,
 		Components: components,
 		Version:    h.version,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Uptime:     time.Since(h.startTime).String(), // Add uptime information
 	}
 }
 

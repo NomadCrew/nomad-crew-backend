@@ -26,6 +26,13 @@ type TripStore interface {
 	RemoveMember(ctx context.Context, tripID string, userID string) error
 	GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
 	GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error)
+	LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error)
+	CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error
+	GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error)
+	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
+	BeginTx(ctx context.Context) (Transaction, error)
+	Commit() error
+	Rollback() error
 }
 
 type TodoStore interface {
@@ -34,4 +41,10 @@ type TodoStore interface {
 	UpdateTodo(ctx context.Context, id string, update *types.TodoUpdate) error
 	ListTodos(ctx context.Context, tripID string, limit int, offset int) ([]*types.Todo, int, error)
 	DeleteTodo(ctx context.Context, id string, userID string) error
+}
+
+type Transaction interface {
+	Commit() error
+	Rollback() error
+	// Include other transaction methods used in your codebase
 }

@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
@@ -82,7 +85,7 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 	log := logger.GetLogger()
 	query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at
+               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
         FROM trips t
         LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
         WHERE t.id = $1 AND m.deleted_at IS NULL`
@@ -101,6 +104,7 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 		&trip.CreatedBy,
 		&trip.CreatedAt,
 		&trip.UpdatedAt,
+		&trip.BackgroundImageURL,
 	)
 	if err != nil {
 		log.Errorw("Failed to get trip", "tripId", id, "error", err)
@@ -294,16 +298,28 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 		paramCount++
 	}
 
+	if !criteria.StartDate.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", paramCount))
+		params = append(params, criteria.StartDate)
+		paramCount++
+	}
+
+	if !criteria.EndDate.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("t.end_date <= $%d", paramCount))
+		params = append(params, criteria.EndDate)
+		paramCount++
+	}
+
+	// Handle date range filtering
 	if !criteria.StartDateFrom.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", paramCount))
 		params = append(params, criteria.StartDateFrom)
-		paramCount++ // nolint:ineffassign
+		paramCount++
 	}
 
 	if !criteria.StartDateTo.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", paramCount))
 		params = append(params, criteria.StartDateTo)
-		paramCount++ // nolint:ineffassign
 	}
 
 	// Add conditions to base query
@@ -471,6 +487,35 @@ func (tdb *TripDB) GetTripMembers(ctx context.Context, tripID string) ([]types.T
 // GetUserRole gets a user's role in a trip
 func (tdb *TripDB) GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error) {
 	log := logger.GetLogger()
+
+	// Add debug logs to trace the user ID
+	log.Debugw("GetUserRole called",
+		"tripID", tripID,
+		"userID", userID,
+		"contextUserID", ctx.Value("user_id"),
+		"calledFrom", getCallerInfo())
+
+	// Add validation for empty input parameters
+	if tripID == "" {
+		log.Errorw("Cannot get user role with empty trip ID",
+			"tripID", tripID,
+			"userID", userID)
+		return "", fmt.Errorf("cannot get user role with empty trip ID")
+	}
+
+	if userID == "" {
+		log.Errorw("Cannot get user role with empty user ID",
+			"tripID", tripID,
+			"userID", userID,
+			"contextUserID", ctx.Value("user_id"))
+		return "", fmt.Errorf("cannot get user role with empty user ID")
+	}
+
+	// Debug log input parameters
+	log.Debugw("Querying for user role",
+		"tripID", tripID,
+		"userID", userID)
+
 	query := `
         SELECT role
         FROM trip_memberships
@@ -485,11 +530,148 @@ func (tdb *TripDB) GetUserRole(ctx context.Context, tripID string, userID string
 
 	if err != nil {
 		log.Errorw("Failed to get user role",
-			"tripId", tripID,
-			"userId", userID,
+			"tripID", tripID, // Changed from tripId to tripID for consistency
+			"userID", userID, // Changed from userId to userID for consistency
 			"error", err)
 		return "", fmt.Errorf("failed to get user role: %w", err)
 	}
 
 	return role, nil
+}
+
+func (tdb *TripDB) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
+	query := `
+        SELECT id, email, raw_user_meta_data 
+        FROM auth.users 
+        WHERE email = $1 AND NOT is_sso_user`
+
+	var user types.SupabaseUser
+	err := tdb.GetPool().QueryRow(ctx, query, email).Scan(
+		&user.ID,
+		&user.Email,
+		&user.UserMetadata,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, models.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to lookup user: %w", err)
+	}
+
+	return &user, nil
+}
+
+func (tdb *TripDB) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
+	query := `
+        INSERT INTO trip_invitations (
+            trip_id, inviter_id, invitee_email, status, expires_at
+        ) VALUES ($1, $2, $3, $4, $5)
+        RETURNING id`
+
+	err := tdb.client.GetPool().QueryRow(
+		ctx, query,
+		invitation.TripID,
+		invitation.InviterID,
+		invitation.InviteeEmail,
+		types.InvitationStatusPending,
+		invitation.ExpiresAt,
+	).Scan(&invitation.ID)
+
+	if err != nil {
+		return fmt.Errorf("failed to create invitation: %w", err)
+	}
+
+	return nil
+}
+
+func (tdb *TripDB) GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error) {
+	query := `
+        SELECT id, trip_id, inviter_id, invitee_email, status, created_at, expires_at
+        FROM trip_invitations
+        WHERE id = $1`
+
+	invitation := &types.TripInvitation{}
+	err := tdb.client.GetPool().QueryRow(ctx, query, invitationID).Scan(
+		&invitation.ID,
+		&invitation.TripID,
+		&invitation.InviterID,
+		&invitation.InviteeEmail,
+		&invitation.Status,
+		&invitation.CreatedAt,
+		&invitation.ExpiresAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NotFound("Invitation", invitationID)
+		}
+		return nil, fmt.Errorf("failed to get invitation: %w", err)
+	}
+
+	return invitation, nil
+}
+
+func (tdb *TripDB) UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error {
+	query := `
+        UPDATE trip_invitations
+        SET status = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING id`
+
+	var returnedID string
+	err := tdb.client.GetPool().QueryRow(ctx, query, status, invitationID).Scan(&returnedID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return errors.NotFound("Invitation", invitationID)
+		}
+		return fmt.Errorf("failed to update invitation status: %w", err)
+	}
+
+	return nil
+}
+
+func (tdb *TripDB) BeginTx(ctx context.Context) (store.Transaction, error) {
+	tx, err := tdb.GetPool().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	return &txWrapper{tx: tx}, nil
+}
+
+type txWrapper struct {
+	tx pgx.Tx
+}
+
+func (t *txWrapper) Commit() error {
+	return t.tx.Commit(context.Background())
+}
+
+func (t *txWrapper) Rollback() error {
+	return t.tx.Rollback(context.Background())
+}
+
+// Commit satisfies store.TripStore interface (no-op at this level)
+func (tdb *TripDB) Commit() error {
+	return nil // Transactions are committed via the Transaction interface
+}
+
+// Rollback satisfies store.TripStore interface (no-op at this level)
+func (tdb *TripDB) Rollback() error {
+	return nil // Transactions are rolled back via the Transaction interface
+}
+
+// getCallerInfo returns a string with information about the caller's stack
+func getCallerInfo() string {
+	stack := debug.Stack()
+	lines := strings.Split(string(stack), "\n")
+	// Try to find relevant call frame, skipping runtime frames
+	for i := 3; i < len(lines)-1; i += 2 {
+		if strings.Contains(lines[i], "trip.go") ||
+			strings.Contains(lines[i], "command.go") ||
+			strings.Contains(lines[i], "trip_handler.go") {
+			return lines[i]
+		}
+	}
+	return "unknown caller"
 }

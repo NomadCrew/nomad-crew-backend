@@ -87,12 +87,14 @@ type TripUpdate struct {
 }
 
 type TripSearchCriteria struct {
-	Destination   string    `json:"destination"`
-	StartDateFrom time.Time `json:"startDateFrom"`
-	StartDateTo   time.Time `json:"startDateTo"`
-	Keywords      []string  `json:"keywords,omitempty"`
-	Limit         int       `json:"limit"`
-	Offset        int       `json:"offset"`
+	UserID        string
+	StartDate     time.Time
+	EndDate       time.Time
+	StartDateFrom time.Time
+	StartDateTo   time.Time
+	Limit         int
+	Offset        int
+	Destination   string
 }
 
 type TripListCriteria struct {
@@ -114,6 +116,17 @@ type PaginatedTrips struct {
 }
 
 type TripWithMembers struct {
-	Trip
-	Members []TripMembership `json:"members"`
+	Trip    Trip              `json:"trip"`
+	Members []*TripMembership `json:"members"`
+	// Optional: Add other aggregated trip data
+	// Weather   WeatherForecast    `json:"weather,omitempty"`
+	// Expenses  []Expense          `json:"expenses,omitempty"`
+}
+
+func (s InvitationStatus) IsValid() bool {
+	switch s {
+	case InvitationStatusPending, InvitationStatusAccepted, InvitationStatusDeclined:
+		return true
+	}
+	return false
 }

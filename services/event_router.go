@@ -6,7 +6,6 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	
 )
 
 // EventHandler defines a function that processes an event.

@@ -139,12 +139,23 @@ func TestTripModel_CreateTrip(t *testing.T) {
 	})
 
 	t.Run("validation error - missing name", func(t *testing.T) {
-		invalidTrip := *validTrip
-		invalidTrip.Name = ""
-		err := tripModel.CreateTrip(ctx, &invalidTrip)
+		invalidTrip := &types.Trip{
+			Description: "Test Description",
+			Destination: types.Destination{
+				Address: "Test Destination",
+			},
+			StartDate: time.Now().Add(24 * time.Hour),
+			EndDate:   time.Now().Add(48 * time.Hour),
+			Status:    types.TripStatusPlanning,
+			CreatedBy: testUserID,
+		}
+
+		err := tripModel.CreateTrip(ctx, invalidTrip)
 		assert.Error(t, err)
 		assert.IsType(t, &errors.AppError{}, err)
 		assert.Equal(t, errors.ValidationError, err.(*errors.AppError).Type)
+
+		mockStore.AssertNotCalled(t, "CreateTrip")
 	})
 
 	t.Run("store error", func(t *testing.T) {
@@ -263,9 +274,21 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 			StartDate:   timePtr(time.Now().Add(48 * time.Hour)),
 			EndDate:     timePtr(time.Now().Add(24 * time.Hour)),
 		}
+
+		// Set up mock to return the existing trip when GetTrip is called
+		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
+
+		// Set up mock to return a validation error when UpdateTrip is called with invalid dates
+		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
+			return update.StartDate != nil && update.EndDate != nil &&
+				update.StartDate.After(*update.EndDate)
+		})).Return(nil, errors.ValidationFailed("invalid_dates", "End date must be after start date")).Once()
+
 		err := tripModel.UpdateTrip(ctx, testTripID, &invalidUpdate)
 		assert.Error(t, err)
 		assert.Equal(t, errors.ValidationError, err.(*errors.AppError).Type)
+
+		mockStore.AssertExpectations(t)
 	})
 }
 
@@ -327,7 +350,7 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 	}
 
 	t.Run("valid transition - planning to active", func(t *testing.T) {
-		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Twice()
+		mockStore.On("GetTrip", ctx, testTripID).Return(baseTrip, nil).Once()
 		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
 			return update.Status == types.TripStatusActive
 		})).Return(
@@ -489,6 +512,9 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 	tripModel := NewTripModel(mockStore, nil, nil)
 	ctx := context.Background()
 	now := time.Now()
+
+	// Setup mock to expect CreateTrip calls
+	mockStore.On("CreateTrip", mock.Anything, mock.Anything).Return("test-id", nil)
 
 	tests := []struct {
 		name        string

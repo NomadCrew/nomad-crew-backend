@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
@@ -54,11 +55,46 @@ func (m *MockTripModel) SearchTrips(ctx context.Context, criteria types.TripSear
 	return args.Get(0).([]*types.Trip), args.Error(1)
 }
 
+func (m *MockTripModel) AddMember(ctx context.Context, membership *types.TripMembership) error {
+	args := m.Called(ctx, membership)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) UpdateMemberRole(ctx context.Context, tripID, userID string, role types.MemberRole) (*interfaces.CommandResult, error) {
+	args := m.Called(ctx, tripID, userID, role)
+	return args.Get(0).(*interfaces.CommandResult), args.Error(1)
+}
+
+func (m *MockTripModel) RemoveMember(ctx context.Context, tripID, userID string) error {
+	args := m.Called(ctx, tripID, userID)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
+	args := m.Called(ctx, invitation)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error) {
+	args := m.Called(ctx, invitationID)
+	return args.Get(0).(*types.TripInvitation), args.Error(1)
+}
+
+func (m *MockTripModel) UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error {
+	args := m.Called(ctx, invitationID, status)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
+	args := m.Called(ctx, email)
+	return args.Get(0).(*types.SupabaseUser), args.Error(1)
+}
+
 func TestRequireRole(t *testing.T) {
 	// Use test logger configuration
 	logger.IsTest = true
-    logger.InitLogger()
-    defer logger.Close()
+	logger.InitLogger()
+	defer logger.Close()
 
 	// Mocking dependencies
 	mockTripModel := &MockTripModel{}

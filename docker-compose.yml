@@ -46,11 +46,13 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       PORT: ${PORT:-8080}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_URL: ${SUPABASE_URL}
       PEXELS_API_KEY: ${PEXELS_API_KEY}
       REDIS_ADDRESS: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
       REDIS_DB: ${REDIS_DB:-0}
       AWS_REGION: ${AWS_REGION:-us-east-1}  # Default for local development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       SERVER_ENVIRONMENT: "development"
       ALLOWED_ORIGINS: "*"
       AWS_SECRETS_PATH: ${AWS_SECRETS_PATH:-nomadcrew/prod/secrets}

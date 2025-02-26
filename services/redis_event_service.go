@@ -4,17 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 )
 
 // RedisEventService implements the EventPublisher interface using Redis Pub/Sub.
@@ -26,6 +25,8 @@ type RedisEventService struct {
 	mu            sync.RWMutex
 	subscriptions map[string]subscription // Key: tripID:userID
 }
+
+var _ types.EventPublisher = (*RedisEventService)(nil) // Add interface assertion
 
 type EventMetrics struct {
 	publishLatency   prometheus.Histogram
@@ -88,119 +89,31 @@ func (r *RedisEventService) Publish(ctx context.Context, tripID string, event ty
 		return fmt.Errorf("invalid event: %w", err)
 	}
 
-	// Always publish weather updates regardless of client version
-	if event.Type == types.EventTypeWeatherUpdated {
-		r.log.Infow("Handling weather event publication",
-			"tripID", tripID,
-			"eventID", event.ID,
-			"source", event.Metadata.Source)
-
-		data, err := json.Marshal(event)
-		if err != nil {
-			r.metrics.errorCount.Inc()
-			return fmt.Errorf("failed to marshal event: %w", err)
-		}
-
-		channel := fmt.Sprintf("trip:%s", tripID)
-		r.log.Debugw("Publishing weather update",
-			"channel", channel,
-			"eventType", event.Type,
-			"eventID", event.ID,
-		)
-
-		if err := r.redisClient.Publish(ctx, channel, data).Err(); err != nil {
-			r.metrics.errorCount.Inc()
-			return fmt.Errorf("failed to publish event: %w", err)
-		}
-
-		r.log.Infow("Successfully published weather event to Redis",
-			"channel", channel,
-			"eventID", event.ID,
-			"payloadSize", len(data))
-
-		r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
-
-		// Process handlers
-		r.mu.RLock()
-		handlers := r.handlers[event.Type]
-		r.mu.RUnlock()
-
-		for _, handler := range handlers {
-			go func(h types.EventHandler) {
-				if err := h.HandleEvent(ctx, event); err != nil {
-					r.log.Errorw("Event handler failed",
-						"error", err,
-						"eventType", event.Type,
-						"eventID", event.ID,
-						"handler", fmt.Sprintf("%T", h),
-					)
-				}
-			}(handler)
-		}
-
-		return nil
+	// Set default values if missing
+	if event.ID == "" {
+		event.ID = uuid.New().String()
+	}
+	if event.Timestamp.IsZero() {
+		event.Timestamp = time.Now()
+	}
+	if event.Version == 0 {
+		event.Version = 1
 	}
 
-	// Existing version check logic for other event types
-	if headers, ok := metadata.FromIncomingContext(ctx); ok {
-		if version := headers.Get("X-Client-Version"); len(version) > 0 {
-			if ver, err := strconv.ParseFloat(version[0], 64); err == nil && ver >= 1.2 {
-				data, err := json.Marshal(event)
-				if err != nil {
-					r.metrics.errorCount.Inc()
-					return fmt.Errorf("failed to marshal event: %w", err)
-				}
-				payload := data
-				channel := fmt.Sprintf("trip:%s", tripID)
-				r.log.Debugw("Publishing event",
-					"channel", channel,
-					"eventType", event.Type,
-					"eventID", event.ID,
-					"correlationID", event.Metadata.CorrelationID,
-					"payloadSize", len(payload),
-				)
+	// Format the Redis channel name
+	channel := fmt.Sprintf("trip:%s", tripID)
 
-				ctx = metadata.NewOutgoingContext(ctx, metadata.New(map[string]string{
-					"X-Client-Version": strconv.Itoa(event.Version),
-				}))
-
-				if err := r.redisClient.Publish(ctx, channel, payload).Err(); err != nil {
-					r.metrics.errorCount.Inc()
-					return fmt.Errorf("failed to publish event: %w", err)
-				}
-
-				r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
-
-				// Process handlers
-				r.mu.RLock()
-				handlers := r.handlers[event.Type]
-				r.mu.RUnlock()
-
-				for _, handler := range handlers {
-					go func(h types.EventHandler) {
-						if err := h.HandleEvent(ctx, event); err != nil {
-							r.log.Errorw("Event handler failed",
-								"error", err,
-								"eventType", event.Type,
-								"eventID", event.ID,
-								"handler", fmt.Sprintf("%T", h),
-							)
-						}
-					}(handler)
-				}
-
-				return nil
-			}
-		}
-	}
-
+	// Marshal the event (once for all clients)
 	data, err := json.Marshal(event)
 	if err != nil {
 		r.metrics.errorCount.Inc()
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
-	channel := fmt.Sprintf("trip:%s", tripID)
+	// Update metrics
+	r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
+
+	// Publish to Redis
 	r.log.Debugw("Publishing event",
 		"channel", channel,
 		"eventType", event.Type,
@@ -209,21 +122,14 @@ func (r *RedisEventService) Publish(ctx context.Context, tripID string, event ty
 		"payloadSize", len(data),
 	)
 
-	ctx = metadata.NewOutgoingContext(ctx, metadata.New(map[string]string{
-		"X-Client-Version": strconv.Itoa(event.Version),
-	}))
+	// Use context timeout to prevent blocking indefinitely
+	publishCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-	if err := r.redisClient.Publish(ctx, channel, data).Err(); err != nil {
+	if err := r.redisClient.Publish(publishCtx, channel, data).Err(); err != nil {
 		r.metrics.errorCount.Inc()
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
-
-	r.log.Infow("Successfully published weather event to Redis",
-		"channel", channel,
-		"eventID", event.ID,
-		"payloadSize", len(data))
-
-	r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
 
 	// Process handlers
 	r.mu.RLock()
@@ -231,105 +137,151 @@ func (r *RedisEventService) Publish(ctx context.Context, tripID string, event ty
 	r.mu.RUnlock()
 
 	for _, handler := range handlers {
-		go func(h types.EventHandler) {
-			if err := h.HandleEvent(ctx, event); err != nil {
+		handler := handler // Create a new variable for the goroutine
+		go func() {
+			// Create a separate context with timeout for handler execution
+			handlerCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := handler.HandleEvent(handlerCtx, event); err != nil {
 				r.log.Errorw("Event handler failed",
 					"error", err,
 					"eventType", event.Type,
 					"eventID", event.ID,
-					"handler", fmt.Sprintf("%T", h),
+					"handler", fmt.Sprintf("%T", handler),
 				)
 			}
-		}(handler)
+		}()
 	}
 
 	return nil
 }
 
+// Subscribe method with improved error handling and cleanup
 func (r *RedisEventService) Subscribe(ctx context.Context, tripID string, userID string, filters ...types.EventType) (<-chan types.Event, error) {
 	startTime := time.Now()
 	defer func() {
 		r.metrics.subscribeLatency.Observe(time.Since(startTime).Seconds())
 	}()
 
+	// Check for existing subscription and clean it up
+	subscriptionKey := fmt.Sprintf("%s:%s", tripID, userID)
+	r.mu.Lock()
+	if _, exists := r.subscriptions[subscriptionKey]; exists {
+		r.mu.Unlock()
+		// Close existing subscription first
+		if err := r.Unsubscribe(ctx, tripID, userID); err != nil {
+			r.log.Warnw("Failed to clean up existing subscription",
+				"error", err,
+				"tripID", tripID,
+				"userID", userID)
+		}
+		r.mu.Lock()
+	}
+	r.mu.Unlock()
+
+	// Create new subscription with Redis
 	channelName := fmt.Sprintf("trip:%s", tripID)
-	r.log.Debugw("Subscribing to channel",
-		"channel", channelName,
-		"userID", userID,
-		"filters", filters,
-	)
-
 	pubsub := r.redisClient.Subscribe(ctx, channelName)
-	eventChan := make(chan types.Event, 100) // Buffered channel
 
-	// Create cancellable context
+	// Create buffered channel for events with appropriate size
+	eventChan := make(chan types.Event, 100)
+
+	// Create subscription context with cancelation
 	subCtx, cancel := context.WithCancel(context.Background())
 
-	// Store subscription
-	key := fmt.Sprintf("%s:%s", tripID, userID)
+	// Store subscription for management
 	r.mu.Lock()
-	r.subscriptions[key] = subscription{
+	r.subscriptions[subscriptionKey] = subscription{
 		pubsub:    pubsub,
 		cancelCtx: cancel,
 	}
 	r.mu.Unlock()
 
-	go func() {
-		defer func() {
-			close(eventChan)
-			r.mu.Lock()
-			delete(r.subscriptions, key)
-			r.mu.Unlock()
-		}()
+	// Start goroutine to process messages
+	go r.processSubscription(subCtx, pubsub, eventChan, tripID, userID, subscriptionKey, filters)
 
-		ch := pubsub.Channel()
-		for {
-			select {
-			case msg, ok := <-ch:
-				if !ok {
-					return
-				}
-				var event types.Event
-				if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
-					r.log.Errorw("Failed to unmarshal event",
-						"error", err,
-						"payload", msg.Payload,
-					)
-					r.metrics.errorCount.Inc()
-					continue
-				}
+	return eventChan, nil
+}
 
-				// Apply filters if any
-				if len(filters) > 0 {
-					matched := false
-					for _, filter := range filters {
-						if event.Type == filter {
-							matched = true
-							break
-						}
-					}
-					if !matched {
-						continue
-					}
-				}
+// Helper method to process subscription messages
+func (r *RedisEventService) processSubscription(
+	ctx context.Context,
+	pubsub *redis.PubSub,
+	eventChan chan types.Event,
+	tripID string,
+	userID string,
+	subscriptionKey string,
+	filters []types.EventType,
+) {
+	defer func() {
+		// Clean up on exit
+		close(eventChan)
 
-				// Non-blocking send
-				select {
-				case eventChan <- event:
-				default:
-					r.log.Warnw("Event channel full, dropping event",
-						"eventType", event.Type,
-						"eventID", event.ID,
-					)
-				}
+		r.mu.Lock()
+		delete(r.subscriptions, subscriptionKey)
+		r.mu.Unlock()
 
-			case <-subCtx.Done(): // Use subCtx instead of ctx
-				return
-			}
+		if err := pubsub.Close(); err != nil {
+			r.log.Warnw("Error closing Redis pubsub", "error", err)
 		}
 	}()
 
-	return eventChan, nil
+	ch := pubsub.Channel()
+
+	for {
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				r.log.Infow("Redis pubsub channel closed",
+					"tripID", tripID,
+					"userID", userID)
+				return
+			}
+
+			// Parse and process message
+			var event types.Event
+			if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+				r.log.Errorw("Failed to unmarshal event",
+					"error", err,
+					"payload", msg.Payload)
+				r.metrics.errorCount.Inc()
+				continue
+			}
+
+			// Apply filters if any
+			if len(filters) > 0 {
+				matched := false
+				for _, filter := range filters {
+					if event.Type == filter {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+
+			// Send event to client with non-blocking operation
+			select {
+			case eventChan <- event:
+				r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
+			default:
+				r.log.Warnw("Event channel full, dropping event",
+					"eventType", event.Type,
+					"eventID", event.ID,
+					"tripID", tripID,
+					"userID", userID)
+			}
+
+		case <-ctx.Done():
+			r.log.Infow("Subscription context canceled",
+				"tripID", tripID,
+				"userID", userID)
+			return
+		}
+	}
 }
 
 func (r *RedisEventService) RegisterHandler(eventType types.EventType, handler types.EventHandler) {
@@ -387,10 +339,17 @@ func (r *RedisEventService) PublishBatch(ctx context.Context, tripID string, eve
 func (r *RedisEventService) Shutdown(ctx context.Context) error {
 	r.log.Info("Shutting down event service")
 
-	// Clean up any active subscriptions
-	if err := r.redisClient.Close(); err != nil {
-		return fmt.Errorf("failed to close redis client: %w", err)
+	// Close all active subscriptions
+	r.mu.Lock()
+	for key, sub := range r.subscriptions {
+		r.log.Debugw("Closing subscription during shutdown", "key", key)
+		sub.cancelCtx()
+		if err := sub.pubsub.Close(); err != nil {
+			r.log.Warnw("Error closing subscription", "key", key, "error", err)
+		}
 	}
+	r.subscriptions = make(map[string]subscription)
+	r.mu.Unlock()
 
 	return nil
 }
@@ -403,35 +362,35 @@ func (r *RedisEventService) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// Implement Unsubscribe
 func (r *RedisEventService) Unsubscribe(ctx context.Context, tripID string, userID string) error {
-	startTime := time.Now()
-	defer func() {
-		r.metrics.subscribeLatency.Observe(time.Since(startTime).Seconds())
-	}()
-
 	key := fmt.Sprintf("%s:%s", tripID, userID)
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	sub, exists := r.subscriptions[key]
+	if !exists {
+		r.mu.Unlock()
+		return nil // Already unsubscribed
+	}
 
-	if sub, exists := r.subscriptions[key]; exists {
-		// Cancel the subscription context
-		sub.cancelCtx()
+	// Remove from map immediately to prevent concurrent access
+	delete(r.subscriptions, key)
+	r.mu.Unlock()
 
-		// Close the pubsub connection
-		if err := sub.pubsub.Close(); err != nil {
-			r.log.Errorw("Failed to close pubsub connection",
-				"tripID", tripID,
-				"userID", userID,
-				"error", err)
-			return fmt.Errorf("failed to unsubscribe: %w", err)
-		}
+	// Cancel the context to stop the processing goroutine
+	sub.cancelCtx()
 
-		delete(r.subscriptions, key)
-		r.log.Debugw("Successfully unsubscribed user",
+	// Close the Redis pubsub subscription
+	if err := sub.pubsub.Close(); err != nil {
+		r.log.Errorw("Failed to close Redis subscription",
+			"error", err,
 			"tripID", tripID,
 			"userID", userID)
+		return fmt.Errorf("failed to unsubscribe: %w", err)
 	}
+
+	r.log.Debugw("Successfully unsubscribed",
+		"tripID", tripID,
+		"userID", userID)
 
 	return nil
 }

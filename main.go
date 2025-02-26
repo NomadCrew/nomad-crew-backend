@@ -16,11 +16,14 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
+	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
+	"github.com/supabase-community/supabase-go"
 )
 
 func main() {
@@ -101,16 +104,39 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 
+	// Initialize Supabase client
+	supabaseClient, err := supabase.NewClient(
+		cfg.ExternalServices.SupabaseAnonKey,
+		cfg.ExternalServices.SupabaseURL,
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize Supabase client: %v", err)
+	}
+
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
 	eventService := services.NewRedisEventService(redisClient)
 	weatherService := services.NewWeatherService(eventService)
+	emailService := services.NewEmailService(&cfg.Email)
+	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
+
+	// Connect WebSocket metrics to health service
+	healthService.SetActiveConnectionsGetter(middleware.GetActiveConnectionCount)
 
 	// Handlers
-	tripModel := models.NewTripModel(tripDB, weatherService, eventService)
+	tripModel := trip.NewTripModel(
+		tripDB,
+		eventService,
+		weatherService,
+		supabaseClient,
+		&cfg.Server,
+		emailService,
+	)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
-	tripHandler := handlers.NewTripHandler(tripModel, eventService)
+	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
+	healthHandler := handlers.NewHealthHandler(healthService)
 
 	// Router setup
 	r := gin.Default()
@@ -118,29 +144,53 @@ func main() {
 
 	// WebSocket configuration
 	wsConfig := middleware.WSConfig{
-		AllowedOrigins: cfg.Server.AllowedOrigins,
-		CheckOrigin: func(r *http.Request) bool {
-			// Allow all origins in development
-			if cfg.Server.Environment == config.EnvDevelopment {
-				return true
-			}
-
-			// Strict check in production
-			origin := r.Header.Get("Origin")
-			for _, allowed := range cfg.Server.AllowedOrigins {
-				if origin == allowed {
-					return true
-				}
-			}
-			return false
-		},
+		PongWait:        60 * time.Second,
+		PingPeriod:      30 * time.Second,
+		WriteWait:       10 * time.Second,
+		MaxMessageSize:  1024,
+		ReauthInterval:  5 * time.Minute,
+		BufferHighWater: 256,
+		BufferLowWater:  64,
 	}
+
+	// Initialize WebSocket metrics
+	wsMetrics := &middleware.WSMetrics{
+		ConnectionsActive: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "websocket_active_connections",
+			Help: "Current active WebSocket connections",
+		}),
+		MessagesReceived: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "websocket_messages_received_total",
+			Help: "Total received WebSocket messages",
+		}),
+		MessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "websocket_messages_sent_total",
+			Help: "Total sent WebSocket messages",
+		}),
+		ErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "websocket_errors_total",
+			Help: "Total WebSocket errors by type",
+		}, []string{"type"}),
+	}
+
+	// Register metrics with Prometheus
+	prometheus.MustRegister(
+		wsMetrics.ConnectionsActive,
+		wsMetrics.MessagesReceived,
+		wsMetrics.MessagesSent,
+		wsMetrics.ErrorsTotal,
+	)
+
+	// Register health routes
+	r.GET("/health", healthHandler.DetailedHealth)
+	r.GET("/health/liveness", healthHandler.LivenessCheck)
+	r.GET("/health/readiness", healthHandler.ReadinessCheck)
 
 	// Versioned routes (e.g., /v1)
 	v1 := r.Group("/v1")
 	trips := v1.Group("/trips")
 	{
-		trips.Use(middleware.AuthMiddleware(cfg))
+		trips.Use(middleware.AuthMiddleware(&cfg.Server))
 
 		// List and search endpoints
 		trips.GET("/list", tripHandler.ListUserTripsHandler)  // GET all trips related to the user
@@ -156,9 +206,14 @@ func main() {
 		// Event streaming endpoints:
 		// New WebSocket endpoint:
 		trips.GET("/:id/ws",
-			middleware.WSMiddleware(wsConfig),
-			middleware.AuthMiddleware(cfg),
+			middleware.AuthMiddleware(&cfg.Server),
+			middleware.WSRateLimiter(
+				rateLimitService.GetRedisClient(),
+				5,              // Max connections per user
+				30*time.Second, // Window duration
+			),
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
+			middleware.WSMiddleware(wsConfig, wsMetrics),
 			tripHandler.WSStreamEvents,
 		)
 
@@ -187,12 +242,49 @@ func main() {
 			)
 		}
 
-		// Add new route
 		trips.PATCH("/:id/trigger-weather-update", tripHandler.TriggerWeatherUpdateHandler)
+		trips.POST("/:id/invitations", tripHandler.InviteMemberHandler)
+
+		// Todo routes setup
+		todoRoutes := trips.Group("/:id/todos")
+		{
+			todoRoutes.Use(
+				middleware.AuthMiddleware(&cfg.Server), // Auth first
+			)
+
+			todoRoutes.GET("",
+				middleware.RequireRole(tripModel, types.MemberRoleMember),
+				todoHandler.ListTodosHandler,
+			)
+			todoRoutes.POST("",
+				middleware.RequireRole(tripModel, types.MemberRoleMember),
+				todoHandler.CreateTodoHandler,
+			)
+			// Support both PUT and POST for updates to accommodate frontend
+			todoRoutes.POST("/:todoID",
+				middleware.RequireRole(tripModel, types.MemberRoleMember),
+				todoHandler.UpdateTodoHandler,
+			)
+			todoRoutes.PUT("/:todoID",
+				middleware.RequireRole(tripModel, types.MemberRoleMember),
+				todoHandler.UpdateTodoHandler,
+			)
+			todoRoutes.DELETE("/:todoID",
+				middleware.RequireRole(tripModel, types.MemberRoleMember),
+				todoHandler.DeleteTodoHandler,
+			)
+		}
 	}
 
-	// Todo routes setup
-	setupTodoRoutes(r, todoHandler, cfg, rateLimitService)
+	// Create auth handler
+	authHandler := handlers.NewAuthHandler(supabaseClient, cfg)
+
+	// Auth routes that don't require authentication
+	authRoutes := v1.Group("/auth")
+	// Don't add AuthMiddleware here - these routes are for unauthenticated users
+	{
+		authRoutes.POST("/refresh", authHandler.RefreshTokenHandler)
+	}
 
 	// Create server
 	srv := &http.Server{
@@ -214,32 +306,16 @@ func main() {
 	log.Info("Shutting down gracefully...")
 
 	// Create shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
+
+	// Shutdown event service first to stop new events
+	if err := eventService.Shutdown(shutdownCtx); err != nil {
+		log.Warnf("Event service shutdown error: %v", err)
+	}
 
 	// Shutdown server
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
-	}
-}
-
-// setupTodoRoutes sets up todo-related routes.
-func setupTodoRoutes(r *gin.Engine, th *handlers.TodoHandler, cfg *config.Config, rateLimitService *services.RateLimitService) {
-	// Use consistent parameter name with trip routes.
-	todos := r.Group("/v1/trips/:id/todos")
-	todos.Use(
-		middleware.AuthMiddleware(cfg),
-		middleware.RateLimiter(
-			rateLimitService.GetRedisClient(),
-			100,
-			time.Minute,
-		),
-	)
-	{
-		todos.POST("", th.CreateTodoHandler)
-		todos.GET("", th.ListTodosHandler)
-		// Use distinct parameter name for todo ID.
-		todos.PUT("/:todoId", th.UpdateTodoHandler)
-		todos.DELETE("/:todoId", th.DeleteTodoHandler)
 	}
 }

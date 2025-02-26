@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -26,159 +28,237 @@ type SupabaseClaims struct {
 	UserMetadata types.UserMetadata `json:"user_metadata"`
 }
 
+// CustomClaims represents the custom claims structure for JWT validation.
+type CustomClaims struct {
+	Subject string `json:"sub"`
+	// Add other claims as needed
+}
+
 // AuthMiddleware verifies the API key and validates the Bearer token.
-func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
+func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log := logger.GetLogger().With(
-			"path", c.Request.URL.Path,
-			"method", c.Request.Method,
-			"isWebSocket", strings.Contains(c.Request.Header.Get("Upgrade"), "websocket"),
-		)
+		var token string
+		log := logger.GetLogger()
 
-		// Log all authentication parameters
-		log.Debugw("Auth parameters",
-			"queryApikey", c.Query("apikey"),
-			"headerApikey", c.GetHeader("apikey"),
-			"queryToken", c.Query("token"),
-			"headerToken", c.GetHeader("Authorization"),
-			"userId", c.Query("userId"),
-		)
-
-		// 1. API Key Check
-		apiKey := c.Query("apikey")
-		if apiKey == "" {
-			apiKey = c.GetHeader("apikey")
-		}
-
-		log.Debugw("API key validation",
-			"received", apiKey,
-			"expectedPrefix", cfg.ExternalServices.SupabaseAnonKey[:8]+"...",
-			"match", apiKey == cfg.ExternalServices.SupabaseAnonKey,
-		)
-
-		if apiKey != cfg.ExternalServices.SupabaseAnonKey {
-			log.Warnw("API key mismatch", 
-				"received", apiKey, 
-				"expected", cfg.ExternalServices.SupabaseAnonKey)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid API key",
-			})
-			return
-		}
-
-		// 2. Token Handling
-		tokenString := c.Query("token")
-		if tokenString == "" {
-			// Fallback to header-based auth
+		// WebSocket-specific token handling
+		if IsWebSocket(c) {
+			token = c.Query("token")
+			log.Debugw("WebSocket token extraction",
+				"tokenPresent", token != "",
+				"queryParams", c.Request.URL.Query(),
+				"path", c.Request.URL.Path)
+			if token == "" {
+				log.Warn("WebSocket connection missing token parameter")
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "WebSocket connections require ?token parameter",
+				})
+				return
+			}
+		} else {
+			// Standard Bearer token handling
 			authHeader := c.GetHeader("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
-				tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+				token = strings.TrimPrefix(authHeader, "Bearer ")
 			}
 		}
 
-		if tokenString == "" {
+		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Missing authentication token",
+				"error": "Authorization required",
 			})
 			return
 		}
 
-		claims, err := validateSupabaseToken(tokenString)
+		// Validate JWT token
+		log.Debugw("JWT validation attempt", "token", maskToken(token))
+		userID, err := validateJWT(token)
 		if err != nil {
-			log.Errorw("Token validation failed", "error", err)
+			// Enhanced error logging
+			log.Warnw("Invalid JWT token",
+				"error", err,
+				"token", maskToken(token),
+				"tokenLength", len(token),
+				"requestPath", c.Request.URL.Path,
+				"requestMethod", c.Request.Method,
+				"clientIP", c.ClientIP())
+
+			// Return a more user-friendly message if token is expired
+			errorMessage := "Invalid authentication token"
+			errorDetails := err.Error()
+
+			if strings.Contains(errorDetails, "token expired") || strings.Contains(errorDetails, "exp not satisfied") {
+				errorMessage = "Your session has expired"
+				errorDetails = "Please use your refresh token to obtain a new access token via the /v1/auth/refresh endpoint"
+
+				// Create enhanced response with additional info
+				enhancedResponse := gin.H{
+					"error":            errorMessage,
+					"details":          errorDetails,
+					"code":             "token_expired",
+					"refresh_endpoint": "/v1/auth/refresh",
+					"refresh_required": true,
+				}
+
+				// Store the enhanced response for the error handler
+				c.Set("auth_error_response", enhancedResponse)
+
+				// Also set the standard error for consistent error handling
+				if err := c.Error(apperrors.Unauthorized("token_expired", errorMessage)); err != nil {
+					log.Errorw("Failed to set error in context", "error", err)
+				}
+				c.Abort()
+				return
+			}
+
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": err.Error(),
+				"error":   errorMessage,
+				"details": errorDetails,
 			})
 			return
 		}
 
-		// Store user information in context.
-		c.Set("user_id", claims.Subject)
-		c.Set("user_email", claims.Email)
-		c.Set("user_role", claims.Role)
-		c.Set("user_metadata", claims.UserMetadata)
+		if userID == "" {
+			log.Errorw("Empty userID from valid JWT",
+				"tokenClaims", getJWTClaims(token),
+				"maskedToken", maskToken(token))
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error": "Authentication system error",
+			})
+			return
+		}
 
+		log.Debugw("Authentication successful",
+			"userID", userID,
+			"isWebSocket", IsWebSocket(c))
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }
 
-// validateSupabaseToken parses the token without signature verification and without
-// automatic claim validation, then performs manual checks for required claims.
-func validateSupabaseToken(tokenString string) (*SupabaseClaims, error) {
+// Modify your JWT validation logic
+func validateJWT(tokenString string) (string, error) {
 	log := logger.GetLogger()
 
-	// Parse without verifying signature and disable automatic validation.
-	parsed, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false), jwt.WithValidate(false))
-	if err != nil {
-		return nil, fmt.Errorf("invalid token format: %v", err)
-	}
+	// First parse without verification to inspect the token
+	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
+	if err == nil {
+		log.Debugw("JWT header inspection", "header", tokenObj.PrivateClaims())
 
-	// Get expiration time and check if it exists
-	exp := parsed.Expiration()
-	if exp.IsZero() {
-		return nil, fmt.Errorf("missing exp claim")
-	}
-	if exp.Before(time.Now()) {
-		return nil, fmt.Errorf("token has expired")
-	}
-
-	// Extract email claim.
-	emailVal, ok := parsed.PrivateClaims()["email"]
-	if !ok {
-		return nil, fmt.Errorf("missing email claim")
-	}
-	email, ok := emailVal.(string)
-	if !ok {
-		return nil, fmt.Errorf("email claim is not a string")
-	}
-
-	// Extract role claim.
-	roleVal, ok := parsed.PrivateClaims()["role"]
-	if !ok {
-		return nil, fmt.Errorf("missing role claim")
-	}
-	role, ok := roleVal.(string)
-	if !ok {
-		return nil, fmt.Errorf("role claim is not a string")
-	}
-
-	claims := &SupabaseClaims{
-		Subject: parsed.Subject(),
-		Email:   email,
-		Role:    role,
-		Exp:     exp.Unix(),
-	}
-
-	// Extract user metadata, if available.
-	if metadata, ok := parsed.PrivateClaims()["user_metadata"].(map[string]interface{}); ok {
-		claims.UserMetadata = types.UserMetadata{
-			Username:       getStringValue(metadata, "username"),
-			FirstName:      getStringValue(metadata, "firstName"),
-			LastName:       getStringValue(metadata, "lastName"),
-			ProfilePicture: getStringValue(metadata, "avatar_url"),
+		// Log expiration time to help with debugging
+		if !tokenObj.Expiration().IsZero() {
+			expiresAt := tokenObj.Expiration()
+			now := time.Now()
+			log.Debugw("Token expiration details",
+				"expires_at", expiresAt,
+				"current_time", now,
+				"is_expired", now.After(expiresAt),
+				"time_until_expiry", expiresAt.Sub(now).String())
 		}
 	}
 
-	log.Debugw("Validated token claims",
-		"subject", claims.Subject,
-		"email", claims.Email,
-		"role", claims.Role,
+	// Get the Supabase JWT secret from config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to load config for JWT validation: %w", err)
+	}
+
+	// Decode the base64 secret if needed
+	secret := cfg.ExternalServices.SupabaseJWTSecret
+	log.Debugw("Using Supabase JWT secret for validation", "secret_length", len(secret))
+
+	// Now parse with verification using the appropriate settings for Supabase tokens
+	tokenObj, err = jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(secret)),
+		jwt.WithValidate(true),
+		jwt.WithAcceptableSkew(30*time.Second),
 	)
 
-	if claims.Subject == "" {
-		return nil, fmt.Errorf("missing subject claim")
-	}
-	if claims.Role != "authenticated" {
-		return nil, fmt.Errorf("insufficient permissions")
+	if err != nil {
+		// Check specifically for token expiration
+		if strings.Contains(err.Error(), "exp not satisfied") {
+			expiryInfo := "Token has expired"
+
+			// Try to parse the token without validation to get expiry details
+			if expiredToken, parseErr := jwt.Parse([]byte(tokenString), jwt.WithVerify(false)); parseErr == nil {
+				if !expiredToken.Expiration().IsZero() {
+					expiredAt := expiredToken.Expiration()
+					now := time.Now()
+					expiryInfo = fmt.Sprintf("Token expired at %s (expired %s ago)",
+						expiredAt.Format(time.RFC3339),
+						now.Sub(expiredAt).String())
+
+					log.Debugw("Token expiration details",
+						"expired_at", expiredAt,
+						"current_time", now,
+						"expired_by", now.Sub(expiredAt).String())
+				}
+			}
+
+			return "", fmt.Errorf("token expired: %s", expiryInfo)
+		}
+		return "", fmt.Errorf("invalid token: %w", err)
 	}
 
-	return claims, nil
+	// Extract the subject claim (user ID)
+	sub := tokenObj.Subject()
+	if sub == "" {
+		// If subject is empty, try to get from private claims
+		if subClaim, ok := tokenObj.PrivateClaims()["sub"].(string); ok {
+			sub = subClaim
+		}
+	}
+
+	return sub, nil
 }
 
-// getStringValue safely extracts a string value from a map.
-func getStringValue(m map[string]interface{}, key string) string {
-	if val, ok := m[key].(string); ok {
-		return val
+func maskToken(token string) string {
+	if len(token) < 8 {
+		return "***"
 	}
-	return ""
+	return token[:4] + "***" + token[len(token)-4:]
+}
+
+func getJWTClaims(token string) interface{} {
+	// Parse the token without validation to extract claims
+	tokenObj, err := jwt.Parse([]byte(token), jwt.WithVerify(false))
+	if err != nil {
+		return map[string]interface{}{
+			"error": fmt.Sprintf("failed to parse token: %v", err),
+		}
+	}
+
+	// Build a map of all claims
+	claims := make(map[string]interface{})
+
+	// Add standard claims
+	claims["sub"] = tokenObj.Subject()
+	claims["iss"] = tokenObj.Issuer()
+	if !tokenObj.Expiration().IsZero() {
+		claims["exp"] = tokenObj.Expiration().Unix()
+	}
+	if !tokenObj.IssuedAt().IsZero() {
+		claims["iat"] = tokenObj.IssuedAt().Unix()
+	}
+
+	// Add all private claims
+	for k, v := range tokenObj.PrivateClaims() {
+		claims[k] = v
+	}
+
+	return claims
+}
+
+func ValidateTokenWithoutAbort(token string) (string, error) {
+	if token == "" {
+		return "", fmt.Errorf("empty token")
+	}
+
+	// Reuse your existing JWT validation logic
+	userID, err := validateJWT(token)
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	return userID, nil
 }
