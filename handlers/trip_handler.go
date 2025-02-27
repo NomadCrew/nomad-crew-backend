@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -753,11 +755,26 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 
+	// Read and log the raw request body
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Errorw("Failed to read request body", "error", err)
+		if err := c.Error(apperrors.ValidationFailed("invalid_request", "Failed to read request body")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
+		return
+	}
+
+	// Log the raw request body
+	log.Debugw("Raw invitation request body", "body", string(bodyBytes))
+
+	// Restore the request body for binding
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// Update the request structure to match the actual client format
 	type InviteMemberRequest struct {
-		Data struct {
-			Email string `json:"email"`
-			Role  string `json:"role"`
-		} `json:"data"`
+		Email string `json:"email"`
+		Role  string `json:"role"`
 	}
 
 	var reqPayload InviteMemberRequest
@@ -769,16 +786,21 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 		return
 	}
 
+	// Log the parsed payload
+	log.Debugw("Parsed invitation request",
+		"email", reqPayload.Email,
+		"role", reqPayload.Role)
+
 	invitation := &types.TripInvitation{
-		InviteeEmail: reqPayload.Data.Email,
+		InviteeEmail: reqPayload.Email,
 		TripID:       tripID,
 		InviterID:    userID,
 		Status:       types.InvitationStatusPending,
 		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
 	}
 
-	if reqPayload.Data.Role != "" {
-		invitation.Role = types.MemberRole(reqPayload.Data.Role)
+	if reqPayload.Role != "" {
+		invitation.Role = types.MemberRole(reqPayload.Role)
 	} else {
 		invitation.Role = types.MemberRoleMember
 	}
@@ -789,11 +811,6 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 			Ctx:    h.tripModel.GetCommandContext(),
 		},
 		Invitation: invitation,
-	}
-
-	if err := c.Error(apperrors.InternalServerError("Server configuration missing")); err != nil {
-		log.Errorw("Failed to set error in context", "error", err)
-		return
 	}
 
 	result, err := cmd.Execute(c.Request.Context())
@@ -816,24 +833,77 @@ func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
 }
 
 func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
-	var req struct {
-		Token string `json:"token" binding:"required"`
+	log := logger.GetLogger()
+	var token string
+
+	// Try to get token from URL query parameter first (for deep links)
+	tokenParam := c.Query("token")
+	if tokenParam != "" {
+		token = tokenParam
+		log.Debugw("Using token from URL query parameter", "token", token)
+	} else {
+		// If not in URL, try to get from JSON body (for API calls)
+		var req struct {
+			Token string `json:"token" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Errorw("Invalid invitation acceptance request", "error", err)
+			if err := c.Error(apperrors.ValidationFailed("invalid_request", "Token is required. Provide it either as a query parameter or in the request body")); err != nil {
+				log.Errorw("Failed to set error in context", "error", err)
+			}
+			return
+		}
+		token = req.Token
+		log.Debugw("Using token from request body", "token", token)
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log := logger.GetLogger()
-		log.Errorw("Invalid invitation acceptance request", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
+	// Validate JWT
+	claims, err := auth.ValidateInvitationToken(token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
+	if err != nil {
+		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
 	}
 
-	// Validate JWT
-	claims, err := auth.ValidateInvitationToken(req.Token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
-	if err != nil {
-		log := logger.GetLogger()
-		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
+	// Check if invitationId is empty (which would be an issue)
+	if claims.InvitationID == "" {
+		// If invitationId is empty but tripId and email are present, try to find the invitation
+		if claims.TripID != "" && claims.InviteeEmail != "" {
+			invitation, err := h.tripModel.FindInvitationByTripAndEmail(c.Request.Context(), claims.TripID, claims.InviteeEmail)
+			if err != nil {
+				log.Errorw("Failed to find invitation by trip and email",
+					"error", err,
+					"tripId", claims.TripID,
+					"email", claims.InviteeEmail)
+				if err := c.Error(apperrors.NotFound("invitation_not_found", "Invitation not found")); err != nil {
+					log.Errorw("Failed to set error in context", "error", err)
+				}
+				return
+			}
+			claims.InvitationID = invitation.ID
+			log.Infow("Found invitation ID from trip and email",
+				"invitationId", claims.InvitationID,
+				"tripId", claims.TripID,
+				"email", claims.InviteeEmail)
+		} else {
+			if err := c.Error(apperrors.ValidationFailed("invalid_token", "Invitation token is missing required data")); err != nil {
+				log.Errorw("Failed to set error in context", "error", err)
+			}
+			return
+		}
+	}
+
+	// Get user ID from context or token
+	userID := c.GetString("user_id")
+
+	// If user is not authenticated but we have their email from the token,
+	// we can try to find or create their account
+	if userID == "" {
+		// This would require integration with your auth system
+		// For now, we'll return an error requiring authentication
+		if err := c.Error(apperrors.Unauthorized("authentication_required", "You must be logged in to accept an invitation")); err != nil {
 			log.Errorw("Failed to set error in context", "error", err)
 		}
 		return
@@ -842,7 +912,7 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	// Execute accept invitation command
 	cmd := &tcommand.AcceptInvitationCommand{
 		BaseCommand: tcommand.BaseCommand{
-			UserID: c.GetString("user_id"),
+			UserID: userID,
 			Ctx:    h.tripModel.GetCommandContext(),
 		},
 		InvitationID: claims.InvitationID,
@@ -855,7 +925,6 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 	}
 
 	// Publish events from command result
-	log := logger.GetLogger()
 	for _, event := range result.Events {
 		if err := h.eventService.Publish(c.Request.Context(), event.TripID, event); err != nil {
 			log.Errorw("Failed to publish event", "error", err)
@@ -866,6 +935,65 @@ func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
 		"message": "Invitation accepted successfully",
 		"data":    result.Data,
 	})
+}
+
+// HandleInvitationDeepLink handles direct URL access to invitation links
+// and redirects to the appropriate app URL scheme
+func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
+	log := logger.GetLogger()
+	token := c.Param("token")
+
+	if token == "" {
+		if err := c.Error(apperrors.ValidationFailed("invalid_request", "Token is required")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
+		return
+	}
+
+	// Validate the token to ensure it's legitimate before redirecting
+	claims, err := auth.ValidateInvitationToken(token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
+	if err != nil {
+		log.Errorw("Invalid invitation token", "error", err)
+		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
+			log.Errorw("Failed to set error in context", "error", err)
+		}
+		return
+	}
+
+	// Get the frontend URL from config
+	frontendURL := h.tripModel.GetCommandContext().Config.FrontendURL
+
+	// Check if the request is from a mobile device
+	userAgent := c.Request.UserAgent()
+	isMobile := strings.Contains(strings.ToLower(userAgent), "mobile") ||
+		strings.Contains(strings.ToLower(userAgent), "android") ||
+		strings.Contains(strings.ToLower(userAgent), "iphone") ||
+		strings.Contains(strings.ToLower(userAgent), "ipad")
+
+	var redirectURL string
+
+	if isMobile {
+		// For mobile devices, use the app scheme
+		// This should match what's configured in your Expo app
+		redirectURL = fmt.Sprintf("nomadcrew://invite/accept?token=%s&tripId=%s&email=%s",
+			token, claims.TripID, claims.InviteeEmail)
+	} else {
+		// For web browsers, redirect to the web frontend
+		redirectURL = fmt.Sprintf("%s/invite/accept/%s", frontendURL, token)
+	}
+
+	log.Infow("Redirecting invitation",
+		"isMobile", isMobile,
+		"redirectURL", redirectURL,
+		"tripId", claims.TripID)
+
+	// Set headers to prevent caching
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+
+	// Redirect to the appropriate URL
+	c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 }
 
 // secureRandomFloat returns a cryptographically secure random float64 between 0 and 1

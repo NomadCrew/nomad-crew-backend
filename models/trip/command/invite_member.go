@@ -70,6 +70,11 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		return nil, err
 	}
 
+	// Ensure invitation has an ID before generating the token
+	if c.Invitation.ID == "" {
+		c.Invitation.ID = uuid.NewString()
+	}
+
 	// Generate JWT token
 	token, err := c.generateInvitationJWT()
 	if err != nil {

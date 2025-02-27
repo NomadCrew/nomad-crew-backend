@@ -29,6 +29,7 @@ type TripStore interface {
 	LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error)
 	CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error
 	GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error)
+	GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
 	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
 	BeginTx(ctx context.Context) (Transaction, error)
 	Commit() error

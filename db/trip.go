@@ -586,30 +586,78 @@ func (tdb *TripDB) CreateInvitation(ctx context.Context, invitation *types.TripI
 }
 
 func (tdb *TripDB) GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error) {
-	query := `
-        SELECT id, trip_id, inviter_id, invitee_email, status, created_at, expires_at
-        FROM trip_invitations
-        WHERE id = $1`
+	log := logger.GetLogger()
+	var invitation types.TripInvitation
 
-	invitation := &types.TripInvitation{}
-	err := tdb.client.GetPool().QueryRow(ctx, query, invitationID).Scan(
+	err := tdb.GetPool().QueryRow(ctx, `
+        SELECT id, trip_id, inviter_id, invitee_email, role, status, created_at, expires_at, token
+        FROM trip_invitations
+        WHERE id = $1 AND deleted_at IS NULL`,
+		invitationID).Scan(
 		&invitation.ID,
 		&invitation.TripID,
 		&invitation.InviterID,
 		&invitation.InviteeEmail,
+		&invitation.Role,
 		&invitation.Status,
 		&invitation.CreatedAt,
 		&invitation.ExpiresAt,
+		&invitation.Token,
 	)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, errors.NotFound("Invitation", invitationID)
+			return nil, errors.NotFound("invitation_not_found", "Invitation not found")
 		}
+		log.Errorw("Failed to get invitation", "error", err, "invitationID", invitationID)
 		return nil, fmt.Errorf("failed to get invitation: %w", err)
 	}
 
-	return invitation, nil
+	return &invitation, nil
+}
+
+// GetInvitationsByTripID retrieves all invitations for a specific trip
+func (tdb *TripDB) GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error) {
+	log := logger.GetLogger()
+	var invitations []*types.TripInvitation
+
+	rows, err := tdb.GetPool().Query(ctx, `
+        SELECT id, trip_id, inviter_id, invitee_email, role, status, created_at, expires_at, token
+        FROM trip_invitations
+        WHERE trip_id = $1 AND deleted_at IS NULL`,
+		tripID)
+	if err != nil {
+		log.Errorw("Failed to get invitations for trip", "error", err, "tripID", tripID)
+		return nil, fmt.Errorf("failed to get invitations for trip: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var invitation types.TripInvitation
+		err := rows.Scan(
+			&invitation.ID,
+			&invitation.TripID,
+			&invitation.InviterID,
+			&invitation.InviteeEmail,
+			&invitation.Role,
+			&invitation.Status,
+			&invitation.CreatedAt,
+			&invitation.ExpiresAt,
+			&invitation.Token,
+		)
+		if err != nil {
+			log.Errorw("Failed to scan invitation row", "error", err)
+			return nil, fmt.Errorf("failed to scan invitation row: %w", err)
+		}
+		invitations = append(invitations, &invitation)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Errorw("Error iterating invitation rows", "error", err)
+		return nil, fmt.Errorf("error iterating invitation rows: %w", err)
+	}
+
+	return invitations, nil
 }
 
 func (tdb *TripDB) UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error {
