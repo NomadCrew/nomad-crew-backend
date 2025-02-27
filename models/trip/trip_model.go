@@ -297,6 +297,22 @@ func (tm *TripModel) GetInvitation(ctx context.Context, invitationID string) (*t
 	return invitation, nil
 }
 
+// FindInvitationByTripAndEmail finds an invitation by trip ID and invitee email
+func (tm *TripModel) FindInvitationByTripAndEmail(ctx context.Context, tripID, email string) (*types.TripInvitation, error) {
+	invitations, err := tm.store.GetInvitationsByTripID(ctx, tripID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get invitations for trip: %w", err)
+	}
+
+	for _, invitation := range invitations {
+		if invitation.InviteeEmail == email && invitation.Status == types.InvitationStatusPending {
+			return invitation, nil
+		}
+	}
+
+	return nil, errors.NotFound("invitation_not_found", "No pending invitation found for this email and trip")
+}
+
 func (tm *TripModel) GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error) {
 	// Add validation to prevent empty ID errors
 	if tripID == "" {

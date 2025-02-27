@@ -286,6 +286,18 @@ func main() {
 		authRoutes.POST("/refresh", authHandler.RefreshTokenHandler)
 	}
 
+	// Invitation acceptance routes - don't require authentication initially
+	// as the JWT token itself contains the necessary validation information
+	inviteRoutes := v1.Group("/trips/invitations")
+	{
+		// POST endpoint for API calls from the app
+		inviteRoutes.POST("/accept", tripHandler.AcceptInvitationHandler)
+
+		// GET endpoint for handling direct URL access and deep links
+		// This will redirect to the app with the token as a parameter
+		inviteRoutes.GET("/accept/:token", tripHandler.HandleInvitationDeepLink)
+	}
+
 	// Create server
 	srv := &http.Server{
 		Addr:              ":" + cfg.Server.Port,

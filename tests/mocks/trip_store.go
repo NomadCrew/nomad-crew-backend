@@ -117,6 +117,14 @@ func (m *MockTripStore) UpdateInvitationStatus(ctx context.Context, invitationID
 	return args.Error(0)
 }
 
+func (m *MockTripStore) GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error) {
+	args := m.Called(ctx, tripID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*types.TripInvitation), args.Error(1)
+}
+
 func (m *MockTripStore) BeginTx(ctx context.Context) (store.Transaction, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
