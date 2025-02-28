@@ -200,6 +200,16 @@ func (s *OfflineLocationService) processBatch(ctx context.Context, userID string
 		}
 
 		processedCount++
+
+		// Limit the number of updates processed in a single batch
+		if processedCount >= maxBatchSize {
+			log.Infow("Reached max batch size limit, remaining updates will be processed in next run",
+				"userID", userID,
+				"maxBatchSize", maxBatchSize,
+				"totalUpdates", len(offlineUpdate.Updates),
+			)
+			break
+		}
 	}
 
 	// Delete the batch after processing
