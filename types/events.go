@@ -59,6 +59,9 @@ const (
 	EventTypeWeatherUpdated EventType = CategoryWeather + "_UPDATED"
 	EventTypeWeatherAlert   EventType = CategoryWeather + "_ALERT"
 
+	// Location events
+	EventTypeLocationUpdated EventType = CategoryLocation + "_UPDATED"
+
 	// Member events
 	EventTypeMemberAdded       EventType = CategoryMember + "_ADDED"
 	EventTypeMemberRoleUpdated EventType = CategoryMember + "_ROLE_UPDATED"

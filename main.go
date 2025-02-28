@@ -86,6 +86,7 @@ func main() {
 	dbClient := db.NewDatabaseClient(pool)
 	tripDB := db.NewTripDB(dbClient)
 	todoDB := db.NewTodoDB(dbClient)
+	locationDB := db.NewLocationDB(dbClient)
 
 	// Initialize Redis client with TLS in production
 	redisOptions := &redis.Options{
@@ -120,6 +121,7 @@ func main() {
 	weatherService := services.NewWeatherService(eventService)
 	emailService := services.NewEmailService(&cfg.Email)
 	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
+	locationService := services.NewLocationService(locationDB, eventService)
 
 	// Connect WebSocket metrics to health service
 	healthService.SetActiveConnectionsGetter(middleware.GetActiveConnectionCount)
@@ -137,6 +139,7 @@ func main() {
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 	healthHandler := handlers.NewHealthHandler(healthService)
+	locationHandler := handlers.NewLocationHandler(locationService)
 
 	// Router setup
 	r := gin.Default()
@@ -188,6 +191,14 @@ func main() {
 
 	// Versioned routes (e.g., /v1)
 	v1 := r.Group("/v1")
+
+	// Location routes
+	locationRoutes := v1.Group("/location")
+	{
+		locationRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
+		locationRoutes.POST("/update", locationHandler.UpdateLocationHandler)
+	}
+
 	trips := v1.Group("/trips")
 	{
 		trips.Use(middleware.AuthMiddleware(&cfg.Server))
@@ -274,6 +285,12 @@ func main() {
 				todoHandler.DeleteTodoHandler,
 			)
 		}
+
+		// Location routes for trips
+		trips.GET("/:id/locations",
+			middleware.RequireRole(tripModel, types.MemberRoleMember),
+			locationHandler.GetTripMemberLocationsHandler,
+		)
 	}
 
 	// Create auth handler
