@@ -209,6 +209,45 @@ components:
             - INCOMPLETE
         text:
           type: string
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy:
+          type: number
+          format: double
+        timestamp:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    MemberLocation:
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          properties:
+            userName:
+              type: string
+            userRole:
+              type: string
   parameters:
     TripID:
       name: id
@@ -811,3 +850,91 @@ paths:
                     type: string
                   ready:
                     type: boolean
+  /v1/location/update:
+    post:
+      summary: Update user location
+      description: Updates the current user's location
+      tags:
+        - Location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                latitude:
+                  type: number
+                  format: double
+                  description: Latitude coordinate
+                  example: 37.7749
+                longitude:
+                  type: number
+                  format: double
+                  description: Longitude coordinate
+                  example: -122.4194
+                accuracy:
+                  type: number
+                  format: double
+                  description: Accuracy of the location in meters
+                  example: 10.5
+                timestamp:
+                  type: integer
+                  format: int64
+                  description: Unix timestamp in milliseconds
+                  example: 1625097600000
+              required:
+                - latitude
+                - longitude
+                - accuracy
+                - timestamp
+      responses:
+        '200':
+          description: Location updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+        '400':
+          description: Invalid location data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      security:
+        - BearerAuth: []
+  /v1/trips/{id}/locations:
+    get:
+      summary: Get trip member locations
+      description: Retrieves the latest locations of all members in a trip
+      tags:
+        - Location
+        - Trip
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      responses:
+        '200':
+          description: Trip member locations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  locations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MemberLocation'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      security:
+        - BearerAuth: []
