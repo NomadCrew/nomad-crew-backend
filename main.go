@@ -123,6 +123,10 @@ func main() {
 	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
 	locationService := services.NewLocationService(locationDB, eventService)
 
+	// Initialize offline location service (after locationService)
+	offlineLocationService := services.NewOfflineLocationService(redisClient, locationService)
+	locationService.SetOfflineService(offlineLocationService)
+
 	// Connect WebSocket metrics to health service
 	healthService.SetActiveConnectionsGetter(middleware.GetActiveConnectionCount)
 
@@ -197,6 +201,8 @@ func main() {
 	{
 		locationRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
 		locationRoutes.POST("/update", locationHandler.UpdateLocationHandler)
+		locationRoutes.POST("/offline", locationHandler.SaveOfflineLocationsHandler)
+		locationRoutes.POST("/process-offline", locationHandler.ProcessOfflineLocationsHandler)
 	}
 
 	trips := v1.Group("/trips")

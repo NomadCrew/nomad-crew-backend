@@ -25,6 +25,58 @@ The location sharing feature allows trip members to share their real-time locati
 
 - **Response**: The updated location object
 
+### Save Offline Location Updates
+
+- **Path**: `/v1/location/offline`
+- **Method**: POST
+- **Authentication**: Required
+- **Description**: Saves location updates that were captured while the device was offline
+- **Headers**:
+  - `X-Device-ID`: Optional device identifier to track which device sent the updates
+- **Request Body**:
+
+  ```json
+  {
+    "updates": [
+      {
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+        "accuracy": 10.5,
+        "timestamp": 1625097600000
+      },
+      {
+        "latitude": 37.7750,
+        "longitude": -122.4195,
+        "accuracy": 8.3,
+        "timestamp": 1625097660000
+      }
+    ]
+  }
+  ```
+
+- **Response**:
+
+  ```json
+  {
+    "message": "Offline locations saved successfully",
+    "count": 2
+  }
+  ```
+
+### Process Offline Location Updates
+
+- **Path**: `/v1/location/process-offline`
+- **Method**: POST
+- **Authentication**: Required
+- **Description**: Manually triggers processing of offline location updates for the current user
+- **Response**:
+
+  ```json
+  {
+    "message": "Offline locations processed successfully"
+  }
+  ```
+
 ### Get Trip Member Locations
 
 - **Path**: `/v1/trips/{tripId}/locations`
@@ -63,19 +115,46 @@ The location feature is implemented with the following components:
    - `Location`: Represents a user's geographic location
    - `LocationUpdate`: Represents the payload for updating a location
    - `MemberLocation`: Extends Location with user information
+   - `OfflineLocationUpdate`: Represents a batch of location updates captured while offline
 
 3. **Services**:
    - `LocationService`: Handles business logic for location operations
+   - `OfflineLocationService`: Handles queue-based offline location updates
    - Validates location data
    - Publishes location update events
 
 4. **Handlers**:
    - `LocationHandler`: Handles HTTP requests for location operations
-   - Includes endpoints for updating location and retrieving trip member locations
+   - Includes endpoints for updating location, saving offline updates, and retrieving trip member locations
 
 5. **Events**:
    - `EventTypeLocationUpdated`: Event type for location updates
    - Location updates are published as events to enable real-time updates
+
+## Offline Support
+
+The location feature includes support for offline location updates:
+
+1. **Client-side Implementation**:
+   - Mobile clients should store location updates locally when offline
+   - When connectivity is restored, send batched updates to the `/v1/location/offline` endpoint
+   - Include device identifier in the `X-Device-ID` header for tracking
+
+2. **Server-side Implementation**:
+   - Offline updates are stored in Redis with a 24-hour TTL
+   - Updates are processed asynchronously to avoid blocking the client
+   - Processing happens automatically when updates are submitted
+   - Manual processing can be triggered via the `/v1/location/process-offline` endpoint
+
+3. **Data Validation**:
+   - Location updates older than 24 hours are discarded
+   - Updates with invalid coordinates are rejected
+   - Duplicate updates are handled gracefully
+
+4. **Performance Considerations**:
+   - Batched updates minimize API calls
+   - Redis-based queue ensures scalability
+   - Processing uses locks to prevent concurrent processing of the same user's updates
 
 ## Usage Guidelines
 
@@ -83,6 +162,7 @@ The location feature is implemented with the following components:
    - Mobile clients should update location periodically (e.g., every 1-5 minutes) when a trip is active
    - Web clients can update location at longer intervals
    - Set appropriate accuracy based on device capabilities
+   - Store updates locally when offline and send when connectivity is restored
 
 2. **Privacy Considerations**:
    - Location data is only shared with members of the same trip
@@ -101,5 +181,3 @@ The location feature is implemented with the following components:
 2. **Location History**: Implement endpoints to retrieve historical location data for trip members.
 
 3. **Privacy Controls**: Add user-level controls for location sharing preferences.
-
-4. **Offline Support**: Implement queue-based location updates for when users are offline.

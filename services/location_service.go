@@ -14,16 +14,25 @@ import (
 
 // LocationService handles location-related operations
 type LocationService struct {
-	locationDB   *db.LocationDB
-	eventService types.EventPublisher
+	locationDB     *db.LocationDB
+	eventService   types.EventPublisher
+	offlineService *OfflineLocationService
 }
 
 // NewLocationService creates a new LocationService
 func NewLocationService(locationDB *db.LocationDB, eventService types.EventPublisher) *LocationService {
-	return &LocationService{
+	service := &LocationService{
 		locationDB:   locationDB,
 		eventService: eventService,
 	}
+
+	return service
+}
+
+// SetOfflineService sets the offline location service
+// This is needed to avoid circular dependencies
+func (s *LocationService) SetOfflineService(offlineService *OfflineLocationService) {
+	s.offlineService = offlineService
 }
 
 // UpdateLocation updates a user's location and publishes an event
@@ -54,6 +63,22 @@ func (s *LocationService) UpdateLocation(ctx context.Context, userID string, upd
 // GetTripMemberLocations retrieves the latest locations for all members of a trip
 func (s *LocationService) GetTripMemberLocations(ctx context.Context, tripID string) ([]types.MemberLocation, error) {
 	return s.locationDB.GetTripMemberLocations(ctx, tripID)
+}
+
+// SaveOfflineLocations saves a batch of location updates to be processed later
+func (s *LocationService) SaveOfflineLocations(ctx context.Context, userID string, updates []types.LocationUpdate, deviceID string) error {
+	if s.offlineService == nil {
+		return fmt.Errorf("offline service not initialized")
+	}
+	return s.offlineService.SaveOfflineLocations(ctx, userID, updates, deviceID)
+}
+
+// ProcessOfflineLocations processes all offline location updates for a user
+func (s *LocationService) ProcessOfflineLocations(ctx context.Context, userID string) error {
+	if s.offlineService == nil {
+		return fmt.Errorf("offline service not initialized")
+	}
+	return s.offlineService.ProcessOfflineLocations(ctx, userID)
 }
 
 // validateLocationUpdate validates the location update data
