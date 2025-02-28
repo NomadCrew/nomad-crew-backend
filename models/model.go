@@ -2,8 +2,10 @@ package models
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
@@ -198,9 +200,9 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 
 	// Validate the status transition
 	if !trip.Status.IsValidTransition(newStatus) {
-		return &TripError{
-			Code: ErrInvalidStatusTransition,
-			Msg:  "Invalid status transition",
+		return &errors.AppError{
+			Type:    errors.InvalidStatusTransitionError,
+			Message: fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus),
 		}
 	}
 
@@ -208,16 +210,16 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 	switch newStatus {
 	case types.TripStatusActive:
 		if trip.EndDate.Before(time.Now()) {
-			return &TripError{
-				Code: ErrInvalidStatusTransition,
-				Msg:  "cannot activate a trip that has already ended",
+			return &errors.AppError{
+				Type:    errors.ValidationError,
+				Message: "cannot activate a trip that has already ended",
 			}
 		}
 	case types.TripStatusCompleted:
 		if trip.EndDate.After(time.Now()) {
-			return &TripError{
-				Code: ErrInvalidStatusTransition,
-				Msg:  "cannot complete a trip before its end date",
+			return &errors.AppError{
+				Type:    errors.ValidationError,
+				Message: "cannot complete a trip before its end date",
 			}
 		}
 	}

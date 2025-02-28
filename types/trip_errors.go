@@ -1,11 +1,11 @@
-package models
+package types
 
-// ErrorCode represents specific error conditions in the trip module
-type ErrorCode int
+// TripErrorCode represents specific error conditions in the trip module
+type TripErrorCode int
 
 const (
 	// ErrTripNotFound indicates the requested trip wasn't found
-	ErrTripNotFound ErrorCode = iota + 1
+	ErrTripNotFound TripErrorCode = iota + 1
 	// ErrUnauthorized indicates the user doesn't have permission for the operation
 	ErrUnauthorized
 	// ErrInvalidData indicates validation failed on provided data
@@ -18,7 +18,7 @@ const (
 
 // TripError encapsulates trip-related errors with specific error codes
 type TripError struct {
-	Code ErrorCode
+	Code TripErrorCode
 	Msg  string
 	Err  error
 }
