@@ -181,7 +181,7 @@ func main() {
 	}
 
 	// Create config directory if it doesn't exist
-	err = os.MkdirAll("config", 0755)
+	err = os.MkdirAll("config", 0750)
 	if err != nil {
 		fmt.Printf("Error creating config directory: %v\n", err)
 		os.Exit(1)
@@ -189,7 +189,7 @@ func main() {
 
 	// Write to file
 	filename := fmt.Sprintf("config/config.%s.yaml", env)
-	err = os.WriteFile(filename, yamlData, 0644)
+	err = os.WriteFile(filename, yamlData, 0600)
 	if err != nil {
 		fmt.Printf("Error writing config file: %v\n", err)
 		os.Exit(1)
