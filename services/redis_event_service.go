@@ -222,10 +222,29 @@ func (r *RedisEventService) processSubscription(
 		delete(r.subscriptions, subscriptionKey)
 		r.mu.Unlock()
 
-		if err := pubsub.Close(); err != nil {
-			r.log.Warnw("Error closing Redis pubsub", "error", err)
+		// Check if pubsub is still active before closing
+		if pubsub != nil {
+			select {
+			case <-pubsub.Channel():
+				// Channel is already closed, no need to close again
+			default:
+				if err := pubsub.Close(); err != nil {
+					if err.Error() != "redis: client is closed" {
+						r.log.Warnw("Error closing Redis pubsub", "error", err)
+					}
+				}
+			}
 		}
 	}()
+
+	// Verify pubsub connection is healthy
+	if err := pubsub.Ping(ctx); err != nil {
+		r.log.Errorw("Redis pubsub connection unhealthy",
+			"error", err,
+			"tripID", tripID,
+			"userID", userID)
+		return
+	}
 
 	ch := pubsub.Channel()
 
@@ -379,13 +398,22 @@ func (r *RedisEventService) Unsubscribe(ctx context.Context, tripID string, user
 	// Cancel the context to stop the processing goroutine
 	sub.cancelCtx()
 
-	// Close the Redis pubsub subscription
-	if err := sub.pubsub.Close(); err != nil {
-		r.log.Errorw("Failed to close Redis subscription",
-			"error", err,
-			"tripID", tripID,
-			"userID", userID)
-		return fmt.Errorf("failed to unsubscribe: %w", err)
+	// Check if pubsub is still active before closing
+	if sub.pubsub != nil {
+		select {
+		case <-sub.pubsub.Channel():
+			// Channel is already closed, no need to close again
+		default:
+			if err := sub.pubsub.Close(); err != nil {
+				if err.Error() != "redis: client is closed" {
+					r.log.Errorw("Failed to close Redis subscription",
+						"error", err,
+						"tripID", tripID,
+						"userID", userID)
+					return fmt.Errorf("failed to unsubscribe: %w", err)
+				}
+			}
+		}
 	}
 
 	r.log.Debugw("Successfully unsubscribed",

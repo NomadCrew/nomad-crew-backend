@@ -58,6 +58,14 @@ func main() {
 		cfg.Database.SSLMode,
 	)
 
+	// Log only non-sensitive connection information
+	log.Infow("Connecting to database",
+		"host", cfg.Database.Host,
+		"port", cfg.Database.Port,
+		"database", cfg.Database.Name,
+		"sslmode", cfg.Database.SSLMode,
+		"connection_string", logger.MaskConnectionString(connStr))
+
 	if cfg.Server.Environment == config.EnvProduction {
 		poolConfig, err = pgxpool.ParseConfig(connStr)
 		if err != nil {
@@ -95,6 +103,11 @@ func main() {
 		DB:       cfg.Redis.DB,
 	}
 
+	// Log only non-sensitive Redis connection information
+	log.Infow("Connecting to Redis",
+		"address", cfg.Redis.Address,
+		"db", cfg.Redis.DB)
+
 	if cfg.Server.Environment == config.EnvProduction {
 		redisOptions.TLSConfig = &tls.Config{
 			ServerName: cfg.Redis.Address,
@@ -115,6 +128,10 @@ func main() {
 		log.Fatalf("Failed to initialize Supabase client: %v", err)
 	}
 
+	log.Infow("Initialized Supabase client",
+		"url", cfg.ExternalServices.SupabaseURL,
+		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
+
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
 	eventService := services.NewRedisEventService(redisClient)
@@ -122,6 +139,9 @@ func main() {
 	emailService := services.NewEmailService(&cfg.Email)
 	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
 	locationService := services.NewLocationService(locationDB, eventService)
+
+	// Initialize chat store
+	chatStore := db.NewPostgresChatStore(pool, supabaseClient, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_KEY"))
 
 	// Initialize offline location service (after locationService)
 	offlineLocationService := services.NewOfflineLocationService(redisClient, locationService)
@@ -138,6 +158,7 @@ func main() {
 		supabaseClient,
 		&cfg.Server,
 		emailService,
+		chatStore,
 	)
 	todoModel := models.NewTodoModel(todoDB, tripModel)
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient)
@@ -297,6 +318,16 @@ func main() {
 			middleware.RequireRole(tripModel, types.MemberRoleMember),
 			locationHandler.GetTripMemberLocationsHandler,
 		)
+
+		// Chat routes for trips
+		trips.GET("/:id/messages",
+			middleware.RequireRole(tripModel, types.MemberRoleMember),
+			tripHandler.ListTripMessages,
+		)
+		trips.POST("/:id/messages/read",
+			middleware.RequireRole(tripModel, types.MemberRoleMember),
+			tripHandler.UpdateLastReadMessage,
+		)
 	}
 
 	// Create auth handler
@@ -319,6 +350,43 @@ func main() {
 		// GET endpoint for handling direct URL access and deep links
 		// This will redirect to the app with the token as a parameter
 		inviteRoutes.GET("/accept/:token", tripHandler.HandleInvitationDeepLink)
+	}
+
+	// Initialize chat service
+	chatService := services.NewChatService(chatStore, tripModel.GetTripStore(), eventService)
+	chatHandler := handlers.NewChatHandler(chatService, chatStore)
+
+	// Chat routes
+	chatRoutes := v1.Group("/chats")
+	{
+		chatRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
+
+		// Create a chat group
+		chatRoutes.POST("/groups", chatHandler.CreateChatGroup)
+
+		// Get chat groups for a user
+		chatRoutes.GET("/groups", chatHandler.ListChatGroups)
+
+		// Get a chat group
+		chatRoutes.GET("/groups/:groupID", chatHandler.GetChatGroup)
+
+		// Update a chat group
+		chatRoutes.PUT("/groups/:groupID", chatHandler.UpdateChatGroup)
+
+		// Delete a chat group
+		chatRoutes.DELETE("/groups/:groupID", chatHandler.DeleteChatGroup)
+
+		// Get messages for a chat group
+		chatRoutes.GET("/groups/:groupID/messages", chatHandler.ListChatMessages)
+
+		// Get members of a chat group
+		chatRoutes.GET("/groups/:groupID/members", chatHandler.ListChatGroupMembers)
+
+		// Update last read message
+		chatRoutes.PUT("/groups/:groupID/read", chatHandler.UpdateLastReadMessage)
+
+		// Note: WebSocket connection for chat is now handled through the trip websocket
+		// The separate chat websocket endpoint has been removed
 	}
 
 	// Create server

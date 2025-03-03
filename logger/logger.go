@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -72,4 +73,77 @@ func Close() error {
 		return err
 	}
 	return nil
+}
+
+// MaskSensitiveString masks a sensitive string for logging
+// It shows only the first and last few characters
+func MaskSensitiveString(s string, prefixLen, suffixLen int) string {
+	if s == "" {
+		return ""
+	}
+
+	// For very short strings, just return asterisks
+	if len(s) < (prefixLen + suffixLen + 3) {
+		return strings.Repeat("*", len(s))
+	}
+
+	// Otherwise mask the middle part
+	prefix := s[:prefixLen]
+	suffix := s[len(s)-suffixLen:]
+	return prefix + "..." + suffix
+}
+
+// MaskEmail masks an email address for logging
+func MaskEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return MaskSensitiveString(email, 2, 2)
+	}
+
+	username := parts[0]
+	domain := parts[1]
+
+	// Mask username but keep domain visible
+	maskedUsername := MaskSensitiveString(username, 2, 1)
+	return maskedUsername + "@" + domain
+}
+
+// MaskJWT masks a JWT token for logging
+func MaskJWT(token string) string {
+	if token == "" {
+		return ""
+	}
+
+	// For very short tokens, just return asterisks
+	if len(token) < 10 {
+		return strings.Repeat("*", len(token))
+	}
+
+	// For JWT tokens, show only first 3 and last 3 characters
+	return token[:3] + "..." + token[len(token)-3:]
+}
+
+// MaskConnectionString masks a database connection string for logging
+func MaskConnectionString(connStr string) string {
+	if connStr == "" {
+		return ""
+	}
+
+	// Replace password in connection string
+	// This handles formats like:
+	// - "postgres://user:password@host:port/dbname"
+	// - "host=host port=port user=user password=password dbname=dbname"
+
+	// Handle URL format
+	connStr = strings.Replace(connStr, "://", "://***:", 1)
+	connStr = strings.Replace(connStr, ":", "***:", 1)
+
+	// Handle key-value format
+	connStr = strings.Replace(connStr, "password=", "password=***", 1)
+
+	return connStr
 }

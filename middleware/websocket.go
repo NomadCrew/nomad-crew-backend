@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -85,6 +86,34 @@ func GetActiveConnectionCount() int {
 }
 
 func NewSafeConn(conn *websocket.Conn, metrics *WSMetrics, config WSConfig) *SafeConn {
+	log := logger.GetLogger()
+
+	// Validate input parameters
+	if conn == nil {
+		log.Errorw("NewSafeConn called with nil connection")
+		return nil
+	}
+
+	// Apply default configuration values if not specified
+	if config.WriteWait == 0 {
+		config.WriteWait = 10 * time.Second
+	}
+	if config.PongWait == 0 {
+		config.PongWait = 60 * time.Second
+	}
+	if config.PingPeriod == 0 {
+		config.PingPeriod = 30 * time.Second
+	}
+	if config.MaxMessageSize == 0 {
+		config.MaxMessageSize = 1024 * 1024 // 1MB default
+	}
+	if config.ReadBufferSize == 0 {
+		config.ReadBufferSize = 1024
+	}
+	if config.WriteBufferSize == 0 {
+		config.WriteBufferSize = 1024
+	}
+
 	atomic.AddInt64(&activeConnectionCount, 1)
 
 	sc := &SafeConn{
@@ -94,9 +123,15 @@ func NewSafeConn(conn *websocket.Conn, metrics *WSMetrics, config WSConfig) *Saf
 		readBuffer:  make(chan []byte, config.ReadBufferSize),
 		done:        make(chan struct{}),
 		config:      config,
+		closed:      0,            // Explicitly initialize to 0 (not closed)
+		mu:          sync.Mutex{}, // Initialize mutex
 	}
 
-	metrics.connectionCount.Inc()
+	if metrics != nil {
+		metrics.connectionCount.Inc()
+	} else {
+		log.Warnw("NewSafeConn called with nil metrics")
+	}
 
 	// Start write pump
 	go sc.writePump()
@@ -108,6 +143,13 @@ func NewSafeConn(conn *websocket.Conn, metrics *WSMetrics, config WSConfig) *Saf
 
 func (sc *SafeConn) writePump() {
 	log := logger.GetLogger()
+
+	// Add validation for sc itself
+	if sc == nil {
+		log.Errorw("writePump called on nil SafeConn")
+		return
+	}
+
 	log.Debugw("Starting write pump", "userID", sc.UserID, "tripID", sc.TripID)
 
 	// Safety check for nil channels or connection
@@ -125,34 +167,74 @@ func (sc *SafeConn) writePump() {
 		return
 	}
 
-	pingInterval := DefaultWSConfig().PingPeriod
+	// Check if config is properly initialized
+	if sc.config.WriteWait == 0 || sc.config.PingPeriod == 0 {
+		log.Warnw("Write pump initialized with invalid config",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"writeWait", sc.config.WriteWait,
+			"pingPeriod", sc.config.PingPeriod)
+		if err := sc.Close(); err != nil {
+			log.Errorw("Error closing connection with invalid config", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+		}
+		return
+	}
+
+	pingInterval := sc.config.PingPeriod
+	if pingInterval == 0 {
+		pingInterval = DefaultWSConfig().PingPeriod
+		log.Warnw("Using default ping period", "userID", sc.UserID, "tripID", sc.TripID)
+	}
+
 	ticker := time.NewTicker(pingInterval)
 	defer func() {
 		// Recover from any panics
 		if r := recover(); r != nil {
+			stack := make([]byte, 4096)
+			stack = stack[:runtime.Stack(stack, false)]
 			log.Errorw("Panic in writePump recovered",
 				"recover", r,
 				"userID", sc.UserID,
-				"tripID", sc.TripID)
+				"tripID", sc.TripID,
+				"stack", string(stack))
 		}
 
 		log.Debugw("Stopping write pump", "userID", sc.UserID, "tripID", sc.TripID)
 		ticker.Stop()
-		if err := sc.Close(); err != nil {
-			log.Warnw("Error closing connection in write pump defer", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+
+		// Create a local copy of the connection state to avoid race conditions
+		isClosed := atomic.LoadInt32(&sc.closed) == 1
+
+		// Only attempt to close if not already closed
+		if !isClosed {
+			if err := sc.Close(); err != nil {
+				log.Warnw("Error closing connection in write pump defer", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+			}
+		} else {
+			log.Debugw("Connection already closed, skipping Close() call in writePump", "userID", sc.UserID, "tripID", sc.TripID)
 		}
 	}()
 
+	// Store local copies of channels to avoid race conditions
+	doneChannel := sc.done
+	writeBufferChannel := sc.writeBuffer
+
 	for {
 		select {
-		case message, ok := <-sc.writeBuffer:
+		case message, ok := <-writeBufferChannel:
 			// Check if channel is closed
 			if !ok {
 				log.Debugw("Write buffer channel closed", "userID", sc.UserID, "tripID", sc.TripID)
-				if sc.Conn != nil {
-					if err := sc.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-						log.Warnw("Error writing close message", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+
+				// Check if connection is still valid before sending close message
+				if atomic.LoadInt32(&sc.closed) == 0 && sc.Conn != nil {
+					sc.mu.Lock()
+					if sc.Conn != nil {
+						if err := sc.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+							log.Warnw("Error writing close message", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+						}
 					}
+					sc.mu.Unlock()
 				}
 				return
 			}
@@ -178,7 +260,13 @@ func (sc *SafeConn) writePump() {
 			}
 
 			// Set a hard deadline for writes to prevent socket leakage
-			deadline := time.Now().Add(DefaultWSConfig().WriteWait)
+			writeWait := sc.config.WriteWait
+			if writeWait == 0 {
+				writeWait = DefaultWSConfig().WriteWait
+				log.Warnw("Using default write wait", "userID", sc.UserID, "tripID", sc.TripID)
+			}
+
+			deadline := time.Now().Add(writeWait)
 			if err := sc.Conn.SetWriteDeadline(deadline); err != nil {
 				sc.mu.Unlock()
 				log.Warnw("SetWriteDeadline failed",
@@ -245,11 +333,13 @@ func (sc *SafeConn) writePump() {
 		case <-ticker.C:
 			// Skip ping if connection is already closed
 			if atomic.LoadInt32(&sc.closed) == 1 {
+				log.Debugw("Skipping ping for closed connection", "userID", sc.UserID, "tripID", sc.TripID)
 				return
 			}
 
 			start := time.Now()
 			sc.mu.Lock()
+
 			// Check if Conn is nil
 			if sc.Conn == nil {
 				sc.mu.Unlock()
@@ -260,7 +350,13 @@ func (sc *SafeConn) writePump() {
 				return
 			}
 
-			pingDeadline := time.Now().Add(DefaultWSConfig().WriteWait)
+			writeWait := sc.config.WriteWait
+			if writeWait == 0 {
+				writeWait = DefaultWSConfig().WriteWait
+				log.Warnw("Using default write wait for ping", "userID", sc.UserID, "tripID", sc.TripID)
+			}
+
+			pingDeadline := time.Now().Add(writeWait)
 			if err := sc.Conn.SetWriteDeadline(pingDeadline); err != nil {
 				sc.mu.Unlock()
 				log.Warnw("SetWriteDeadline failed for ping",
@@ -302,7 +398,7 @@ func (sc *SafeConn) writePump() {
 				sc.metrics.pingPongLatency.Observe(time.Since(start).Seconds())
 			}
 
-		case <-sc.done:
+		case <-doneChannel:
 			log.Debugw("Done signal received in write pump", "userID", sc.UserID, "tripID", sc.TripID)
 			return
 		}
@@ -313,7 +409,11 @@ func (sc *SafeConn) writePump() {
 func (sc *SafeConn) Close() error {
 	log := logger.GetLogger()
 
-	// Only close once
+	// Lock the mutex to prevent concurrent access
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	// Only close once - use atomic operation for thread safety
 	if !atomic.CompareAndSwapInt32(&sc.closed, 0, 1) {
 		log.Debugw("Close called on already closed connection",
 			"userID", sc.UserID,
@@ -325,11 +425,19 @@ func (sc *SafeConn) Close() error {
 		"userID", sc.UserID,
 		"tripID", sc.TripID)
 
+	// Track active connections
 	atomic.AddInt64(&activeConnectionCount, -1)
 
+	// Create local copies of channels to avoid race conditions
+	doneChannel := sc.done
+	writeBufferChannel := sc.writeBuffer
+	readBufferChannel := sc.readBuffer
+
 	// Signal done to stop goroutines
-	if sc.done != nil {
-		close(sc.done)
+	if doneChannel != nil {
+		close(doneChannel)
+		// Nullify the channel after closing to prevent double close
+		sc.done = nil
 	} else {
 		log.Warnw("Close called on connection with nil done channel",
 			"userID", sc.UserID,
@@ -338,13 +446,26 @@ func (sc *SafeConn) Close() error {
 
 	// Update metrics
 	if sc.metrics != nil {
-		sc.metrics.ConnectionsActive.Dec()
+		if sc.metrics.ConnectionsActive != nil {
+			sc.metrics.ConnectionsActive.Dec()
+		}
+	} else {
+		log.Warnw("Close called on connection with nil metrics",
+			"userID", sc.UserID,
+			"tripID", sc.TripID)
 	}
 
 	// Close the actual connection
 	var err error
 	if sc.Conn != nil {
-		err = sc.Conn.Close()
+		// Store a local copy of the connection before nullifying
+		conn := sc.Conn
+		// Nullify the connection before closing to prevent further use
+		sc.Conn = nil
+
+		// Close the connection after nullifying to prevent race conditions
+		err = conn.Close()
+
 		if err != nil {
 			log.Warnw("Error closing underlying WebSocket connection",
 				"error", err,
@@ -359,22 +480,28 @@ func (sc *SafeConn) Close() error {
 
 	// Drain buffers to prevent goroutine leaks
 	// Use non-blocking operations to avoid deadlocks
-	if sc.writeBuffer != nil {
+	if writeBufferChannel != nil {
+		// Drain the channel in a non-blocking way
 		select {
-		case <-sc.writeBuffer:
+		case <-writeBufferChannel:
 		default:
 		}
+		// Nullify the channel after draining
+		sc.writeBuffer = nil
 	} else {
 		log.Warnw("Close called on connection with nil writeBuffer",
 			"userID", sc.UserID,
 			"tripID", sc.TripID)
 	}
 
-	if sc.readBuffer != nil {
+	if readBufferChannel != nil {
+		// Drain the channel in a non-blocking way
 		select {
-		case <-sc.readBuffer:
+		case <-readBufferChannel:
 		default:
 		}
+		// Nullify the channel after draining
+		sc.readBuffer = nil
 	} else {
 		log.Warnw("Close called on connection with nil readBuffer",
 			"userID", sc.UserID,
@@ -390,48 +517,62 @@ func (sc *SafeConn) Close() error {
 
 func (sc *SafeConn) readPump() {
 	log := logger.GetLogger()
+
+	// Add validation for sc itself
+	if sc == nil {
+		log.Errorw("readPump called on nil SafeConn")
+		return
+	}
+
 	log.Debugw("Starting read pump", "userID", sc.UserID, "tripID", sc.TripID)
 
 	defer func() {
 		// Recover from any panics
 		if r := recover(); r != nil {
+			stack := make([]byte, 4096)
+			stack = stack[:runtime.Stack(stack, false)]
 			log.Errorw("Panic in readPump recovered",
 				"recover", r,
 				"userID", sc.UserID,
-				"tripID", sc.TripID)
+				"tripID", sc.TripID,
+				"stack", string(stack))
 		}
 
 		log.Debugw("Stopping read pump", "userID", sc.UserID, "tripID", sc.TripID)
-		if err := sc.Close(); err != nil {
-			log.Warnw("Error closing connection in read pump", "error", err, "userID", sc.UserID, "tripID", sc.TripID)
+
+		// Create a local copy of the connection state to avoid race conditions
+		isClosed := atomic.LoadInt32(&sc.closed) == 1
+
+		// Only attempt to close if not already closed
+		if !isClosed && sc.Conn != nil {
+			if err := sc.Close(); err != nil {
+				log.Warnw("Error closing connection from readPump",
+					"error", err,
+					"userID", sc.UserID,
+					"tripID", sc.TripID)
+			}
 		}
 	}()
 
-	// Check if Conn is nil
-	if sc.Conn == nil {
-		log.Warnw("Read pump initialized with nil connection",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
-		return
-	}
-
-	// Configure connection
-	sc.Conn.SetReadLimit(sc.config.MaxMessageSize)
-	if err := sc.Conn.SetReadDeadline(time.Now().Add(sc.config.PongWait)); err != nil {
-		log.Warnw("Failed to set initial read deadline",
-			"error", err,
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
-		return
-	}
-
-	// Track when we last received data from the client
-	var lastMessageTime time.Time = time.Now()
+	// Initialize time tracking
 	connectionStartTime := time.Now()
+	lastMessageTime := connectionStartTime
 
+	// Main read loop
 	for {
-		// Check if connection is already closed
+		// Check if connection is closed before continuing
 		if atomic.LoadInt32(&sc.closed) == 1 {
+			log.Debugw("Exiting readPump - connection is closed",
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
+			return
+		}
+
+		// Double-check Conn is still valid before using it
+		if sc.Conn == nil {
+			log.Warnw("Connection became nil during readPump loop",
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
 			return
 		}
 
@@ -444,17 +585,34 @@ func (sc *SafeConn) readPump() {
 			return
 		}
 
+		// Use a mutex to protect the read operation
+		sc.mu.Lock()
+		// Double check connection is still valid after acquiring lock
+		if sc.Conn == nil || atomic.LoadInt32(&sc.closed) == 1 {
+			sc.mu.Unlock()
+			log.Debugw("Connection became invalid after lock acquisition in readPump",
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
+			return
+		}
 		messageType, message, err := sc.Conn.ReadMessage()
+		sc.mu.Unlock()
 
 		if err != nil {
 			// Connection closed or error
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
-				// Normal closure
+				// Normal closure - mark connection as closed immediately to prevent further operations
+				atomic.StoreInt32(&sc.closed, 1)
+
 				log.Infow("Client closed WebSocket connection normally",
 					"userID", sc.UserID,
 					"tripID", sc.TripID,
 					"connectionDuration", time.Since(connectionStartTime).String(),
 					"closeCode", getCloseErrorCode(err))
+
+				// For normal closures, we should exit immediately without further processing
+				// This prevents accessing fields that might be nullified during cleanup
+				return
 			} else if websocket.IsUnexpectedCloseError(err) {
 				// Unexpected closure
 				log.Warnw("Unexpected WebSocket close error",
@@ -491,9 +649,15 @@ func (sc *SafeConn) readPump() {
 					"connectionDuration", time.Since(connectionStartTime).String())
 			}
 
+			// Mark connection as closed before metrics to prevent race conditions
+			atomic.StoreInt32(&sc.closed, 1)
+
+			// Safely increment error count if metrics is available
 			if sc.metrics != nil {
 				sc.metrics.errorCount.Inc()
 			}
+
+			// Exit the read pump on any error
 			return
 		}
 
@@ -507,19 +671,33 @@ func (sc *SafeConn) readPump() {
 			"messageType", messageTypeToString(messageType),
 			"messageSize", len(message))
 
-		// Check if readBuffer is nil
-		if sc.readBuffer == nil {
-			log.Warnw("Read buffer is nil",
+		// Check if connection was closed during message processing
+		if atomic.LoadInt32(&sc.closed) == 1 {
+			log.Debugw("Connection closed during message processing",
 				"userID", sc.UserID,
 				"tripID", sc.TripID)
 			return
 		}
 
+		// Check if readBuffer is nil again (could have been closed during operation)
+		if sc.readBuffer == nil {
+			log.Warnw("Read buffer became nil during operation",
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
+			return
+		}
+
+		// Use a non-blocking select with a default case to avoid deadlocks
 		select {
 		case sc.readBuffer <- message:
+			// Safely update metrics if available
 			if sc.metrics != nil {
-				sc.metrics.messageSize.Observe(float64(len(message)))
-				sc.metrics.MessagesReceived.Inc()
+				if sc.metrics.messageSize != nil {
+					sc.metrics.messageSize.Observe(float64(len(message)))
+				}
+				if sc.metrics.MessagesReceived != nil {
+					sc.metrics.MessagesReceived.Inc()
+				}
 			}
 		default:
 			// Buffer full - implement backpressure
@@ -528,9 +706,14 @@ func (sc *SafeConn) readPump() {
 				"tripID", sc.TripID,
 				"bufferSize", cap(sc.readBuffer))
 
+			// Safely update metrics if available
 			if sc.metrics != nil {
-				sc.metrics.errorCount.Inc()
-				sc.metrics.ErrorsTotal.WithLabelValues("read_buffer_full").Inc()
+				if sc.metrics.errorCount != nil {
+					sc.metrics.errorCount.Inc()
+				}
+				if sc.metrics.ErrorsTotal != nil {
+					sc.metrics.ErrorsTotal.WithLabelValues("read_buffer_full").Inc()
+				}
 			}
 			return
 		}
@@ -579,9 +762,15 @@ func isTimeoutError(err error) bool {
 }
 
 func (sc *SafeConn) WriteMessage(messageType int, data []byte) error {
-	// First defensive check - is the connection itself nil?
-	if sc == nil {
-		return fmt.Errorf("attempted to write to nil connection")
+	// Use our validation function to check if the connection is valid
+	if !sc.isConnectionValid() {
+		log := logger.GetLogger()
+		log.Warnw("WriteMessage called on invalid connection",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"messageType", messageType,
+			"dataSize", len(data))
+		return fmt.Errorf("attempted to write to invalid connection")
 	}
 
 	// Log the write attempt with connection info
@@ -593,17 +782,9 @@ func (sc *SafeConn) WriteMessage(messageType int, data []byte) error {
 		"tripID", sc.TripID,
 		"connClosed", atomic.LoadInt32(&sc.closed) == 1)
 
-	// Check if connection is closed
+	// Double-check if connection is closed
 	if atomic.LoadInt32(&sc.closed) == 1 {
 		log.Debugw("WriteMessage called on closed connection",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
-		return websocket.ErrCloseSent
-	}
-
-	// Check if writeBuffer is nil
-	if sc.writeBuffer == nil {
-		log.Warnw("WriteMessage called with nil writeBuffer",
 			"userID", sc.UserID,
 			"tripID", sc.TripID)
 		return websocket.ErrCloseSent
@@ -617,10 +798,21 @@ func (sc *SafeConn) WriteMessage(messageType int, data []byte) error {
 		return ErrBackpressure
 	}
 
+	// Create a local copy of the write buffer to avoid race conditions
+	writeBufferChannel := sc.writeBuffer
+
+	// Check if writeBuffer is nil
+	if writeBufferChannel == nil {
+		log.Warnw("WriteMessage called with nil writeBuffer",
+			"userID", sc.UserID,
+			"tripID", sc.TripID)
+		return fmt.Errorf("write buffer is nil")
+	}
+
 	// Calculate fill percentage for buffer - with safety checks
 	var fillPercentage float64
-	bufLen := len(sc.writeBuffer)
-	bufCap := cap(sc.writeBuffer)
+	bufLen := len(writeBufferChannel)
+	bufCap := cap(writeBufferChannel)
 
 	// Avoid division by zero
 	if bufCap > 0 {
@@ -654,7 +846,11 @@ func (sc *SafeConn) WriteMessage(messageType int, data []byte) error {
 
 	// Non-blocking send to avoid hanging
 	select {
-	case sc.writeBuffer <- data:
+	case writeBufferChannel <- data:
+		// Update metrics if available
+		if sc.metrics != nil && sc.metrics.MessagesSent != nil {
+			sc.metrics.MessagesSent.Inc()
+		}
 		return nil
 	default:
 		if sc.metrics != nil {
@@ -670,8 +866,50 @@ func (sc *SafeConn) WriteMessage(messageType int, data []byte) error {
 }
 
 func (sc *SafeConn) WriteControl(messageType int, data []byte, deadline time.Time) error {
+	// Use our validation function to check if the connection is valid
+	if !sc.isConnectionValid() {
+		log := logger.GetLogger()
+		log.Warnw("WriteControl called on invalid connection",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"messageType", messageType)
+		return fmt.Errorf("attempted to write control message to invalid connection")
+	}
+
+	// Double-check if connection is closed
+	if atomic.LoadInt32(&sc.closed) == 1 {
+		log := logger.GetLogger()
+		log.Debugw("WriteControl called on closed connection",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"messageType", messageType)
+		return websocket.ErrCloseSent
+	}
+
+	// Use a mutex to ensure thread safety
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+
+	// Check again if connection is nil or closed after acquiring the lock
+	if sc.Conn == nil {
+		log := logger.GetLogger()
+		log.Warnw("WriteControl found nil connection after lock",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"messageType", messageType)
+		return fmt.Errorf("connection is nil")
+	}
+
+	if atomic.LoadInt32(&sc.closed) == 1 {
+		log := logger.GetLogger()
+		log.Debugw("WriteControl found closed connection after lock",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"messageType", messageType)
+		return websocket.ErrCloseSent
+	}
+
+	// Perform the actual write operation
 	return sc.Conn.WriteControl(messageType, data, deadline)
 }
 
@@ -683,11 +921,44 @@ func ConnIsClosed(sc *SafeConn) bool {
 		return true
 	}
 
+	// If the connection is not valid, consider it closed
+	if !sc.isConnectionValid() {
+		return true
+	}
+
 	return atomic.LoadInt32(&sc.closed) == 1
 }
 
 func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log := logger.GetLogger()
+
+		// Validate config and set defaults if needed
+		if config.WriteWait == 0 {
+			config.WriteWait = 10 * time.Second
+		}
+		if config.PongWait == 0 {
+			config.PongWait = 60 * time.Second
+		}
+		if config.PingPeriod == 0 {
+			config.PingPeriod = 30 * time.Second
+		}
+		if config.MaxMessageSize == 0 {
+			config.MaxMessageSize = 1024 * 1024 // 1MB default
+		}
+		if config.BufferHighWater == 0 {
+			config.BufferHighWater = 256
+		}
+		if config.BufferLowWater == 0 {
+			config.BufferLowWater = 64
+		}
+		if config.ReadBufferSize == 0 {
+			config.ReadBufferSize = 1024
+		}
+		if config.WriteBufferSize == 0 {
+			config.WriteBufferSize = 1024
+		}
+
 		upgrader := websocket.Upgrader{
 			ReadBufferSize:  config.ReadBufferSize,
 			WriteBufferSize: config.WriteBufferSize,
@@ -726,7 +997,6 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 		userAgent := c.Request.UserAgent()
 
 		// Log connection attempt with client info
-		log := logger.GetLogger()
 		log.Infow("WebSocket connection attempt",
 			"userID", userID,
 			"tripID", tripID,
@@ -772,37 +1042,20 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 			return
 		}
 
-		// Check if there are any pre-existing connections for this user+trip
-		// Track active connections for each user to help diagnose client connection issues
-		// This could be enhanced with a proper connection registry
+		// Check if connection is nil (should never happen, but being defensive)
+		if conn == nil {
+			log.Errorw("Upgrader returned nil connection",
+				"userID", userID,
+				"tripID", tripID,
+				"remoteAddr", c.Request.RemoteAddr)
 
-		// Apply default configuration values if not specified
-		if config.WriteWait == 0 {
-			config.WriteWait = 10 * time.Second
-		}
-		if config.PongWait == 0 {
-			config.PongWait = 60 * time.Second
-		}
-		if config.PingPeriod == 0 {
-			config.PingPeriod = 30 * time.Second
-		}
-		if config.MaxMessageSize == 0 {
-			config.MaxMessageSize = 1024 * 1024 // 1MB default
-		}
-		if config.BufferHighWater == 0 {
-			config.BufferHighWater = 256
-		}
-		if config.BufferLowWater == 0 {
-			config.BufferLowWater = 64
-		}
-		if config.ReadBufferSize == 0 {
-			config.ReadBufferSize = 1024
-		}
-		if config.WriteBufferSize == 0 {
-			config.WriteBufferSize = 1024
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to establish WebSocket connection",
+			})
+			return
 		}
 
-		// Create a safe connection wrapper
+		// Create a safe connection wrapper with all fields properly initialized
 		safeConn := &SafeConn{
 			Conn:        conn,
 			metrics:     metrics,
@@ -812,20 +1065,24 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 			UserID:      userID,
 			TripID:      tripID,
 			config:      config,
+			closed:      0,            // Explicitly initialize to 0 (not closed)
+			mu:          sync.Mutex{}, // Initialize mutex
 		}
 
 		// Set the pong handler to keep the connection alive
-		conn.SetPongHandler(func(string) error {
-			// Update deadline when pong received
-			if err := conn.SetReadDeadline(time.Now().Add(config.PongWait)); err != nil {
-				log.Warnw("Failed to set read deadline in pong handler", "error", err, "userID", userID, "tripID", tripID)
-			}
-			log.Debugw("Pong received from client",
-				"userID", userID,
-				"tripID", tripID,
-				"remoteAddr", conn.RemoteAddr().String())
-			return nil
-		})
+		if conn != nil {
+			conn.SetPongHandler(func(string) error {
+				// Update deadline when pong received
+				if err := conn.SetReadDeadline(time.Now().Add(config.PongWait)); err != nil {
+					log.Warnw("Failed to set read deadline in pong handler", "error", err, "userID", userID, "tripID", tripID)
+				}
+				log.Debugw("Pong received from client",
+					"userID", userID,
+					"tripID", tripID,
+					"remoteAddr", conn.RemoteAddr().String())
+				return nil
+			})
+		}
 
 		// Update metrics
 		if metrics != nil {
@@ -835,45 +1092,75 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 		// Set connection in context
 		c.Set("wsConnection", safeConn)
 
-		// Start connection management goroutines
-		go safeConn.writePump()
-		go safeConn.readPump()
-		go safeConn.monitorBackpressure()
+		// Start connection management goroutines in a controlled way
+		// Use a WaitGroup to ensure goroutines are properly started before continuing
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		// Start write pump with proper error handling
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					stack := make([]byte, 4096)
+					stack = stack[:runtime.Stack(stack, false)]
+					log.Errorw("Panic in writePump goroutine",
+						"recover", r,
+						"userID", userID,
+						"tripID", tripID,
+						"stack", string(stack))
+				}
+			}()
+
+			wg.Done() // Signal that goroutine has started
+			safeConn.writePump()
+		}()
+
+		// Start read pump with proper error handling
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					stack := make([]byte, 4096)
+					stack = stack[:runtime.Stack(stack, false)]
+					log.Errorw("Panic in readPump goroutine",
+						"recover", r,
+						"userID", userID,
+						"tripID", tripID,
+						"stack", string(stack))
+				}
+			}()
+
+			wg.Done() // Signal that goroutine has started
+			safeConn.readPump()
+		}()
+
+		// Wait for goroutines to start
+		wg.Wait()
 
 		// Log successful connection establishment
-		log.Infow("WebSocket connection established",
+		log.Infow("WebSocket connection established successfully",
 			"userID", userID,
 			"tripID", tripID,
 			"remoteAddr", c.Request.RemoteAddr,
 			"clientIP", clientIP,
-			"userAgent", userAgent,
-			"config", map[string]interface{}{
-				"writeWait":  config.WriteWait,
-				"pongWait":   config.PongWait,
-				"pingPeriod": config.PingPeriod,
-				"bufferSize": config.WriteBufferSize,
-			},
-		)
+			"userAgent", userAgent)
 
-		// Ensure connection is closed after handler completes
-		defer func() {
-			if err := safeConn.Close(); err != nil {
-				log.Warnw("Error closing WebSocket connection", "error", err, "userID", userID)
-			}
-			if metrics != nil {
-				metrics.ConnectionsActive.Dec()
-			}
-			log.Infow("WebSocket connection closed",
-				"userID", userID,
-				"tripID", tripID,
-				"remoteAddr", c.Request.RemoteAddr,
-				"clientIP", clientIP,
-				"userAgent", userAgent,
-			)
-		}()
-
-		// Continue to the handler
+		// Continue with the request
 		c.Next()
+
+		// Ensure connection is closed when the handler completes
+		// This is important for cases where the handler exits without properly closing the connection
+		if safeConn != nil && atomic.LoadInt32(&safeConn.closed) == 0 {
+			log.Debugw("Closing WebSocket connection after handler completion",
+				"userID", userID,
+				"tripID", tripID)
+
+			if err := safeConn.Close(); err != nil {
+				log.Warnw("Error closing WebSocket connection after handler completion",
+					"error", err,
+					"userID", userID,
+					"tripID", tripID)
+			}
+		}
 	}
 }
 
@@ -888,6 +1175,7 @@ func contains(slice []string, item string) bool {
 }
 
 // Enhanced backpressure monitoring
+// nolint:unused
 func (sc *SafeConn) monitorBackpressure() {
 	log := logger.GetLogger()
 
@@ -956,4 +1244,45 @@ func secureRandomFloat() float64 {
 		return 1.0
 	}
 	return float64(binary.LittleEndian.Uint64(buf[:])) / float64(1<<64)
+}
+
+// isConnectionValid checks if the SafeConn and its underlying connection are valid
+func (sc *SafeConn) isConnectionValid() bool {
+	if sc == nil {
+		return false
+	}
+
+	if atomic.LoadInt32(&sc.closed) == 1 {
+		return false
+	}
+
+	if sc.Conn == nil {
+		return false
+	}
+
+	if sc.readBuffer == nil || sc.writeBuffer == nil || sc.done == nil {
+		return false
+	}
+
+	return true
+}
+
+// SendMessage sends a message through the websocket connection with proper error handling
+func (sc *SafeConn) SendMessage(message []byte) error {
+	log := logger.GetLogger()
+
+	if !sc.isConnectionValid() {
+		return fmt.Errorf("cannot send message on invalid connection")
+	}
+
+	select {
+	case sc.writeBuffer <- message:
+		return nil
+	default:
+		log.Warnw("Write buffer full, message dropped",
+			"userID", sc.UserID,
+			"tripID", sc.TripID,
+			"messageSize", len(message))
+		return fmt.Errorf("write buffer full")
+	}
 }

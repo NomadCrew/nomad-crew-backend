@@ -17,6 +17,7 @@ type CommandContext struct {
 	Config         *config.ServerConfig
 	RequestData    *sync.Map
 	EmailSvc       types.EmailService
+	ChatStore      store.ChatStore
 }
 
 // Add these methods directly to the interfaces package

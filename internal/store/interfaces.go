@@ -44,6 +44,38 @@ type TodoStore interface {
 	DeleteTodo(ctx context.Context, id string, userID string) error
 }
 
+// ChatStore defines the interface for chat operations
+type ChatStore interface {
+	// Chat Group operations
+	CreateChatGroup(ctx context.Context, group types.ChatGroup) (string, error)
+	GetChatGroup(ctx context.Context, groupID string) (*types.ChatGroup, error)
+	UpdateChatGroup(ctx context.Context, groupID string, update types.ChatGroupUpdateRequest) error
+	DeleteChatGroup(ctx context.Context, groupID string) error
+	ListChatGroupsByTrip(ctx context.Context, tripID string, limit, offset int) (*types.ChatGroupPaginatedResponse, error)
+
+	// Chat Message operations
+	CreateChatMessage(ctx context.Context, message types.ChatMessage) (string, error)
+	GetChatMessage(ctx context.Context, messageID string) (*types.ChatMessage, error)
+	UpdateChatMessage(ctx context.Context, messageID string, content string) error
+	DeleteChatMessage(ctx context.Context, messageID string) error
+	ListChatMessages(ctx context.Context, groupID string, limit, offset int) (*types.ChatMessagePaginatedResponse, error)
+	ListTripMessages(ctx context.Context, tripID string, limit, offset int) ([]types.ChatMessage, int, error)
+
+	// Chat Group Member operations
+	AddChatGroupMember(ctx context.Context, groupID, userID string) error
+	RemoveChatGroupMember(ctx context.Context, groupID, userID string) error
+	ListChatGroupMembers(ctx context.Context, groupID string) ([]types.UserResponse, error)
+	UpdateLastReadMessage(ctx context.Context, groupID, userID, messageID string) error
+
+	// Chat Message Reaction operations
+	AddChatMessageReaction(ctx context.Context, messageID, userID, reaction string) error
+	RemoveChatMessageReaction(ctx context.Context, messageID, userID, reaction string) error
+	ListChatMessageReactions(ctx context.Context, messageID string) ([]types.ChatMessageReaction, error)
+
+	// User operations
+	GetUserInfo(ctx context.Context, userID string) (*types.UserResponse, error)
+}
+
 type Transaction interface {
 	Commit() error
 	Rollback() error

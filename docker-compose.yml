@@ -9,7 +9,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/migrations/init.sql:/docker-entrypoint-initdb.d/1_init.sql
+      - ./db/migrations/chat.sql:/docker-entrypoint-initdb.d/2_chat.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nomadcrew"]
       interval: 5s
@@ -34,10 +35,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-development}
+        JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+        DB_PASSWORD: ${DB_PASSWORD:-admin123}
+        REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
+        RESEND_API_KEY: ${RESEND_API_KEY}
+        GEOAPIFY_KEY: ${GEOAPIFY_KEY}
+        PEXELS_API_KEY: ${PEXELS_API_KEY}
+        SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+        SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+        SUPABASE_URL: ${SUPABASE_URL}
+        SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+        EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
+        EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NomadCrew}
+        FRONTEND_URL: ${FRONTEND_URL:-https://nomadcrew.uk}
+        ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
     ports:
       - "8080:8080"
     environment:
-      DB_HOST: ${DB_HOST:-postgres}  # Use postgres as default in Docker
+      DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-admin123}
@@ -51,11 +68,18 @@ services:
       REDIS_ADDRESS: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
       REDIS_DB: ${REDIS_DB:-0}
-      AWS_REGION: ${AWS_REGION:-us-east-1}  # Default for local development
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      SERVER_ENVIRONMENT: "development"
-      ALLOWED_ORIGINS: "*"
-      AWS_SECRETS_PATH: ${AWS_SECRETS_PATH:-nomadcrew/prod/secrets}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_SECRETS_PATH: ${AWS_SECRETS_PATH:-nomadcrew/dev/secrets}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-development}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      GEOAPIFY_KEY: ${GEOAPIFY_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NomadCrew}
+      FRONTEND_URL: ${FRONTEND_URL:-https://nomadcrew.uk}
     depends_on:
       postgres:
         condition: service_healthy

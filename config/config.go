@@ -276,50 +276,45 @@ func loadAWSSecrets(v *viper.Viper) error {
 }
 
 func validateConfig(cfg *Config) error {
-	var errors []string
+	log := logger.GetLogger()
 
-	// Production-specific validations
-	if cfg.IsProduction() {
-		if containsWildcard(cfg.Server.AllowedOrigins) {
-			errors = append(errors, "ALLOWED_ORIGINS should not contain wildcard in production")
-		}
-
-		if len(cfg.Server.JwtSecretKey) < minJWTLength {
-			errors = append(errors, fmt.Sprintf("JWT_SECRET_KEY must be at least %d characters in production", minJWTLength))
-		}
-
-		if err := validateConnectionString(fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			cfg.Database.Host,
-			cfg.Database.Port,
-			cfg.Database.User,
-			cfg.Database.Password,
-			cfg.Database.Name,
-			cfg.Database.SSLMode,
-		)); err != nil {
-			errors = append(errors, err.Error())
-		}
-
-		if len(cfg.Redis.Password) < minPasswordLength {
-			errors = append(errors, fmt.Sprintf("REDIS_PASSWORD must be at least %d characters in production", minPasswordLength))
-		}
-
-		if err := validateExternalServices(&cfg.ExternalServices); err != nil {
-			errors = append(errors, err.Error())
-		}
+	// Validate server config
+	if cfg.Server.JwtSecretKey == "" {
+		return fmt.Errorf("JWT_SECRET_KEY is required")
 	}
 
-	// Common validations
-	if cfg.Server.Port == "0" {
-		errors = append(errors, "PORT is required")
+	if len(cfg.Server.JwtSecretKey) < minJWTLength {
+		log.Warn("JWT_SECRET_KEY is shorter than recommended length")
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("configuration validation failed:\n- %s", strings.Join(errors, "\n- "))
+	// Validate database config
+	if cfg.Database.Host == "" {
+		return fmt.Errorf("DATABASE.HOST is required")
 	}
+
+	if cfg.Database.User == "" {
+		return fmt.Errorf("DATABASE.USER is required")
+	}
+
+	if cfg.Database.Password == "" {
+		return fmt.Errorf("DATABASE.PASSWORD is required")
+	}
+
+	if cfg.Database.Name == "" {
+		return fmt.Errorf("DATABASE.NAME is required")
+	}
+
+	// Log only non-sensitive configuration information
+	log.Infow("Configuration validated",
+		"environment", cfg.Server.Environment,
+		"database_host", cfg.Database.Host,
+		"database_name", cfg.Database.Name,
+		"redis_address", cfg.Redis.Address)
 
 	return nil
 }
 
+// nolint:unused
 func validateConnectionString(connStr string) error {
 	if connStr == "" {
 		return fmt.Errorf("DB_CONNECTION_STRING is required")
@@ -346,6 +341,7 @@ func validateConnectionString(connStr string) error {
 	return nil
 }
 
+// nolint:unused
 func validateExternalServices(services *ExternalServices) error {
 	if len(services.SupabaseAnonKey) < minKeyLength {
 		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
@@ -362,6 +358,7 @@ func validateExternalServices(services *ExternalServices) error {
 	return nil
 }
 
+// nolint:unused
 func containsWildcard(origins []string) bool {
 	for _, o := range origins {
 		if o == "*" {

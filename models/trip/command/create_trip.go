@@ -81,6 +81,51 @@ func (c *CreateTripCommand) Execute(ctx context.Context) (*interfaces.CommandRes
 	c.Trip = createdTrip
 	logger.GetLogger().Debugw("Fetched full trip data", "trip", c.Trip)
 
+	// Create a default chat group for the trip
+	if c.Ctx.ChatStore != nil {
+		chatGroup := types.ChatGroup{
+			TripID:      c.Trip.ID,
+			Name:        c.Trip.Name + " Chat",
+			Description: "Default chat group for " + c.Trip.Name,
+			CreatedBy:   c.Trip.CreatedBy,
+		}
+
+		chatGroupID, err := c.Ctx.ChatStore.CreateChatGroup(ctx, chatGroup)
+		if err != nil {
+			logger.GetLogger().Errorw("Failed to create default chat group for trip", "error", err, "tripID", c.Trip.ID)
+			// Don't fail the trip creation if chat group creation fails
+		} else {
+			logger.GetLogger().Infow("Created default chat group for trip", "chatGroupID", chatGroupID, "tripID", c.Trip.ID)
+
+			// Add trip members to the chat group
+			// First, add the trip creator
+			err = c.Ctx.ChatStore.AddChatGroupMember(ctx, chatGroupID, c.Trip.CreatedBy)
+			if err != nil {
+				logger.GetLogger().Warnw("Failed to add trip creator to chat group", "error", err, "chatGroupID", chatGroupID, "userID", c.Trip.CreatedBy)
+			}
+
+			// Get all trip members and add them to the chat group
+			members, err := c.Ctx.Store.GetTripMembers(ctx, c.Trip.ID)
+			if err != nil {
+				logger.GetLogger().Warnw("Failed to get trip members", "error", err, "tripID", c.Trip.ID)
+			} else {
+				for _, member := range members {
+					// Skip the creator as they've already been added
+					if member.UserID == c.Trip.CreatedBy {
+						continue
+					}
+
+					err = c.Ctx.ChatStore.AddChatGroupMember(ctx, chatGroupID, member.UserID)
+					if err != nil {
+						logger.GetLogger().Warnw("Failed to add trip member to chat group", "error", err, "chatGroupID", chatGroupID, "userID", member.UserID)
+					}
+				}
+			}
+		}
+	} else {
+		logger.GetLogger().Warnw("ChatStore not available, skipping default chat group creation")
+	}
+
 	payload, _ := json.Marshal(c.Trip)
 
 	logger.GetLogger().Infow("Trip creation succeeded", "tripID", c.Trip.ID)

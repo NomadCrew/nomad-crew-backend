@@ -70,13 +70,12 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 		}
 
 		// Validate JWT token
-		log.Debugw("JWT validation attempt", "token", maskToken(token))
+		log.Debugw("JWT validation attempt", "token", logger.MaskJWT(token))
 		userID, err := validateJWT(token)
 		if err != nil {
 			// Enhanced error logging
 			log.Warnw("Invalid JWT token",
 				"error", err,
-				"token", maskToken(token),
 				"tokenLength", len(token),
 				"requestPath", c.Request.URL.Path,
 				"requestMethod", c.Request.Method,
@@ -119,8 +118,7 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 
 		if userID == "" {
 			log.Errorw("Empty userID from valid JWT",
-				"tokenClaims", getJWTClaims(token),
-				"maskedToken", maskToken(token))
+				"maskedToken", logger.MaskJWT(token))
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 				"error": "Authentication system error",
 			})
@@ -142,7 +140,8 @@ func validateJWT(tokenString string) (string, error) {
 	// First parse without verification to inspect the token
 	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
 	if err == nil {
-		log.Debugw("JWT header inspection", "header", tokenObj.PrivateClaims())
+		// Only log non-sensitive header information
+		log.Debugw("JWT header inspection", "alg", tokenObj.PrivateClaims()["alg"])
 
 		// Log expiration time to help with debugging
 		if !tokenObj.Expiration().IsZero() {
@@ -164,7 +163,8 @@ func validateJWT(tokenString string) (string, error) {
 
 	// Decode the base64 secret if needed
 	secret := cfg.ExternalServices.SupabaseJWTSecret
-	log.Debugw("Using Supabase JWT secret for validation", "secret_length", len(secret))
+	// Don't log secret length as it could provide information about the secret
+	log.Debug("Using Supabase JWT secret for validation")
 
 	// Now parse with verification using the appropriate settings for Supabase tokens
 	tokenObj, err = jwt.Parse([]byte(tokenString),
@@ -212,27 +212,28 @@ func validateJWT(tokenString string) (string, error) {
 	return sub, nil
 }
 
+// nolint:unused
 func maskToken(token string) string {
-	if len(token) < 8 {
-		return "***"
-	}
-	return token[:4] + "***" + token[len(token)-4:]
+	return logger.MaskJWT(token)
 }
 
+// nolint:unused
 func getJWTClaims(token string) interface{} {
 	// Parse the token without validation to extract claims
 	tokenObj, err := jwt.Parse([]byte(token), jwt.WithVerify(false))
 	if err != nil {
 		return map[string]interface{}{
-			"error": fmt.Sprintf("failed to parse token: %v", err),
+			"error": "failed to parse token",
 		}
 	}
 
-	// Build a map of all claims
+	// Build a map with only non-sensitive claims
 	claims := make(map[string]interface{})
 
-	// Add standard claims
-	claims["sub"] = tokenObj.Subject()
+	// Add only non-sensitive standard claims
+	if sub := tokenObj.Subject(); sub != "" {
+		claims["sub"] = logger.MaskSensitiveString(sub, 3, 3)
+	}
 	claims["iss"] = tokenObj.Issuer()
 	if !tokenObj.Expiration().IsZero() {
 		claims["exp"] = tokenObj.Expiration().Unix()
@@ -241,12 +242,15 @@ func getJWTClaims(token string) interface{} {
 		claims["iat"] = tokenObj.IssuedAt().Unix()
 	}
 
-	// Add all private claims
-	for k, v := range tokenObj.PrivateClaims() {
-		claims[k] = v
-	}
+	// Don't include private claims as they might contain sensitive information
 
 	return claims
+}
+
+// Helper function to mask potentially sensitive string values
+// nolint:unused
+func maskString(s string) string {
+	return logger.MaskSensitiveString(s, 3, 3)
 }
 
 func ValidateTokenWithoutAbort(token string) (string, error) {
