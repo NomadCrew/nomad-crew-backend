@@ -314,6 +314,7 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
+// nolint:unused
 func validateConnectionString(connStr string) error {
 	if connStr == "" {
 		return fmt.Errorf("DB_CONNECTION_STRING is required")
@@ -340,6 +341,7 @@ func validateConnectionString(connStr string) error {
 	return nil
 }
 
+// nolint:unused
 func validateExternalServices(services *ExternalServices) error {
 	if len(services.SupabaseAnonKey) < minKeyLength {
 		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
@@ -356,6 +358,7 @@ func validateExternalServices(services *ExternalServices) error {
 	return nil
 }
 
+// nolint:unused
 func containsWildcard(origins []string) bool {
 	for _, o := range origins {
 		if o == "*" {

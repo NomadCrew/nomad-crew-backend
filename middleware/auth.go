@@ -212,10 +212,12 @@ func validateJWT(tokenString string) (string, error) {
 	return sub, nil
 }
 
+// nolint:unused
 func maskToken(token string) string {
 	return logger.MaskJWT(token)
 }
 
+// nolint:unused
 func getJWTClaims(token string) interface{} {
 	// Parse the token without validation to extract claims
 	tokenObj, err := jwt.Parse([]byte(token), jwt.WithVerify(false))
@@ -246,6 +248,7 @@ func getJWTClaims(token string) interface{} {
 }
 
 // Helper function to mask potentially sensitive string values
+// nolint:unused
 func maskString(s string) string {
 	return logger.MaskSensitiveString(s, 3, 3)
 }

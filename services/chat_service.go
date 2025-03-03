@@ -550,7 +550,9 @@ func (s *ChatService) HandleWebSocketMessage(ctx context.Context, conn *middlewa
 			}
 			errorJSON, _ := json.Marshal(errorMsg)
 			if conn != nil {
-				conn.WriteMessage(websocket.TextMessage, errorJSON)
+				if err := conn.WriteMessage(websocket.TextMessage, errorJSON); err != nil {
+					log.Errorw("Failed to write error message to websocket", "error", err)
+				}
 			}
 			return err
 		}
@@ -574,7 +576,9 @@ func (s *ChatService) HandleWebSocketMessage(ctx context.Context, conn *middlewa
 			}
 			errorJSON, _ := json.Marshal(errorMsg)
 			if conn != nil {
-				conn.WriteMessage(websocket.TextMessage, errorJSON)
+				if err := conn.WriteMessage(websocket.TextMessage, errorJSON); err != nil {
+					log.Errorw("Failed to write error message to websocket", "error", err)
+				}
 			}
 			return fmt.Errorf("empty message ID in read receipt")
 		}
@@ -590,7 +594,9 @@ func (s *ChatService) HandleWebSocketMessage(ctx context.Context, conn *middlewa
 			}
 			errorJSON, _ := json.Marshal(errorMsg)
 			if conn != nil {
-				conn.WriteMessage(websocket.TextMessage, errorJSON)
+				if err := conn.WriteMessage(websocket.TextMessage, errorJSON); err != nil {
+					log.Errorw("Failed to write error message to websocket", "error", err)
+				}
 			}
 			return err
 		}
@@ -612,8 +618,10 @@ func (s *ChatService) HandleWebSocketMessage(ctx context.Context, conn *middlewa
 		}
 		errorJSON, _ := json.Marshal(errorMsg)
 		if conn != nil {
-			conn.WriteMessage(websocket.TextMessage, errorJSON)
+			if err := conn.WriteMessage(websocket.TextMessage, errorJSON); err != nil {
+				log.Errorw("Failed to write error message to websocket", "error", err)
+			}
 		}
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 }

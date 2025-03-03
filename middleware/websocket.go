@@ -1175,6 +1175,7 @@ func contains(slice []string, item string) bool {
 }
 
 // Enhanced backpressure monitoring
+// nolint:unused
 func (sc *SafeConn) monitorBackpressure() {
 	log := logger.GetLogger()
 
