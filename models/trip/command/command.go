@@ -35,6 +35,7 @@ func NewCommandContext(
 	supabaseClient *supabase.Client,
 	config *config.ServerConfig,
 	emailsvc types.EmailService,
+	chatStore store.ChatStore,
 ) *interfaces.CommandContext {
 	return &interfaces.CommandContext{
 		Store:          store,
@@ -44,6 +45,7 @@ func NewCommandContext(
 		Config:         config,
 		RequestData:    &sync.Map{},
 		EmailSvc:       emailsvc,
+		ChatStore:      chatStore,
 	}
 }
 

@@ -38,6 +38,7 @@ const (
 	CategoryWeather  = "WEATHER"
 	CategoryLocation = "LOCATION"
 	CategoryMember   = "MEMBER"
+	CategoryChat     = "CHAT"
 )
 
 const (
@@ -71,6 +72,15 @@ const (
 	EventTypeInvitationCreated       EventType = CategoryTrip + "_INVITATION_CREATED"
 	EventTypeInvitationAccepted      EventType = CategoryTrip + "_INVITATION_ACCEPTED"
 	EventTypeInvitationStatusUpdated EventType = "invitation_status_updated"
+
+	// Chat events
+	EventTypeChatMessageSent     EventType = CategoryChat + "_MESSAGE_SENT"
+	EventTypeChatMessageEdited   EventType = CategoryChat + "_MESSAGE_EDITED"
+	EventTypeChatMessageDeleted  EventType = CategoryChat + "_MESSAGE_DELETED"
+	EventTypeChatReactionAdded   EventType = CategoryChat + "_REACTION_ADDED"
+	EventTypeChatReactionRemoved EventType = CategoryChat + "_REACTION_REMOVED"
+	EventTypeChatReadReceipt     EventType = CategoryChat + "_READ_RECEIPT"
+	EventTypeChatTypingStatus    EventType = CategoryChat + "_TYPING_STATUS"
 )
 
 // Base event interface
@@ -159,4 +169,33 @@ type InvitationClaims struct {
 	TripID       string `json:"tripId"`
 	InviteeEmail string `json:"inviteeEmail"`
 	jwt.RegisteredClaims
+}
+
+// Chat event payloads
+type ChatMessageEvent struct {
+	MessageID string       `json:"messageId"`
+	TripID    string       `json:"tripId"`
+	Content   string       `json:"content,omitempty"`
+	User      UserResponse `json:"user,omitempty"`
+	Timestamp time.Time    `json:"timestamp"`
+}
+
+type ChatReactionEvent struct {
+	MessageID string       `json:"messageId"`
+	TripID    string       `json:"tripId"`
+	Reaction  string       `json:"reaction"`
+	User      UserResponse `json:"user,omitempty"`
+}
+
+type ChatReadReceiptEvent struct {
+	TripID    string       `json:"tripId"`
+	MessageID string       `json:"messageId"`
+	User      UserResponse `json:"user,omitempty"`
+}
+
+// ChatTypingStatusEvent represents a typing status event
+type ChatTypingStatusEvent struct {
+	TripID   string       `json:"tripId"`
+	IsTyping bool         `json:"isTyping"`
+	User     UserResponse `json:"user,omitempty"`
 }

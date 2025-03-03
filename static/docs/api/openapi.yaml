@@ -15,6 +15,7 @@ components:
   schemas:
     Trip:
       type: object
+      description: A trip represents a travel plan. When a trip is created, a default chat group is automatically created for the trip.
       properties:
         id:
           type: string
@@ -248,6 +249,141 @@ components:
               type: string
             userRole:
               type: string
+    ChatGroup:
+      type: object
+      description: A chat group for a trip. A default chat group is automatically created when a trip is created.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - tripId
+        - name
+    ChatGroupCreateRequest:
+      type: object
+      properties:
+        tripId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - tripId
+        - name
+    ChatGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isEdited:
+          type: boolean
+        isDeleted:
+          type: boolean
+    ChatMessageWithUser:
+      type: object
+      properties:
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    ChatMessagePaginatedResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessageWithUser'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            limit:
+              type: integer
+            offset:
+              type: integer
+    ChatGroupPaginatedResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatGroup'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            limit:
+              type: integer
+            offset:
+              type: integer
+    ChatGroupMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        joinedAt:
+          type: string
+          format: date-time
+        lastReadMessageId:
+          type: string
+          format: uuid
+    LastReadMessageRequest:
+      type: object
+      properties:
+        messageId:
+          type: string
+          format: uuid
+      required:
+        - messageId
   parameters:
     TripID:
       name: id
@@ -258,6 +394,13 @@ components:
         format: uuid
     UserID:
       name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    GroupID:
+      name: groupID
       in: path
       required: true
       schema:
@@ -282,6 +425,7 @@ paths:
   /trips:
     post:
       summary: Create a trip
+      description: Creates a new trip and automatically creates a default chat group for the trip. The trip creator is automatically added to the chat group.
       requestBody:
         required: true
         content:
@@ -936,5 +1080,211 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
+      security:
+        - BearerAuth: []
+  /chats/groups:
+    post:
+      summary: Create a chat group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatGroupCreateRequest'
+      responses:
+        '201':
+          description: Chat group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroup'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      security:
+        - BearerAuth: []
+    get:
+      summary: List chat groups for the authenticated user
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of chat groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroupPaginatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}:
+    get:
+      summary: Get chat group details
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '200':
+          description: Chat group details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroup'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    put:
+      summary: Update chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatGroupUpdateRequest'
+      responses:
+        '200':
+          description: Chat group updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroup'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+    delete:
+      summary: Delete chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '204':
+          description: Chat group deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/messages:
+    get:
+      summary: List messages for a chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of chat messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessagePaginatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/members:
+    get:
+      summary: List members of a chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '200':
+          description: List of chat group members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/read:
+    put:
+      summary: Update last read message for a user in a chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LastReadMessageRequest'
+      responses:
+        '200':
+          description: Last read message updated successfully
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group or message not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/ws:
+    get:
+      summary: WebSocket connection for real-time chat
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '101':
+          description: Switching Protocols to WebSocket
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
       security:
         - BearerAuth: []

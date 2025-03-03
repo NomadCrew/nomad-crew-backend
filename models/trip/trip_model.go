@@ -28,6 +28,7 @@ func NewTripModel(
 	supabaseClient *supabase.Client,
 	config *config.ServerConfig,
 	emailSvc types.EmailService,
+	chatStore store.ChatStore,
 ) *TripModel {
 	return &TripModel{
 		store: store,
@@ -38,6 +39,7 @@ func NewTripModel(
 			supabaseClient,
 			config,
 			emailSvc,
+			chatStore,
 		),
 		config: config,
 	}
@@ -225,6 +227,16 @@ func (tm *TripModel) GetTripWithMembers(ctx context.Context, tripID string) (*ty
 // GetCommandContext returns the command context for dependency injection
 func (tm *TripModel) GetCommandContext() *interfaces.CommandContext {
 	return tm.cmdCtx
+}
+
+// GetTripStore returns the trip store
+func (tm *TripModel) GetTripStore() store.TripStore {
+	return tm.store
+}
+
+// GetChatStore returns the chat store from the command context
+func (tm *TripModel) GetChatStore() store.ChatStore {
+	return tm.cmdCtx.ChatStore
 }
 
 func getUserIdFromContext(ctx context.Context) string {

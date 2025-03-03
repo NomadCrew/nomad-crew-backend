@@ -46,11 +46,10 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        working-directory: ./
         env:
           DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
           JWT_SECRET_KEY: test_secret
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
+        run: cd ./ && go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
 
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
@@ -81,44 +80,53 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-  build:
-    name: Build and Push
-    needs: [test, security-scan]
+  build-and-push:
+    needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
-      contents: write
+      contents: read
       packages: write
-    
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=semver,pattern={{version}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push
-        uses: docker/build-push-action@v4
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            SERVER_ENVIRONMENT=${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            GEOAPIFY_KEY=${{ secrets.GEOAPIFY_KEY }}
+            PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+            SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
+            EMAIL_FROM_ADDRESS=${{ secrets.EMAIL_FROM_ADDRESS }}
+            EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}

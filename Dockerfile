@@ -2,20 +2,84 @@ FROM golang:1.24 AS builder
 
 WORKDIR /app
 
+# Add build arguments
+ARG SERVER_ENVIRONMENT
+ARG JWT_SECRET_KEY
+ARG DB_PASSWORD
+ARG REDIS_PASSWORD
+ARG RESEND_API_KEY
+ARG GEOAPIFY_KEY
+ARG PEXELS_API_KEY
+ARG SUPABASE_ANON_KEY
+ARG SUPABASE_SERVICE_KEY
+ARG SUPABASE_URL
+ARG SUPABASE_JWT_SECRET
+ARG EMAIL_FROM_ADDRESS
+ARG EMAIL_FROM_NAME
+ARG FRONTEND_URL
+ARG ALLOWED_ORIGINS
+
+# Set environment variables from build args
+ENV SERVER_ENVIRONMENT=${SERVER_ENVIRONMENT}
+ENV JWT_SECRET_KEY=${JWT_SECRET_KEY}
+ENV DB_PASSWORD=${DB_PASSWORD}
+ENV REDIS_PASSWORD=${REDIS_PASSWORD}
+ENV RESEND_API_KEY=${RESEND_API_KEY}
+ENV GEOAPIFY_KEY=${GEOAPIFY_KEY}
+ENV PEXELS_API_KEY=${PEXELS_API_KEY}
+ENV SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+ENV SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+ENV SUPABASE_URL=${SUPABASE_URL}
+ENV SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+ENV EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
+ENV EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
+ENV FRONTEND_URL=${FRONTEND_URL}
+ENV ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+
+# Debug: Print environment variables (length only for sensitive values)
+RUN echo "Debug: Environment variables:" && \
+    echo "SERVER_ENVIRONMENT=${SERVER_ENVIRONMENT}" && \
+    echo "JWT_SECRET_KEY length=$(echo -n $JWT_SECRET_KEY | wc -c)" && \
+    echo "RESEND_API_KEY length=$(echo -n $RESEND_API_KEY | wc -c)" && \
+    echo "FRONTEND_URL=${FRONTEND_URL}"
+
 COPY ./go.mod ./go.sum ./
 RUN go mod download
 
 COPY ./ .
-COPY config.development.yaml ./config/config.development.yaml
-COPY config.production.yaml ./config/config.production.yaml
+
+# Build the config generator
+RUN go build -o generate-config ./scripts/generate_config.go
+
+# Generate config files for both environments
+RUN ./generate-config development
+RUN ./generate-config production
+
+# Build the main application
 RUN go build -o nomadcrew-backend
 
 FROM golang:1.23
 
+# Copy the build artifacts
 COPY --from=builder /app/nomadcrew-backend /nomadcrew-backend
 COPY --from=builder /app/config ./config
 
-# Set default values for non-sensitive configurations
+# Copy environment variables from builder
+ENV SERVER_ENVIRONMENT=${SERVER_ENVIRONMENT}
+ENV JWT_SECRET_KEY=${JWT_SECRET_KEY}
+ENV DB_PASSWORD=${DB_PASSWORD}
+ENV REDIS_PASSWORD=${REDIS_PASSWORD}
+ENV RESEND_API_KEY=${RESEND_API_KEY}
+ENV GEOAPIFY_KEY=${GEOAPIFY_KEY}
+ENV PEXELS_API_KEY=${PEXELS_API_KEY}
+ENV SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+ENV SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+ENV SUPABASE_URL=${SUPABASE_URL}
+ENV SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+ENV EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
+ENV EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
+ENV FRONTEND_URL=${FRONTEND_URL}
+ENV ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
 ENV PORT=8080
 
 CMD ["/nomadcrew-backend"]

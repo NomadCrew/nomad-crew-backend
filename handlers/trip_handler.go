@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -440,9 +441,9 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 }
 
 // WSStreamEvents upgrades the HTTP connection to a WebSocket and streams events.
-// It both sends events from the Redis-based event service to the client
-// and reads client messages to publish them as events.
-// WSStreamEvents upgrades the HTTP connection to a WebSocket and streams events.
+// This handler now processes all events for a trip, including chat messages.
+// Chat messages are sent as events through the event system rather than through
+// a separate websocket connection.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -569,7 +570,8 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 				return
 			}
 
-			_, _, err := conn.ReadMessage()
+			// Read message from client
+			_, message, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					log.Debugw("WebSocket closed normally",
@@ -582,6 +584,19 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 						"userID", userID)
 				}
 				return
+			}
+
+			// Process the message
+			if len(message) > 0 {
+				// Handle the message in a separate goroutine to avoid blocking the read loop
+				go func(msg []byte) {
+					if err := h.HandleChatMessage(wsCtx, conn, msg, userID, tripID); err != nil {
+						log.Warnw("Failed to handle chat message",
+							"error", err,
+							"tripID", tripID,
+							"userID", userID)
+					}
+				}(message)
 			}
 		}
 	}()
@@ -606,7 +621,13 @@ func (h *TripHandler) WSStreamEvents(c *gin.Context) {
 					"error", err,
 					"tripID", tripID,
 					"userID", userID)
-				return
+				// Don't immediately return on ping error - check if connection is still valid
+				if err.Error() == "connection is nil" || err == websocket.ErrCloseSent {
+					log.Debugw("Connection is no longer valid, exiting ping loop",
+						"tripID", tripID,
+						"userID", userID)
+					return
+				}
 			}
 
 		case event, ok := <-eventChan:
@@ -1005,4 +1026,322 @@ func secureRandomFloat() float64 {
 		return 1.0
 	}
 	return float64(binary.LittleEndian.Uint64(buf[:])) / float64(1<<64)
+}
+
+// ListTripMessages lists all messages in a trip
+func (h *TripHandler) ListTripMessages(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	_, exists := c.Get("user_id")
+	if !exists {
+		log.Warnw("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// Get trip ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warnw("Trip ID not provided")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
+		return
+	}
+
+	// Parse pagination parameters
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if err != nil {
+		limit = 20
+	}
+
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if err != nil {
+		offset = 0
+	}
+
+	// Get the chat store from the trip model
+	chatStore := h.tripModel.GetChatStore()
+	if chatStore == nil {
+		log.Errorw("Chat store not available")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Chat service not available"})
+		return
+	}
+
+	// List chat messages for the trip
+	messages, total, err := chatStore.ListTripMessages(c.Request.Context(), tripID, limit, offset)
+	if err != nil {
+		log.Errorw("Failed to list trip messages", "error", err, "tripID", tripID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list trip messages"})
+		return
+	}
+
+	// Convert messages to ChatMessageWithUser format
+	messagesWithUsers := make([]types.ChatMessageWithUser, 0, len(messages))
+	for _, msg := range messages {
+		// Get user information
+		user, err := chatStore.GetUserInfo(c.Request.Context(), msg.UserID)
+		if err != nil {
+			log.Warnw("Failed to get user info for message", "error", err, "userID", msg.UserID)
+			user = &types.UserResponse{
+				ID: msg.UserID,
+			}
+		}
+
+		messageWithUser := types.ChatMessageWithUser{
+			Message: msg,
+			User:    *user,
+		}
+		messagesWithUsers = append(messagesWithUsers, messageWithUser)
+	}
+
+	// Create response
+	response := types.ChatMessagePaginatedResponse{
+		Messages: messagesWithUsers,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// UpdateLastReadMessage updates the last read message for a user in a trip
+func (h *TripHandler) UpdateLastReadMessage(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID, exists := c.Get("user_id")
+	if !exists {
+		log.Warnw("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// Get trip ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warnw("Trip ID not provided")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
+		return
+	}
+
+	// Get message ID from request body
+	var req struct {
+		MessageID string `json:"messageId"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnw("Failed to parse request body", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Validate message ID
+	if req.MessageID == "" {
+		log.Warnw("Empty message ID provided", "tripID", tripID, "userID", userID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Message ID cannot be empty"})
+		return
+	}
+
+	// Get the chat store from the trip model
+	chatStore := h.tripModel.GetChatStore()
+	if chatStore == nil {
+		log.Errorw("Chat store not available")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Chat service not available"})
+		return
+	}
+
+	// Update the last read message
+	err := chatStore.UpdateLastReadMessage(c.Request.Context(), tripID, userID.(string), req.MessageID)
+	if err != nil {
+		log.Errorw("Failed to update last read message", "error", err, "tripID", tripID, "userID", userID, "messageID", req.MessageID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update last read message"})
+		return
+	}
+
+	// Create a read receipt event
+	readReceiptEvent := types.ChatReadReceiptEvent{
+		TripID:    tripID,
+		MessageID: req.MessageID,
+		User: types.UserResponse{
+			ID: userID.(string),
+		},
+	}
+
+	// Marshal the event payload
+	payload, err := json.Marshal(readReceiptEvent)
+	if err != nil {
+		log.Errorw("Failed to marshal read receipt event", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process read receipt"})
+		return
+	}
+
+	// Create and publish the event
+	event := types.Event{
+		BaseEvent: types.BaseEvent{
+			Type:      types.EventTypeChatReadReceipt,
+			TripID:    tripID,
+			UserID:    userID.(string),
+			Timestamp: time.Now(),
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "trip_handler",
+		},
+		Payload: payload,
+	}
+
+	// Publish the event asynchronously to not block the response
+	go func() {
+		if err := h.eventService.Publish(context.Background(), tripID, event); err != nil {
+			log.Errorw("Failed to publish read receipt event", "error", err, "messageID", req.MessageID)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Last read message updated successfully"})
+}
+
+// HandleChatMessage handles incoming chat messages from WebSocket
+func (h *TripHandler) HandleChatMessage(ctx context.Context, conn *middleware.SafeConn, message []byte, userID, tripID string) error {
+	log := logger.GetLogger()
+
+	// Parse the message
+	var wsMessage types.WebSocketChatMessage
+	err := json.Unmarshal(message, &wsMessage)
+	if err != nil {
+		log.Errorw("Failed to unmarshal WebSocket message", "error", err)
+		return fmt.Errorf("invalid message format: %w", err)
+	}
+
+	// Set the trip ID
+	wsMessage.TripID = tripID
+
+	// Handle different message types
+	switch wsMessage.Type {
+	case types.WebSocketMessageTypeChat:
+		// Create a new chat message
+		chatMessage := types.ChatMessage{
+			TripID:  tripID,
+			UserID:  userID,
+			Content: wsMessage.Content,
+		}
+
+		// Get the chat store from the trip model
+		chatStore := h.tripModel.GetChatStore()
+		if chatStore == nil {
+			return fmt.Errorf("chat service not available")
+		}
+
+		// Get user information
+		user, err := chatStore.GetUserInfo(ctx, userID)
+		if err != nil {
+			log.Warnw("Failed to get user info", "error", err, "userID", userID)
+			user = &types.UserResponse{
+				ID: userID,
+			}
+		}
+
+		// Create the chat message
+		messageID, err := chatStore.CreateChatMessage(ctx, chatMessage)
+		if err != nil {
+			log.Errorw("Failed to create chat message", "error", err)
+			return fmt.Errorf("failed to send message: %w", err)
+		}
+
+		// Create a chat message event
+		chatEvent := types.ChatMessageEvent{
+			MessageID: messageID,
+			TripID:    tripID,
+			Content:   wsMessage.Content,
+			User:      *user,
+			Timestamp: time.Now(),
+		}
+
+		// Marshal the event payload
+		payload, err := json.Marshal(chatEvent)
+		if err != nil {
+			log.Errorw("Failed to marshal chat message event", "error", err)
+			return fmt.Errorf("failed to process message: %w", err)
+		}
+
+		// Create and publish the event
+		event := types.Event{
+			BaseEvent: types.BaseEvent{
+				Type:      types.EventTypeChatMessageSent,
+				TripID:    tripID,
+				UserID:    userID,
+				Timestamp: time.Now(),
+				Version:   1,
+			},
+			Metadata: types.EventMetadata{
+				Source: "trip_handler",
+			},
+			Payload: payload,
+		}
+
+		// Publish the event
+		if err := h.eventService.Publish(ctx, tripID, event); err != nil {
+			log.Errorw("Failed to publish chat message event", "error", err, "messageID", messageID)
+			return fmt.Errorf("failed to publish message: %w", err)
+		}
+
+		return nil
+
+	case types.WebSocketMessageTypeTypingStatus:
+		// Create a typing status event
+		typingEvent := types.ChatTypingStatusEvent{
+			TripID:   tripID,
+			IsTyping: wsMessage.IsTyping,
+			User: types.UserResponse{
+				ID: userID,
+			},
+		}
+
+		// Get the chat store from the trip model
+		chatStore := h.tripModel.GetChatStore()
+		if chatStore == nil {
+			return fmt.Errorf("chat service not available")
+		}
+
+		// Get user information
+		user, err := chatStore.GetUserInfo(ctx, userID)
+		if err != nil {
+			log.Warnw("Failed to get user info", "error", err, "userID", userID)
+		} else {
+			typingEvent.User = *user
+		}
+
+		// Marshal the event payload
+		payload, err := json.Marshal(typingEvent)
+		if err != nil {
+			log.Errorw("Failed to marshal typing status event", "error", err)
+			return fmt.Errorf("failed to process typing status: %w", err)
+		}
+
+		// Create and publish the event
+		event := types.Event{
+			BaseEvent: types.BaseEvent{
+				Type:      types.EventTypeChatTypingStatus,
+				TripID:    tripID,
+				UserID:    userID,
+				Timestamp: time.Now(),
+				Version:   1,
+			},
+			Metadata: types.EventMetadata{
+				Source: "trip_handler",
+			},
+			Payload: payload,
+		}
+
+		// Publish the event
+		if err := h.eventService.Publish(ctx, tripID, event); err != nil {
+			log.Errorw("Failed to publish typing status event", "error", err)
+			return fmt.Errorf("failed to publish typing status: %w", err)
+		}
+
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported message type: %s", wsMessage.Type)
+	}
 }
