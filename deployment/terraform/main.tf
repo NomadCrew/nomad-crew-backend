@@ -29,17 +29,89 @@ module "vpc" {
   cidr = var.vpc_cidr
 
   azs             = var.availability_zones
-  private_subnets = var.private_subnet_cidrs
-  public_subnets  = var.public_subnet_cidrs
+  private_subnets = ["10.0.3.0/24", "10.0.4.0/24"]
+  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24"]
 
-  enable_nat_gateway = true
-  single_nat_gateway = true  # Cost optimization: use only one NAT Gateway
+  enable_nat_gateway = false  # Disable NAT Gateway as we'll use NAT Instance
   enable_vpn_gateway = false
 
   enable_dns_hostnames = true
   enable_dns_support   = true
 
   tags = var.common_tags
+}
+
+# NAT Instance Security Group
+resource "aws_security_group" "nat_instance_sg" {
+  name        = "${var.project_name}-nat-instance-sg"
+  description = "Security group for NAT Instance"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["10.0.0.0/16"]  # Allow all traffic from VPC
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-nat-instance-sg"
+  })
+}
+
+# NAT Instance
+resource "aws_instance" "nat_instance" {
+  ami                    = var.nat_instance_ami != "" ? var.nat_instance_ami : data.aws_ami.amazon_linux_2.id
+  instance_type          = "t3.nano"
+  subnet_id              = module.vpc.public_subnets[0]
+  vpc_security_group_ids = [aws_security_group.nat_instance_sg.id]
+  source_dest_check      = false  # Required for NAT functionality
+  key_name               = var.key_name
+
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo sysctl -w net.ipv4.ip_forward=1
+    sudo /sbin/iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+    sudo yum install -y iptables-services
+    sudo service iptables save
+    echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
+    sudo sysctl -p
+  EOF
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-nat-instance"
+  })
+}
+
+# Route for private subnets through NAT Instance
+resource "aws_route" "private_nat_instance" {
+  count                  = length(module.vpc.private_route_table_ids)
+  route_table_id         = module.vpc.private_route_table_ids[count.index]
+  destination_cidr_block = "0.0.0.0/0"
+  instance_id            = aws_instance.nat_instance.id
+}
+
+# Latest Amazon Linux 2 AMI
+data "aws_ami" "amazon_linux_2" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 # Security Groups
@@ -123,6 +195,29 @@ resource "aws_security_group" "db_sg" {
   tags = var.common_tags
 }
 
+# Redis Security Group
+resource "aws_security_group" "redis_sg" {
+  name        = "${var.project_name}-redis-sg"
+  description = "Security group for Redis"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = var.common_tags
+}
+
 # RDS PostgreSQL (Free Tier)
 resource "aws_db_subnet_group" "default" {
   name       = "${var.project_name}-db-subnet-group"
@@ -152,8 +247,32 @@ resource "aws_db_instance" "postgres" {
   multi_az               = false  # Free tier is single AZ only
   publicly_accessible    = false
   storage_encrypted      = true
+  performance_insights_enabled = true  # Enable free basic tier of Performance Insights
 
   tags = var.common_tags
+}
+
+# Redis EC2 Instance
+resource "aws_instance" "redis" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = "t2.micro"  # Free tier eligible
+  subnet_id              = module.vpc.private_subnets[0]
+  vpc_security_group_ids = [aws_security_group.redis_sg.id]
+  key_name               = var.key_name
+
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y redis
+    sed -i 's/bind 127.0.0.1/bind 0.0.0.0/' /etc/redis.conf
+    echo "requirepass ${var.redis_password}" >> /etc/redis.conf
+    systemctl start redis
+    systemctl enable redis
+  EOF
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-redis"
+  })
 }
 
 # Application Load Balancer
@@ -165,9 +284,46 @@ resource "aws_lb" "app_lb" {
   subnets            = module.vpc.public_subnets
 
   enable_deletion_protection = false
+  
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "alb-logs"
+    enabled = true
+  }
 
   tags = var.common_tags
 }
+
+# S3 bucket for ALB access logs
+resource "aws_s3_bucket" "alb_logs" {
+  bucket = "${var.project_name}-alb-logs-${data.aws_caller_identity.current.account_id}"
+  
+  tags = var.common_tags
+}
+
+resource "aws_s3_bucket_policy" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+  policy = data.aws_iam_policy_document.alb_logs.json
+}
+
+data "aws_iam_policy_document" "alb_logs" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_elb_service_account.main.id}:root"]
+    }
+    actions = [
+      "s3:PutObject",
+    ]
+    resources = [
+      "${aws_s3_bucket.alb_logs.arn}/alb-logs/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+    ]
+  }
+}
+
+data "aws_elb_service_account" "main" {}
+data "aws_caller_identity" "current" {}
 
 resource "aws_lb_target_group" "app_tg" {
   name     = "${var.project_name}-tg"
@@ -248,7 +404,6 @@ resource "aws_ecr_repository_policy" "app_policy" {
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
           "ecr:BatchCheckLayerAvailability",
-          "ecr:PullImage"
         ]
       }
     ]
@@ -257,63 +412,60 @@ resource "aws_ecr_repository_policy" "app_policy" {
 
 # Launch Template for EC2 instances
 resource "aws_launch_template" "app" {
-  name_prefix   = "${var.project_name}-lt-"
-  image_id      = var.ami_id
+  name_prefix   = "${var.project_name}-"
+  image_id      = var.ami_id != "" ? var.ami_id : data.aws_ami.amazon_linux_2.id
   instance_type = "t2.micro"  # Free tier eligible
   key_name      = var.key_name
-
-  vpc_security_group_ids = [aws_security_group.app_sg.id]
 
   iam_instance_profile {
     name = aws_iam_instance_profile.app_profile.name
   }
 
+  vpc_security_group_ids = [aws_security_group.app_sg.id]
+
+  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
+    environment        = var.environment
+    aws_region         = var.aws_region
+    db_host            = aws_db_instance.postgres.address
+    db_port            = aws_db_instance.postgres.port
+    db_user            = var.db_username
+    db_password        = var.db_password
+    db_name            = var.db_name
+    redis_host         = aws_instance.redis.private_ip
+    redis_password     = var.redis_password
+    app_port           = var.app_port
+    ecr_repository_uri = aws_ecr_repository.app.repository_url
+    image_tag          = var.image_tag
+  }))
+
   block_device_mappings {
-    device_name = "/dev/sda1"
+    device_name = "/dev/xvda"
 
     ebs {
-      volume_size           = 8
+      volume_size           = 20
       volume_type           = "gp2"
       delete_on_termination = true
+      encrypted             = true
     }
   }
 
-  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    db_host           = aws_db_instance.postgres.address
-    db_port           = aws_db_instance.postgres.port
-    db_name           = aws_db_instance.postgres.db_name
-    db_user           = aws_db_instance.postgres.username
-    db_password       = aws_db_instance.postgres.password
-    app_port          = var.app_port
-    aws_region        = var.aws_region
-    environment       = var.environment
-    redis_password    = "redispass"  # Consider using a more secure password in production
-    ecr_repository_uri = var.ecr_repository_uri != null ? var.ecr_repository_uri : aws_ecr_repository.app.repository_url
-    image_tag         = var.image_tag
-  }))
-
   tag_specifications {
     resource_type = "instance"
-    tags = merge(
-      var.common_tags,
-      {
-        Name = "${var.project_name}-app"
-      }
-    )
+    tags = merge(var.common_tags, {
+      Name = "${var.project_name}-app"
+    })
   }
 
-  lifecycle {
-    create_before_destroy = true
-  }
+  tags = var.common_tags
 }
 
 # Auto Scaling Group
 resource "aws_autoscaling_group" "app" {
   name                = "${var.project_name}-asg"
   vpc_zone_identifier = module.vpc.private_subnets
+  desired_capacity    = 2
   min_size            = 1
-  max_size            = 2
-  desired_capacity    = 1
+  max_size            = 4
 
   launch_template {
     id      = aws_launch_template.app.id
@@ -324,8 +476,6 @@ resource "aws_autoscaling_group" "app" {
 
   health_check_type         = "ELB"
   health_check_grace_period = 300
-
-  termination_policies = ["OldestInstance"]
 
   tag {
     key                 = "Name"
@@ -340,99 +490,6 @@ resource "aws_autoscaling_group" "app" {
       key                 = tag.key
       value               = tag.value
       propagate_at_launch = true
-    }
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# Auto Scaling Policies
-resource "aws_autoscaling_policy" "scale_up" {
-  name                   = "${var.project_name}-scale-up"
-  scaling_adjustment     = 1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = aws_autoscaling_group.app.name
-}
-
-resource "aws_autoscaling_policy" "scale_down" {
-  name                   = "${var.project_name}-scale-down"
-  scaling_adjustment     = -1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = aws_autoscaling_group.app.name
-}
-
-# CloudWatch Alarms for Auto Scaling
-resource "aws_cloudwatch_metric_alarm" "high_cpu" {
-  alarm_name          = "${var.project_name}-high-cpu"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = "120"
-  statistic           = "Average"
-  threshold           = "80"
-  alarm_description   = "This metric monitors high CPU utilization"
-  alarm_actions       = [aws_autoscaling_policy.scale_up.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.app.name
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "low_cpu" {
-  alarm_name          = "${var.project_name}-low-cpu"
-  comparison_operator = "LessThanOrEqualToThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = "120"
-  statistic           = "Average"
-  threshold           = "20"
-  alarm_description   = "This metric monitors low CPU utilization"
-  alarm_actions       = [aws_autoscaling_policy.scale_down.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.app.name
-  }
-}
-
-# S3 Bucket for application assets and backups
-resource "aws_s3_bucket" "app_bucket" {
-  bucket = "${var.project_name}-assets-${var.environment}"
-
-  tags = var.common_tags
-}
-
-resource "aws_s3_bucket_ownership_controls" "app_bucket" {
-  bucket = aws_s3_bucket.app_bucket.id
-  rule {
-    object_ownership = "BucketOwnerPreferred"
-  }
-}
-
-resource "aws_s3_bucket_acl" "app_bucket" {
-  depends_on = [aws_s3_bucket_ownership_controls.app_bucket]
-  bucket = aws_s3_bucket.app_bucket.id
-  acl    = "private"
-}
-
-resource "aws_s3_bucket_versioning" "app_bucket" {
-  bucket = aws_s3_bucket.app_bucket.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "app_bucket" {
-  bucket = aws_s3_bucket.app_bucket.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
     }
   }
 }
@@ -457,73 +514,121 @@ resource "aws_iam_role" "app_role" {
   tags = var.common_tags
 }
 
+# IAM Instance Profile
 resource "aws_iam_instance_profile" "app_profile" {
   name = "${var.project_name}-app-profile"
   role = aws_iam_role.app_role.name
 }
 
-resource "aws_iam_role_policy" "app_policy" {
-  name = "${var.project_name}-app-policy"
-  role = aws_iam_role.app_role.id
+# IAM Policy for ECR access
+resource "aws_iam_policy" "ecr_access" {
+  name        = "${var.project_name}-ecr-access"
+  description = "Allow EC2 instances to pull images from ECR"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket",
-        ]
         Effect = "Allow"
-        Resource = [
-          aws_s3_bucket.app_bucket.arn,
-          "${aws_s3_bucket.app_bucket.arn}/*",
-        ]
-      },
-      {
-        Action = [
-          "secretsmanager:GetSecretValue",
-        ]
-        Effect = "Allow"
-        Resource = [
-          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.aws_secrets_path}/*",
-        ]
-      },
-      {
-        Action = [
-          "cloudwatch:PutMetricData",
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ]
-        Effect = "Allow"
-        Resource = "*"
-      },
-      {
         Action = [
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
           "ecr:BatchCheckLayerAvailability",
           "ecr:GetAuthorizationToken"
         ]
-        Effect = "Allow"
         Resource = "*"
       }
     ]
   })
 }
 
-# CloudWatch Log Group
-resource "aws_cloudwatch_log_group" "app_logs" {
-  name              = "/aws/ec2/${var.project_name}"
-  retention_in_days = 30
-
-  tags = var.common_tags
+# Attach ECR policy to role
+resource "aws_iam_role_policy_attachment" "ecr_access" {
+  role       = aws_iam_role.app_role.name
+  policy_arn = aws_iam_policy.ecr_access.arn
 }
 
-# Route53 DNS Records
-resource "aws_route53_record" "app" {
+# CloudWatch Alarms
+resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
+  alarm_name          = "${var.project_name}-high-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "120"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors EC2 CPU utilization"
+  alarm_actions       = [aws_autoscaling_policy.scale_up.arn]
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "db_cpu_alarm" {
+  alarm_name          = "${var.project_name}-db-high-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = "120"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors RDS CPU utilization"
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.postgres.id
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "db_storage_alarm" {
+  alarm_name          = "${var.project_name}-db-low-storage"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "FreeStorageSpace"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "5000000000"  # 5GB in bytes
+  alarm_description   = "This metric monitors RDS free storage space"
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.postgres.id
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_alarm" {
+  alarm_name          = "${var.project_name}-alb-5xx"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "HTTPCode_ELB_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = "300"
+  statistic           = "Sum"
+  threshold           = "10"
+  alarm_description   = "This metric monitors ALB 5XX errors"
+  dimensions = {
+    LoadBalancer = aws_lb.app_lb.arn_suffix
+  }
+}
+
+# Auto Scaling Policies
+resource "aws_autoscaling_policy" "scale_up" {
+  name                   = "${var.project_name}-scale-up"
+  scaling_adjustment     = 1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 300
+  autoscaling_group_name = aws_autoscaling_group.app.name
+}
+
+resource "aws_autoscaling_policy" "scale_down" {
+  name                   = "${var.project_name}-scale-down"
+  scaling_adjustment     = -1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 300
+  autoscaling_group_name = aws_autoscaling_group.app.name
+}
+
+# Route 53 Record
+resource "aws_route53_record" "api" {
   zone_id = var.route53_zone_id
   name    = var.domain_name
   type    = "A"
@@ -535,64 +640,9 @@ resource "aws_route53_record" "app" {
   }
 }
 
-# CloudFront Distribution for global content delivery
-resource "aws_cloudfront_distribution" "app_distribution" {
-  enabled             = true
-  is_ipv6_enabled     = true
-  comment             = "${var.project_name} distribution"
-  default_root_object = "index.html"
-  price_class         = "PriceClass_100"  # Use only North America and Europe for cost savings
-  
-  aliases = [var.domain_name]
-
-  origin {
-    domain_name = aws_lb.app_lb.dns_name
-    origin_id   = "ALB"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
-  default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "ALB"
-
-    forwarded_values {
-      query_string = true
-      cookies {
-        forward = "all"
-      }
-      headers = ["Host", "Origin", "Authorization"]
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
-  }
-
-  viewer_certificate {
-    acm_certificate_arn      = var.certificate_arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  tags = var.common_tags
-}
-
-# AWS Budget for cost monitoring
+# AWS Budget
 resource "aws_budgets_budget" "monthly" {
+  count             = length(var.budget_notification_emails) > 0 ? 1 : 0
   name              = "${var.project_name}-monthly-budget"
   budget_type       = "COST"
   limit_amount      = var.monthly_budget_limit
@@ -615,7 +665,4 @@ resource "aws_budgets_budget" "monthly" {
     notification_type          = "ACTUAL"
     subscriber_email_addresses = var.budget_notification_emails
   }
-}
-
-# Data source for current AWS account ID
-data "aws_caller_identity" "current" {} 
+} 

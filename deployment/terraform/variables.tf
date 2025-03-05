@@ -31,13 +31,13 @@ variable "availability_zones" {
 variable "private_subnet_cidrs" {
   description = "The CIDR blocks for the private subnets"
   type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+  default     = ["10.0.3.0/24", "10.0.4.0/24"]
 }
 
 variable "public_subnet_cidrs" {
   description = "The CIDR blocks for the public subnets"
   type        = list(string)
-  default     = ["10.0.101.0/24", "10.0.102.0/24"]
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
 
 variable "app_port" {
@@ -75,7 +75,20 @@ variable "ami_id" {
   description = "The AMI ID to use for the EC2 instances"
   type        = string
   # Default to Amazon Linux 2023 in us-east-1
-  default     = "ami-0230bd60aa48260c6"
+  default     = ""
+}
+
+variable "nat_instance_ami" {
+  description = "The AMI ID to use for the NAT instance"
+  type        = string
+  default     = ""  # Will use the latest Amazon Linux 2 AMI if not specified
+}
+
+variable "redis_password" {
+  description = "The password for Redis"
+  type        = string
+  default     = "redispass"  # Consider using a more secure password in production
+  sensitive   = true
 }
 
 variable "key_name" {

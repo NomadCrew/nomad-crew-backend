@@ -22,6 +22,7 @@ output "db_instance_endpoint" {
 output "db_instance_address" {
   description = "The address of the RDS instance"
   value       = aws_db_instance.postgres.address
+  sensitive   = false
 }
 
 output "db_instance_port" {
@@ -29,19 +30,30 @@ output "db_instance_port" {
   value       = aws_db_instance.postgres.port
 }
 
+output "db_instance_name" {
+  description = "The database name"
+  value       = aws_db_instance.postgres.db_name
+}
+
+output "db_instance_username" {
+  description = "The master username for the database"
+  value       = aws_db_instance.postgres.username
+  sensitive   = true
+}
+
 output "alb_dns_name" {
   description = "The DNS name of the load balancer"
   value       = aws_lb.app_lb.dns_name
 }
 
-output "cloudfront_domain_name" {
-  description = "The domain name of the CloudFront distribution"
-  value       = aws_cloudfront_distribution.app_distribution.domain_name
+output "alb_zone_id" {
+  description = "The canonical hosted zone ID of the load balancer"
+  value       = aws_lb.app_lb.zone_id
 }
 
-output "s3_bucket_name" {
-  description = "The name of the S3 bucket"
-  value       = aws_s3_bucket.app_bucket.bucket
+output "ecr_repository_url" {
+  description = "The URL of the ECR repository"
+  value       = aws_ecr_repository.app.repository_url
 }
 
 output "app_url" {
@@ -70,4 +82,39 @@ output "estimated_monthly_cost" {
     3. Reduce the number of CloudWatch metrics
     4. Use spot instances for non-critical workloads
   EOT
+}
+
+output "nat_instance_id" {
+  description = "The ID of the NAT instance"
+  value       = aws_instance.nat_instance.id
+}
+
+output "nat_instance_public_ip" {
+  description = "The public IP of the NAT instance"
+  value       = aws_instance.nat_instance.public_ip
+}
+
+output "redis_instance_id" {
+  description = "The ID of the Redis instance"
+  value       = aws_instance.redis.id
+}
+
+output "redis_instance_private_ip" {
+  description = "The private IP of the Redis instance"
+  value       = aws_instance.redis.private_ip
+}
+
+output "alb_logs_bucket" {
+  description = "The name of the S3 bucket for ALB logs"
+  value       = aws_s3_bucket.alb_logs.id
+}
+
+output "cloudwatch_alarms" {
+  description = "The names of the CloudWatch alarms"
+  value = [
+    aws_cloudwatch_metric_alarm.cpu_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.db_cpu_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.db_storage_alarm.alarm_name,
+    aws_cloudwatch_metric_alarm.alb_5xx_alarm.alarm_name
+  ]
 } 

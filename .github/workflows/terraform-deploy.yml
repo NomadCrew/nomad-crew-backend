@@ -1,0 +1,204 @@
+name: Terraform AWS Deployment
+
+on:
+  push:
+    branches: 
+      - main
+      - develop
+  pull_request:
+    branches: 
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read   # Required to checkout the code
+
+env:
+  TF_LOG: INFO
+  AWS_REGION: us-east-2
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        id: init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Terraform Validate
+        id: validate
+        run: |
+          cd terraform
+          terraform validate -no-color
+
+  plan:
+    name: Plan Terraform Changes
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        id: init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Set Terraform Workspace
+        run: |
+          cd terraform
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            terraform workspace select production || terraform workspace new production
+          else
+            terraform workspace select staging || terraform workspace new staging
+          fi
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd terraform
+          terraform plan -no-color -var="environment=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}" \
+            -var="supabase_anon_key=${{ secrets.SUPABASE_ANON_KEY }}" \
+            -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
+            -var="google_web_client_id=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" \
+            -var="google_places_api_key=${{ secrets.GOOGLE_PLACES_API_KEY }}"
+        continue-on-error: true
+
+      - name: Comment Plan
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+            <details><summary>Show Plan</summary>
+            
+            \`\`\`terraform
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            
+            </details>
+            
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+              
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+  deploy:
+    name: Deploy Infrastructure
+    needs: plan
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-duration: 3600  # 1 hour in seconds
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/nomad-crew-frontend:${{ github.sha }}
+          build-args: |
+            NODE_ENV=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+            EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            EXPO_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+            EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Set Terraform Workspace
+        run: |
+          cd terraform
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            terraform workspace select production || terraform workspace new production
+          else
+            terraform workspace select staging || terraform workspace new staging
+          fi
+
+      - name: Terraform Apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve \
+            -var="environment=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}" \
+            -var="supabase_anon_key=${{ secrets.SUPABASE_ANON_KEY }}" \
+            -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
+            -var="google_web_client_id=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" \
+            -var="google_places_api_key=${{ secrets.GOOGLE_PLACES_API_KEY }}" \
+            -var="docker_image=${{ steps.login-ecr.outputs.registry }}/nomad-crew-frontend:${{ github.sha }}"
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Update the kubernetes deployment with the new image
+          kubectl set image deployment/nomad-crew-frontend nomad-crew-frontend=${{ steps.login-ecr.outputs.registry }}/nomad-crew-frontend:${{ github.sha }} --record
+          # Wait for the deployment to complete
+          kubectl rollout status deployment/nomad-crew-frontend

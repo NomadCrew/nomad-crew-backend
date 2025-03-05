@@ -10,28 +10,23 @@ The infrastructure is designed to be cost-effective while supporting 1000 active
 
 1. **Compute**: EC2 t2.micro instances (free tier eligible) in an Auto Scaling Group
 2. **Database**: RDS PostgreSQL db.t3.micro (free tier eligible)
-3. **Caching**: Self-hosted Redis on EC2 instances
-4. **Storage**: S3 for backups and static assets
-5. **CDN**: CloudFront for global content delivery
+3. **Caching**: Self-hosted Redis on a dedicated EC2 instance
+4. **Storage**: S3 for ALB logs and static assets
+5. **Load Balancing**: Application Load Balancer (ALB)
 6. **Monitoring**: CloudWatch basic monitoring
 7. **Security**: Security Groups, IAM, AWS Certificate Manager
-8. **Networking**: VPC with public and private subnets, NAT Gateway
+8. **Networking**: VPC with public and private subnets, NAT Instance (t3.nano)
 9. **Container Registry**: ECR for Docker images
 
 ### Architecture Diagram
 
 ```
                                   ┌─────────────────┐
-                                  │   CloudFront    │
-                                  │   Distribution  │
+                                  │   Route 53      │
+                                  │   (DNS)         │
                                   └────────┬────────┘
                                            │
                                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                              Route 53                                │
-└─────────────────────────────────┬───────────────────────────────────┘
-                                  │
-                                  ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      Application Load Balancer                       │
 └─────────────────────────────────┬───────────────────────────────────┘
@@ -48,9 +43,6 @@ The infrastructure is designed to be cost-effective while supporting 1000 active
 │    │  │ Container │  │                      │  │ Container │  │     │
 │    │  └───────────┘  │                      │  └───────────┘  │     │
 │    │                 │                      │                 │     │
-│    │  ┌───────────┐  │                      │  ┌───────────┐  │     │
-│    │  │  Redis    │  │                      │  │  Redis    │  │     │
-│    │  └───────────┘  │                      │  └───────────┘  │     │
 │    └─────────────────┘                      └─────────────────┘     │
 │                                                                      │
 └─────────────────────────────────┬───────────────────────────────────┘
@@ -58,6 +50,14 @@ The infrastructure is designed to be cost-effective while supporting 1000 active
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         RDS PostgreSQL                               │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Redis EC2 Instance                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         NAT Instance (t3.nano)                       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,11 +67,11 @@ This architecture is designed to maximize AWS Free Tier usage:
 
 - **EC2**: t2.micro instances (750 hours/month free for 12 months)
 - **RDS**: db.t3.micro (750 hours/month free for 12 months)
+- **NAT Instance**: t3.nano instead of NAT Gateway (~$32/month savings)
 - **S3**: 5GB storage, 20,000 GET, 2,000 PUT requests free
-- **CloudFront**: 1TB data transfer out, 10M requests free
 - **CloudWatch**: Basic monitoring free
 
-Estimated monthly cost after free tier: ~$70-100/month
+Estimated monthly cost after free tier: ~$40-60/month (compared to ~$70-100/month with NAT Gateway)
 
 ## Deployment
 
@@ -114,6 +114,7 @@ aws ecr create-repository --repository-name nomadcrew --region us-east-1
 
 ```bash
 export TF_VAR_db_password="your-secure-password"
+export TF_VAR_redis_password="your-redis-password"
 export TF_VAR_route53_zone_id="your-zone-id"
 export TF_VAR_certificate_arn="your-certificate-arn"
 export TF_VAR_key_name="your-ssh-key-name"
@@ -128,16 +129,26 @@ terragrunt plan
 terragrunt apply
 ```
 
-### CI/CD Deployment
+### AWS Copilot Deployment
 
-The project includes a GitHub Actions workflow that automatically:
+For simplified deployment, you can use AWS Copilot:
 
-1. Builds and pushes a Docker image to ECR
-2. Deploys the infrastructure using Terragrunt
-3. Updates the application with the new image
-4. Verifies the deployment
+1. Install AWS Copilot CLI:
+   ```
+   sudo curl -Lo /usr/local/bin/copilot https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux && sudo chmod +x /usr/local/bin/copilot
+   ```
 
-The workflow is triggered on pushes to the main branch.
+2. Initialize Copilot in your project directory:
+   ```
+   copilot init
+   ```
+
+3. Follow the prompts to set up your application and service
+
+4. Deploy your service:
+   ```
+   copilot svc deploy --name nomadcrew-backend
+   ```
 
 ## Environment Management
 
@@ -186,3 +197,15 @@ Sensitive information is managed through:
 3. **Performance Issues**:
    - Monitor CloudWatch metrics
    - Consider scaling up resources if consistently high utilization 
+
+4. **NAT Instance Issues**:
+   - Verify source/destination check is disabled
+   - Check security group rules
+   - Ensure proper route table configuration
+
+## Next Steps and Future Considerations
+
+1. Collect and analyze usage metrics after 2-4 weeks of production data
+2. Consider migrating Redis to Amazon ElastiCache for better management
+3. Evaluate need for read replicas in RDS as traffic grows
+4. Plan for potential migration to container-based deployment (ECS/EKS) for better resource utilization 
