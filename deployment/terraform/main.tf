@@ -7,7 +7,7 @@ terraform {
   backend "s3" {
     bucket         = "nomadcrew-terraform-state"
     key            = "nomadcrew/terraform.tfstate"
-    region         = "us-east-1"
+    region         = "us-east-2"
     encrypt        = true
     dynamodb_table = "nomadcrew-terraform-locks"
   }

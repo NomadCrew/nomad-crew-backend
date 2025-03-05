@@ -6,7 +6,7 @@ remote_state {
   config = {
     bucket         = "nomadcrew-terraform-state"
     key            = "${path_relative_to_include()}/terraform.tfstate"
-    region         = "us-east-1"
+    region         = "us-east-2"
     encrypt        = true
     dynamodb_table = "nomadcrew-terraform-locks"
   }
@@ -29,7 +29,7 @@ EOF
 
 # Global variables
 inputs = {
-  aws_region = "us-east-1"  # Default to US East (N. Virginia) for free tier benefits
+  aws_region = "us-east-2"  # Default to US East (N. Virginia) for free tier benefits
   
   # Common tags for all resources
   common_tags = {

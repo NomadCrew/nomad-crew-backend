@@ -87,7 +87,7 @@ Estimated monthly cost after free tier: ~$40-60/month (compared to ~$70-100/mont
 1. Create an S3 bucket for Terraform state:
 
 ```bash
-aws s3api create-bucket --bucket nomadcrew-terraform-state --region us-east-1
+aws s3api create-bucket --bucket nomadcrew-terraform-state --region us-east-2
 aws s3api put-bucket-versioning --bucket nomadcrew-terraform-state --versioning-configuration Status=Enabled
 ```
 
@@ -99,13 +99,13 @@ aws dynamodb create-table \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
+  --region us-east-2
 ```
 
 3. Create an ECR repository:
 
 ```bash
-aws ecr create-repository --repository-name nomadcrew --region us-east-1
+aws ecr create-repository --repository-name nomadcrew --region us-east-2
 ```
 
 ### Manual Deployment

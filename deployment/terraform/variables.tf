@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "The AWS region to deploy resources"
   type        = string
-  default     = "us-east-1"  # Default to US East (N. Virginia) for free tier benefits
+  default     = "us-east-2"  # Default to US East (N. Virginia) for free tier benefits
 }
 
 variable "project_name" {
@@ -25,7 +25,7 @@ variable "vpc_cidr" {
 variable "availability_zones" {
   description = "The availability zones to deploy resources"
   type        = list(string)
-  default     = ["us-east-1a", "us-east-1b"]
+  default     = ["us-east-2a", "us-east-2b"]
 }
 
 variable "private_subnet_cidrs" {
@@ -74,7 +74,7 @@ variable "db_name" {
 variable "ami_id" {
   description = "The AMI ID to use for the EC2 instances"
   type        = string
-  # Default to Amazon Linux 2023 in us-east-1
+  # Default to Amazon Linux 2023 in us-east-2
   default     = ""
 }
 
