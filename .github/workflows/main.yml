@@ -3,22 +3,37 @@ name: NomadCrew Backend CI/CD
 on:
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
+      - '**/*.png'
+      - '**/*.jpg'
   pull_request:
     branches: [ main, develop ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
+      - '**/*.png'
+      - '**/*.jpg'
       
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   DOCKER_BUILDKIT: 1
   AWS_REGION: us-east-2
+  # Explicitly set environment based on branch
+  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
 
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    outputs:
+      tests_passed: ${{ steps.run-tests.outcome == 'success' }}
     services:
       postgres:
         image: postgres:14
@@ -42,10 +57,22 @@ jobs:
           go-version: '1.24'
           cache: true
       
+      # Add Go dependencies cache
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Install dependencies
         run: go mod download
 
       - name: Run tests
+        id: run-tests
         env:
           DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
           JWT_SECRET_KEY: test_secret
@@ -60,10 +87,24 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
+    # Run in parallel with test job
+    needs: []
     env:
       GOFLAGS: "-buildvcs=false"
     steps:
       - uses: actions/checkout@v4
+      
+      # Add Go dependencies cache for security scanning
+      - name: Cache Go modules for security scans
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-gosec-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-gosec-
+      
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
@@ -75,18 +116,26 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: './'
-          format: 'table'
-          exit-code: '1'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
+          
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
 
   build-and-push:
-    needs: test
+    needs: [test, security-scan]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+      
     steps:
       - uses: actions/checkout@v4
 
@@ -96,6 +145,9 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
       - name: Extract metadata for Docker
         id: meta
@@ -114,8 +166,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Add build-args to optimize the Docker build
           build-args: |
-            SERVER_ENVIRONMENT=${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+            BUILDKIT_INLINE_CACHE=1
+          build-args: |
+            SERVER_ENVIRONMENT=${{ env.ENVIRONMENT }}
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -130,3 +187,65 @@ jobs:
             EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+            
+      # Native GHA caching no longer needs manual cache movement
+
+  deploy:
+    needs: build-and-push
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-${{ env.ENVIRONMENT }}
+          
+      - name: Update Kubernetes deployment
+        run: |
+          # Save current deployment state for potential rollback
+          CURRENT_REVISION=$(kubectl get deployment/nomadcrew-backend -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+          echo "CURRENT_REVISION=$CURRENT_REVISION" >> $GITHUB_ENV
+          
+          # Update the backend deployment with the new image
+          kubectl set image deployment/nomadcrew-backend nomadcrew-backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }} --record
+          
+          # Wait for rollout to complete
+          kubectl rollout status deployment/nomadcrew-backend
+          
+      - name: Verify deployment health
+        id: health-check
+        run: |
+          # Get service endpoint
+          SERVICE_IP=$(kubectl get svc nomadcrew-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          
+          # Try up to 5 times with 10 second intervals
+          for i in {1..5}; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$SERVICE_IP/health)
+            
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Backend service is healthy!"
+              exit 0
+            else
+              echo "Attempt $i: Backend service is not healthy yet. Status: $HTTP_STATUS"
+              sleep 10
+            fi
+          done
+          
+          echo "Backend service failed to become healthy after multiple attempts."
+          exit 1
+          
+      - name: Rollback on failure
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          echo "Health check failed, rolling back deployment..."
+          kubectl rollout undo deployment/nomadcrew-backend
+          kubectl rollout status deployment/nomadcrew-backend
+          echo "Rollback completed. Please check the application logs for more details."

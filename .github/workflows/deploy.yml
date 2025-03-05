@@ -5,10 +5,24 @@ on:
     branches: 
       - main
       - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
+      - '**/*.png'
+      - '**/*.jpg'
   pull_request:
     branches: 
       - main
       - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
+      - '**/*.png'
+      - '**/*.jpg'
   workflow_dispatch:  # Allow manual triggering
 
 permissions:
@@ -20,11 +34,16 @@ env:
   AWS_REGION: us-east-2
   ECR_REPOSITORY: nomadcrew
   TF_VERSION: 1.5.7
+  # Explicitly set environment based on branch
+  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
 
 jobs:
   validate:
     name: Validate Terraform
     runs-on: ubuntu-latest
+    outputs:
+      fmt_outcome: ${{ steps.fmt.outcome }}
+      init_outcome: ${{ steps.init.outcome }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -33,23 +52,33 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      # Add Terraform plugin caching
+      - name: Cache Terraform plugins
+        uses: actions/cache@v3
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
 
       - name: Terraform Format
         id: fmt
         run: terraform fmt -check -recursive
-        continue-on-error: true
+        # Removed continue-on-error to fail fast if there are formatting issues
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         id: init
         run: |
           cd terraform
-          terraform init
+          terraform init -input=false
 
       - name: Terraform Validate
         id: validate
@@ -57,9 +86,30 @@ jobs:
           cd terraform
           terraform validate -no-color
 
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    # Run in parallel with validate
+    needs: []
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: terraform
+          format: sarif
+          soft_fail: true
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: tfsec.sarif
+
   plan:
     name: Plan Terraform Changes
-    needs: validate
+    needs: [validate, security-scan]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -70,40 +120,57 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
+      # Add Terraform plugin caching
+      - name: Cache Terraform plugins
+        uses: actions/cache@v3
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         id: init
         run: |
           cd terraform
-          terraform init
+          terraform init -input=false
 
       - name: Set Terraform Workspace
         run: |
           cd terraform
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            terraform workspace select production || terraform workspace new production
-          else
-            terraform workspace select staging || terraform workspace new staging
-          fi
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
 
       - name: Terraform Plan
         id: plan
         run: |
           cd terraform
-          terraform plan -no-color -var="environment=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}" \
+          # Explicitly capture plan output to a file, use refresh=false for faster PR checks
+          terraform plan -no-color -refresh=false -var="environment=${{ env.ENVIRONMENT }}" \
             -var="supabase_anon_key=${{ secrets.SUPABASE_ANON_KEY }}" \
             -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
             -var="google_web_client_id=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" \
             -var="google_places_api_key=${{ secrets.GOOGLE_PLACES_API_KEY }}" \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="redis_password=${{ secrets.REDIS_PASSWORD }}" \
-            -var="jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}"
-        continue-on-error: true
+            -var="jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}" > plan.txt
+          
+          # Save plan output to GitHub step outputs
+          echo "plan_output<<EOF" >> $GITHUB_OUTPUT
+          cat plan.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Check if plan has changes and set output
+          if grep -q "No changes" plan.txt; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Comment Plan
         uses: actions/github-script@v6
@@ -117,7 +184,7 @@ jobs:
             <details><summary>Show Plan</summary>
             
             \`\`\`terraform
-            ${{ steps.plan.outputs.stdout }}
+            ${{ steps.plan.outputs.plan_output }}
             \`\`\`
             
             </details>
@@ -134,9 +201,12 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    # No need to wait for plan if we're doing a push/dispatch
+    needs: []
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
       image_tag: ${{ steps.build-image.outputs.image_tag }}
+      registry_url: ${{ steps.login-ecr.outputs.registry }}
     
     steps:
       - name: Checkout code
@@ -145,7 +215,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -162,8 +232,10 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }},${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
-            SERVER_ENVIRONMENT=${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+            SERVER_ENVIRONMENT=${{ env.ENVIRONMENT == 'production' && 'production' || 'development' }}
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -179,6 +251,8 @@ jobs:
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
         
+      # Native GHA caching no longer needs manual cache movement
+        
       - name: Set image tag output
         run: |
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -186,7 +260,7 @@ jobs:
   deploy:
     name: Deploy Infrastructure
     needs: [plan, build-and-push]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: (needs.plan.outputs.has_changes == 'true' || !needs.plan.outputs.has_changes) && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -195,7 +269,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 3600  # 1 hour in seconds
 
@@ -204,25 +278,46 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
+      # Add Terraform plugin caching
+      - name: Cache Terraform plugins
+        uses: actions/cache@v3
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
+
       - name: Terraform Init
         run: |
           cd terraform
-          terraform init
+          terraform init -input=false
 
       - name: Set Terraform Workspace
         run: |
           cd terraform
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            terraform workspace select production || terraform workspace new production
-          else
-            terraform workspace select staging || terraform workspace new staging
-          fi
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
 
+      - name: Check for infrastructure changes
+        id: check-changes
+        run: |
+          cd terraform
+          # Plan to check if there are changes (don't write output to avoid noise)
+          terraform plan -detailed-exitcode -var="environment=${{ env.ENVIRONMENT }}" \
+            -var="supabase_anon_key=${{ secrets.SUPABASE_ANON_KEY }}" \
+            -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
+            -var="google_web_client_id=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" \
+            -var="google_places_api_key=${{ secrets.GOOGLE_PLACES_API_KEY }}" \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="redis_password=${{ secrets.REDIS_PASSWORD }}" \
+            -var="jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}" \
+            -var="docker_image=${{ needs.build-and-push.outputs.image_tag }}" > /dev/null || echo "::set-output name=has_changes::true"
+      
       - name: Terraform Apply
+        if: steps.check-changes.outputs.has_changes == 'true'
         run: |
           cd terraform
           terraform apply -auto-approve \
-            -var="environment=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}" \
+            -var="environment=${{ env.ENVIRONMENT }}" \
             -var="supabase_anon_key=${{ secrets.SUPABASE_ANON_KEY }}" \
             -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
             -var="google_web_client_id=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" \
@@ -232,20 +327,30 @@ jobs:
             -var="jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}" \
             -var="docker_image=${{ needs.build-and-push.outputs.image_tag }}"
 
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-${{ env.ENVIRONMENT }}
 
       - name: Deploy to Kubernetes
         run: |
           # Update the kubernetes deployment with the new image
-          kubectl set image deployment/nomad-crew-frontend nomad-crew-frontend=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} --record
+          kubectl set image deployment/nomad-crew-frontend nomad-crew-frontend=${{ needs.build-and-push.outputs.registry_url }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-and-push.outputs.image_tag }} --record
           # Wait for the deployment to complete
           kubectl rollout status deployment/nomad-crew-frontend
 
+      - name: Set up rollback capability
+        run: |
+          # Save the current revision for potential rollback
+          CURRENT_REVISION=$(kubectl get deployment/nomad-crew-frontend -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+          echo "CURRENT_REVISION=$CURRENT_REVISION" >> $GITHUB_ENV
+
   verify-deployment:
     name: Verify Deployment
-    needs: [deploy]
+    needs: [deploy, build-and-push]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     
@@ -253,10 +358,11 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.ref == 'refs/heads/main' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Check application health
+        id: health-check
         run: |
           # Get the ALB DNS name
           ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'nomadcrew')].DNSName" --output text)
@@ -279,3 +385,16 @@ jobs:
           
           echo "Application failed to become healthy after multiple attempts."
           exit 1
+
+      - name: Rollback on failure
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          # Configure kubectl
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-${{ env.ENVIRONMENT }}
+          
+          # Rollback to previous revision
+          echo "Health check failed, rolling back deployment..."
+          kubectl rollout undo deployment/nomad-crew-frontend
+          kubectl rollout status deployment/nomad-crew-frontend
+          
+          echo "Rollback completed. Please check the application logs for more details."
