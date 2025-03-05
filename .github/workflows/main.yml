@@ -2,7 +2,7 @@ name: NomadCrew Backend CI/CD
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -11,7 +11,7 @@ on:
       - '**/*.png'
       - '**/*.jpg'
   pull_request:
-    branches: [ main, develop ]
+    branches: [ develop ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -25,8 +25,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   DOCKER_BUILDKIT: 1
   AWS_REGION: us-east-2
-  # Explicitly set environment based on branch
-  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+  # Explicitly set environment based on event type and branch
+  ENVIRONMENT: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' ? 'staging' : 'production' }}
 
 jobs:
   test:
@@ -129,7 +129,7 @@ jobs:
   build-and-push:
     needs: [test, security-scan]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'develop')
     permissions:
       contents: read
       packages: write
@@ -192,7 +192,7 @@ jobs:
 
   deploy:
     needs: build-and-push
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'develop')
     runs-on: ubuntu-latest
     
     steps:
