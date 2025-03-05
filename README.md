@@ -66,3 +66,14 @@ Always:
 
 ---
 Generated using GPT-4
+## Workflow Consolidation
+
+The GitHub Actions workflows have been consolidated to eliminate redundancy:
+
+1. **deploy.yml** - This is the consolidated workflow that handles all AWS infrastructure deployment using Terraform. It combines the best features of the previous `deploy.yml` and `terraform-deploy.yml` workflows.
+
+2. **main.yml** - This workflow handles CI/CD for the Go backend, including testing, security scanning, and building/pushing Docker images to GitHub Container Registry.
+
+3. **golang-cilint.yml** - This workflow runs Go linting checks.
+
+The redundant `terraform-deploy.yml` workflow has been removed.
