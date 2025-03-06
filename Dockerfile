@@ -44,9 +44,7 @@ RUN go mod download
 COPY ./ .
 
 # Create .env file for the config generator
-COPY .env .env 2>/dev/null || true
-RUN if [ ! -s .env ]; then \
-    echo "Creating .env file in container..." && \
+RUN echo "Creating .env file in container..." && \
     echo "SERVER_ENVIRONMENT=${SERVER_ENVIRONMENT}" > .env && \
     echo "JWT_SECRET_KEY=${JWT_SECRET_KEY}" >> .env && \
     echo "DB_PASSWORD=${DB_PASSWORD}" >> .env && \
@@ -61,10 +59,9 @@ RUN if [ ! -s .env ]; then \
     echo "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}" >> .env && \
     echo "EMAIL_FROM_NAME=${EMAIL_FROM_NAME}" >> .env && \
     echo "FRONTEND_URL=${FRONTEND_URL}" >> .env && \
-    echo "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" >> .env; \
-fi && \
-echo "Contents of .env file (redacted):" && \
-cat .env | sed 's/=.*/=REDACTED/'
+    echo "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" >> .env && \
+    echo "Contents of .env file (redacted):" && \
+    cat .env | sed 's/=.*/=REDACTED/'
 
 # Debug: Print that we created the .env file
 RUN echo "Created .env file for config generation"
