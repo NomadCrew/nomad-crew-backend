@@ -10,200 +10,35 @@ on:
       - 'LICENSE'
       - '**/*.{png,jpg}'
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  DOCKER_BUILDKIT: 1
-  AWS_REGION: us-east-2
-  ENVIRONMENT: production
+permissions:
+  id-token: write
+  contents: read
+  packages: write
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    outputs:
-      tests_passed: ${{ steps.run-tests.outcome == 'success' }}
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: nomadcrew_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
-          cache: true
-      
-      - name: Install dependencies
-        run: go mod download
-      
-      - name: Run tests
-        id: run-tests
-        env:
-          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
-          JWT_SECRET_KEY: test_secret
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
-      
-      - name: Upload Test Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: ./coverage.txt
-
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    env:
-      GOFLAGS: "-buildvcs=false"
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
-        with:
-          args: ./...
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: './'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          ignore-unfixed: true
-          severity: 'CRITICAL,HIGH'
-      
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-  build-and-push:
-    needs: [test, security-scan]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      
-      - id: meta
-        name: Extract metadata for Docker
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            CI=true
-            BUILDKIT_INLINE_CACHE=1
-            SERVER_ENVIRONMENT=production
-            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            GEOAPIFY_KEY=${{ secrets.GEOAPIFY_KEY }}
-            PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
-            SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
-            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
-            EMAIL_FROM_ADDRESS=${{ secrets.EMAIL_FROM_ADDRESS }}
-            EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
-            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
-            ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
-
-  deploy:
-    needs: [build-and-push]
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole
-          aws-region: ${{ env.AWS_REGION }}
-      
-      - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-production
-      
-      - name: Update Kubernetes deployment
-        id: deploy
-        run: |
-          # Store current revision for potential rollback
-          CURRENT_REVISION=$(kubectl get deployment/nomadcrew-backend -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
-          echo "CURRENT_REVISION=$CURRENT_REVISION" >> $GITHUB_ENV
-          
-          # Deploy new version
-          kubectl set image deployment/nomadcrew-backend nomadcrew-backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }} --record
-          kubectl rollout status deployment/nomadcrew-backend
-      
-      - name: Verify deployment health
-        id: health-check
-        run: |
-          SERVICE_IP=$(kubectl get svc nomadcrew-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          
-          # Try health check up to 5 times
-          for i in {1..5}; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$SERVICE_IP/health)
-            
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "Backend service is healthy!"
-              exit 0
-            else
-              echo "Attempt $i: Backend service is not healthy yet. Status: $HTTP_STATUS"
-              sleep 10
-            fi
-          done
-          
-          echo "Backend service failed to become healthy after multiple attempts."
-          exit 1
-      
-      - name: Rollback on failure
-        if: failure() && steps.health-check.outcome == 'failure'
-        run: |
-          echo "Health check failed, rolling back deployment..."
-          kubectl rollout undo deployment/nomadcrew-backend --to-revision=$CURRENT_REVISION
-          kubectl rollout status deployment/nomadcrew-backend
-          echo "Rollback completed. Please check the application logs for more details."
+  golang-workflow:
+    uses: ./.github/workflows/golang-cicd-workflow.yml
+    with:
+      environment: production
+      aws_region: us-east-2
+      image_name: ${{ github.repository }}
+      registry: ghcr.io
+      role_arn: arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole
+      cluster_name: nomad-crew-cluster-production
+      deployment_name: nomadcrew-backend
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      GEOAPIFY_KEY: ${{ secrets.GEOAPIFY_KEY }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+      EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
+      EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
