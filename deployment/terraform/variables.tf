@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "The AWS region to deploy resources"
   type        = string
-  default     = "us-east-2"  # Default to US East (N. Virginia) for free tier benefits
+  default     = "us-east-2" # Default to US East (N. Virginia) for free tier benefits
 }
 
 variable "project_name" {
@@ -49,13 +49,12 @@ variable "app_port" {
 variable "ssh_allowed_cidrs" {
   description = "The CIDR blocks allowed to SSH to the instances"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # Consider restricting this in production
+  default     = [] # Empty by default, must be explicitly provided
 }
 
 variable "db_username" {
   description = "The username for the database"
   type        = string
-  default     = "postgres"
   sensitive   = true
 }
 
@@ -75,19 +74,18 @@ variable "ami_id" {
   description = "The AMI ID to use for the EC2 instances"
   type        = string
   # Default to Amazon Linux 2023 in us-east-2
-  default     = ""
+  default = ""
 }
 
 variable "nat_instance_ami" {
   description = "The AMI ID to use for the NAT instance"
   type        = string
-  default     = ""  # Will use the latest Amazon Linux 2 AMI if not specified
+  default     = "" # Will use the latest Amazon Linux 2 AMI if not specified
 }
 
 variable "redis_password" {
   description = "The password for Redis"
   type        = string
-  default     = "redispass"  # Consider using a more secure password in production
   sensitive   = true
 }
 
@@ -121,7 +119,7 @@ variable "aws_secrets_path" {
 variable "monthly_budget_limit" {
   description = "The monthly budget limit in USD"
   type        = number
-  default     = 50  # Set a reasonable budget for a small application
+  default     = 50 # Set a reasonable budget for a small application
 }
 
 variable "budget_notification_emails" {
@@ -150,4 +148,10 @@ variable "image_tag" {
   description = "The tag of the Docker image to deploy"
   type        = string
   default     = "latest"
+}
+
+variable "create_read_replica" {
+  description = "Whether to create a read replica for the RDS instance"
+  type        = bool
+  default     = false
 } 

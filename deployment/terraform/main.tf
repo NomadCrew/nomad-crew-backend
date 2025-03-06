@@ -22,7 +22,7 @@ terraform {
 
 # VPC Configuration
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "5.0.0"
 
   name = "${var.project_name}-vpc"
@@ -32,7 +32,7 @@ module "vpc" {
   private_subnets = ["10.0.3.0/24", "10.0.4.0/24"]
   public_subnets  = ["10.0.1.0/24", "10.0.2.0/24"]
 
-  enable_nat_gateway = false  # Disable NAT Gateway as we'll use NAT Instance
+  enable_nat_gateway = false # Disable NAT Gateway as we'll use NAT Instance
   enable_vpn_gateway = false
 
   enable_dns_hostnames = true
@@ -51,7 +51,7 @@ resource "aws_security_group" "nat_instance_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["10.0.0.0/16"]  # Allow all traffic from VPC
+    cidr_blocks = ["10.0.0.0/16"] # Allow all traffic from VPC
   }
 
   egress {
@@ -66,13 +66,14 @@ resource "aws_security_group" "nat_instance_sg" {
   })
 }
 
-# NAT Instance
+# NAT Instances (one per AZ for high availability)
 resource "aws_instance" "nat_instance" {
+  count                  = length(var.availability_zones)
   ami                    = var.nat_instance_ami != "" ? var.nat_instance_ami : data.aws_ami.amazon_linux_2.id
   instance_type          = "t3.nano"
-  subnet_id              = module.vpc.public_subnets[0]
+  subnet_id              = module.vpc.public_subnets[count.index]
   vpc_security_group_ids = [aws_security_group.nat_instance_sg.id]
-  source_dest_check      = false  # Required for NAT functionality
+  source_dest_check      = false # Required for NAT functionality
   key_name               = var.key_name
 
   user_data = <<-EOF
@@ -86,16 +87,16 @@ resource "aws_instance" "nat_instance" {
   EOF
 
   tags = merge(var.common_tags, {
-    Name = "${var.project_name}-nat-instance"
+    Name = "${var.project_name}-nat-instance-${count.index + 1}"
   })
 }
 
-# Route for private subnets through NAT Instance
+# Route for private subnets through NAT Instances (each private subnet routes through the NAT in its AZ)
 resource "aws_route" "private_nat_instance" {
   count                  = length(module.vpc.private_route_table_ids)
   route_table_id         = module.vpc.private_route_table_ids[count.index]
   destination_cidr_block = "0.0.0.0/0"
-  instance_id            = aws_instance.nat_instance.id
+  instance_id            = aws_instance.nat_instance[count.index].id
 }
 
 # Latest Amazon Linux 2 AMI
@@ -157,10 +158,10 @@ resource "aws_security_group" "app_sg" {
   }
 
   ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    cidr_blocks     = var.ssh_allowed_cidrs
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_allowed_cidrs
   }
 
   egress {
@@ -227,52 +228,86 @@ resource "aws_db_subnet_group" "default" {
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier             = "${var.project_name}-db"
-  engine                 = "postgres"
-  engine_version         = "14.10"  # Latest version eligible for free tier
-  instance_class         = "db.t3.micro"  # Free tier eligible
-  allocated_storage      = 20
-  max_allocated_storage  = 100
-  storage_type           = "gp2"
-  username               = var.db_username
-  password               = var.db_password
-  db_name                = var.db_name
-  parameter_group_name   = "default.postgres14"
-  vpc_security_group_ids = [aws_security_group.db_sg.id]
-  db_subnet_group_name   = aws_db_subnet_group.default.name
-  skip_final_snapshot    = true
-  backup_retention_period = 7
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "Mon:04:00-Mon:05:00"
-  multi_az               = false  # Free tier is single AZ only
-  publicly_accessible    = false
-  storage_encrypted      = true
-  performance_insights_enabled = true  # Enable free basic tier of Performance Insights
+  identifier                   = "${var.project_name}-db"
+  engine                       = "postgres"
+  engine_version               = "14.10"       # Latest version eligible for free tier
+  instance_class               = "db.t3.micro" # Free tier eligible
+  allocated_storage            = 20
+  max_allocated_storage        = 100
+  storage_type                 = "gp2"
+  username                     = var.db_username
+  password                     = var.db_password
+  db_name                      = var.db_name
+  parameter_group_name         = "default.postgres14"
+  vpc_security_group_ids       = [aws_security_group.db_sg.id]
+  db_subnet_group_name         = aws_db_subnet_group.default.name
+  skip_final_snapshot          = true
+  backup_retention_period      = 7
+  backup_window                = "03:00-04:00"
+  maintenance_window           = "Mon:04:00-Mon:05:00"
+  multi_az                     = false # Free tier is single AZ only
+  publicly_accessible          = false
+  storage_encrypted            = true
+  performance_insights_enabled = true # Enable free basic tier of Performance Insights
 
   tags = var.common_tags
 }
 
-# Redis EC2 Instance
-resource "aws_instance" "redis" {
-  ami                    = data.aws_ami.amazon_linux_2.id
-  instance_type          = "t2.micro"  # Free tier eligible
-  subnet_id              = module.vpc.private_subnets[0]
-  vpc_security_group_ids = [aws_security_group.redis_sg.id]
-  key_name               = var.key_name
-
-  user_data = <<-EOF
-    #!/bin/bash
-    yum update -y
-    yum install -y redis
-    sed -i 's/bind 127.0.0.1/bind 0.0.0.0/' /etc/redis.conf
-    echo "requirepass ${var.redis_password}" >> /etc/redis.conf
-    systemctl start redis
-    systemctl enable redis
-  EOF
+# RDS Read Replica (for read-heavy workloads)
+resource "aws_db_instance" "postgres_replica" {
+  count                        = var.create_read_replica ? 1 : 0
+  identifier                   = "${var.project_name}-db-replica"
+  replicate_source_db          = aws_db_instance.postgres.identifier
+  instance_class               = "db.t3.micro"
+  vpc_security_group_ids       = [aws_security_group.db_sg.id]
+  parameter_group_name         = "default.postgres14"
+  skip_final_snapshot          = true
+  publicly_accessible          = false
+  storage_encrypted            = true
+  performance_insights_enabled = true
 
   tags = merge(var.common_tags, {
-    Name = "${var.project_name}-redis"
+    Name = "${var.project_name}-db-replica"
   })
+}
+
+# ElastiCache Redis Subnet Group
+resource "aws_elasticache_subnet_group" "redis" {
+  name       = "${var.project_name}-redis-subnet-group"
+  subnet_ids = module.vpc.private_subnets
+
+  tags = var.common_tags
+}
+
+# ElastiCache Redis Parameter Group
+resource "aws_elasticache_parameter_group" "redis" {
+  name   = "${var.project_name}-redis-params"
+  family = "redis6.x"
+
+  parameter {
+    name  = "maxmemory-policy"
+    value = "allkeys-lru"
+  }
+
+  tags = var.common_tags
+}
+
+# ElastiCache Redis Cluster
+resource "aws_elasticache_replication_group" "redis" {
+  replication_group_id       = "${var.project_name}-redis"
+  description                = "Redis cluster for ${var.project_name}"
+  node_type                  = "cache.t3.micro"
+  port                       = 6379
+  parameter_group_name       = aws_elasticache_parameter_group.redis.name
+  subnet_group_name          = aws_elasticache_subnet_group.redis.name
+  security_group_ids         = [aws_security_group.redis_sg.id]
+  automatic_failover_enabled = true
+  num_cache_clusters         = 2
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  auth_token                 = var.redis_password
+
+  tags = var.common_tags
 }
 
 # Application Load Balancer
@@ -284,7 +319,7 @@ resource "aws_lb" "app_lb" {
   subnets            = module.vpc.public_subnets
 
   enable_deletion_protection = false
-  
+
   access_logs {
     bucket  = aws_s3_bucket.alb_logs.id
     prefix  = "alb-logs"
@@ -297,7 +332,7 @@ resource "aws_lb" "app_lb" {
 # S3 bucket for ALB access logs
 resource "aws_s3_bucket" "alb_logs" {
   bucket = "${var.project_name}-alb-logs-${data.aws_caller_identity.current.account_id}"
-  
+
   tags = var.common_tags
 }
 
@@ -414,7 +449,7 @@ resource "aws_ecr_repository_policy" "app_policy" {
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.project_name}-"
   image_id      = var.ami_id != "" ? var.ami_id : data.aws_ami.amazon_linux_2.id
-  instance_type = "t2.micro"  # Free tier eligible
+  instance_type = "t2.micro" # Free tier eligible
   key_name      = var.key_name
 
   iam_instance_profile {
@@ -431,7 +466,7 @@ resource "aws_launch_template" "app" {
     db_user            = var.db_username
     db_password        = var.db_password
     db_name            = var.db_name
-    redis_host         = aws_instance.redis.private_ip
+    redis_host         = aws_elasticache_replication_group.redis.primary_endpoint_address
     redis_password     = var.redis_password
     app_port           = var.app_port
     ecr_repository_uri = aws_ecr_repository.app.repository_url
@@ -588,7 +623,7 @@ resource "aws_cloudwatch_metric_alarm" "db_storage_alarm" {
   namespace           = "AWS/RDS"
   period              = "300"
   statistic           = "Average"
-  threshold           = "5000000000"  # 5GB in bytes
+  threshold           = "5000000000" # 5GB in bytes
   alarm_description   = "This metric monitors RDS free storage space"
   dimensions = {
     DBInstanceIdentifier = aws_db_instance.postgres.id
@@ -638,6 +673,100 @@ resource "aws_route53_record" "api" {
     zone_id                = aws_lb.app_lb.zone_id
     evaluate_target_health = true
   }
+}
+
+# AWS WAF Web ACL
+resource "aws_wafv2_web_acl" "main" {
+  name        = "${var.project_name}-web-acl"
+  description = "WAF Web ACL for ${var.project_name}"
+  scope       = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  # AWS Managed Rules - Common Rule Set
+  rule {
+    name     = "AWS-AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWS-AWSManagedRulesCommonRuleSet"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # AWS Managed Rules - SQL Injection Rule Set
+  rule {
+    name     = "AWS-AWSManagedRulesSQLiRuleSet"
+    priority = 2
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWS-AWSManagedRulesSQLiRuleSet"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Rate-based rule to prevent DDoS
+  rule {
+    name     = "RateBasedRule"
+    priority = 3
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = 1000
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "RateBasedRule"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${var.project_name}-web-acl"
+    sampled_requests_enabled   = true
+  }
+
+  tags = var.common_tags
+}
+
+# Associate WAF Web ACL with ALB
+resource "aws_wafv2_web_acl_association" "main" {
+  resource_arn = aws_lb.app_lb.arn
+  web_acl_arn  = aws_wafv2_web_acl.main.arn
 }
 
 # AWS Budget

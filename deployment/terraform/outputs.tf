@@ -86,22 +86,27 @@ output "estimated_monthly_cost" {
 
 output "nat_instance_id" {
   description = "The ID of the NAT instance"
-  value       = aws_instance.nat_instance.id
+  value       = aws_instance.nat_instance[*].id
 }
 
 output "nat_instance_public_ip" {
   description = "The public IP of the NAT instance"
-  value       = aws_instance.nat_instance.public_ip
+  value       = aws_instance.nat_instance[*].public_ip
 }
 
-output "redis_instance_id" {
-  description = "The ID of the Redis instance"
-  value       = aws_instance.redis.id
+output "redis_endpoint" {
+  description = "The endpoint of the ElastiCache Redis cluster"
+  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
 }
 
-output "redis_instance_private_ip" {
-  description = "The private IP of the Redis instance"
-  value       = aws_instance.redis.private_ip
+output "redis_reader_endpoint" {
+  description = "The reader endpoint of the ElastiCache Redis cluster"
+  value       = aws_elasticache_replication_group.redis.reader_endpoint_address
+}
+
+output "db_replica_endpoint" {
+  description = "The endpoint of the RDS read replica"
+  value       = var.create_read_replica ? aws_db_instance.postgres_replica[0].endpoint : null
 }
 
 output "alb_logs_bucket" {
@@ -117,4 +122,14 @@ output "cloudwatch_alarms" {
     aws_cloudwatch_metric_alarm.db_storage_alarm.alarm_name,
     aws_cloudwatch_metric_alarm.alb_5xx_alarm.alarm_name
   ]
+}
+
+output "waf_web_acl_id" {
+  description = "The ID of the WAF Web ACL"
+  value       = aws_wafv2_web_acl.main.id
+}
+
+output "waf_web_acl_arn" {
+  description = "The ARN of the WAF Web ACL"
+  value       = aws_wafv2_web_acl.main.arn
 } 

@@ -23,14 +23,18 @@ inputs = {
   # Application Configuration
   app_port = 8080
   
+  # Security Configuration
+  ssh_allowed_cidrs = ["10.0.0.0/24", "192.168.1.0/24"]  # Replace with your actual allowed CIDR blocks
+  
   # Database Configuration
   db_name     = "nomadcrew"
   db_username = "postgres"
   # db_password is set via environment variable TF_VAR_db_password
+  create_read_replica = true  # Enable read replica in production
   
   # Auto Scaling Configuration
-  min_size         = 1
-  max_size         = 3
+  min_size         = 2
+  max_size         = 6
   desired_capacity = 2
   
   # Domain Configuration
@@ -46,5 +50,7 @@ inputs = {
     Project     = "NomadCrew"
     Environment = "prod"
     ManagedBy   = "Terragrunt"
+    Owner       = "DevOps"
+    CostCenter  = "Engineering"
   }
 } 
