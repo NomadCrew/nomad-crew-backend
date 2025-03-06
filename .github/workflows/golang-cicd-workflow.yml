@@ -228,13 +228,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile.ci  # Use our modified Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Use the .env file for secrets
-          secret-file: .env=/run/secrets/.env
           build-args: |
             CI=true
             BUILDKIT_INLINE_CACHE=1
