@@ -175,6 +175,34 @@ jobs:
             type=raw,value=latest,enable=${{ inputs.environment == 'production' }}
             type=raw,value=${{ inputs.environment }},enable=${{ inputs.environment != 'production' }}
       
+      - name: Create .env file for build
+        run: |
+          cat > .env <<EOL
+          SERVER_ENVIRONMENT=${{ inputs.environment }}
+          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          GEOAPIFY_KEY=${{ secrets.GEOAPIFY_KEY }}
+          PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
+          EMAIL_FROM_ADDRESS=${{ secrets.EMAIL_FROM_ADDRESS }}
+          EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
+          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+          ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+          EOL
+          
+          # Debug: Check if file exists and has content (without revealing secrets)
+          if [ -s .env ]; then
+            echo "✅ .env file created successfully"
+            echo "Number of lines: $(wc -l < .env)"
+          else
+            echo "❌ .env file creation failed"
+          fi
+          
       # Add debug steps to verify environment variables are set
       - name: Debug environment variables
         run: |
@@ -205,8 +233,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Enable BuildKit and debugging info
-          provenance: false
+          # Use the .env file for secrets
+          secret-file: .env=/run/secrets/.env
           build-args: |
             CI=true
             BUILDKIT_INLINE_CACHE=1
