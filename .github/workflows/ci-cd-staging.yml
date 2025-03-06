@@ -142,6 +142,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
+            CI=true
             BUILDKIT_INLINE_CACHE=1
             SERVER_ENVIRONMENT=staging
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}

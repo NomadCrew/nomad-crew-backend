@@ -202,6 +202,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
+            CI=true
             SERVER_ENVIRONMENT=staging
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
