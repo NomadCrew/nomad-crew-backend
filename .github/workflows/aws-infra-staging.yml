@@ -260,8 +260,6 @@ jobs:
             -var="environment=staging" \
             -var="supabase_anon_key=${{ secrets.SUPABASE_ANON_KEY }}" \
             -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
-            -var="google_web_client_id=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" \
-            -var="google_places_api_key=${{ secrets.GOOGLE_PLACES_API_KEY }}" \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="redis_password=${{ secrets.REDIS_PASSWORD }}" \
             -var="jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}" \
