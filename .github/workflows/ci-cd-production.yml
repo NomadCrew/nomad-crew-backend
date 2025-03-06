@@ -1,16 +1,8 @@
-name: NomadCrew Backend CI/CD
+name: NomadCrew Backend CI/CD - Production
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.github/ISSUE_TEMPLATE/**'
-      - 'LICENSE'
-      - '**/*.{png,jpg}'
-  pull_request:
-    branches: [develop]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -23,24 +15,9 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   DOCKER_BUILDKIT: 1
   AWS_REGION: us-east-2
+  ENVIRONMENT: production
 
 jobs:
-  determine-environment:
-    name: Determine Environment
-    runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.set-env.outputs.environment }}
-    steps:
-      - id: set-env
-        name: Set environment based on branch/event
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "environment=staging" >> $GITHUB_OUTPUT
-          else
-            echo "environment=production" >> $GITHUB_OUTPUT
-          fi
-          echo "Selected environment: $(cat $GITHUB_OUTPUT | grep environment | cut -d'=' -f2)"
-
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -115,10 +92,7 @@ jobs:
           sarif_file: 'trivy-results.sarif'
 
   build-and-push:
-    needs: [test, security-scan, determine-environment]
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') || 
-      (github.event_name == 'pull_request' && github.base_ref == 'develop')
+    needs: [test, security-scan]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -160,7 +134,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BUILDKIT_INLINE_CACHE=1
-            SERVER_ENVIRONMENT=${{ needs.determine-environment.outputs.environment }}
+            SERVER_ENVIRONMENT=production
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -177,10 +151,7 @@ jobs:
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
 
   deploy:
-    needs: [build-and-push, determine-environment]
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') || 
-      (github.event_name == 'pull_request' && github.base_ref == 'develop')
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     
     steps:
@@ -189,12 +160,12 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ needs.determine-environment.outputs.environment == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-${{ needs.determine-environment.outputs.environment }}
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name nomad-crew-cluster-production
       
       - name: Update Kubernetes deployment
         id: deploy
