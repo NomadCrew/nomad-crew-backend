@@ -32,7 +32,7 @@ on:
         type: string
         description: 'Kubernetes deployment name'
     secrets:
-      GITHUB_TOKEN:
+      GH_PAT:
         required: true
       JWT_SECRET_KEY:
         required: true
@@ -154,7 +154,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GH_PAT }}
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2

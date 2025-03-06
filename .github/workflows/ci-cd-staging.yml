@@ -36,7 +36,7 @@ jobs:
       cluster_name: nomad-crew-cluster-staging
       deployment_name: nomadcrew-backend
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_PAT: ${{ secrets.GITHUB_TOKEN }}
       JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
