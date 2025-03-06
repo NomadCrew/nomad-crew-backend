@@ -29,6 +29,7 @@ env:
   ECR_REPOSITORY: nomadcrew
   TF_VERSION: 1.5.7
   ENVIRONMENT: staging
+  TERRAFORM_DIR: deployment/terraform
 
 jobs:
   validate:
@@ -59,12 +60,12 @@ jobs:
 
       - id: init
         name: Terraform Init
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: terraform init -input=false
 
       - id: validate
         name: Terraform Validate
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: terraform validate -no-color
 
   security-scan:
@@ -109,17 +110,17 @@ jobs:
 
       - id: init
         name: Terraform Init
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: terraform init -input=false
 
       - name: Set Terraform Workspace
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: |
           terraform workspace select staging || terraform workspace new staging
 
       - id: plan
         name: Terraform Plan
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         continue-on-error: true
         run: |
           terraform plan -no-color -refresh=false -var="environment=staging" \
@@ -244,17 +245,17 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: terraform init -input=false
 
       - name: Set Terraform Workspace
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: |
           terraform workspace select staging || terraform workspace new staging
 
       - id: check-changes
         name: Check for infrastructure changes
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: |
           terraform plan -detailed-exitcode \
             -var="environment=staging" \
@@ -269,7 +270,7 @@ jobs:
 
       - name: Terraform Apply
         if: steps.check-changes.outputs.has_changes == 'true'
-        working-directory: terraform
+        working-directory: ${{ env.terraform_dir }}
         run: |
           terraform apply -auto-approve \
             -var="environment=staging" \
