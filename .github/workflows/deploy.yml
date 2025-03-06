@@ -33,7 +33,7 @@ env:
   ECR_REPOSITORY: nomadcrew
   TF_VERSION: 1.5.7
   # Explicitly set environment based on event type and branch
-  ENVIRONMENT: "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' ? 'staging' : 'production' }}"
+  ENVIRONMENT: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' ? 'staging' : 'production' }}
 
 jobs:
   validate:
@@ -109,6 +109,8 @@ jobs:
     name: Plan Terraform Changes
     needs: [validate, security-scan]
     runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -130,7 +132,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.ENVIRONMENT == 'production' && 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' || 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -213,7 +215,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.event_name == 'pull_request' ? 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' : (env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole') }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -233,7 +235,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            SERVER_ENVIRONMENT=${{ env.ENVIRONMENT == 'production' && 'production' || 'development' }}
+            SERVER_ENVIRONMENT=${{ env.ENVIRONMENT == 'production' ? 'production' : 'development' }}
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -252,13 +254,14 @@ jobs:
       # Native GHA caching no longer needs manual cache movement
         
       - name: Set image tag output
+        id: build-image
         run: |
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
 
   deploy:
     name: Deploy Infrastructure
     needs: [plan, build-and-push]
-    if: (needs.plan.outputs.has_changes == 'true' || !needs.plan.outputs.has_changes) && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -267,7 +270,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.event_name == 'pull_request' ? 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' : (env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole') }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 3600  # 1 hour in seconds
 
@@ -308,7 +311,7 @@ jobs:
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="redis_password=${{ secrets.REDIS_PASSWORD }}" \
             -var="jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}" \
-            -var="docker_image=${{ needs.build-and-push.outputs.image_tag }}" > /dev/null || echo "::set-output name=has_changes::true"
+            -var="docker_image=${{ needs.build-and-push.outputs.image_tag }}" > /dev/null || echo "has_changes=true" >> $GITHUB_OUTPUT
       
       - name: Terraform Apply
         if: steps.check-changes.outputs.has_changes == 'true'
@@ -356,7 +359,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ github.event_name == 'pull_request' ? 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' : (env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole') }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'production' ? 'arn:aws:iam::195275657852:role/NomadCrewProductionDeploymentRole' : 'arn:aws:iam::195275657852:role/NomadCrewStagingDeploymentRole' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Check application health
