@@ -139,6 +139,11 @@ jobs:
 
   build-and-push:
     needs: [test, security-scan]
+    env:
+      # Set these environment variables to make sure they're available for debugging
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -170,6 +175,27 @@ jobs:
             type=raw,value=latest,enable=${{ inputs.environment == 'production' }}
             type=raw,value=${{ inputs.environment }},enable=${{ inputs.environment != 'production' }}
       
+      # Add debug steps to verify environment variables are set
+      - name: Debug environment variables
+        run: |
+          if [ -n "$JWT_SECRET_KEY" ]; then
+            echo "JWT_SECRET_KEY is set and not empty"
+          else
+            echo "WARNING: JWT_SECRET_KEY is not set or empty"
+          fi
+          
+          if [ -n "$DB_PASSWORD" ]; then
+            echo "DB_PASSWORD is set and not empty"
+          else
+            echo "WARNING: DB_PASSWORD is not set or empty"
+          fi
+          
+          if [ -n "$REDIS_PASSWORD" ]; then
+            echo "REDIS_PASSWORD is set and not empty"
+          else
+            echo "WARNING: REDIS_PASSWORD is not set or empty"
+          fi
+          
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -179,6 +205,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Enable BuildKit and debugging info
+          provenance: false
           build-args: |
             CI=true
             BUILDKIT_INLINE_CACHE=1
