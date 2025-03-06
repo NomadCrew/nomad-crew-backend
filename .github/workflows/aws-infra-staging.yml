@@ -84,7 +84,7 @@ jobs:
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ env.TERRAFORM_DIR }}/tfsec.sarif
+          sarif_file: tfsec.sarif
 
   plan:
     name: Plan Terraform Changes
