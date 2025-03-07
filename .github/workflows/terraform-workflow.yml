@@ -308,7 +308,17 @@ jobs:
 
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }}
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }} --alias github-action-${{ inputs.environment }}
+          kubectl config get-contexts
+          kubectl config use-context github-action-${{ inputs.environment }}
+      
+      - name: Verify Kubernetes access
+        run: |
+          echo "Checking Kubernetes cluster access..."
+          kubectl cluster-info
+          kubectl get nodes
+          echo "Checking deployment status..."
+          kubectl get deployments
 
       - name: Deploy to Kubernetes
         run: |
@@ -360,7 +370,9 @@ jobs:
         if: failure() && steps.health-check.outcome == 'failure'
         run: |
           # Configure kubectl for rollback
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }}
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }} --alias github-action-rollback-${{ inputs.environment }}
+          kubectl config get-contexts
+          kubectl config use-context github-action-rollback-${{ inputs.environment }}
           
           echo "Health check failed, rolling back deployment..."
           kubectl rollout undo deployment/nomad-crew-frontend

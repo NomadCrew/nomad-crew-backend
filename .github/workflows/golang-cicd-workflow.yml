@@ -275,7 +275,17 @@ jobs:
       
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name ${{ inputs.cluster_name }}
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name ${{ inputs.cluster_name }} --alias github-action-${{ inputs.cluster_name }}
+          kubectl config get-contexts
+          kubectl config use-context github-action-${{ inputs.cluster_name }}
+      
+      - name: Verify Kubernetes access
+        run: |
+          echo "Checking Kubernetes cluster access..."
+          kubectl cluster-info
+          kubectl get nodes
+          echo "Checking deployment status..."
+          kubectl get deployments
       
       - name: Update Kubernetes deployment
         id: deploy
