@@ -51,47 +51,60 @@ RUN go build -o generate-config ./scripts/generate_config.go
 # Create config directory
 RUN mkdir -p config
 
-# Instead of running the generate-config script, create minimal config files directly
-RUN echo "Creating minimal config files for CI build" && \
-    cat > config/config.development.yaml << EOF
-server:
-  environment: ${SERVER_ENVIRONMENT:-development}
-  port: "8080"
-  allowed_origins:
-    - "*"
-  jwt_secret_key: ${JWT_SECRET_KEY}
-  frontend_url: ${FRONTEND_URL:-https://nomadcrew.uk}
-  log_level: debug
+# Create minimal config files directly using printf to ensure proper YAML formatting
+RUN printf "server:\n\
+  environment: %s\n\
+  port: \"8080\"\n\
+  allowed_origins:\n\
+    - \"*\"\n\
+  jwt_secret_key: %s\n\
+  frontend_url: %s\n\
+  log_level: debug\n\
+\n\
+database:\n\
+  host: postgres\n\
+  port: 5432\n\
+  user: postgres\n\
+  password: %s\n\
+  name: nomadcrew\n\
+  max_connections: 20\n\
+  ssl_mode: disable\n\
+\n\
+redis:\n\
+  address: redis:6379\n\
+  password: %s\n\
+  db: 0\n\
+\n\
+email:\n\
+  from_address: %s\n\
+  from_name: %s\n\
+  resend_api_key: %s\n\
+\n\
+external_services:\n\
+  geoapify_key: %s\n\
+  pexels_api_key: %s\n\
+  supabase_anon_key: %s\n\
+  supabase_service_key: %s\n\
+  supabase_url: %s\n\
+  supabase_jwt_secret: %s\n\
+  jwt_secret_key: %s\n" \
+  "${SERVER_ENVIRONMENT:-development}" \
+  "${JWT_SECRET_KEY}" \
+  "${FRONTEND_URL:-https://nomadcrew.uk}" \
+  "${DB_PASSWORD}" \
+  "${REDIS_PASSWORD}" \
+  "${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}" \
+  "${EMAIL_FROM_NAME:-NomadCrew}" \
+  "${RESEND_API_KEY}" \
+  "${GEOAPIFY_KEY}" \
+  "${PEXELS_API_KEY}" \
+  "${SUPABASE_ANON_KEY}" \
+  "${SUPABASE_SERVICE_KEY}" \
+  "${SUPABASE_URL}" \
+  "${SUPABASE_JWT_SECRET}" \
+  "${JWT_SECRET_KEY}" > config/config.development.yaml
 
-database:
-  host: postgres
-  port: 5432
-  user: postgres
-  password: ${DB_PASSWORD}
-  name: nomadcrew
-  max_connections: 20
-  ssl_mode: disable
-
-redis:
-  address: redis:6379
-  password: ${REDIS_PASSWORD}
-  db: 0
-
-email:
-  from_address: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
-  from_name: ${EMAIL_FROM_NAME:-NomadCrew}
-  resend_api_key: ${RESEND_API_KEY}
-
-external_services:
-  geoapify_key: ${GEOAPIFY_KEY}
-  pexels_api_key: ${PEXELS_API_KEY}
-  supabase_anon_key: ${SUPABASE_ANON_KEY}
-  supabase_service_key: ${SUPABASE_SERVICE_KEY}
-  supabase_url: ${SUPABASE_URL}
-  supabase_jwt_secret: ${SUPABASE_JWT_SECRET}
-  jwt_secret_key: ${JWT_SECRET_KEY}
-EOF
-
+# Create production config by copying development and updating environment
 RUN cp config/config.development.yaml config/config.production.yaml && \
     sed -i 's/development/production/g' config/config.production.yaml
 
