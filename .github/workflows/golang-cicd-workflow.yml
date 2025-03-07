@@ -267,7 +267,7 @@ jobs:
       
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name ${{ inputs.cluster_name }}
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name ${{ inputs.cluster_name }} --token-expiration 3600
       
       - name: Update Kubernetes deployment
         id: deploy
