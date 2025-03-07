@@ -266,9 +266,16 @@ jobs:
           aws-region: ${{ inputs.aws_region }}
           role-duration-seconds: 3600
       
+      - name: Debug AWS credentials
+        run: |
+          echo "Checking AWS credentials and session information..."
+          aws sts get-caller-identity
+          echo "AWS CLI version:"
+          aws --version
+      
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name ${{ inputs.cluster_name }} --role-duration-seconds 3600
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name ${{ inputs.cluster_name }}
       
       - name: Update Kubernetes deployment
         id: deploy

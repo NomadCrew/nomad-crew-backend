@@ -91,6 +91,13 @@ jobs:
           aws-region: ${{ inputs.aws_region }}
           role-duration-seconds: 3600
 
+      - name: Debug AWS credentials
+        run: |
+          echo "Checking AWS credentials and session information..."
+          aws sts get-caller-identity
+          echo "AWS CLI version:"
+          aws --version
+
       - id: init
         name: Terraform Init
         working-directory: ${{ inputs.terraform_dir }}
@@ -248,12 +255,8 @@ jobs:
           aws-region: ${{ inputs.aws_region }}
           role-duration-seconds: 3600
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: ${{ inputs.terraform_version }}
-
-      - name: Terraform Init
+      - id: init
+        name: Terraform Init
         working-directory: ${{ inputs.terraform_dir }}
         run: terraform init -input=false
 
@@ -296,9 +299,16 @@ jobs:
         id: login-ecr-deploy
         uses: aws-actions/amazon-ecr-login@v1
 
+      - name: Debug AWS credentials
+        run: |
+          echo "Checking AWS credentials and session information..."
+          aws sts get-caller-identity
+          echo "AWS CLI version:"
+          aws --version
+
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }} --role-duration-seconds 3600
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }}
 
       - name: Deploy to Kubernetes
         run: |
@@ -350,7 +360,7 @@ jobs:
         if: failure() && steps.health-check.outcome == 'failure'
         run: |
           # Configure kubectl for rollback
-          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }} --role-duration-seconds 3600
+          aws eks update-kubeconfig --region ${{ inputs.aws_region }} --name nomad-crew-cluster-${{ inputs.environment }}
           
           echo "Health check failed, rolling back deployment..."
           kubectl rollout undo deployment/nomad-crew-frontend
