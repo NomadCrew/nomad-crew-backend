@@ -234,7 +234,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            CI=true
             BUILDKIT_INLINE_CACHE=1
             SERVER_ENVIRONMENT=${{ inputs.environment }}
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
@@ -251,6 +250,7 @@ jobs:
             EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+            AWS_SECRETS_PATH=/nomadcrew/${{ inputs.environment }}/secrets
 
   deploy:
     needs: [build-and-push]
