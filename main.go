@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -48,42 +46,11 @@ func main() {
 	}
 
 	// Initialize database connection directly
-	var poolConfig *pgxpool.Config
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Name,
-		cfg.Database.SSLMode,
-	)
-
-	// Log only non-sensitive connection information
-	log.Infow("Connecting to database",
-		"host", cfg.Database.Host,
-		"port", cfg.Database.Port,
-		"database", cfg.Database.Name,
-		"sslmode", cfg.Database.SSLMode,
-		"connection_string", logger.MaskConnectionString(connStr))
-
-	if cfg.Server.Environment == config.EnvProduction {
-		poolConfig, err = pgxpool.ParseConfig(connStr)
-		if err != nil {
-			log.Fatalf("Failed to parse database config: %v", err)
-		}
-		poolConfig.ConnConfig.TLSConfig = &tls.Config{
-			ServerName: cfg.Database.Host,
-			MinVersion: tls.VersionTLS12,
-		}
-	} else {
-		// Development configuration with plain TCP connection
-		devConnStr := connStr
-
-		poolConfig, err = pgxpool.ParseConfig(devConnStr)
-		if err != nil {
-			log.Fatalf("Failed to parse database config: %v", err)
-		}
+	poolConfig, err := config.ConfigureNeonPostgresPool(&cfg.Database)
+	if err != nil {
+		log.Fatalf("Failed to configure database: %v", err)
 	}
+
 	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -97,26 +64,14 @@ func main() {
 	locationDB := db.NewLocationDB(dbClient)
 
 	// Initialize Redis client with TLS in production
-	redisOptions := &redis.Options{
-		Addr:     cfg.Redis.Address,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	}
-
-	// Log only non-sensitive Redis connection information
-	log.Infow("Connecting to Redis",
-		"address", cfg.Redis.Address,
-		"db", cfg.Redis.DB)
-
-	if cfg.Server.Environment == config.EnvProduction {
-		redisOptions.TLSConfig = &tls.Config{
-			ServerName: cfg.Redis.Address,
-			MinVersion: tls.VersionTLS12,
-		}
-	}
-
+	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
+
+	// Test Redis connection
+	if err := config.TestRedisConnection(redisClient); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
 
 	// Initialize Supabase client
 	supabaseClient, err := supabase.NewClient(

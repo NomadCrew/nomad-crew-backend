@@ -68,8 +68,6 @@ services:
       REDIS_ADDRESS: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
       REDIS_DB: ${REDIS_DB:-0}
-      AWS_REGION: ${AWS_REGION:-us-east-2}
-      AWS_SECRETS_PATH: ${AWS_SECRETS_PATH:-nomadcrew/dev/secrets}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-development}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}

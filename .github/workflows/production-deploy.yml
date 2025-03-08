@@ -1,0 +1,153 @@
+name: Deploy to Production on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nomadcrew_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:latest
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run tests
+        id: run-tests
+        env:
+          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
+          JWT_SECRET_KEY: test_secret
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
+      
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: ./coverage.txt
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: "-buildvcs=false"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [test, security-scan]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Deploy to Production
+        run: |
+          # Set the version from the release tag
+          VERSION="${{ github.event.release.tag_name }}"
+          echo "Deploying version: $VERSION"
+          
+          # Update fly.toml to ensure correct app name
+          sed -i "s/app = .*/app = \"nomadcrew\"/" fly.toml
+          
+          # Deploy the application
+          flyctl deploy --remote-only --build-arg VERSION=$VERSION --build-arg SERVER_ENVIRONMENT=production
+      
+      - name: Set Production Secrets
+        run: |
+          # Set secrets for production
+          flyctl secrets set \
+            JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            DB_PASSWORD="npg_6jtSQH3MuNBg" \
+            REDIS_PASSWORD="AeBnAAIjcDEyZTczMzFkYWU0ZGM0NTdmYTY5OWZiMDA3MjY5Y2Y0ZnAxMA" \
+            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+            SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            SUPABASE_JWT_SECRET="${{ secrets.SUPABASE_JWT_SECRET }}" \
+            DB_HOST="ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech" \
+            DB_NAME="neondb" \
+            DB_USER="neondb_owner" \
+            REDIS_ADDRESS="actual-serval-57447.upstash.io:6379" \
+            EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
+            EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
+            FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+            ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}"
+      
+      - name: Create Sentry Release
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          environment: production
+          version: ${{ github.event.release.tag_name }}
+      
+      - name: Notify on Success
+        uses: rtCamp/action-slack-notify@v2
+        if: ${{ secrets.SLACK_WEBHOOK != '' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_CHANNEL: deployments
+          SLACK_TITLE: "🚀 New Production Deployment"
+          SLACK_MESSAGE: "Version ${{ github.event.release.tag_name }} deployed to production"
+          SLACK_COLOR: good 

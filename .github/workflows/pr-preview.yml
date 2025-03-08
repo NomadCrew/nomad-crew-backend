@@ -1,0 +1,145 @@
+name: PR Preview Environment
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
+      - '**/*.{png,jpg}'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nomadcrew_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:latest
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run tests
+        id: run-tests
+        env:
+          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
+          JWT_SECRET_KEY: test_secret
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
+
+  deploy-preview:
+    name: Deploy PR Preview
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Create Fly App for PR
+        run: |
+          # Create a unique app name for this PR
+          APP_NAME="nomadcrew-pr-${PR_NUMBER}"
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          
+          # Check if the app already exists
+          if ! flyctl apps list | grep -q "$APP_NAME"; then
+            echo "Creating new Fly.io app: $APP_NAME"
+            flyctl apps create "$APP_NAME" --org personal
+          else
+            echo "App $APP_NAME already exists"
+          fi
+          
+          # Update fly.toml with PR-specific app name
+          cp fly.toml fly.toml.bak
+          sed "s/app = \"nomadcrew\"/app = \"$APP_NAME\"/" fly.toml.bak > fly.toml
+      
+      - name: Deploy PR Preview
+        run: |
+          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
+      
+      - name: Set Secrets
+        run: |
+          # Set secrets for the preview environment
+          # Use the staging database but a separate Redis instance if needed
+          flyctl secrets set \
+            JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            DB_PASSWORD="npg_6jtSQH3MuNBg" \
+            REDIS_PASSWORD="AeBnAAIjcDEyZTczMzFkYWU0ZGM0NTdmYTY5OWZiMDA3MjY5Y2Y0ZnAxMA" \
+            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+            SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            SUPABASE_JWT_SECRET="${{ secrets.SUPABASE_JWT_SECRET }}" \
+            DB_HOST="ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech" \
+            DB_NAME="neondb" \
+            DB_USER="neondb_owner" \
+            REDIS_ADDRESS="actual-serval-57447.upstash.io:6379" \
+            EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
+            EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
+            FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+            ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            PR_NUMBER="${{ github.event.pull_request.number }}" \
+            --app $APP_NAME
+      
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const appName = process.env.APP_NAME;
+            const url = `https://${appName}.fly.dev`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🚀 Preview Environment Deployed!
+              
+              Your changes are available for preview at:
+              
+              🔗 [${url}](${url})
+              
+              This is a temporary environment for PR #${context.issue.number} and will be automatically updated when you push new changes to this branch.
+              
+              ### Environment Details
+              - **Environment:** PR Preview
+              - **App Name:** ${appName}
+              - **Deployment:** Fly.io
+              - **Deployed Commit:** \`${context.sha.substring(0, 7)}\`
+              `
+            }); 

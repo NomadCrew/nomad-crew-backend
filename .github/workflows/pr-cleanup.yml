@@ -1,0 +1,50 @@
+name: PR Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+
+jobs:
+  cleanup:
+    name: Cleanup PR Preview
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    
+    steps:
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Delete Fly App for PR
+        run: |
+          APP_NAME="nomadcrew-pr-${PR_NUMBER}"
+          echo "Deleting PR preview app: $APP_NAME"
+          
+          # Check if the app exists before trying to destroy it
+          if flyctl apps list | grep -q "$APP_NAME"; then
+            # Destroy the app
+            flyctl apps destroy $APP_NAME --yes
+            echo "✅ Successfully deleted PR preview app: $APP_NAME"
+          else
+            echo "⚠️ App $APP_NAME doesn't exist or has already been deleted"
+          fi
+      
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const appName = `nomadcrew-pr-${process.env.PR_NUMBER}`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🧹 Preview Environment Cleaned Up
+              
+              The preview environment for this PR (\`${appName}\`) has been deleted.
+              
+              This helps save resources since the PR has been ${context.payload.pull_request.merged ? 'merged' : 'closed'}.`
+            }); 

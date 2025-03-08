@@ -1,15 +1,13 @@
 package config
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/spf13/viper"
 )
 
@@ -42,12 +40,18 @@ type DatabaseConfig struct {
 	Name           string `mapstructure:"NAME" yaml:"name"`
 	MaxConnections int    `mapstructure:"MAX_CONNECTIONS" yaml:"max_connections"`
 	SSLMode        string `mapstructure:"SSL_MODE" yaml:"ssl_mode"`
+	MaxOpenConns   int    `mapstructure:"MAX_OPEN_CONNS" yaml:"max_open_conns"`
+	MaxIdleConns   int    `mapstructure:"MAX_IDLE_CONNS" yaml:"max_idle_conns"`
+	ConnMaxLife    string `mapstructure:"CONN_MAX_LIFE" yaml:"conn_max_life"`
 }
 
 type RedisConfig struct {
-	Address  string `mapstructure:"ADDRESS" yaml:"address"`
-	Password string `mapstructure:"PASSWORD" yaml:"password"`
-	DB       int    `mapstructure:"DB" yaml:"db"`
+	Address      string `mapstructure:"ADDRESS" yaml:"address"`
+	Password     string `mapstructure:"PASSWORD" yaml:"password"`
+	DB           int    `mapstructure:"DB" yaml:"db"`
+	UseTLS       bool   `mapstructure:"USE_TLS" yaml:"use_tls"`
+	PoolSize     int    `mapstructure:"POOL_SIZE" yaml:"pool_size"`
+	MinIdleConns int    `mapstructure:"MIN_IDLE_CONNS" yaml:"min_idle_conns"`
 }
 
 type ExternalServices struct {
@@ -93,7 +97,19 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.PORT", "8080")
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
+	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
+	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
+	v.SetDefault("DATABASE.CONN_MAX_LIFE", "1h")
+	v.SetDefault("DATABASE.HOST", "ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech")
+	v.SetDefault("DATABASE.PORT", 5432)
+	v.SetDefault("DATABASE.USER", "neondb_owner")
+	v.SetDefault("DATABASE.NAME", "neondb")
+	v.SetDefault("DATABASE.SSL_MODE", "require")
 	v.SetDefault("REDIS.DB", 0)
+	v.SetDefault("REDIS.ADDRESS", "actual-serval-57447.upstash.io:6379")
+	v.SetDefault("REDIS.USE_TLS", true) // Upstash requires TLS
+	v.SetDefault("REDIS.POOL_SIZE", 3)  // Conservative for free tier
+	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
 	v.SetDefault("LOG_LEVEL", "info")
 
 	v.AutomaticEnv()
@@ -132,6 +148,15 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("DATABASE.SSL_MODE", "DB_SSL_MODE"); err != nil {
 		return nil, fmt.Errorf("failed to bind DATABASE.SSL_MODE: %w", err)
 	}
+	if err := v.BindEnv("DATABASE.MAX_OPEN_CONNS", "DB_MAX_OPEN_CONNS"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.MAX_OPEN_CONNS: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.MAX_IDLE_CONNS", "DB_MAX_IDLE_CONNS"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.MAX_IDLE_CONNS: %w", err)
+	}
+	if err := v.BindEnv("DATABASE.CONN_MAX_LIFE", "DB_CONN_MAX_LIFE"); err != nil {
+		return nil, fmt.Errorf("failed to bind DATABASE.CONN_MAX_LIFE: %w", err)
+	}
 
 	// Redis config bindings
 	if err := v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS"); err != nil {
@@ -142,6 +167,15 @@ func LoadConfig() (*Config, error) {
 	}
 	if err := v.BindEnv("REDIS.DB", "REDIS_DB"); err != nil {
 		return nil, fmt.Errorf("failed to bind REDIS.DB: %w", err)
+	}
+	if err := v.BindEnv("REDIS.USE_TLS", "REDIS_USE_TLS"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.USE_TLS: %w", err)
+	}
+	if err := v.BindEnv("REDIS.POOL_SIZE", "REDIS_POOL_SIZE"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.POOL_SIZE: %w", err)
+	}
+	if err := v.BindEnv("REDIS.MIN_IDLE_CONNS", "REDIS_MIN_IDLE_CONNS"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.MIN_IDLE_CONNS: %w", err)
 	}
 
 	// External services bindings
@@ -186,22 +220,11 @@ func LoadConfig() (*Config, error) {
 		log.Info("No config file found, using environment variables and defaults")
 	}
 
-	// Load AWS secrets in production
+	// Load local secrets in production
 	if env == string(EnvProduction) {
-		if err := loadAWSSecrets(v); err != nil {
-			return nil, fmt.Errorf("failed to load AWS secrets: %w", err)
+		if err := loadLocalSecrets(v); err != nil {
+			return nil, fmt.Errorf("failed to load local secrets: %w", err)
 		}
-	}
-
-	// Add AWS secrets path binding
-	if err := v.BindEnv("AWS_SECRETS_PATH", "AWS_SECRETS_PATH"); err != nil {
-		return nil, fmt.Errorf("failed to bind AWS_SECRETS_PATH: %w", err)
-	}
-
-	// In LoadConfig() function, add validation
-	awsSecretsPath := v.GetString("AWS_SECRETS_PATH")
-	if awsSecretsPath == "" {
-		return nil, fmt.Errorf("AWS_SECRETS_PATH environment variable must be set")
 	}
 
 	var cfg Config
@@ -235,35 +258,26 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-func loadAWSSecrets(v *viper.Viper) error {
-	secretPath := v.GetString("AWS_SECRETS_PATH")
-	if secretPath == "" {
-		return fmt.Errorf("AWS secrets path not configured")
+func loadLocalSecrets(v *viper.Viper) error {
+	// Check for secrets file
+	secretsPath := "./secrets/app-secrets.json"
+
+	// Check if file exists
+	if _, err := os.Stat(secretsPath); os.IsNotExist(err) {
+		// If file doesn't exist, just log and continue
+		logger.GetLogger().Warn("Secrets file not found, continuing with environment variables")
+		return nil
 	}
 
-	ctx := context.Background()
-
-	// Load AWS configuration from environment
-	cfg, err := config.LoadDefaultConfig(ctx)
+	// Read secrets file
+	secretsData, err := os.ReadFile(secretsPath)
 	if err != nil {
-		return fmt.Errorf("unable to load AWS config: %w", err)
-	}
-
-	// Create Secrets Manager client
-	client := secretsmanager.NewFromConfig(cfg)
-
-	// Get secret
-	secretID := secretPath
-	secret, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: &secretID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to load secret %s: %w", secretID, err)
+		return fmt.Errorf("failed to read secrets file: %w", err)
 	}
 
 	// Parse secrets JSON
 	var secrets map[string]string
-	if err := json.Unmarshal([]byte(*secret.SecretString), &secrets); err != nil {
+	if err := json.Unmarshal(secretsData, &secrets); err != nil {
 		return fmt.Errorf("failed to parse secrets: %w", err)
 	}
 
