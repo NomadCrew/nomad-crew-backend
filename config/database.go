@@ -26,15 +26,7 @@ type DBConfig struct {
 	ConnMaxLife  time.Duration
 }
 
-// RedisConfig holds Redis configuration
-type RedisConfig struct {
-	Address      string
-	Password     string
-	DB           int
-	UseTLS       bool
-	PoolSize     int
-	MinIdleConns int
-}
+// RedisConfig is now defined in config.go
 
 // GetDBConfig loads database configuration from environment variables
 func GetDBConfig() *DBConfig {
