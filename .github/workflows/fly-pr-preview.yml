@@ -11,6 +11,11 @@ on:
       - 'LICENSE'
       - '**/*.{png,jpg}'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   test:
     name: Test
