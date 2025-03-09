@@ -125,7 +125,13 @@ jobs:
       
       - name: Set Environment Variables
         run: |
-          echo "Setting environment variables for $APP_NAME"
+          echo "Setting environment variables for staging"
+          echo "Validating RESEND_API_KEY length..."
+          if [ ${#RESEND_API_KEY} -lt 8 ]; then
+            echo "Error: RESEND_API_KEY is too short"
+            exit 1
+          fi
+          
           flyctl secrets set \
             JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
             DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
@@ -146,6 +152,7 @@ jobs:
             GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY }}" \
             PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
             RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
+            EMAIL_RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
             SERVER_ENVIRONMENT="staging" \
             --app $APP_NAME
       
