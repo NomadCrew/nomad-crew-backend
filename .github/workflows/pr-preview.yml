@@ -61,6 +61,7 @@ jobs:
     name: Deploy PR Preview
     needs: test
     runs-on: ubuntu-latest
+    concurrency: deploy-group-${{ github.event.pull_request.number }}
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -71,6 +72,17 @@ jobs:
       - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
       
+      - name: Debug Fly.io Information
+        run: |
+          echo "Fly.io CLI version:"
+          flyctl version
+          
+          echo "Available organizations:"
+          flyctl orgs list
+          
+          echo "Current user:"
+          flyctl auth whoami || echo "Not authenticated"
+      
       - name: Create Fly App for PR
         run: |
           # Create a unique app name for this PR
@@ -80,8 +92,8 @@ jobs:
           # Check if the app already exists
           if ! flyctl apps list | grep -q "$APP_NAME"; then
             echo "Creating new Fly.io app: $APP_NAME"
-            # Create the app without specifying an organization, which will use the default org associated with the token
-            flyctl apps create "$APP_NAME"
+            # Create the app without specifying an organization
+            flyctl apps create --name "$APP_NAME" --machines
           else
             echo "App $APP_NAME already exists"
           fi
@@ -92,7 +104,8 @@ jobs:
       
       - name: Deploy PR Preview
         run: |
-          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
+          # Deploy to Fly.io with specific app name
+          flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
       
       - name: Set Secrets
         run: |

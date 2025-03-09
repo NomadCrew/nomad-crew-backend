@@ -17,6 +17,20 @@ jobs:
       - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
       
+      - name: Debug Fly.io Information
+        run: |
+          echo "Fly.io CLI version:"
+          flyctl version
+          
+          echo "Available organizations:"
+          flyctl orgs list
+          
+          echo "Current user:"
+          flyctl auth whoami || echo "Not authenticated"
+          
+          echo "Available apps:"
+          flyctl apps list
+      
       - name: Delete Fly App for PR
         run: |
           APP_NAME="nomadcrew-pr-${PR_NUMBER}"
@@ -25,7 +39,7 @@ jobs:
           # Check if the app exists before trying to destroy it
           if flyctl apps list | grep -q "$APP_NAME"; then
             # Destroy the app
-            flyctl apps destroy $APP_NAME --yes
+            flyctl apps destroy --app $APP_NAME --yes
             echo "✅ Successfully deleted PR preview app: $APP_NAME"
           else
             echo "⚠️ App $APP_NAME doesn't exist or has already been deleted"
