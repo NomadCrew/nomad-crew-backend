@@ -111,6 +111,5 @@ EXPOSE 8080
 # Set the entrypoint
 CMD echo "Environment variables:" && \
     echo "RESEND_API_KEY length: ${#RESEND_API_KEY}" && \
-    echo "EMAIL_RESEND_API_KEY length: ${#EMAIL_RESEND_API_KEY}" && \
     env | grep -i "resend\|email" && \
     /app/nomadcrew-backend

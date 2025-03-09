@@ -77,17 +77,27 @@ func ConfigureUpstashRedisOptions(cfg *RedisConfig) *redis.Options {
 		MinIdleConns: cfg.MinIdleConns,
 		// Set reasonable connection lifetime for free tier
 		ConnMaxLifetime: time.Hour,
+		// Add retry strategy for better resilience
+		MaxRetries:      3,
+		MinRetryBackoff: time.Millisecond * 100,
+		MaxRetryBackoff: time.Second * 2,
+		// Add reasonable timeouts
+		DialTimeout:  time.Second * 5,
+		ReadTimeout:  time.Second * 3,
+		WriteTimeout: time.Second * 3,
 	}
 
 	// Log only non-sensitive Redis connection information
-	log.Infow("Connecting to Redis",
+	log.Infow("Configuring Redis connection",
 		"address", cfg.Address,
 		"db", cfg.DB,
 		"pool_size", cfg.PoolSize,
-		"min_idle_conns", cfg.MinIdleConns)
+		"min_idle_conns", cfg.MinIdleConns,
+		"use_tls", cfg.UseTLS)
 
-	// Enable TLS for Upstash Redis
-	if cfg.UseTLS || strings.Contains(cfg.Address, "upstash.io") {
+	// Enable TLS only for Upstash Redis
+	if strings.Contains(cfg.Address, "upstash.io") {
+		log.Info("Enabling TLS for Upstash Redis")
 		redisOptions.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
@@ -96,11 +106,35 @@ func ConfigureUpstashRedisOptions(cfg *RedisConfig) *redis.Options {
 	return redisOptions
 }
 
-// TestRedisConnection tests the Redis connection
+// TestRedisConnection tests the Redis connection with retries
 func TestRedisConnection(client *redis.Client) error {
-	_, err := client.Ping(context.Background()).Result()
-	if err != nil {
-		return fmt.Errorf("failed to ping Redis: %w", err)
+	log := logger.GetLogger()
+	maxRetries := 5
+	retryDelay := time.Second * 2
+
+	for i := 0; i < maxRetries; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		_, err := client.Ping(ctx).Result()
+		cancel()
+
+		if err == nil {
+			if i > 0 {
+				log.Infow("Successfully connected to Redis after retries", "attempt", i+1)
+			}
+			return nil
+		}
+
+		if i < maxRetries-1 {
+			log.Warnw("Failed to ping Redis, retrying...",
+				"error", err,
+				"attempt", i+1,
+				"max_attempts", maxRetries)
+			time.Sleep(retryDelay)
+			continue
+		}
+
+		return fmt.Errorf("failed to ping Redis after %d attempts: %w", maxRetries, err)
 	}
+
 	return nil
 }

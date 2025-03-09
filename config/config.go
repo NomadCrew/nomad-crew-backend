@@ -105,8 +105,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("DATABASE.SSL_MODE", "require")
 	v.SetDefault("REDIS.DB", 0)
 	v.SetDefault("REDIS.ADDRESS", "actual-serval-57447.upstash.io:6379")
-	v.SetDefault("REDIS.USE_TLS", true) // Upstash requires TLS
-	v.SetDefault("REDIS.POOL_SIZE", 3)  // Conservative for free tier
+	v.SetDefault("REDIS.USE_TLS", false) // Only enable TLS for Upstash
+	v.SetDefault("REDIS.POOL_SIZE", 3)   // Conservative for free tier
 	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
 	v.SetDefault("LOG_LEVEL", "info")
 
@@ -114,6 +114,7 @@ func LoadConfig() (*Config, error) {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	// Bind all environment variables first
 	// Server config bindings
 	if err := v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT"); err != nil {
 		return nil, fmt.Errorf("failed to bind SERVER.ENVIRONMENT: %w", err)
@@ -147,15 +148,6 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("DATABASE.SSL_MODE", "DB_SSL_MODE"); err != nil {
 		return nil, fmt.Errorf("failed to bind DATABASE.SSL_MODE: %w", err)
 	}
-	if err := v.BindEnv("DATABASE.MAX_OPEN_CONNS", "DB_MAX_OPEN_CONNS"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.MAX_OPEN_CONNS: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.MAX_IDLE_CONNS", "DB_MAX_IDLE_CONNS"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.MAX_IDLE_CONNS: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.CONN_MAX_LIFE", "DB_CONN_MAX_LIFE"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.CONN_MAX_LIFE: %w", err)
-	}
 
 	// Redis config bindings
 	if err := v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS"); err != nil {
@@ -170,12 +162,6 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("REDIS.USE_TLS", "REDIS_USE_TLS"); err != nil {
 		return nil, fmt.Errorf("failed to bind REDIS.USE_TLS: %w", err)
 	}
-	if err := v.BindEnv("REDIS.POOL_SIZE", "REDIS_POOL_SIZE"); err != nil {
-		return nil, fmt.Errorf("failed to bind REDIS.POOL_SIZE: %w", err)
-	}
-	if err := v.BindEnv("REDIS.MIN_IDLE_CONNS", "REDIS_MIN_IDLE_CONNS"); err != nil {
-		return nil, fmt.Errorf("failed to bind REDIS.MIN_IDLE_CONNS: %w", err)
-	}
 
 	// External services bindings
 	if err := v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY"); err != nil {
@@ -187,34 +173,8 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
 	}
-
-	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL_FROM_ADDRESS: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_FROM_NAME", "EMAIL_FROM_NAME"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL_FROM_NAME: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_BASE_URL", "EMAIL_BASE_URL"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL_BASE_URL: %w", err)
-	}
-
-	// Log loaded configuration
-	env := v.GetString("SERVER.ENVIRONMENT")
-	log.Infow("Configuration loaded",
-		"environment", env,
-		"server_port", v.GetString("SERVER.PORT"),
-		"db_host", v.GetString("DATABASE.HOST"),
-		"allowed_origins", v.GetString("SERVER.ALLOWED_ORIGINS"),
-	)
-
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("config unmarshal failed: %w", err)
-	}
-
-	// Validate configuration
-	if err := validateConfig(&cfg); err != nil {
-		return nil, err
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
 	}
 
 	// Email config bindings
@@ -228,9 +188,40 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
 	}
 
-	if len(cfg.Email.ResendAPIKey) < minKeyLength {
-		return nil, fmt.Errorf("RESEND_API_KEY is invalid or too short")
+	// Log loaded configuration
+	env := v.GetString("SERVER.ENVIRONMENT")
+	log.Infow("Configuration loaded",
+		"environment", env,
+		"server_port", v.GetString("SERVER.PORT"),
+		"db_host", v.GetString("DATABASE.HOST"),
+		"allowed_origins", v.GetString("SERVER.ALLOWED_ORIGINS"),
+	)
+
+	// Unmarshal configuration
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("config unmarshal failed: %w", err)
 	}
+
+	// Validate configuration
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
+	}
+
+	// Validate external services
+	if err := validateExternalServices(&cfg.ExternalServices); err != nil {
+		return nil, err
+	}
+
+	// RESEND_API_KEY validation with detailed error
+	if len(cfg.Email.ResendAPIKey) < minKeyLength {
+		log.Errorw("RESEND_API_KEY validation failed",
+			"key_length", len(cfg.Email.ResendAPIKey),
+			"min_required", minKeyLength)
+		return nil, fmt.Errorf("RESEND_API_KEY is invalid or too short (length: %d, required: %d)",
+			len(cfg.Email.ResendAPIKey), minKeyLength)
+	}
+
 	if cfg.Email.FromAddress == "" {
 		return nil, fmt.Errorf("FROM_ADDRESS is required")
 	}
@@ -306,6 +297,10 @@ func validateConnectionString(connStr string) error {
 
 // nolint:unused
 func validateExternalServices(services *ExternalServices) error {
+	if services.SupabaseURL == "" {
+		return fmt.Errorf("SUPABASE_URL is required")
+	}
+
 	if len(services.SupabaseAnonKey) < minKeyLength {
 		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
 	}
