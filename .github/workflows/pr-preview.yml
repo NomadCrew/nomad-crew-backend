@@ -104,7 +104,7 @@ jobs:
       - name: Deploy PR Preview
         run: |
           # Deploy to Fly.io with the preview app name
-          flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
+          flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging --now
       
       - name: Set Secrets
         run: |
