@@ -63,9 +63,6 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: deploy-group-${{ github.event.pull_request.number }}
     env:
-      # This token MUST be created with 'fly tokens create org' (not 'deploy')
-      # The token needs organization-level permissions to create and manage apps
-      # Run 'fly tokens create org --name "GitHub Actions" --expiry 999999h'
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     
@@ -88,28 +85,24 @@ jobs:
       
       - name: Set App Name
         run: |
-          # Use a single app name for all PRs
           APP_NAME="nomadcrew-preview"
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           
-          # Update fly.toml with the preview app name
           cp fly.toml fly.toml.bak
           sed "s/app = 'nomadcrew'/app = '$APP_NAME'/" fly.toml.bak > fly.toml
       
       - name: Create App (if needed)
         run: |
-          # Try to create the app - this will fail silently if it already exists
-          flyctl apps create $APP_NAME --machines || echo "App may already exist, continuing..."
+          if ! flyctl apps list | grep -q "$APP_NAME"; then
+            flyctl launch --no-deploy --copy-config --name $APP_NAME --org personal
+          fi
       
       - name: Deploy PR Preview
         run: |
-          # Deploy to Fly.io with the preview app name
           flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
       
       - name: Set Secrets
         run: |
-          # Set secrets for the preview environment
-          # Use the staging database but a separate Redis instance if needed
           flyctl secrets set \
             JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
             DB_PASSWORD="npg_6jtSQH3MuNBg" \
@@ -137,23 +130,27 @@ jobs:
             const appName = process.env.APP_NAME;
             const url = `https://${appName}.fly.dev`;
             
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🚀 Preview Environment Deployed!
-              
-              Your changes are available for preview at:
-              
-              🔗 [${url}](${url})
-              
-              This is a shared preview environment that will be updated when any PR is pushed.
-              
-              ### Environment Details
-              - **Environment:** PR Preview
-              - **App Name:** ${appName}
-              - **Deployment:** Fly.io
-              - **Deployed Commit:** \`${context.sha.substring(0, 7)}\`
-              - **PR Number:** #${context.issue.number}
-              `
-            }); 
+            try {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## 🚀 Preview Environment Deployed!
+                
+                Your changes are available for preview at:
+                
+                🔗 [${url}](${url})
+                
+                This is a shared preview environment that will be updated when any PR is pushed.
+                
+                ### Environment Details
+                - **Environment:** PR Preview
+                - **App Name:** ${appName}
+                - **Deployment:** Fly.io
+                - **Deployed Commit:** \`${context.sha.substring(0, 7)}\`
+                - **PR Number:** #${context.issue.number}
+                `
+              });
+            } catch (error) {
+              console.error('Error commenting on PR:', error);
+            }
