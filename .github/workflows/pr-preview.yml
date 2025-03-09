@@ -80,14 +80,15 @@ jobs:
           # Check if the app already exists
           if ! flyctl apps list | grep -q "$APP_NAME"; then
             echo "Creating new Fly.io app: $APP_NAME"
-            flyctl apps create "$APP_NAME" --org personal
+            # Create the app without specifying an organization, which will use the default org associated with the token
+            flyctl apps create "$APP_NAME"
           else
             echo "App $APP_NAME already exists"
           fi
           
           # Update fly.toml with PR-specific app name
           cp fly.toml fly.toml.bak
-          sed "s/app = \"nomadcrew\"/app = \"$APP_NAME\"/" fly.toml.bak > fly.toml
+          sed "s/app = 'nomadcrew'/app = '$APP_NAME'/" fly.toml.bak > fly.toml
       
       - name: Deploy PR Preview
         run: |
