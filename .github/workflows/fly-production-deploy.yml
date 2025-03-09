@@ -121,7 +121,12 @@ jobs:
           flyctl secrets set \
             JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
             DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            DATABASE_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            DB_HOST="${{ secrets.DB_HOST }}" \
+            DB_NAME="${{ secrets.DB_NAME }}" \
+            DB_USER="${{ secrets.DB_USER }}" \
             REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
+            REDIS_ADDRESS="${{ secrets.REDIS_ADDRESS }}" \
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
@@ -130,6 +135,9 @@ jobs:
             EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
             FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
             ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY || '' }}" \
+            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY || '' }}" \
+            RESEND_API_KEY="${{ secrets.RESEND_API_KEY || '' }}" \
             SERVER_ENVIRONMENT="production"
       
       - name: Check Deployment Status
