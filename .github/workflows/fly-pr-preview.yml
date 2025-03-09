@@ -1,8 +1,8 @@
-name: PR Preview Environment
+name: Fly.io PR Preview
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     types: [opened, synchronize, reopened]
     paths-ignore:
       - '**.md'
@@ -61,7 +61,7 @@ jobs:
     name: Deploy PR Preview
     needs: test
     runs-on: ubuntu-latest
-    concurrency: deploy-group-${{ github.event.pull_request.number }}
+    concurrency: deploy-preview
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -72,55 +72,45 @@ jobs:
       - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
       
-      - name: Debug Fly.io Information
-        run: |
-          echo "Fly.io CLI version:"
-          flyctl version
-          
-          echo "Available organizations:"
-          flyctl orgs list
-          
-          echo "Current user:"
-          flyctl auth whoami || echo "Not authenticated"
-      
       - name: Set App Name
         run: |
           APP_NAME="nomadcrew-preview"
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           
-          cp fly.toml fly.toml.bak
-          sed "s/app = 'nomadcrew'/app = '$APP_NAME'/" fly.toml.bak > fly.toml
-      
-      - name: Create App (if needed)
-        run: |
-          if ! flyctl apps list | grep -q "$APP_NAME"; then
-            flyctl launch --no-deploy --copy-config --name $APP_NAME --org personal
-          fi
+          # Make a backup of the original fly.toml
+          cp fly.toml fly.toml.original
+          
+          # Modify fly.toml for the preview app
+          sed -i "s/app = .*/app = '$APP_NAME'/" fly.toml
+          cat fly.toml | grep "app ="
       
       - name: Deploy PR Preview
         run: |
-          flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
+          echo "Deploying to $APP_NAME with PR #$PR_NUMBER"
+          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
       
-      - name: Set Secrets
+      - name: Set Environment Variables
         run: |
+          echo "Setting environment variables for $APP_NAME"
           flyctl secrets set \
             JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
-            DB_PASSWORD="npg_6jtSQH3MuNBg" \
-            REDIS_PASSWORD="AeBnAAIjcDEyZTczMzFkYWU0ZGM0NTdmYTY5OWZiMDA3MjY5Y2Y0ZnAxMA" \
+            DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SUPABASE_JWT_SECRET="${{ secrets.SUPABASE_JWT_SECRET }}" \
-            DB_HOST="ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech" \
-            DB_NAME="neondb" \
-            DB_USER="neondb_owner" \
-            REDIS_ADDRESS="actual-serval-57447.upstash.io:6379" \
             EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
             EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
             FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
             ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
-            PR_NUMBER="${{ github.event.pull_request.number }}" \
+            SERVER_ENVIRONMENT="staging" \
             --app $APP_NAME
+      
+      - name: Check Deployment Status
+        run: |
+          echo "Checking deployment status for $APP_NAME"
+          flyctl status --app $APP_NAME
       
       - name: Comment on PR
         uses: actions/github-script@v6

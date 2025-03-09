@@ -1,0 +1,99 @@
+name: Fly.io Production Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nomadcrew_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:latest
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run tests
+        id: run-tests
+        env:
+          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
+          JWT_SECRET_KEY: test_secret
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
+  
+  deploy:
+    name: Deploy to Fly.io
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Configure fly.toml
+        run: |
+          # Ensure the app name is correct
+          sed -i "s/app = .*/app = 'nomadcrew'/" fly.toml
+          cat fly.toml | grep "app ="
+      
+      - name: Deploy to Fly.io
+        run: |
+          echo "Deploying to production"
+          flyctl deploy --remote-only --build-arg VERSION=${GITHUB_SHA::8} --build-arg SERVER_ENVIRONMENT=production
+      
+      - name: Set Environment Variables
+        run: |
+          echo "Setting environment variables for production"
+          flyctl secrets set \
+            JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
+            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+            SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            SUPABASE_JWT_SECRET="${{ secrets.SUPABASE_JWT_SECRET }}" \
+            EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
+            EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
+            FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+            ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            SERVER_ENVIRONMENT="production"
+      
+      - name: Check Deployment Status
+        run: |
+          echo "Checking deployment status"
+          flyctl status
