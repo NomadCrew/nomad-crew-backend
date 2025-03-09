@@ -123,22 +123,6 @@ jobs:
           sed -i "s/app = .*/app = '$APP_NAME'/" fly.toml
           cat fly.toml | grep "app ="
       
-      - name: Deploy PR Preview
-        run: |
-          echo "Deploying to $APP_NAME with PR #$PR_NUMBER"
-          # Set a longer timeout for deployment (10 minutes)
-          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging --wait-timeout 600
-          
-          # If deployment fails, try to get logs
-            if [ $? -ne 0 ]; then
-              echo "Deployment failed, checking logs..."
-              flyctl logs --app $APP_NAME
-              
-              # Check if the machine exists and its status
-              echo "Checking machine status..."
-              flyctl machines list --app $APP_NAME
-            fi
-      
       - name: Set Environment Variables
         run: |
           echo "Setting environment variables for $APP_NAME"
@@ -157,11 +141,22 @@ jobs:
             SERVER_ENVIRONMENT="staging" \
             --app $APP_NAME
       
-      - name: Restart Application
+      - name: Deploy PR Preview
         run: |
-          echo "Restarting application to apply new environment variables"
-          flyctl apps restart $APP_NAME
+          echo "Deploying to $APP_NAME with PR #$PR_NUMBER"
+          # Set a longer timeout for deployment (10 minutes)
+          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging --wait-timeout 600
           
+          # If deployment fails, try to get logs
+            if [ $? -ne 0 ]; then
+              echo "Deployment failed, checking logs..."
+              flyctl logs --app $APP_NAME
+              
+              # Check if the machine exists and its status
+              echo "Checking machine status..."
+              flyctl machines list --app $APP_NAME
+            fi
+      
       - name: Check Deployment Status
         run: |
           echo "Checking deployment status for $APP_NAME"
