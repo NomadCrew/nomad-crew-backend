@@ -143,9 +143,9 @@ jobs:
             EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
             FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
             ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
-            GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY || '' }}" \
-            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY || '' }}" \
-            RESEND_API_KEY="${{ secrets.RESEND_API_KEY || '' }}" \
+            GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY }}" \
+            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
+            RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
             SERVER_ENVIRONMENT="staging" \
             --app $APP_NAME
       
@@ -153,7 +153,24 @@ jobs:
         run: |
           echo "Deploying to $APP_NAME with PR #$PR_NUMBER"
           # Set a longer timeout for deployment (10 minutes)
-          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging --wait-timeout 600
+          flyctl deploy --remote-only \
+            --build-arg VERSION=pr-$PR_NUMBER \
+            --build-arg SERVER_ENVIRONMENT=staging \
+            --build-arg RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
+            --build-arg JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            --build-arg DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --build-arg REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
+            --build-arg SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+            --build-arg SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            --build-arg SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            --build-arg SUPABASE_JWT_SECRET="${{ secrets.SUPABASE_JWT_SECRET }}" \
+            --build-arg EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
+            --build-arg EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
+            --build-arg FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+            --build-arg ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            --build-arg GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY }}" \
+            --build-arg PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
+            --wait-timeout 600
           
           # If deployment fails, try to get logs
             if [ $? -ne 0 ]; then

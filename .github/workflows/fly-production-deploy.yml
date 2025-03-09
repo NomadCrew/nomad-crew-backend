@@ -113,7 +113,23 @@ jobs:
       - name: Deploy to Fly.io
         run: |
           echo "Deploying to production"
-          flyctl deploy --remote-only --build-arg VERSION=${GITHUB_SHA::8} --build-arg SERVER_ENVIRONMENT=production
+          flyctl deploy --remote-only \
+            --build-arg VERSION=${GITHUB_SHA::8} \
+            --build-arg SERVER_ENVIRONMENT=production \
+            --build-arg RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
+            --build-arg JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            --build-arg DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --build-arg REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
+            --build-arg SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+            --build-arg SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            --build-arg SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            --build-arg SUPABASE_JWT_SECRET="${{ secrets.SUPABASE_JWT_SECRET }}" \
+            --build-arg EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
+            --build-arg EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
+            --build-arg FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+            --build-arg ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            --build-arg GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY }}" \
+            --build-arg PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}"
       
       - name: Set Environment Variables
         run: |
@@ -135,9 +151,9 @@ jobs:
             EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
             FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
             ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
-            GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY || '' }}" \
-            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY || '' }}" \
-            RESEND_API_KEY="${{ secrets.RESEND_API_KEY || '' }}" \
+            GEOAPIFY_KEY="${{ secrets.GEOAPIFY_KEY }}" \
+            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
+            RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
             SERVER_ENVIRONMENT="production"
       
       - name: Check Deployment Status
