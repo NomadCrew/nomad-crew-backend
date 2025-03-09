@@ -83,28 +83,19 @@ jobs:
           echo "Current user:"
           flyctl auth whoami || echo "Not authenticated"
       
-      - name: Create Fly App for PR
+      - name: Set App Name
         run: |
-          # Create a unique app name for this PR
-          APP_NAME="nomadcrew-pr-${PR_NUMBER}"
+          # Use a single app name for all PRs
+          APP_NAME="nomadcrew-preview"
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           
-          # Check if the app already exists
-          if ! flyctl apps list | grep -q "$APP_NAME"; then
-            echo "Creating new Fly.io app: $APP_NAME"
-            # Create the app without specifying an organization
-            flyctl apps create --name "$APP_NAME" --machines
-          else
-            echo "App $APP_NAME already exists"
-          fi
-          
-          # Update fly.toml with PR-specific app name
+          # Update fly.toml with the preview app name
           cp fly.toml fly.toml.bak
           sed "s/app = 'nomadcrew'/app = '$APP_NAME'/" fly.toml.bak > fly.toml
       
       - name: Deploy PR Preview
         run: |
-          # Deploy to Fly.io with specific app name
+          # Deploy to Fly.io with the preview app name
           flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
       
       - name: Set Secrets
@@ -148,12 +139,13 @@ jobs:
               
               🔗 [${url}](${url})
               
-              This is a temporary environment for PR #${context.issue.number} and will be automatically updated when you push new changes to this branch.
+              This is a shared preview environment that will be updated when any PR is pushed.
               
               ### Environment Details
               - **Environment:** PR Preview
               - **App Name:** ${appName}
               - **Deployment:** Fly.io
               - **Deployed Commit:** \`${context.sha.substring(0, 7)}\`
+              - **PR Number:** #${context.issue.number}
               `
             }); 

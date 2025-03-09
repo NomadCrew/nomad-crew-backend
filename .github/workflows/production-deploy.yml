@@ -109,7 +109,7 @@ jobs:
           sed -i "s/app = .*/app = \"nomadcrew\"/" fly.toml
           
           # Deploy the application
-          flyctl deploy --remote-only --build-arg VERSION=$VERSION --build-arg SERVER_ENVIRONMENT=production
+          flyctl deploy --app nomadcrew --remote-only --build-arg VERSION=$VERSION --build-arg SERVER_ENVIRONMENT=production
       
       - name: Set Production Secrets
         run: |
@@ -129,7 +129,8 @@ jobs:
             EMAIL_FROM_ADDRESS="${{ secrets.EMAIL_FROM_ADDRESS }}" \
             EMAIL_FROM_NAME="${{ secrets.EMAIL_FROM_NAME }}" \
             FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
-            ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}"
+            ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+            --app nomadcrew
       
       - name: Create Sentry Release
         if: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
