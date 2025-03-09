@@ -157,6 +157,11 @@ jobs:
             SERVER_ENVIRONMENT="staging" \
             --app $APP_NAME
       
+      - name: Restart Application
+        run: |
+          echo "Restarting application to apply new environment variables"
+          flyctl apps restart $APP_NAME
+          
       - name: Check Deployment Status
         run: |
           echo "Checking deployment status for $APP_NAME"

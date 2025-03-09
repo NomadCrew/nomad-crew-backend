@@ -25,11 +25,11 @@ primary_region = 'ewr'
   [checks.health]
     port = 8080
     type = 'http'
-    interval = '15s'
-    timeout = '2s'
-    grace_period = '5s'
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '30s'
     method = 'GET'
-    path = '/health'
+    path = '/health/liveness'
     protocol = 'http'
 
 [[vm]]
