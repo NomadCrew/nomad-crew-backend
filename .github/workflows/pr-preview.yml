@@ -63,8 +63,9 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: deploy-group-${{ github.event.pull_request.number }}
     env:
-      # This token should be created with 'fly tokens create org' (not 'deploy')
-      # as we need organization-level permissions to create apps
+      # This token MUST be created with 'fly tokens create org' (not 'deploy')
+      # The token needs organization-level permissions to create and manage apps
+      # Run 'fly tokens create org --name "GitHub Actions" --expiry 999999h'
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     
@@ -85,29 +86,25 @@ jobs:
           echo "Current user:"
           flyctl auth whoami || echo "Not authenticated"
       
-      - name: Set App Name and Create App if Needed
+      - name: Set App Name
         run: |
           # Use a single app name for all PRs
           APP_NAME="nomadcrew-preview"
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           
-          # Check if the app exists, create it if it doesn't
-          if ! flyctl apps list | grep -q "$APP_NAME"; then
-            echo "Creating app $APP_NAME as it doesn't exist"
-            # Create the app without the org flag
-            flyctl apps create --name "$APP_NAME" --machines
-          else
-            echo "App $APP_NAME already exists"
-          fi
-          
           # Update fly.toml with the preview app name
           cp fly.toml fly.toml.bak
           sed "s/app = 'nomadcrew'/app = '$APP_NAME'/" fly.toml.bak > fly.toml
       
+      - name: Create App (if needed)
+        run: |
+          # Try to create the app - this will fail silently if it already exists
+          flyctl apps create $APP_NAME --machines || echo "App may already exist, continuing..."
+      
       - name: Deploy PR Preview
         run: |
           # Deploy to Fly.io with the preview app name
-          flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging --now
+          flyctl deploy --app $APP_NAME --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
       
       - name: Set Secrets
         run: |
