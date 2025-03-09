@@ -83,11 +83,19 @@ jobs:
           echo "Current user:"
           flyctl auth whoami || echo "Not authenticated"
       
-      - name: Set App Name
+      - name: Set App Name and Create App if Needed
         run: |
           # Use a single app name for all PRs
           APP_NAME="nomadcrew-preview"
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          
+          # Check if the app exists, create it if it doesn't
+          if ! flyctl apps list | grep -q "$APP_NAME"; then
+            echo "Creating app $APP_NAME as it doesn't exist"
+            flyctl apps create --name "$APP_NAME" --machines
+          else
+            echo "App $APP_NAME already exists"
+          fi
           
           # Update fly.toml with the preview app name
           cp fly.toml fly.toml.bak
