@@ -1,10 +1,8 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -112,6 +110,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
 	v.SetDefault("LOG_LEVEL", "info")
 
+	// Configure Viper to read from environment variables
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
@@ -199,35 +198,14 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EMAIL_BASE_URL: %w", err)
 	}
 
-	// Add debug logging
-	log.Infof("Environment variables loaded: %+v", map[string]interface{}{
-		"SERVER_PORT":     v.GetString("SERVER.PORT"),
-		"SERVER_ENV":      v.GetString("SERVER.ENVIRONMENT"),
-		"DB_HOST":         v.GetString("DATABASE.HOST"),
-		"ALLOWED_ORIGINS": v.GetString("SERVER.ALLOWED_ORIGINS"),
-	})
-
-	// Try to read config file based on environment
+	// Log loaded configuration
 	env := v.GetString("SERVER.ENVIRONMENT")
-	v.SetConfigName("config." + strings.ToLower(env))
-	v.AddConfigPath("./config")
-	v.AddConfigPath(".")
-
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("failed to read config: %w", err)
-		}
-		log.Info("No config file found, using environment variables and defaults")
-	}
-
-	// Load local secrets in development only
-	if env == string(EnvDevelopment) {
-		if err := loadLocalSecrets(v); err != nil {
-			return nil, fmt.Errorf("failed to load local secrets: %w", err)
-		}
-	} else {
-		log.Info("Running in non-development environment, secrets expected from environment variables")
-	}
+	log.Infow("Configuration loaded",
+		"environment", env,
+		"server_port", v.GetString("SERVER.PORT"),
+		"db_host", v.GetString("DATABASE.HOST"),
+		"allowed_origins", v.GetString("SERVER.ALLOWED_ORIGINS"),
+	)
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -258,43 +236,6 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &cfg, nil
-}
-
-func loadLocalSecrets(v *viper.Viper) error {
-	log := logger.GetLogger()
-
-	// Get secrets path from environment variable
-	secretsPath := os.Getenv("APP_SECRETS_PATH")
-	if secretsPath == "" {
-		log.Info("APP_SECRETS_PATH not set, skipping local secrets loading")
-		return nil
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(secretsPath); os.IsNotExist(err) {
-		// If file doesn't exist, just log and continue
-		log.Warnf("Secrets file not found at %s, continuing with environment variables", secretsPath)
-		return nil
-	}
-
-	// Read secrets file
-	secretsData, err := os.ReadFile(secretsPath)
-	if err != nil {
-		return fmt.Errorf("failed to read secrets file: %w", err)
-	}
-
-	// Parse secrets JSON
-	var secrets map[string]string
-	if err := json.Unmarshal(secretsData, &secrets); err != nil {
-		return fmt.Errorf("failed to parse secrets: %w", err)
-	}
-
-	// Set secrets in Viper
-	for key, value := range secrets {
-		v.Set(key, value)
-	}
-
-	return nil
 }
 
 func validateConfig(cfg *Config) error {
