@@ -220,11 +220,13 @@ func LoadConfig() (*Config, error) {
 		log.Info("No config file found, using environment variables and defaults")
 	}
 
-	// Load local secrets in production
-	if env == string(EnvProduction) {
+	// Load local secrets in development only
+	if env == string(EnvDevelopment) {
 		if err := loadLocalSecrets(v); err != nil {
 			return nil, fmt.Errorf("failed to load local secrets: %w", err)
 		}
+	} else {
+		log.Info("Running in non-development environment, secrets expected from environment variables")
 	}
 
 	var cfg Config
@@ -259,13 +261,19 @@ func LoadConfig() (*Config, error) {
 }
 
 func loadLocalSecrets(v *viper.Viper) error {
-	// Check for secrets file
-	secretsPath := "./secrets/app-secrets.json"
+	log := logger.GetLogger()
+
+	// Get secrets path from environment variable
+	secretsPath := os.Getenv("APP_SECRETS_PATH")
+	if secretsPath == "" {
+		log.Info("APP_SECRETS_PATH not set, skipping local secrets loading")
+		return nil
+	}
 
 	// Check if file exists
 	if _, err := os.Stat(secretsPath); os.IsNotExist(err) {
 		// If file doesn't exist, just log and continue
-		logger.GetLogger().Warn("Secrets file not found, continuing with environment variables")
+		log.Warnf("Secrets file not found at %s, continuing with environment variables", secretsPath)
 		return nil
 	}
 

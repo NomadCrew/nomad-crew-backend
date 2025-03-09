@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -56,8 +57,8 @@ func ConfigureNeonPostgresPool(cfg *DatabaseConfig) (*pgxpool.Config, error) {
 		connMaxLife = time.Hour
 	}
 
-	poolConfig.MaxConns = int32(cfg.MaxOpenConns)
-	poolConfig.MinConns = int32(cfg.MaxIdleConns)
+	poolConfig.MaxConns = int32(math.Min(float64(cfg.MaxOpenConns), float64(math.MaxInt32)))
+	poolConfig.MinConns = int32(math.Min(float64(cfg.MaxIdleConns), float64(math.MaxInt32)))
 	poolConfig.MaxConnLifetime = connMaxLife
 
 	return poolConfig, nil
