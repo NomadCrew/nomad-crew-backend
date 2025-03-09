@@ -62,9 +62,38 @@ jobs:
           JWT_SECRET_KEY: test_secret
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
 
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: "-buildvcs=false"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
   deploy-preview:
     name: Deploy PR Preview
-    needs: test
+    needs: [test, security-scan]
     runs-on: ubuntu-latest
     concurrency: deploy-preview
     env:
