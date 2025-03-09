@@ -64,6 +64,11 @@ jobs:
       
       - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Check Fly.toml configuration
+        run: |
+          echo "Current fly.toml content:"
+          cat fly.toml
       
       - name: Configure fly.toml
         run: |

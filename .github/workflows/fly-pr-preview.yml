@@ -72,6 +72,11 @@ jobs:
       - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
       
+      - name: Check Fly.toml configuration
+        run: |
+          echo "Current fly.toml content:"
+          cat fly.toml
+      
       - name: Set App Name
         run: |
           APP_NAME="nomadcrew-preview"
@@ -87,7 +92,18 @@ jobs:
       - name: Deploy PR Preview
         run: |
           echo "Deploying to $APP_NAME with PR #$PR_NUMBER"
-          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging
+          # Set a longer timeout for deployment (10 minutes)
+          flyctl deploy --remote-only --build-arg VERSION=pr-$PR_NUMBER --build-arg SERVER_ENVIRONMENT=staging --wait-timeout 600
+          
+          # If deployment fails, try to get logs
+            if [ $? -ne 0 ]; then
+              echo "Deployment failed, checking logs..."
+              flyctl logs --app $APP_NAME
+              
+              # Check if the machine exists and its status
+              echo "Checking machine status..."
+              flyctl machines list --app $APP_NAME
+            fi
       
       - name: Set Environment Variables
         run: |
