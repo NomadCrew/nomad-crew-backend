@@ -6,7 +6,7 @@ on:
     branches: [develop, main]
 
 env:
-  PROJECT_ID: nomadcrew-backend
+  PROJECT_ID: nomadcrew-11fd4
   REGION: us-east1
   
 jobs:
