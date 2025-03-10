@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: nomadcrew-backend
+  PROJECT_ID: nomadcrew-11fd4
   SERVICE_NAME: nomadcrew-backend
   REGION: us-east1
 
