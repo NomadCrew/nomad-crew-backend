@@ -136,7 +136,6 @@ jobs:
           image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           env_vars: |
             SERVER_ENVIRONMENT=staging
-            PORT=8080
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             DB_HOST=${{ secrets.DB_HOST }}
