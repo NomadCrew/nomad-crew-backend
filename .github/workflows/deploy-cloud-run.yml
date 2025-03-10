@@ -111,8 +111,8 @@ jobs:
       - name: Build and Push Container
         run: |-
           docker build -t us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          --build-arg VERSION=pr-${{ env.PR_NUMBER }}-${{ github.sha }} \
-          --build-arg SERVER_ENVIRONMENT=staging \
+          --build-arg VERSION=${{ github.sha }} \
+          --build-arg SERVER_ENVIRONMENT=production \
           .
           docker push us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
       
@@ -147,6 +147,14 @@ jobs:
             RESEND_API_KEY=RESEND_API_KEY:latest
             GEOAPIFY_KEY=GEOAPIFY_KEY:latest
             PEXELS_API_KEY=PEXELS_API_KEY:latest
+
+      - name: Map Custom Domain
+        run: |
+          gcloud run domain-mappings create \
+            --service=${{ env.SERVICE_NAME }} \
+            --domain=api.nomadcrew.uk \
+            --region=${{ env.REGION }} \
+            --force-override
           
       - name: Output URL
-        run: echo "Service URL ${{ steps.deploy.outputs.url }}"
+        run: echo "Service URL: https://api.nomadcrew.uk"
