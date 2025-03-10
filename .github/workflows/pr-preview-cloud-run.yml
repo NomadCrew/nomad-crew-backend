@@ -161,10 +161,9 @@ jobs:
 
       - name: Map Custom Domain
         run: |
-          gcloud run domain-mappings create \
+          gcloud run --region=${{ env.REGION }} domain-mappings create \
             --service=${{ env.SERVICE_NAME }} \
             --domain=preview.nomadcrew.uk \
-            --region=${{ env.REGION }} \
             --force-override
           
       - name: Comment on PR

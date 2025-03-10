@@ -150,11 +150,11 @@ jobs:
 
       - name: Map Custom Domain
         run: |
-          gcloud run domain-mappings create \
+          gcloud run --region=${{ env.REGION }} domain-mappings create \
             --service=${{ env.SERVICE_NAME }} \
             --domain=api.nomadcrew.uk \
-            --region=${{ env.REGION }} \
             --force-override
-          
+
       - name: Output URL
-        run: echo "Service URL: https://api.nomadcrew.uk"
+        run: |
+          echo "Service URL: https://api.nomadcrew.uk"
