@@ -2,45 +2,6 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Add build arguments
-ARG VERSION=dev
-ARG SERVER_ENVIRONMENT=development
-ARG JWT_SECRET_KEY
-ARG DB_PASSWORD
-ARG REDIS_PASSWORD
-ARG RESEND_API_KEY
-ARG GEOAPIFY_KEY
-ARG PEXELS_API_KEY
-ARG SUPABASE_ANON_KEY
-ARG SUPABASE_SERVICE_KEY
-ARG SUPABASE_URL
-ARG SUPABASE_JWT_SECRET
-ARG EMAIL_FROM_ADDRESS
-ARG EMAIL_FROM_NAME
-ARG FRONTEND_URL
-ARG ALLOWED_ORIGINS
-
-# Set environment variables from build args
-ENV SERVER_ENVIRONMENT=${SERVER_ENVIRONMENT}
-ENV VERSION=${VERSION}
-ENV JWT_SECRET_KEY=${JWT_SECRET_KEY}
-ENV DB_PASSWORD=${DB_PASSWORD}
-ENV REDIS_PASSWORD=${REDIS_PASSWORD}
-ENV RESEND_API_KEY=${RESEND_API_KEY}
-ENV GEOAPIFY_KEY=${GEOAPIFY_KEY}
-ENV PEXELS_API_KEY=${PEXELS_API_KEY}
-ENV SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-ENV SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-ENV SUPABASE_URL=${SUPABASE_URL}
-ENV SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-ENV EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
-ENV EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
-ENV FRONTEND_URL=${FRONTEND_URL}
-ENV ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-
-# Install build dependencies
-RUN apk add --no-cache git gcc musl-dev
-
 # Copy go.mod and go.sum first for better caching
 COPY ./go.mod ./go.sum ./
 RUN go mod download
@@ -48,7 +9,9 @@ RUN go mod download
 # Copy the rest of the code
 COPY ./ .
 
-# Build the application with version information
+# Build the application (Pass build args as needed)
+ARG VERSION=dev
+ARG SERVER_ENVIRONMENT=development
 RUN CGO_ENABLED=0 go build -ldflags "-X main.Version=${VERSION} -X main.Environment=${SERVER_ENVIRONMENT}" -o nomadcrew-backend
 
 # Use a small image for the final container
@@ -65,42 +28,6 @@ COPY --from=builder /app/nomadcrew-backend /app/nomadcrew-backend
 # Copy config files if needed
 COPY --from=builder /app/config /app/config
 
-# Pass environment variables from build args to runtime
-ARG VERSION
-ARG SERVER_ENVIRONMENT
-ARG JWT_SECRET_KEY
-ARG DB_PASSWORD
-ARG REDIS_PASSWORD
-ARG RESEND_API_KEY
-ARG GEOAPIFY_KEY
-ARG PEXELS_API_KEY
-ARG SUPABASE_ANON_KEY
-ARG SUPABASE_SERVICE_KEY
-ARG SUPABASE_URL
-ARG SUPABASE_JWT_SECRET
-ARG EMAIL_FROM_ADDRESS
-ARG EMAIL_FROM_NAME
-ARG FRONTEND_URL
-ARG ALLOWED_ORIGINS
-
-# Set environment variables for runtime
-ENV SERVER_ENVIRONMENT=${SERVER_ENVIRONMENT}
-ENV VERSION=${VERSION}
-ENV JWT_SECRET_KEY=${JWT_SECRET_KEY}
-ENV DB_PASSWORD=${DB_PASSWORD}
-ENV REDIS_PASSWORD=${REDIS_PASSWORD}
-ENV RESEND_API_KEY=${RESEND_API_KEY}
-ENV GEOAPIFY_KEY=${GEOAPIFY_KEY}
-ENV PEXELS_API_KEY=${PEXELS_API_KEY}
-ENV SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-ENV SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-ENV SUPABASE_URL=${SUPABASE_URL}
-ENV SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-ENV EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
-ENV EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
-ENV FRONTEND_URL=${FRONTEND_URL}
-ENV ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-
 # Create a non-root user to run the application
 RUN adduser -D -g '' appuser
 USER appuser
@@ -108,8 +35,10 @@ USER appuser
 # Expose the application port
 EXPOSE 8080
 
-# Set the entrypoint
-CMD echo "Environment variables:" && \
+# Add debug logging to startup
+CMD echo "Environment debug:" && \
+    echo "RESEND_API_KEY exists: ${RESEND_API_KEY:+yes:no}" && \
     echo "RESEND_API_KEY length: ${#RESEND_API_KEY}" && \
-    env | grep -i "resend\|email" && \
+    echo "SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT}" && \
+    echo "Starting application..." && \
     /app/nomadcrew-backend

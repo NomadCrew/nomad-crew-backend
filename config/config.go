@@ -188,6 +188,17 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
 	}
 
+	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
+	log.Infow("RESEND_API_KEY check", 
+		"present", resendAPIKey != "", 
+		"length", len(resendAPIKey),
+		"first_chars", func() string {
+			if len(resendAPIKey) > 3 {
+				return resendAPIKey[:3] + "..."
+			}
+			return ""
+		}())
+
 	// Log loaded configuration
 	env := v.GetString("SERVER.ENVIRONMENT")
 	log.Infow("Configuration loaded",

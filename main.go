@@ -39,6 +39,27 @@ func main() {
 		log.Info("Shutting down gracefully...")
 	}()
 
+
+	configEnv := os.Getenv("SERVER_ENVIRONMENT")
+	if configEnv == "" {
+		configEnv = "development"
+	}
+	configFilePath := fmt.Sprintf("config/config.%s.yaml", configEnv)
+
+	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+		log.Infow("Config file not found, generating from environment variables", 
+			"path", configFilePath, 
+			"environment", configEnv)
+		
+		// Log available environment variables for debugging
+		log.Infow("Environment variables for debugging",
+			"RESEND_API_KEY_set", os.Getenv("RESEND_API_KEY") != "",
+			"RESEND_API_KEY_length", len(os.Getenv("RESEND_API_KEY")),
+			"JWT_SECRET_KEY_set", os.Getenv("JWT_SECRET_KEY") != "",
+			"REDIS_PASSWORD_set", os.Getenv("REDIS_PASSWORD") != "",
+			"DB_PASSWORD_set", os.Getenv("DB_PASSWORD") != "")
+	}
+
 	// Load configuration and DB connection
 	cfg, err := config.LoadConfig()
 	if err != nil {
