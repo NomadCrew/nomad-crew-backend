@@ -13,6 +13,7 @@ import (
 var (
 	logger *zap.SugaredLogger
 	once   sync.Once
+	mu     sync.RWMutex // Added mutex for logger access
 )
 
 // IsTest is used to detect test environment
@@ -53,14 +54,22 @@ func InitLogger() {
 		if err != nil {
 			panic(fmt.Sprintf("failed to initialize logger: %v", err))
 		}
+
+		mu.Lock()
 		logger = zapLogger.Sugar()
+		mu.Unlock()
 	})
 }
 
 func GetLogger() *zap.SugaredLogger {
-	if logger == nil {
-		InitLogger() // Ensure initialization if not already done
-	}
+	// Ensure initialization is done
+	once.Do(func() {
+		InitLogger()
+	})
+
+	// Get logger with read lock
+	mu.RLock()
+	defer mu.RUnlock()
 	return logger
 }
 
