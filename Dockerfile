@@ -25,20 +25,13 @@ RUN apk add --no-cache ca-certificates tzdata
 # Copy the binary from the builder stage
 COPY --from=builder /app/nomadcrew-backend /app/nomadcrew-backend
 
-# Copy config files if needed
-COPY --from=builder /app/config /app/config
-
 # Create a non-root user to run the application
 RUN adduser -D -g '' appuser
 USER appuser
 
-# Expose the application port
+# Explicitly tell Cloud Run the container listens on this port
+ENV PORT=8080
 EXPOSE 8080
 
-# Add debug logging to startup
-CMD echo "Environment debug:" && \
-    echo "RESEND_API_KEY exists: ${RESEND_API_KEY:+yes:no}" && \
-    echo "RESEND_API_KEY length: ${#RESEND_API_KEY}" && \
-    echo "SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT}" && \
-    echo "Starting application..." && \
-    /app/nomadcrew-backend
+# Start command
+CMD ["/app/nomadcrew-backend"]
