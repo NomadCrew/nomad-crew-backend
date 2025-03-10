@@ -147,14 +147,3 @@ jobs:
             RESEND_API_KEY=RESEND_API_KEY:latest
             GEOAPIFY_KEY=GEOAPIFY_KEY:latest
             PEXELS_API_KEY=PEXELS_API_KEY:latest
-
-      - name: Map Custom Domain
-        run: |
-          gcloud run domain-mappings create --region=${{ env.REGION }} \
-            --service=${{ env.SERVICE_NAME }} \
-            --domain=api.nomadcrew.uk \
-            --force-override
-
-      - name: Output URL
-        run: |
-          echo "Service URL: https://api.nomadcrew.uk"

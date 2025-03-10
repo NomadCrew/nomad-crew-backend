@@ -159,13 +159,6 @@ jobs:
             GEOAPIFY_KEY=GEOAPIFY_KEY:latest
             PEXELS_API_KEY=PEXELS_API_KEY:latest
 
-      - name: Map Custom Domain
-        run: |
-          gcloud run domain-mappings create --region=${{ env.REGION }} \
-            --service=${{ env.SERVICE_NAME }} \
-            --domain=preview.nomadcrew.uk \
-            --force-override
-          
       - name: Comment on PR
         uses: actions/github-script@v6
         with:
