@@ -14,6 +14,7 @@ on:
 env:
   PROJECT_ID: nomadcrew-11fd4
   REGION: us-east1
+  REPOSITORY: nomadcrew-containers
 
 permissions:
   contents: read
@@ -116,15 +117,15 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
           
       - name: Authorize Docker push
-        run: gcloud auth configure-docker
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev
       
       - name: Build and Push Container
         run: |-
-          docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-            --build-arg VERSION=pr-${{ env.PR_NUMBER }}-${{ github.sha }} \
-            --build-arg SERVER_ENVIRONMENT=staging \
-            .
-          docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker build -t us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          --build-arg VERSION=pr-${{ env.PR_NUMBER }}-${{ github.sha }} \
+          --build-arg SERVER_ENVIRONMENT=staging \
+          .
+          docker push us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
       
       - name: Deploy to Cloud Run
         id: deploy
@@ -132,7 +133,7 @@ jobs:
         with:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
-          image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           env_vars: |
             SERVER_ENVIRONMENT=staging
             PORT=8080

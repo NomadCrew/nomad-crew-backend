@@ -8,6 +8,7 @@ on:
 env:
   PROJECT_ID: nomadcrew-11fd4
   REGION: us-east1
+  REPOSITORY: nomadcrew-containers
   
 jobs:
   cleanup:
