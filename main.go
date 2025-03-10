@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	"fmt"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/db"
@@ -41,6 +40,27 @@ func main() {
 		log.Info("Shutting down gracefully...")
 	}()
 
+
+	configEnv := os.Getenv("SERVER_ENVIRONMENT")
+	if configEnv == "" {
+		configEnv = "development"
+	}
+	configFilePath := fmt.Sprintf("config/config.%s.yaml", configEnv)
+
+	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+		log.Infow("Config file not found, generating from environment variables", 
+			"path", configFilePath, 
+			"environment", configEnv)
+		
+		// Log available environment variables for debugging
+		log.Infow("Environment variables for debugging",
+			"RESEND_API_KEY_set", os.Getenv("RESEND_API_KEY") != "",
+			"RESEND_API_KEY_length", len(os.Getenv("RESEND_API_KEY")),
+			"JWT_SECRET_KEY_set", os.Getenv("JWT_SECRET_KEY") != "",
+			"REDIS_PASSWORD_set", os.Getenv("REDIS_PASSWORD") != "",
+			"DB_PASSWORD_set", os.Getenv("DB_PASSWORD") != "")
+	}
+
 	// Load configuration and DB connection
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -48,42 +68,11 @@ func main() {
 	}
 
 	// Initialize database connection directly
-	var poolConfig *pgxpool.Config
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Name,
-		cfg.Database.SSLMode,
-	)
-
-	// Log only non-sensitive connection information
-	log.Infow("Connecting to database",
-		"host", cfg.Database.Host,
-		"port", cfg.Database.Port,
-		"database", cfg.Database.Name,
-		"sslmode", cfg.Database.SSLMode,
-		"connection_string", logger.MaskConnectionString(connStr))
-
-	if cfg.Server.Environment == config.EnvProduction {
-		poolConfig, err = pgxpool.ParseConfig(connStr)
-		if err != nil {
-			log.Fatalf("Failed to parse database config: %v", err)
-		}
-		poolConfig.ConnConfig.TLSConfig = &tls.Config{
-			ServerName: cfg.Database.Host,
-			MinVersion: tls.VersionTLS12,
-		}
-	} else {
-		// Development configuration with plain TCP connection
-		devConnStr := connStr
-
-		poolConfig, err = pgxpool.ParseConfig(devConnStr)
-		if err != nil {
-			log.Fatalf("Failed to parse database config: %v", err)
-		}
+	poolConfig, err := config.ConfigureNeonPostgresPool(&cfg.Database)
+	if err != nil {
+		log.Fatalf("Failed to configure database: %v", err)
 	}
+
 	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -97,26 +86,14 @@ func main() {
 	locationDB := db.NewLocationDB(dbClient)
 
 	// Initialize Redis client with TLS in production
-	redisOptions := &redis.Options{
-		Addr:     cfg.Redis.Address,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	}
-
-	// Log only non-sensitive Redis connection information
-	log.Infow("Connecting to Redis",
-		"address", cfg.Redis.Address,
-		"db", cfg.Redis.DB)
-
-	if cfg.Server.Environment == config.EnvProduction {
-		redisOptions.TLSConfig = &tls.Config{
-			ServerName: cfg.Redis.Address,
-			MinVersion: tls.VersionTLS12,
-		}
-	}
-
+	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
+
+	// Test Redis connection
+	if err := config.TestRedisConnection(redisClient); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
 
 	// Initialize Supabase client
 	supabaseClient, err := supabase.NewClient(

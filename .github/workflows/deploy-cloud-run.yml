@@ -1,0 +1,149 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: nomadcrew-11fd4
+  SERVICE_NAME: nomadcrew-backend
+  REGION: us-east1
+  REPOSITORY: nomadcrew-containers
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nomadcrew_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:latest
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run tests
+        id: run-tests
+        env:
+          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
+          JWT_SECRET_KEY: test_secret
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: "-buildvcs=false"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: [test, security-scan]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+          
+      - name: Authorize Docker push
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev
+      
+      - name: Build and Push Container
+        run: |-
+          docker build -t us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          --build-arg VERSION=${{ github.sha }} \
+          --build-arg SERVER_ENVIRONMENT=production \
+          .
+          docker push us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+      
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          env_vars: |
+            SERVER_ENVIRONMENT=production
+            ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            DB_HOST=${{ secrets.DB_HOST }}
+            DB_PORT=5432
+            DB_USER=${{ secrets.DB_USER }}
+            DB_NAME=${{ secrets.DB_NAME }}
+            DB_SSL_MODE=require
+            REDIS_ADDRESS=${{ secrets.REDIS_ADDRESS }}
+            REDIS_DB=0
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            EMAIL_FROM_ADDRESS=${{ secrets.EMAIL_FROM_ADDRESS }}
+            EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
+          secrets: |
+            JWT_SECRET_KEY=JWT_SECRET_KEY:latest
+            DB_PASSWORD=DB_PASSWORD:latest
+            REDIS_PASSWORD=REDIS_PASSWORD:latest
+            SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest
+            SUPABASE_SERVICE_KEY=SUPABASE_SERVICE_KEY:latest
+            SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest
+            RESEND_API_KEY=RESEND_API_KEY:latest
+            GEOAPIFY_KEY=GEOAPIFY_KEY:latest
+            PEXELS_API_KEY=PEXELS_API_KEY:latest

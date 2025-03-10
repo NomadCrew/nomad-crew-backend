@@ -96,8 +96,10 @@ func AuthenticationFailed(message string) *AppError {
 }
 
 func NewDatabaseError(err error) *AppError {
-	// Log original error but return sanitized message
-	logger.GetLogger().Errorw("Database error", "error", err)
+	// Only log if not in test mode
+	if !logger.IsTest {
+		logger.GetLogger().Errorw("Database error", "error", err)
+	}
 	return &AppError{
 		Type:       DatabaseError,
 		Message:    "Database operation failed",

@@ -71,11 +71,16 @@ func validateRequiredEnv(key string) (string, error) {
 
 func main() {
 	// Check if .env file exists
-	if _, err := os.Stat(".env"); os.IsNotExist(err) {
-		fmt.Println("ERROR: .env file not found!")
-		fmt.Println("Please create a .env file by copying .env.example and filling in the required values:")
-		fmt.Println("cp .env.example .env")
-		os.Exit(1)
+	inCI := os.Getenv("CI") == "true"
+	
+	// Check .env file only if we're not in CI
+	if !inCI {
+		if _, err := os.Stat(".env"); os.IsNotExist(err) {
+			fmt.Println("ERROR: .env file not found!")
+			fmt.Println("Please create a .env file by copying .env.example and filling in the required values:")
+			fmt.Println("cp .env.example .env")
+			os.Exit(1)
+		}
 	}
 
 	config := Config{}

@@ -64,6 +64,52 @@ Always:
 3. Monitor database connection pool metrics
 4. Enable Redis persistence
 
+## Fly.io Deployment
+
+This project is configured for deployment on Fly.io, a platform that provides a cost-effective way to host applications.
+
+### Prerequisites
+
+1. Install the Fly CLI: [Installation Guide](https://fly.io/docs/hands-on/install-flyctl/)
+2. Sign up for a Fly.io account
+3. Log in to Fly.io: `flyctl auth login`
+
+### Deployment Steps
+
+1. Set up your secrets:
+   ```bash
+   flyctl secrets set JWT_SECRET_KEY=your_jwt_secret \
+     DB_PASSWORD=your_db_password \
+     REDIS_PASSWORD=your_redis_password \
+     # Add other required secrets here
+   ```
+
+2. Deploy the application:
+   ```bash
+   flyctl deploy
+   ```
+
+3. Check the deployment status:
+   ```bash
+   flyctl status
+   ```
+
+### Database and Redis Setup
+
+This project uses:
+- **Database**: Neon.tech PostgreSQL (free tier)
+- **Redis Cache**: Upstash Redis (free tier)
+
+Make sure to set up these services and update the connection details in your Fly.io secrets.
+
+### GitHub Actions Integration
+
+The repository includes a GitHub Actions workflow for automatic deployment to Fly.io. To use it:
+
+1. Add your `FLY_API_TOKEN` to your GitHub repository secrets
+2. Add all other required environment variables to your GitHub repository secrets
+3. Push to the main branch or manually trigger the workflow
+
 ---
 Generated using GPT-4
 ## Workflow Consolidation

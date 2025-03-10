@@ -87,8 +87,13 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
                t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
         FROM trips t
-        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
-        WHERE t.id = $1 AND m.deleted_at IS NULL`
+        WHERE t.id = $1
+        AND NOT EXISTS (
+            SELECT 1 FROM metadata m 
+            WHERE m.table_name = 'trips' 
+            AND m.record_id = t.id 
+            AND m.deleted_at IS NOT NULL
+        )`
 
 	log.Debugw("Executing GetTrip query", "query", query, "tripId", id)
 
@@ -235,8 +240,13 @@ func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.T
     SELECT t.id, t.name, t.description, t.start_date, t.end_date,
            t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
     FROM trips t
-    LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id = t.id
-    WHERE t.created_by = $1 AND m.deleted_at IS NULL
+    WHERE t.created_by = $1
+    AND NOT EXISTS (
+        SELECT 1 FROM metadata m 
+        WHERE m.table_name = 'trips' 
+        AND m.record_id = t.id 
+        AND m.deleted_at IS NOT NULL
+    )
     ORDER BY t.start_date DESC`
 
 	rows, err := tdb.client.GetPool().Query(ctx, query, userID)
@@ -284,8 +294,12 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
                t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
         FROM trips t
-        LEFT JOIN metadata m ON m.table_name = 'trips' AND m.record_id::uuid = t.id
-        WHERE m.deleted_at IS NULL`
+        WHERE NOT EXISTS (
+            SELECT 1 FROM metadata m 
+            WHERE m.table_name = 'trips' 
+            AND m.record_id::uuid = t.id 
+            AND m.deleted_at IS NOT NULL
+        )`
 
 	var conditions []string
 	params := make([]interface{}, 0)

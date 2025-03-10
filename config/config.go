@@ -1,15 +1,11 @@
 package config
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/spf13/viper"
 )
 
@@ -42,12 +38,18 @@ type DatabaseConfig struct {
 	Name           string `mapstructure:"NAME" yaml:"name"`
 	MaxConnections int    `mapstructure:"MAX_CONNECTIONS" yaml:"max_connections"`
 	SSLMode        string `mapstructure:"SSL_MODE" yaml:"ssl_mode"`
+	MaxOpenConns   int    `mapstructure:"MAX_OPEN_CONNS" yaml:"max_open_conns"`
+	MaxIdleConns   int    `mapstructure:"MAX_IDLE_CONNS" yaml:"max_idle_conns"`
+	ConnMaxLife    string `mapstructure:"CONN_MAX_LIFE" yaml:"conn_max_life"`
 }
 
 type RedisConfig struct {
-	Address  string `mapstructure:"ADDRESS" yaml:"address"`
-	Password string `mapstructure:"PASSWORD" yaml:"password"`
-	DB       int    `mapstructure:"DB" yaml:"db"`
+	Address      string `mapstructure:"ADDRESS" yaml:"address"`
+	Password     string `mapstructure:"PASSWORD" yaml:"password"`
+	DB           int    `mapstructure:"DB" yaml:"db"`
+	UseTLS       bool   `mapstructure:"USE_TLS" yaml:"use_tls"`
+	PoolSize     int    `mapstructure:"POOL_SIZE" yaml:"pool_size"`
+	MinIdleConns int    `mapstructure:"MIN_IDLE_CONNS" yaml:"min_idle_conns"`
 }
 
 type ExternalServices struct {
@@ -93,12 +95,26 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.PORT", "8080")
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
+	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
+	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
+	v.SetDefault("DATABASE.CONN_MAX_LIFE", "1h")
+	v.SetDefault("DATABASE.HOST", "ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech")
+	v.SetDefault("DATABASE.PORT", 5432)
+	v.SetDefault("DATABASE.USER", "neondb_owner")
+	v.SetDefault("DATABASE.NAME", "neondb")
+	v.SetDefault("DATABASE.SSL_MODE", "require")
 	v.SetDefault("REDIS.DB", 0)
+	v.SetDefault("REDIS.ADDRESS", "actual-serval-57447.upstash.io:6379")
+	v.SetDefault("REDIS.USE_TLS", false) // Only enable TLS for Upstash
+	v.SetDefault("REDIS.POOL_SIZE", 3)   // Conservative for free tier
+	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
 	v.SetDefault("LOG_LEVEL", "info")
 
+	// Configure Viper to read from environment variables
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	// Bind all environment variables first
 	// Server config bindings
 	if err := v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT"); err != nil {
 		return nil, fmt.Errorf("failed to bind SERVER.ENVIRONMENT: %w", err)
@@ -143,6 +159,9 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("REDIS.DB", "REDIS_DB"); err != nil {
 		return nil, fmt.Errorf("failed to bind REDIS.DB: %w", err)
 	}
+	if err := v.BindEnv("REDIS.USE_TLS", "REDIS_USE_TLS"); err != nil {
+		return nil, fmt.Errorf("failed to bind REDIS.USE_TLS: %w", err)
+	}
 
 	// External services bindings
 	if err := v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY"); err != nil {
@@ -154,64 +173,8 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
 	}
-
-	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL_FROM_ADDRESS: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_FROM_NAME", "EMAIL_FROM_NAME"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL_FROM_NAME: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.EMAIL_BASE_URL", "EMAIL_BASE_URL"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL_BASE_URL: %w", err)
-	}
-
-	// Add debug logging
-	log.Infof("Environment variables loaded: %+v", map[string]interface{}{
-		"SERVER_PORT":     v.GetString("SERVER.PORT"),
-		"SERVER_ENV":      v.GetString("SERVER.ENVIRONMENT"),
-		"DB_HOST":         v.GetString("DATABASE.HOST"),
-		"ALLOWED_ORIGINS": v.GetString("SERVER.ALLOWED_ORIGINS"),
-	})
-
-	// Try to read config file based on environment
-	env := v.GetString("SERVER.ENVIRONMENT")
-	v.SetConfigName("config." + strings.ToLower(env))
-	v.AddConfigPath("./config")
-	v.AddConfigPath(".")
-
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("failed to read config: %w", err)
-		}
-		log.Info("No config file found, using environment variables and defaults")
-	}
-
-	// Load AWS secrets in production
-	if env == string(EnvProduction) {
-		if err := loadAWSSecrets(v); err != nil {
-			return nil, fmt.Errorf("failed to load AWS secrets: %w", err)
-		}
-	}
-
-	// Add AWS secrets path binding
-	if err := v.BindEnv("AWS_SECRETS_PATH", "AWS_SECRETS_PATH"); err != nil {
-		return nil, fmt.Errorf("failed to bind AWS_SECRETS_PATH: %w", err)
-	}
-
-	// In LoadConfig() function, add validation
-	awsSecretsPath := v.GetString("AWS_SECRETS_PATH")
-	if awsSecretsPath == "" {
-		return nil, fmt.Errorf("AWS_SECRETS_PATH environment variable must be set")
-	}
-
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("config unmarshal failed: %w", err)
-	}
-
-	// Validate configuration
-	if err := validateConfig(&cfg); err != nil {
-		return nil, err
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
 	}
 
 	// Email config bindings
@@ -225,54 +188,56 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
 	}
 
-	if len(cfg.Email.ResendAPIKey) < minKeyLength {
-		return nil, fmt.Errorf("RESEND_API_KEY is invalid or too short")
+	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
+	log.Infow("RESEND_API_KEY check", 
+		"present", resendAPIKey != "", 
+		"length", len(resendAPIKey),
+		"first_chars", func() string {
+			if len(resendAPIKey) > 3 {
+				return resendAPIKey[:3] + "..."
+			}
+			return ""
+		}())
+
+	// Log loaded configuration
+	env := v.GetString("SERVER.ENVIRONMENT")
+	log.Infow("Configuration loaded",
+		"environment", env,
+		"server_port", v.GetString("SERVER.PORT"),
+		"db_host", v.GetString("DATABASE.HOST"),
+		"allowed_origins", v.GetString("SERVER.ALLOWED_ORIGINS"),
+	)
+
+	// Unmarshal configuration
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("config unmarshal failed: %w", err)
 	}
+
+	// Validate configuration
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
+	}
+
+	// Validate external services
+	if err := validateExternalServices(&cfg.ExternalServices); err != nil {
+		return nil, err
+	}
+
+	// RESEND_API_KEY validation with detailed error
+	if len(cfg.Email.ResendAPIKey) < minKeyLength {
+		log.Errorw("RESEND_API_KEY validation failed",
+			"key_length", len(cfg.Email.ResendAPIKey),
+			"min_required", minKeyLength)
+		return nil, fmt.Errorf("RESEND_API_KEY is invalid or too short (length: %d, required: %d)",
+			len(cfg.Email.ResendAPIKey), minKeyLength)
+	}
+
 	if cfg.Email.FromAddress == "" {
 		return nil, fmt.Errorf("FROM_ADDRESS is required")
 	}
 
 	return &cfg, nil
-}
-
-func loadAWSSecrets(v *viper.Viper) error {
-	secretPath := v.GetString("AWS_SECRETS_PATH")
-	if secretPath == "" {
-		return fmt.Errorf("AWS secrets path not configured")
-	}
-
-	ctx := context.Background()
-
-	// Load AWS configuration from environment
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("unable to load AWS config: %w", err)
-	}
-
-	// Create Secrets Manager client
-	client := secretsmanager.NewFromConfig(cfg)
-
-	// Get secret
-	secretID := secretPath
-	secret, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: &secretID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to load secret %s: %w", secretID, err)
-	}
-
-	// Parse secrets JSON
-	var secrets map[string]string
-	if err := json.Unmarshal([]byte(*secret.SecretString), &secrets); err != nil {
-		return fmt.Errorf("failed to parse secrets: %w", err)
-	}
-
-	// Set secrets in Viper
-	for key, value := range secrets {
-		v.Set(key, value)
-	}
-
-	return nil
 }
 
 func validateConfig(cfg *Config) error {
@@ -343,6 +308,10 @@ func validateConnectionString(connStr string) error {
 
 // nolint:unused
 func validateExternalServices(services *ExternalServices) error {
+	if services.SupabaseURL == "" {
+		return fmt.Errorf("SUPABASE_URL is required")
+	}
+
 	if len(services.SupabaseAnonKey) < minKeyLength {
 		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
 	}
