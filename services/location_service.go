@@ -6,21 +6,32 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 )
 
+// LocationDBInterface defines the interface for location database operations
+type LocationDBInterface interface {
+	UpdateLocation(ctx context.Context, userID string, update types.LocationUpdate) (*types.Location, error)
+	GetTripMemberLocations(ctx context.Context, tripID string) ([]types.MemberLocation, error)
+}
+
+// OfflineLocationServiceInterface defines the interface for offline location operations
+type OfflineLocationServiceInterface interface {
+	SaveOfflineLocations(ctx context.Context, userID string, updates []types.LocationUpdate, deviceID string) error
+	ProcessOfflineLocations(ctx context.Context, userID string) error
+}
+
 // LocationService handles location-related operations
 type LocationService struct {
-	locationDB     *db.LocationDB
+	locationDB     LocationDBInterface
 	eventService   types.EventPublisher
-	offlineService *OfflineLocationService
+	offlineService OfflineLocationServiceInterface
 }
 
 // NewLocationService creates a new LocationService
-func NewLocationService(locationDB *db.LocationDB, eventService types.EventPublisher) *LocationService {
+func NewLocationService(locationDB LocationDBInterface, eventService types.EventPublisher) *LocationService {
 	service := &LocationService{
 		locationDB:   locationDB,
 		eventService: eventService,
@@ -31,7 +42,7 @@ func NewLocationService(locationDB *db.LocationDB, eventService types.EventPubli
 
 // SetOfflineService sets the offline location service
 // This is needed to avoid circular dependencies
-func (s *LocationService) SetOfflineService(offlineService *OfflineLocationService) {
+func (s *LocationService) SetOfflineService(offlineService OfflineLocationServiceInterface) {
 	s.offlineService = offlineService
 }
 
