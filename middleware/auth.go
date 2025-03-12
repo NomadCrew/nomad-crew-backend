@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"encoding/base64"
+
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -37,49 +39,87 @@ type CustomClaims struct {
 // AuthMiddleware verifies the API key and validates the Bearer token.
 func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var token string
 		log := logger.GetLogger()
 
-		// WebSocket-specific token handling
-		if IsWebSocket(c) {
-			token = c.Query("token")
-			log.Debugw("WebSocket token extraction",
-				"tokenPresent", token != "",
-				"queryParams", c.Request.URL.Query(),
-				"path", c.Request.URL.Path)
-			if token == "" {
-				log.Warn("WebSocket connection missing token parameter")
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"error": "WebSocket connections require ?token parameter",
-				})
-				return
-			}
-		} else {
-			// Standard Bearer token handling
-			authHeader := c.GetHeader("Authorization")
+		log.Debugw("Processing auth middleware",
+			"path", c.Request.URL.Path,
+			"method", c.Request.Method,
+			"headers", func() map[string]string {
+				headers := make(map[string]string)
+				for k, v := range c.Request.Header {
+					if k != "Authorization" && k != "Cookie" { // Skip sensitive headers
+						headers[k] = strings.Join(v, ",")
+					}
+				}
+				return headers
+			}())
+
+		// Extract token from Authorization header
+		var token string
+		authHeader := c.GetHeader("Authorization")
+
+		log.Debugw("Auth header inspection",
+			"header_present", authHeader != "",
+			"header_length", len(authHeader),
+			"starts_with_bearer", strings.HasPrefix(authHeader, "Bearer "))
+
+		if authHeader != "" {
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				token = strings.TrimPrefix(authHeader, "Bearer ")
+				log.Debugw("Bearer token extracted",
+					"token_length", len(token),
+					"token_format", func() string {
+						parts := strings.Split(token, ".")
+						return fmt.Sprintf("parts: %d", len(parts))
+					}())
 			}
 		}
 
 		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization required",
-			})
-			return
+			log.Warn("No token provided in request")
+
+			// Check if this is a WebSocket upgrade request
+			isWebSocketUpgrade := strings.ToLower(c.GetHeader("Connection")) == "upgrade" &&
+				strings.ToLower(c.GetHeader("Upgrade")) == "websocket"
+
+			// For WebSocket connections, we'll check if there's a token in the query parameters
+			if isWebSocketUpgrade {
+				// Try to get token from query parameters for WebSocket connections
+				tokenFromQuery := c.Query("token")
+				if tokenFromQuery != "" {
+					log.Debugw("Found token in query parameters for WebSocket connection",
+						"token_length", len(tokenFromQuery))
+					token = tokenFromQuery
+				} else {
+					log.Warnw("No token in query parameters for WebSocket connection",
+						"path", c.Request.URL.Path)
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+						"error": "Authorization required",
+					})
+					return
+				}
+			} else {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "Authorization required",
+				})
+				return
+			}
 		}
 
 		// Validate JWT token
-		log.Debugw("JWT validation attempt", "token", logger.MaskJWT(token))
+		log.Debugw("Starting JWT validation",
+			"token_length", len(token),
+			"request_path", c.Request.URL.Path)
+
 		userID, err := validateJWT(token)
 		if err != nil {
 			// Enhanced error logging
 			log.Warnw("Invalid JWT token",
 				"error", err,
-				"tokenLength", len(token),
-				"requestPath", c.Request.URL.Path,
-				"requestMethod", c.Request.Method,
-				"clientIP", c.ClientIP())
+				"token_length", len(token),
+				"request_path", c.Request.URL.Path,
+				"request_method", c.Request.Method,
+				"client_ip", c.ClientIP())
 
 			// Return a more user-friendly message if token is expired
 			errorMessage := "Invalid authentication token"
@@ -118,7 +158,7 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 
 		if userID == "" {
 			log.Errorw("Empty userID from valid JWT",
-				"maskedToken", logger.MaskJWT(token))
+				"token_length", len(token))
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 				"error": "Authentication system error",
 			})
@@ -127,7 +167,7 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 
 		log.Debugw("Authentication successful",
 			"userID", userID,
-			"isWebSocket", IsWebSocket(c))
+			"path", c.Request.URL.Path)
 		c.Set("user_id", userID)
 		c.Next()
 	}
@@ -139,77 +179,153 @@ func validateJWT(tokenString string) (string, error) {
 
 	// First parse without verification to inspect the token
 	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
-	if err == nil {
-		// Only log non-sensitive header information
-		log.Debugw("JWT header inspection", "alg", tokenObj.PrivateClaims()["alg"])
+	if err != nil {
+		log.Errorw("Failed to parse token without verification", "error", err)
+		return "", err
+	}
 
-		// Log expiration time to help with debugging
-		if !tokenObj.Expiration().IsZero() {
-			expiresAt := tokenObj.Expiration()
-			now := time.Now()
-			log.Debugw("Token expiration details",
-				"expires_at", expiresAt,
-				"current_time", now,
-				"is_expired", now.After(expiresAt),
-				"time_until_expiry", expiresAt.Sub(now).String())
-		}
+	// Log detailed token information
+	log.Debugw("JWT header inspection",
+		"alg", tokenObj.PrivateClaims()["alg"],
+		"kid", tokenObj.PrivateClaims()["kid"],
+		"typ", tokenObj.PrivateClaims()["typ"],
+		"iss", tokenObj.Issuer(),
+		"sub", tokenObj.Subject(),
+		"aud", tokenObj.Audience(),
+		"exp", tokenObj.Expiration(),
+		"iat", tokenObj.IssuedAt())
+
+	// Log expiration time to help with debugging
+	if !tokenObj.Expiration().IsZero() {
+		expiresAt := tokenObj.Expiration()
+		now := time.Now()
+		log.Debugw("Token expiration details",
+			"expires_at", expiresAt,
+			"current_time", now,
+			"is_expired", now.After(expiresAt),
+			"time_until_expiry", expiresAt.Sub(now).String())
 	}
 
 	// Get the Supabase JWT secret from config
 	cfg, err := config.LoadConfig()
 	if err != nil {
+		log.Errorw("Failed to load config for JWT validation", "error", err)
 		return "", fmt.Errorf("failed to load config for JWT validation: %w", err)
 	}
 
-	// Decode the base64 secret if needed
-	secret := cfg.ExternalServices.SupabaseJWTSecret
-	// Don't log secret length as it could provide information about the secret
-	log.Debug("Using Supabase JWT secret for validation")
+	// Get the raw secret
+	rawSecret := cfg.ExternalServices.SupabaseJWTSecret
 
-	// Now parse with verification using the appropriate settings for Supabase tokens
-	tokenObj, err = jwt.Parse([]byte(tokenString),
+	// Check for empty JWT secret
+	if rawSecret == "" {
+		log.Errorw("SUPABASE_JWT_SECRET is empty",
+			"error", "JWT validation cannot proceed with empty secret")
+		return "", fmt.Errorf("SUPABASE_JWT_SECRET environment variable is not set")
+	}
+
+	// Log JWT secret info (safely)
+	log.Debugw("JWT secret info",
+		"secret_length", len(rawSecret),
+		"first_chars", func() string {
+			if len(rawSecret) > 3 {
+				return rawSecret[:3] + "..."
+			}
+			return ""
+		}(),
+		"is_base64", func() bool {
+			_, err := base64.StdEncoding.DecodeString(rawSecret)
+			return err == nil
+		}())
+
+	// Try multiple approaches to validate the token
+	var validationErr error
+	var validToken jwt.Token
+
+	// Approach 1: Try with raw secret
+	log.Debug("Attempting to verify token with raw JWT secret")
+	validToken, err = jwt.Parse([]byte(tokenString),
 		jwt.WithVerify(true),
-		jwt.WithKey(jwa.HS256, []byte(secret)),
+		jwt.WithKey(jwa.HS256, []byte(rawSecret)),
 		jwt.WithValidate(true),
 		jwt.WithAcceptableSkew(30*time.Second),
 	)
 
-	if err != nil {
-		// Check specifically for token expiration
-		if strings.Contains(err.Error(), "exp not satisfied") {
-			expiryInfo := "Token has expired"
+	if err == nil {
+		log.Debug("Token validation successful with raw secret")
+		sub := validToken.Subject()
+		if sub == "" {
+			log.Error("Token validation failed: missing subject claim")
+			return "", fmt.Errorf("missing subject claim in token")
+		}
+		return sub, nil
+	}
 
-			// Try to parse the token without validation to get expiry details
-			if expiredToken, parseErr := jwt.Parse([]byte(tokenString), jwt.WithVerify(false)); parseErr == nil {
-				if !expiredToken.Expiration().IsZero() {
-					expiredAt := expiredToken.Expiration()
-					now := time.Now()
-					expiryInfo = fmt.Sprintf("Token expired at %s (expired %s ago)",
-						expiredAt.Format(time.RFC3339),
-						now.Sub(expiredAt).String())
+	validationErr = err
+	log.Debugw("Token validation with raw secret failed", "error", err)
 
-					log.Debugw("Token expiration details",
-						"expired_at", expiredAt,
-						"current_time", now,
-						"expired_by", now.Sub(expiredAt).String())
+	// Approach 2: Try with base64 decoded secret (if it looks like base64)
+	if isBase64(rawSecret) {
+		decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
+		if err == nil {
+			log.Debug("Attempting to verify token with base64 decoded JWT secret")
+			validToken, err = jwt.Parse([]byte(tokenString),
+				jwt.WithVerify(true),
+				jwt.WithKey(jwa.HS256, decodedSecret),
+				jwt.WithValidate(true),
+				jwt.WithAcceptableSkew(30*time.Second),
+			)
+
+			if err == nil {
+				log.Debug("Token validation successful with decoded secret")
+				sub := validToken.Subject()
+				if sub == "" {
+					log.Error("Token validation failed: missing subject claim")
+					return "", fmt.Errorf("missing subject claim in token")
 				}
+				return sub, nil
 			}
 
-			return "", fmt.Errorf("token expired: %s", expiryInfo)
-		}
-		return "", fmt.Errorf("invalid token: %w", err)
-	}
-
-	// Extract the subject claim (user ID)
-	sub := tokenObj.Subject()
-	if sub == "" {
-		// If subject is empty, try to get from private claims
-		if subClaim, ok := tokenObj.PrivateClaims()["sub"].(string); ok {
-			sub = subClaim
+			log.Debugw("Token validation with decoded secret failed", "error", err)
 		}
 	}
 
-	return sub, nil
+	// Approach 3: Try with URL-safe base64 decoded secret
+	decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
+	if err == nil {
+		log.Debug("Attempting to verify token with URL-safe base64 decoded JWT secret")
+		validToken, err = jwt.Parse([]byte(tokenString),
+			jwt.WithVerify(true),
+			jwt.WithKey(jwa.HS256, decodedSecret),
+			jwt.WithValidate(true),
+			jwt.WithAcceptableSkew(30*time.Second),
+		)
+
+		if err == nil {
+			log.Debug("Token validation successful with URL-safe decoded secret")
+			sub := validToken.Subject()
+			if sub == "" {
+				log.Error("Token validation failed: missing subject claim")
+				return "", fmt.Errorf("missing subject claim in token")
+			}
+			return sub, nil
+		}
+
+		log.Debugw("Token validation with URL-safe decoded secret failed", "error", err)
+	}
+
+	// If all approaches failed, return the original error
+	log.Errorw("All token validation approaches failed",
+		"error", validationErr,
+		"error_type", fmt.Sprintf("%T", validationErr),
+		"token_length", len(tokenString))
+
+	return "", validationErr
+}
+
+// Helper function to check if a string is base64 encoded
+func isBase64(s string) bool {
+	_, err := base64.StdEncoding.DecodeString(s)
+	return err == nil
 }
 
 // nolint:unused
