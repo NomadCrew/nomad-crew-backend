@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -101,7 +102,10 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 		return key, nil
 	}
 
-	log.Debugw("Refreshing JWKS cache", "url", c.jwksURL)
+	log.Infow("Refreshing JWKS cache",
+		"url", c.jwksURL,
+		"target_kid", targetKid,
+		"cached_keys_count", len(c.keys))
 
 	// Create HTTP client with timeout
 	client := &http.Client{
@@ -111,14 +115,19 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 	// Create a new request to add headers
 	req, err := http.NewRequest("GET", c.jwksURL, nil)
 	if err != nil {
-		log.Errorw("Failed to create request", "error", err, "url", c.jwksURL)
+		log.Errorw("Failed to create request",
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err),
+			"url", c.jwksURL)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Get the Supabase anon key from config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Errorw("Failed to load config for JWKS fetch", "error", err)
+		log.Errorw("Failed to load config for JWKS fetch",
+			"error", err,
+			"error_details", fmt.Sprintf("%+v", err))
 		return nil, fmt.Errorf("failed to load config for JWKS fetch: %w", err)
 	}
 
@@ -130,30 +139,91 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 	}
 
 	req.Header.Add("apikey", anonKey)
-	log.Debugw("Added API key to JWKS request", "key_length", len(anonKey))
+	log.Infow("Added API key to JWKS request",
+		"key_length", len(anonKey),
+		"key_first_chars", func() string {
+			if len(anonKey) > 5 {
+				return anonKey[:5] + "..."
+			}
+			return ""
+		}())
+
+	// Log request details for debugging
+	log.Debugw("JWKS request details",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"headers", func() map[string]string {
+			headers := make(map[string]string)
+			for k, v := range req.Header {
+				if k != "Authorization" { // Skip sensitive headers
+					headers[k] = strings.Join(v, ",")
+				}
+			}
+			return headers
+		}())
 
 	// Fetch the JWKS
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorw("Failed to fetch JWKS", "error", err, "url", c.jwksURL)
+		log.Errorw("Failed to fetch JWKS",
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err),
+			"error_details", err.Error(),
+			"url", c.jwksURL)
 		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
 	}
 	defer resp.Body.Close()
 
+	log.Infow("JWKS response received",
+		"status", resp.StatusCode,
+		"status_text", resp.Status,
+		"content_type", resp.Header.Get("Content-Type"),
+		"content_length", resp.ContentLength)
+
 	if resp.StatusCode != http.StatusOK {
+		// Try to read response body for more details
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		responseBody := string(bodyBytes)
+
 		log.Errorw("JWKS endpoint returned non-200 status",
 			"status", resp.StatusCode,
-			"url", c.jwksURL)
-		return nil, fmt.Errorf("JWKS endpoint returned status %d", resp.StatusCode)
+			"url", c.jwksURL,
+			"response_body", func() string {
+				if len(responseBody) > 500 {
+					return responseBody[:500] + "..." // Truncate long responses
+				}
+				return responseBody
+			}())
+		return nil, fmt.Errorf("JWKS endpoint returned status %d: %s", resp.StatusCode, responseBody)
 	}
 
 	// Parse the JWKS response
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorw("Failed to read JWKS response body",
+			"error", err,
+			"error_details", err.Error())
+		return nil, fmt.Errorf("failed to read JWKS response body: %w", err)
+	}
+
+	// Log response body for debugging (but truncate if too long)
+	log.Debugw("JWKS response body",
+		"body", func() string {
+			if len(bodyBytes) > 500 {
+				return string(bodyBytes[:500]) + "..." // Truncate long responses
+			}
+			return string(bodyBytes)
+		}())
+
 	var jwksResp struct {
 		Keys []jwk.Key `json:"keys"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&jwksResp); err != nil {
-		log.Errorw("Failed to decode JWKS response", "error", err)
+	if err := json.Unmarshal(bodyBytes, &jwksResp); err != nil {
+		log.Errorw("Failed to decode JWKS response",
+			"error", err,
+			"error_details", err.Error(),
+			"response_body_length", len(bodyBytes))
 		return nil, fmt.Errorf("failed to decode JWKS response: %w", err)
 	}
 
@@ -161,12 +231,28 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 	newKeys := make(map[string]jwk.Key)
 	var targetKey jwk.Key
 
+	log.Infow("JWKS keys received",
+		"key_count", len(jwksResp.Keys),
+		"keys", func() []string {
+			var kids []string
+			for _, k := range jwksResp.Keys {
+				kids = append(kids, k.KeyID())
+			}
+			return kids
+		}())
+
 	for _, key := range jwksResp.Keys {
 		kid := key.KeyID()
 		newKeys[kid] = key
 
+		log.Debugw("JWKS key details",
+			"kid", kid,
+			"alg", key.Algorithm(),
+			"key_type", fmt.Sprintf("%T", key))
+
 		if kid == targetKid {
 			targetKey = key
+			log.Infow("Found matching key in JWKS response", "kid", kid)
 		}
 	}
 
@@ -176,11 +262,22 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 
 	// Check if we found the target key
 	if targetKey == nil {
-		log.Errorw("No matching key found in JWKS", "kid", targetKid)
+		log.Errorw("No matching key found in JWKS",
+			"kid", targetKid,
+			"available_kids", func() []string {
+				var kids []string
+				for k := range newKeys {
+					kids = append(kids, k)
+				}
+				return kids
+			}())
 		return nil, fmt.Errorf("no matching key found in JWKS for kid: %s", targetKid)
 	}
 
-	log.Debugw("JWKS cache refreshed successfully", "key_count", len(newKeys))
+	log.Infow("JWKS cache refreshed successfully",
+		"key_count", len(newKeys),
+		"target_kid_found", targetKey != nil,
+		"cache_expires_at", c.expiresAt)
 	return targetKey, nil
 }
 
@@ -325,29 +422,58 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 func validateJWT(tokenString string) (string, error) {
 	log := logger.GetLogger()
 
+	// Detailed debug info about the token
+	log.Infow("Starting JWT validation",
+		"token_length", len(tokenString),
+		"token_first_10_chars", func() string {
+			if len(tokenString) > 10 {
+				return tokenString[:10] + "..."
+			}
+			return tokenString
+		}())
+
 	// First parse without verification to inspect the token
 	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
 	if err != nil {
-		log.Errorw("Failed to parse token without verification", "error", err)
-		return "", err
+		log.Errorw("Failed to parse token without verification",
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err),
+			"token_length", len(tokenString))
+		return "", fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	// Log detailed token information
-	log.Debugw("JWT header inspection",
-		"alg", tokenObj.PrivateClaims()["alg"],
-		"kid", tokenObj.PrivateClaims()["kid"],
-		"typ", tokenObj.PrivateClaims()["typ"],
-		"iss", tokenObj.Issuer(),
-		"sub", tokenObj.Subject(),
-		"aud", tokenObj.Audience(),
-		"exp", tokenObj.Expiration(),
-		"iat", tokenObj.IssuedAt())
+	// Log all claims for debugging
+	claims := make(map[string]interface{})
+	for k, v := range tokenObj.PrivateClaims() {
+		claims[k] = v
+	}
+
+	// Add registered claims
+	if sub := tokenObj.Subject(); sub != "" {
+		claims["sub"] = sub
+	}
+	if iss := tokenObj.Issuer(); iss != "" {
+		claims["iss"] = iss
+	}
+	if aud := tokenObj.Audience(); len(aud) > 0 {
+		claims["aud"] = aud
+	}
+	if exp := tokenObj.Expiration(); !exp.IsZero() {
+		claims["exp"] = exp
+	}
+	if iat := tokenObj.IssuedAt(); !iat.IsZero() {
+		claims["iat"] = iat
+	}
+
+	log.Infow("JWT token details",
+		"claims", claims,
+		"header", tokenObj.PrivateClaims())
 
 	// Log expiration time to help with debugging
 	if !tokenObj.Expiration().IsZero() {
 		expiresAt := tokenObj.Expiration()
 		now := time.Now()
-		log.Debugw("Token expiration details",
+		log.Infow("Token expiration details",
 			"expires_at", expiresAt,
 			"current_time", now,
 			"is_expired", now.After(expiresAt),
@@ -357,14 +483,24 @@ func validateJWT(tokenString string) (string, error) {
 	// Get the Supabase configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Errorw("Failed to load config for JWT validation", "error", err)
+		log.Errorw("Failed to load config for JWT validation",
+			"error", err,
+			"error_details", fmt.Sprintf("%+v", err))
 		return "", fmt.Errorf("failed to load config for JWT validation: %w", err)
 	}
+
+	// Log environment variables for debugging (mask sensitive parts)
+	log.Infow("JWT validation environment variables",
+		"SUPABASE_URL", cfg.ExternalServices.SupabaseURL,
+		"SUPABASE_ANON_KEY_SET", cfg.ExternalServices.SupabaseAnonKey != "",
+		"SUPABASE_ANON_KEY_LENGTH", len(cfg.ExternalServices.SupabaseAnonKey),
+		"SUPABASE_JWT_SECRET_SET", cfg.ExternalServices.SupabaseJWTSecret != "",
+		"SUPABASE_JWT_SECRET_LENGTH", len(cfg.ExternalServices.SupabaseJWTSecret))
 
 	// Extract the kid from the token header
 	kid, ok := tokenObj.PrivateClaims()["kid"].(string)
 	if !ok {
-		log.Debugw("No kid found in token header, trying to validate with static secret")
+		log.Infow("No kid found in token header, trying to validate with static secret")
 
 		// Fallback to static secret-based verification (for backward compatibility)
 		rawSecret := cfg.ExternalServices.SupabaseJWTSecret
@@ -377,6 +513,7 @@ func validateJWT(tokenString string) (string, error) {
 		}
 
 		// Try with raw secret
+		log.Debugw("Attempting JWT validation with raw secret", "alg", "HS256")
 		validToken, err := jwt.Parse([]byte(tokenString),
 			jwt.WithVerify(true),
 			jwt.WithKey(jwa.HS256, []byte(rawSecret)),
@@ -385,19 +522,22 @@ func validateJWT(tokenString string) (string, error) {
 		)
 
 		if err == nil {
-			log.Debug("Token validation successful with raw secret")
+			log.Info("Token validation successful with raw secret")
 			sub := validToken.Subject()
 			if sub == "" {
 				log.Error("Token validation failed: missing subject claim")
 				return "", fmt.Errorf("missing subject claim in token")
 			}
 			return sub, nil
+		} else {
+			log.Warnw("Raw secret validation failed", "error", err)
 		}
 
 		// Try with base64 decoded secret (if it looks like base64)
 		if isBase64(rawSecret) {
 			decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
 			if err == nil {
+				log.Debugw("Attempting JWT validation with base64 decoded secret", "alg", "HS256")
 				validToken, err = jwt.Parse([]byte(tokenString),
 					jwt.WithVerify(true),
 					jwt.WithKey(jwa.HS256, decodedSecret),
@@ -406,20 +546,25 @@ func validateJWT(tokenString string) (string, error) {
 				)
 
 				if err == nil {
-					log.Debug("Token validation successful with decoded secret")
+					log.Info("Token validation successful with decoded secret")
 					sub := validToken.Subject()
 					if sub == "" {
 						log.Error("Token validation failed: missing subject claim")
 						return "", fmt.Errorf("missing subject claim in token")
 					}
 					return sub, nil
+				} else {
+					log.Warnw("Base64 decoded secret validation failed", "error", err)
 				}
+			} else {
+				log.Warnw("Failed to decode base64 secret", "error", err)
 			}
 		}
 
 		// Try with URL-safe base64 decoded secret
 		decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
 		if err == nil {
+			log.Debugw("Attempting JWT validation with URL-safe base64 decoded secret", "alg", "HS256")
 			validToken, err = jwt.Parse([]byte(tokenString),
 				jwt.WithVerify(true),
 				jwt.WithKey(jwa.HS256, decodedSecret),
@@ -428,17 +573,24 @@ func validateJWT(tokenString string) (string, error) {
 			)
 
 			if err == nil {
-				log.Debug("Token validation successful with URL-safe decoded secret")
+				log.Info("Token validation successful with URL-safe decoded secret")
 				sub := validToken.Subject()
 				if sub == "" {
 					log.Error("Token validation failed: missing subject claim")
 					return "", fmt.Errorf("missing subject claim in token")
 				}
 				return sub, nil
+			} else {
+				log.Warnw("URL-safe base64 decoded secret validation failed", "error", err)
 			}
+		} else {
+			log.Warnw("Failed to decode URL-safe base64 secret", "error", err)
 		}
 
-		log.Errorw("All static secret validation approaches failed", "error", err)
+		log.Errorw("All static secret validation approaches failed",
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err),
+			"error_details", err.Error())
 		return "", fmt.Errorf("failed to validate token with static secret: %w", err)
 	}
 
@@ -451,12 +603,16 @@ func validateJWT(tokenString string) (string, error) {
 
 	// Build the JWKS URL
 	jwksURL := fmt.Sprintf("%s/auth/v1/jwks", strings.TrimSuffix(supabaseURL, "/"))
+	log.Infow("Using JWKS URL", "url", jwksURL, "kid", kid)
 
 	// Get the key from cache or fetch from JWKS endpoint
 	cache := GetJWKSCache(jwksURL)
 	matchingKey, err := cache.GetKey(kid)
 	if err != nil {
-		log.Errorw("Failed to get key from JWKS", "error", err, "kid", kid)
+		log.Errorw("Failed to get key from JWKS",
+			"error", err,
+			"kid", kid,
+			"error_details", err.Error())
 		return "", err
 	}
 
@@ -487,7 +643,12 @@ func validateJWT(tokenString string) (string, error) {
 		return "", fmt.Errorf("unsupported algorithm in token: %s", algStr)
 	}
 
-	log.Debugw("Using algorithm for verification", "alg", alg)
+	log.Infow("Using algorithm for verification", "alg", alg, "kid", kid)
+
+	// Log key details for debugging
+	log.Debugw("JWKS key details",
+		"key_type", fmt.Sprintf("%T", matchingKey),
+		"key_algorithm", matchingKey.Algorithm())
 
 	// Verify the token with the matching key
 	validToken, err := jwt.Parse([]byte(tokenString),
@@ -498,11 +659,16 @@ func validateJWT(tokenString string) (string, error) {
 	)
 
 	if err != nil {
-		log.Errorw("Token validation failed with JWKS key", "error", err, "kid", kid)
+		log.Errorw("Token validation failed with JWKS key",
+			"error", err,
+			"kid", kid,
+			"alg", alg,
+			"error_type", fmt.Sprintf("%T", err),
+			"error_details", err.Error())
 		return "", fmt.Errorf("token validation failed with JWKS key: %w", err)
 	}
 
-	log.Debug("Token validation successful with JWKS key")
+	log.Info("Token validation successful with JWKS key")
 	sub := validToken.Subject()
 	if sub == "" {
 		log.Error("Token validation failed: missing subject claim")
@@ -515,6 +681,16 @@ func validateJWT(tokenString string) (string, error) {
 func isBase64(s string) bool {
 	_, err := base64.StdEncoding.DecodeString(s)
 	return err == nil
+}
+
+// IsBase64 checks if a string is base64 encoded (exported version)
+func IsBase64(s string) bool {
+	return isBase64(s)
+}
+
+// DecodeBase64 decodes a base64-encoded string
+func DecodeBase64(s string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(s)
 }
 
 // nolint:unused
