@@ -76,13 +76,20 @@ func DebugJWTHandler() gin.HandlerFunc {
 		// Token parsed successfully, add claims to response
 		response["parse_success"] = true
 
+		// Add detailed token inspection
+		response["token_inspection"] = gin.H{
+			"header":            tokenObj.PrivateClaims(),
+			"current_time":      time.Now().Format(time.RFC3339),
+			"current_time_unix": time.Now().Unix(),
+		}
+
 		// Extract claims
 		claims := make(map[string]interface{})
 		for k, v := range tokenObj.PrivateClaims() {
 			claims[k] = v
 		}
 
-		// Add registered claims
+		// Add registered claims with detailed timing information
 		if sub := tokenObj.Subject(); sub != "" {
 			claims["sub"] = sub
 		}
@@ -93,14 +100,38 @@ func DebugJWTHandler() gin.HandlerFunc {
 			claims["aud"] = aud
 		}
 		if exp := tokenObj.Expiration(); !exp.IsZero() {
+			now := time.Now()
 			claims["exp"] = exp
+			claims["exp_unix"] = exp.Unix()
 			claims["expires_at"] = exp.Format(time.RFC3339)
-			claims["is_expired"] = time.Now().After(exp)
+			claims["is_expired"] = now.After(exp)
 			claims["time_until_expiry"] = time.Until(exp).String()
+			claims["time_since_expiry"] = time.Since(exp).String()
+			claims["expiration_details"] = gin.H{
+				"expiration_time":    exp.Format(time.RFC3339),
+				"current_time":       now.Format(time.RFC3339),
+				"is_expired":         now.After(exp),
+				"time_until_expiry":  time.Until(exp).String(),
+				"time_since_expiry":  time.Since(exp).String(),
+				"exp_unix":           exp.Unix(),
+				"current_unix":       now.Unix(),
+				"difference_seconds": now.Sub(exp).Seconds(),
+			}
 		}
 		if iat := tokenObj.IssuedAt(); !iat.IsZero() {
 			claims["iat"] = iat
+			claims["iat_unix"] = iat.Unix()
 			claims["issued_at"] = iat.Format(time.RFC3339)
+			claims["age"] = time.Since(iat).String()
+		}
+
+		// Add token format information
+		parts := strings.Split(token, ".")
+		response["token_format"] = gin.H{
+			"parts_count":      len(parts),
+			"header_length":    len(parts[0]),
+			"payload_length":   len(parts[1]),
+			"signature_length": len(parts[2]),
 		}
 
 		response["claims"] = claims
