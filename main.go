@@ -184,12 +184,14 @@ func main() {
 	r.GET("/health/readiness", healthHandler.ReadinessCheck)
 
 	// Debug routes - only available in development and staging
-	if cfg.Server.Environment != "production" {
+	if cfg.Server.Environment != config.EnvProduction {
 		debugRoutes := r.Group("/debug")
-		{
-			// JWT debug endpoint for troubleshooting token issues
-			debugRoutes.GET("/jwt", handlers.DebugJWTHandler())
-		}
+
+		// JWT debug endpoint for troubleshooting token issues
+		debugRoutes.GET("/jwt", handlers.DebugJWTHandler())
+
+		// Direct JWT validation with hardcoded secret for testing
+		debugRoutes.GET("/jwt/direct", handlers.DebugJWTDirectHandler())
 
 		log.Info("Debug routes enabled in non-production environment")
 	}

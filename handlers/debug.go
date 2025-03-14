@@ -741,3 +741,167 @@ if err == nil && key != nil {
 
 	return result
 }
+
+// DebugJWTDirectHandler tests JWT validation with hardcoded secret from the test script
+func DebugJWTDirectHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		log := logger.GetLogger()
+
+		// Get token from request
+		token := c.Query("token")
+		if token == "" {
+			authHeader := c.GetHeader("Authorization")
+			if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+				token = strings.TrimPrefix(authHeader, "Bearer ")
+			}
+		}
+
+		if token == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "No token provided",
+				"help":  "Provide token as query parameter or Authorization: Bearer header",
+			})
+			return
+		}
+
+		// Load configuration for comparison
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			log.Errorw("Failed to load config", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to load configuration",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		// Response object
+		response := gin.H{
+			"token_length": len(token),
+		}
+
+		// Hardcoded secret from your test script
+		hardcodedSecret := "KwiMJ4NKJW/FFE41DNj5C6fj19mww+ydxyesjZUG+UZ2rHKnTTTf2NkDxv1QTgpM06JDcwdEJJioAIeP5AMO/w=="
+
+		// Compare the two secrets (safely display first 8 chars)
+		envSecret := cfg.ExternalServices.SupabaseJWTSecret
+		response["secrets_comparison"] = gin.H{
+			"hardcoded_secret_prefix": func() string {
+				if len(hardcodedSecret) > 8 {
+					return hardcodedSecret[:8] + "..."
+				}
+				return "too short"
+			}(),
+			"env_secret_prefix": func() string {
+				if len(envSecret) > 8 {
+					return envSecret[:8] + "..."
+				}
+				return "too short"
+			}(),
+			"secrets_match":    hardcodedSecret == envSecret,
+			"hardcoded_length": len(hardcodedSecret),
+			"env_length":       len(envSecret),
+		}
+
+		// Test with hardcoded secret directly
+		hardcodedResult := testDirectValidation(token, hardcodedSecret)
+		response["hardcoded_validation"] = hardcodedResult
+
+		// Test with environment secret
+		envResult := testDirectValidation(token, envSecret)
+		response["env_validation"] = envResult
+
+		// If there are character differences, try to identify them
+		if hardcodedSecret != envSecret {
+			// Find the first position where they differ
+			minLen := min(len(hardcodedSecret), len(envSecret))
+			diffIndex := -1
+
+			for i := 0; i < minLen; i++ {
+				if hardcodedSecret[i] != envSecret[i] {
+					diffIndex = i
+					break
+				}
+			}
+
+			if diffIndex >= 0 {
+				response["first_difference"] = gin.H{
+					"position":       diffIndex,
+					"hardcoded_char": fmt.Sprintf("%q (byte: %d)", string(hardcodedSecret[diffIndex]), hardcodedSecret[diffIndex]),
+					"env_char":       fmt.Sprintf("%q (byte: %d)", string(envSecret[diffIndex]), envSecret[diffIndex]),
+				}
+
+				// Show a small window around the difference
+				startPos := max(0, diffIndex-5)
+				endPosHard := min(len(hardcodedSecret), diffIndex+6)
+				endPosEnv := min(len(envSecret), diffIndex+6)
+
+				response["difference_context"] = gin.H{
+					"hardcoded_excerpt": fmt.Sprintf("%q", hardcodedSecret[startPos:endPosHard]),
+					"env_excerpt":       fmt.Sprintf("%q", envSecret[startPos:endPosEnv]),
+				}
+			} else if len(hardcodedSecret) != len(envSecret) {
+				// They differ in length
+				response["length_difference"] = gin.H{
+					"hardcoded_extra": func() string {
+						if len(hardcodedSecret) > len(envSecret) {
+							return fmt.Sprintf("%q", hardcodedSecret[len(envSecret):])
+						}
+						return ""
+					}(),
+					"env_extra": func() string {
+						if len(envSecret) > len(hardcodedSecret) {
+							return fmt.Sprintf("%q", envSecret[len(hardcodedSecret):])
+						}
+						return ""
+					}(),
+				}
+			}
+		}
+
+		// Final recommendation
+		if hardcodedResult["success"].(bool) {
+			response["recommendation"] = "The hardcoded secret works! Update your environment variable to match it exactly."
+		} else if envResult["success"].(bool) {
+			response["recommendation"] = "Environment secret works but hardcoded doesn't - something else is wrong."
+		} else {
+			response["recommendation"] = "Neither secret works. Check your token or try additional approaches."
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// Helper function to test JWT validation with a specific secret
+func testDirectValidation(tokenString string, secret string) map[string]interface{} {
+	result := make(map[string]interface{})
+	log := logger.GetLogger()
+
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(secret)),
+	)
+
+	if err != nil {
+		result["success"] = false
+		result["error"] = err.Error()
+		log.Warnw("JWT validation failed", "error", err)
+	} else {
+		result["success"] = true
+		if token != nil {
+			result["subject"] = token.Subject()
+			result["issuer"] = token.Issuer()
+		}
+		log.Infow("JWT validation succeeded")
+	}
+
+	return result
+}
+
+// Helper function for finding maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
