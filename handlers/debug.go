@@ -145,6 +145,36 @@ func simpleTokenValidation(tokenString string, secret string) map[string]interfa
 	return result
 }
 
+// Direct approach exactly matching the successful test script
+func directSuccessTest(tokenString string, secret string) map[string]interface{} {
+	result := make(map[string]interface{})
+	log := logger.GetLogger()
+
+	// Direct approach exactly matching the successful test script
+	log.Infow("Attempting direct HS256 validation with raw JWT secret from test script")
+
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(secret)),
+	)
+
+	if err != nil {
+		result["success"] = false
+		result["error"] = err.Error()
+		log.Warnw("Direct HS256 validation failed", "error", err)
+	} else {
+		result["success"] = true
+		result["subject"] = token.Subject()
+		log.Infow("Direct HS256 validation succeeded using raw secret")
+	}
+
+	// Include a debug tip
+	result["notes"] = "This is the exact approach from the successful test script"
+	result["approach"] = "Direct HS256 with raw JWT secret"
+
+	return result
+}
+
 // DebugJWTHandler handles debug requests for JWT validation
 func DebugJWTHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -290,6 +320,12 @@ func DebugJWTHandler() gin.HandlerFunc {
 
 		// Step 4: Add the direct simple token validation test
 		response["simple_validation_test"] = simpleTokenValidation(token, cfg.ExternalServices.SupabaseJWTSecret)
+
+		// Add our direct successful approach from test script
+		response["direct_success_test"] = directSuccessTest(token, cfg.ExternalServices.SupabaseJWTSecret)
+
+		// Add tests for all variants of our new validation approaches
+		response["comprehensive_validation"] = comprehensiveValidationTests(token, cfg, header)
 
 		// Step 5: Try to validate without checking expiration - with multiple formats and algorithms
 		response["signature_validation_attempts"] = []gin.H{}
@@ -526,4 +562,182 @@ func DebugJWTHandler() gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, response)
 	}
+}
+
+// comprehensiveValidationTests runs all our validation approaches from the most
+// promising to least promising, to determine which is most reliable
+func comprehensiveValidationTests(tokenString string, cfg *config.Config, tokenHeader map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	log := logger.GetLogger()
+
+	// Array to store results of each approach
+	approaches := []map[string]interface{}{}
+
+	// Helper to add an approach result
+	addApproach := func(name, description string, fn func() (jwt.Token, error)) {
+		approach := map[string]interface{}{
+			"name":        name,
+			"description": description,
+		}
+
+		token, err := fn()
+		if err != nil {
+			approach["success"] = false
+			approach["error"] = err.Error()
+		} else {
+			approach["success"] = true
+			if token != nil {
+				approach["subject"] = token.Subject()
+				approach["issuer"] = token.Issuer()
+			}
+		}
+
+		approaches = append(approaches, approach)
+	}
+
+	// APPROACH 1: Direct HS256 with raw JWT secret
+	addApproach("direct_hs256", "Direct HS256 validation with raw JWT secret", func() (jwt.Token, error) {
+		return jwt.Parse([]byte(tokenString),
+			jwt.WithVerify(true),
+			jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
+		)
+	})
+
+	// Extract kid value if present
+	var kidValue string
+	if kid, ok := tokenHeader["kid"].(string); ok && kid != "" {
+		kidValue = kid
+
+		// APPROACH 2: HS256 with kid value as secret
+		addApproach("kid_as_secret", "HS256 validation using kid value as secret", func() (jwt.Token, error) {
+			return jwt.Parse([]byte(tokenString),
+				jwt.WithVerify(true),
+				jwt.WithKey(jwa.HS256, []byte(kidValue)),
+			)
+		})
+
+		// APPROACH 3: Try to use JWKS validation if Supabase URL is set
+		if cfg.ExternalServices.SupabaseURL != "" {
+			jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
+
+			// Create JWKS cache instance
+			jwksCache := middleware.GetJWKSCache(jwksURL)
+
+			// Try to fetch the key for this specific kid
+			key, err := jwksCache.GetKey(kidValue)
+			if err == nil && key != nil {
+				addApproach("jwks_rs256", "RS256 validation with JWKS key", func() (jwt.Token, error) {
+					return jwt.Parse([]byte(tokenString),
+						jwt.WithVerify(true),
+						jwt.WithKey(jwa.RS256, key),
+					)
+				})
+			} else {
+				log.Warnw("Failed to get key from JWKS", "error", err)
+			}
+		}
+	}
+
+	// APPROACH 4: Try other common algorithms with raw secret
+	for _, alg := range []struct {
+		name string
+		alg  jwa.SignatureAlgorithm
+	}{
+		{"HS384", jwa.HS384},
+		{"HS512", jwa.HS512},
+	} {
+		addApproach("direct_"+alg.name, fmt.Sprintf("Direct %s validation with raw JWT secret", alg.name), func() (jwt.Token, error) {
+			return jwt.Parse([]byte(tokenString),
+				jwt.WithVerify(true),
+				jwt.WithKey(alg.alg, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
+			)
+		})
+	}
+
+	// Find the successful approach
+	var workingApproach map[string]interface{}
+	for _, approach := range approaches {
+		if success, ok := approach["success"].(bool); ok && success {
+			workingApproach = approach
+			break
+		}
+	}
+
+	result["approaches"] = approaches
+
+	if workingApproach != nil {
+		result["working_approach"] = workingApproach
+		result["recommendation"] = fmt.Sprintf(
+			"The best approach for validating this token is: %s - %s",
+			workingApproach["name"],
+			workingApproach["description"],
+		)
+
+		// Add code snippet for the working approach
+		switch workingApproach["name"] {
+		case "direct_hs256":
+			result["code_snippet"] = `
+// Validate JWT token with direct HS256 approach
+token, err := jwt.Parse([]byte(tokenString),
+	jwt.WithVerify(true),
+	jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
+)
+`
+		case "kid_as_secret":
+			result["code_snippet"] = `
+// Extract kid from token header
+var kidValue string
+parts := strings.Split(tokenString, ".")
+if len(parts) == 3 {
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err == nil {
+		var headerMap map[string]interface{}
+		if json.Unmarshal(headerBytes, &headerMap) == nil {
+			if kid, ok := headerMap["kid"].(string); ok {
+				kidValue = kid
+			}
+		}
+	}
+}
+
+// Validate token using kid as secret
+token, err := jwt.Parse([]byte(tokenString),
+	jwt.WithVerify(true),
+	jwt.WithKey(jwa.HS256, []byte(kidValue)),
+)
+`
+		case "jwks_rs256":
+			result["code_snippet"] = `
+// Extract kid from token header
+var kidValue string
+parts := strings.Split(tokenString, ".")
+if len(parts) == 3 {
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err == nil {
+		var headerMap map[string]interface{}
+		if json.Unmarshal(headerBytes, &headerMap) == nil {
+			if kid, ok := headerMap["kid"].(string); ok {
+				kidValue = kid
+			}
+		}
+	}
+}
+
+// Get key from JWKS
+jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
+jwksCache := middleware.GetJWKSCache(jwksURL)
+key, err := jwksCache.GetKey(kidValue)
+if err == nil && key != nil {
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.RS256, key),
+	)
+}
+`
+		}
+	} else {
+		result["recommendation"] = "None of the approaches was successful. You may need to try additional methods."
+	}
+
+	return result
 }
