@@ -1,12 +1,13 @@
 package middleware
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
-
-	"encoding/base64"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -34,6 +36,152 @@ type SupabaseClaims struct {
 type CustomClaims struct {
 	Subject string `json:"sub"`
 	// Add other claims as needed
+}
+
+// JWKSCache is a cache for JWKS keys to avoid fetching on every request
+type JWKSCache struct {
+	keys      map[string]jwk.Key // kid -> key mapping
+	expiresAt time.Time
+	mutex     sync.RWMutex
+	jwksURL   string
+	ttl       time.Duration
+}
+
+var jwksCache *JWKSCache
+var jwksCacheOnce sync.Once
+
+// GetJWKSCache returns a singleton instance of the JWKS cache
+func GetJWKSCache(jwksURL string) *JWKSCache {
+	jwksCacheOnce.Do(func() {
+		jwksCache = &JWKSCache{
+			keys:      make(map[string]jwk.Key),
+			expiresAt: time.Now(),
+			jwksURL:   jwksURL,
+			ttl:       15 * time.Minute, // Cache keys for 15 minutes
+		}
+	})
+
+	// If URL changed, update it
+	if jwksCache.jwksURL != jwksURL {
+		jwksCache.mutex.Lock()
+		jwksCache.jwksURL = jwksURL
+		jwksCache.mutex.Unlock()
+	}
+
+	return jwksCache
+}
+
+// GetKey returns a key by its ID, fetching from remote if needed
+func (c *JWKSCache) GetKey(kid string) (jwk.Key, error) {
+	log := logger.GetLogger()
+
+	// Check if key is in cache
+	c.mutex.RLock()
+	if key, ok := c.keys[kid]; ok && time.Now().Before(c.expiresAt) {
+		c.mutex.RUnlock()
+		log.Debugw("Using cached JWKS key", "kid", kid)
+		return key, nil
+	}
+	c.mutex.RUnlock()
+
+	// Need to refresh the cache
+	return c.refreshCache(kid)
+}
+
+// refreshCache fetches the latest keys from the JWKS endpoint
+func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
+	log := logger.GetLogger()
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Double-check if another goroutine has already refreshed the cache
+	if key, ok := c.keys[targetKid]; ok && time.Now().Before(c.expiresAt) {
+		log.Debugw("Key found in cache after lock", "kid", targetKid)
+		return key, nil
+	}
+
+	log.Debugw("Refreshing JWKS cache", "url", c.jwksURL)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Create a new request to add headers
+	req, err := http.NewRequest("GET", c.jwksURL, nil)
+	if err != nil {
+		log.Errorw("Failed to create request", "error", err, "url", c.jwksURL)
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Get the Supabase anon key from config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Errorw("Failed to load config for JWKS fetch", "error", err)
+		return nil, fmt.Errorf("failed to load config for JWKS fetch: %w", err)
+	}
+
+	// Add the API key header
+	anonKey := cfg.ExternalServices.SupabaseAnonKey
+	if anonKey == "" {
+		log.Errorw("SUPABASE_ANON_KEY is empty", "error", "JWKS fetch cannot proceed")
+		return nil, fmt.Errorf("SUPABASE_ANON_KEY environment variable is not set")
+	}
+
+	req.Header.Add("apikey", anonKey)
+	log.Debugw("Added API key to JWKS request", "key_length", len(anonKey))
+
+	// Fetch the JWKS
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorw("Failed to fetch JWKS", "error", err, "url", c.jwksURL)
+		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Errorw("JWKS endpoint returned non-200 status",
+			"status", resp.StatusCode,
+			"url", c.jwksURL)
+		return nil, fmt.Errorf("JWKS endpoint returned status %d", resp.StatusCode)
+	}
+
+	// Parse the JWKS response
+	var jwksResp struct {
+		Keys []jwk.Key `json:"keys"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&jwksResp); err != nil {
+		log.Errorw("Failed to decode JWKS response", "error", err)
+		return nil, fmt.Errorf("failed to decode JWKS response: %w", err)
+	}
+
+	// Update cache with new keys
+	newKeys := make(map[string]jwk.Key)
+	var targetKey jwk.Key
+
+	for _, key := range jwksResp.Keys {
+		kid := key.KeyID()
+		newKeys[kid] = key
+
+		if kid == targetKid {
+			targetKey = key
+		}
+	}
+
+	// Update the cache
+	c.keys = newKeys
+	c.expiresAt = time.Now().Add(c.ttl)
+
+	// Check if we found the target key
+	if targetKey == nil {
+		log.Errorw("No matching key found in JWKS", "kid", targetKid)
+		return nil, fmt.Errorf("no matching key found in JWKS for kid: %s", targetKid)
+	}
+
+	log.Debugw("JWKS cache refreshed successfully", "key_count", len(newKeys))
+	return targetKey, nil
 }
 
 // AuthMiddleware verifies the API key and validates the Bearer token.
@@ -206,102 +354,38 @@ func validateJWT(tokenString string) (string, error) {
 			"time_until_expiry", expiresAt.Sub(now).String())
 	}
 
-	// Get the Supabase JWT secret from config
+	// Get the Supabase configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Errorw("Failed to load config for JWT validation", "error", err)
 		return "", fmt.Errorf("failed to load config for JWT validation: %w", err)
 	}
 
-	// Get the raw secret
-	rawSecret := cfg.ExternalServices.SupabaseJWTSecret
+	// Extract the kid from the token header
+	kid, ok := tokenObj.PrivateClaims()["kid"].(string)
+	if !ok {
+		log.Debugw("No kid found in token header, trying to validate with static secret")
 
-	// Check for empty JWT secret
-	if rawSecret == "" {
-		log.Errorw("SUPABASE_JWT_SECRET is empty",
-			"error", "JWT validation cannot proceed with empty secret")
-		return "", fmt.Errorf("SUPABASE_JWT_SECRET environment variable is not set")
-	}
+		// Fallback to static secret-based verification (for backward compatibility)
+		rawSecret := cfg.ExternalServices.SupabaseJWTSecret
 
-	// Log JWT secret info (safely)
-	log.Debugw("JWT secret info",
-		"secret_length", len(rawSecret),
-		"first_chars", func() string {
-			if len(rawSecret) > 3 {
-				return rawSecret[:3] + "..."
-			}
-			return ""
-		}(),
-		"is_base64", func() bool {
-			_, err := base64.StdEncoding.DecodeString(rawSecret)
-			return err == nil
-		}())
-
-	// Try multiple approaches to validate the token
-	var validationErr error
-	var validToken jwt.Token
-
-	// Approach 1: Try with raw secret
-	log.Debug("Attempting to verify token with raw JWT secret")
-	validToken, err = jwt.Parse([]byte(tokenString),
-		jwt.WithVerify(true),
-		jwt.WithKey(jwa.HS256, []byte(rawSecret)),
-		jwt.WithValidate(true),
-		jwt.WithAcceptableSkew(30*time.Second),
-	)
-
-	if err == nil {
-		log.Debug("Token validation successful with raw secret")
-		sub := validToken.Subject()
-		if sub == "" {
-			log.Error("Token validation failed: missing subject claim")
-			return "", fmt.Errorf("missing subject claim in token")
+		// Check for empty JWT secret
+		if rawSecret == "" {
+			log.Errorw("SUPABASE_JWT_SECRET is empty",
+				"error", "JWT validation cannot proceed with empty secret")
+			return "", fmt.Errorf("SUPABASE_JWT_SECRET environment variable is not set")
 		}
-		return sub, nil
-	}
 
-	validationErr = err
-	log.Debugw("Token validation with raw secret failed", "error", err)
-
-	// Approach 2: Try with base64 decoded secret (if it looks like base64)
-	if isBase64(rawSecret) {
-		decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
-		if err == nil {
-			log.Debug("Attempting to verify token with base64 decoded JWT secret")
-			validToken, err = jwt.Parse([]byte(tokenString),
-				jwt.WithVerify(true),
-				jwt.WithKey(jwa.HS256, decodedSecret),
-				jwt.WithValidate(true),
-				jwt.WithAcceptableSkew(30*time.Second),
-			)
-
-			if err == nil {
-				log.Debug("Token validation successful with decoded secret")
-				sub := validToken.Subject()
-				if sub == "" {
-					log.Error("Token validation failed: missing subject claim")
-					return "", fmt.Errorf("missing subject claim in token")
-				}
-				return sub, nil
-			}
-
-			log.Debugw("Token validation with decoded secret failed", "error", err)
-		}
-	}
-
-	// Approach 3: Try with URL-safe base64 decoded secret
-	decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
-	if err == nil {
-		log.Debug("Attempting to verify token with URL-safe base64 decoded JWT secret")
-		validToken, err = jwt.Parse([]byte(tokenString),
+		// Try with raw secret
+		validToken, err := jwt.Parse([]byte(tokenString),
 			jwt.WithVerify(true),
-			jwt.WithKey(jwa.HS256, decodedSecret),
+			jwt.WithKey(jwa.HS256, []byte(rawSecret)),
 			jwt.WithValidate(true),
 			jwt.WithAcceptableSkew(30*time.Second),
 		)
 
 		if err == nil {
-			log.Debug("Token validation successful with URL-safe decoded secret")
+			log.Debug("Token validation successful with raw secret")
 			sub := validToken.Subject()
 			if sub == "" {
 				log.Error("Token validation failed: missing subject claim")
@@ -310,16 +394,121 @@ func validateJWT(tokenString string) (string, error) {
 			return sub, nil
 		}
 
-		log.Debugw("Token validation with URL-safe decoded secret failed", "error", err)
+		// Try with base64 decoded secret (if it looks like base64)
+		if isBase64(rawSecret) {
+			decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
+			if err == nil {
+				validToken, err = jwt.Parse([]byte(tokenString),
+					jwt.WithVerify(true),
+					jwt.WithKey(jwa.HS256, decodedSecret),
+					jwt.WithValidate(true),
+					jwt.WithAcceptableSkew(30*time.Second),
+				)
+
+				if err == nil {
+					log.Debug("Token validation successful with decoded secret")
+					sub := validToken.Subject()
+					if sub == "" {
+						log.Error("Token validation failed: missing subject claim")
+						return "", fmt.Errorf("missing subject claim in token")
+					}
+					return sub, nil
+				}
+			}
+		}
+
+		// Try with URL-safe base64 decoded secret
+		decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
+		if err == nil {
+			validToken, err = jwt.Parse([]byte(tokenString),
+				jwt.WithVerify(true),
+				jwt.WithKey(jwa.HS256, decodedSecret),
+				jwt.WithValidate(true),
+				jwt.WithAcceptableSkew(30*time.Second),
+			)
+
+			if err == nil {
+				log.Debug("Token validation successful with URL-safe decoded secret")
+				sub := validToken.Subject()
+				if sub == "" {
+					log.Error("Token validation failed: missing subject claim")
+					return "", fmt.Errorf("missing subject claim in token")
+				}
+				return sub, nil
+			}
+		}
+
+		log.Errorw("All static secret validation approaches failed", "error", err)
+		return "", fmt.Errorf("failed to validate token with static secret: %w", err)
 	}
 
-	// If all approaches failed, return the original error
-	log.Errorw("All token validation approaches failed",
-		"error", validationErr,
-		"error_type", fmt.Sprintf("%T", validationErr),
-		"token_length", len(tokenString))
+	// If kid is present, fetch and use the corresponding JWK
+	supabaseURL := cfg.ExternalServices.SupabaseURL
+	if supabaseURL == "" {
+		log.Error("SUPABASE_URL is not configured")
+		return "", fmt.Errorf("SUPABASE_URL is not configured")
+	}
 
-	return "", validationErr
+	// Build the JWKS URL
+	jwksURL := fmt.Sprintf("%s/auth/v1/jwks", strings.TrimSuffix(supabaseURL, "/"))
+
+	// Get the key from cache or fetch from JWKS endpoint
+	cache := GetJWKSCache(jwksURL)
+	matchingKey, err := cache.GetKey(kid)
+	if err != nil {
+		log.Errorw("Failed to get key from JWKS", "error", err, "kid", kid)
+		return "", err
+	}
+
+	// Get the algorithm from the token header
+	algStr, ok := tokenObj.PrivateClaims()["alg"].(string)
+	if !ok {
+		log.Errorw("No alg found in token header", "kid", kid)
+		return "", fmt.Errorf("no algorithm specified in token header")
+	}
+
+	// Map the string algorithm to jwa algorithm
+	var alg jwa.SignatureAlgorithm
+	switch algStr {
+	case "HS256":
+		alg = jwa.HS256
+	case "HS384":
+		alg = jwa.HS384
+	case "HS512":
+		alg = jwa.HS512
+	case "RS256":
+		alg = jwa.RS256
+	case "RS384":
+		alg = jwa.RS384
+	case "RS512":
+		alg = jwa.RS512
+	default:
+		log.Errorw("Unsupported algorithm in token", "alg", algStr)
+		return "", fmt.Errorf("unsupported algorithm in token: %s", algStr)
+	}
+
+	log.Debugw("Using algorithm for verification", "alg", alg)
+
+	// Verify the token with the matching key
+	validToken, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(alg, matchingKey),
+		jwt.WithValidate(true),
+		jwt.WithAcceptableSkew(30*time.Second),
+	)
+
+	if err != nil {
+		log.Errorw("Token validation failed with JWKS key", "error", err, "kid", kid)
+		return "", fmt.Errorf("token validation failed with JWKS key: %w", err)
+	}
+
+	log.Debug("Token validation successful with JWKS key")
+	sub := validToken.Subject()
+	if sub == "" {
+		log.Error("Token validation failed: missing subject claim")
+		return "", fmt.Errorf("missing subject claim in token")
+	}
+	return sub, nil
 }
 
 // Helper function to check if a string is base64 encoded
