@@ -418,67 +418,9 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 	}
 }
 
-// Modify your JWT validation logic
+// validateJWT validates a JWT token and returns the subject (user ID)
 func validateJWT(tokenString string) (string, error) {
 	log := logger.GetLogger()
-
-	// Detailed debug info about the token
-	log.Infow("Starting JWT validation",
-		"token_length", len(tokenString),
-		"token_first_10_chars", func() string {
-			if len(tokenString) > 10 {
-				return tokenString[:10] + "..."
-			}
-			return tokenString
-		}())
-
-	// First parse without verification to inspect the token
-	tokenObj, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
-	if err != nil {
-		log.Errorw("Failed to parse token without verification",
-			"error", err,
-			"error_type", fmt.Sprintf("%T", err),
-			"token_length", len(tokenString))
-		return "", fmt.Errorf("failed to parse token: %w", err)
-	}
-
-	// Log all claims for debugging
-	claims := make(map[string]interface{})
-	for k, v := range tokenObj.PrivateClaims() {
-		claims[k] = v
-	}
-
-	// Add registered claims
-	if sub := tokenObj.Subject(); sub != "" {
-		claims["sub"] = sub
-	}
-	if iss := tokenObj.Issuer(); iss != "" {
-		claims["iss"] = iss
-	}
-	if aud := tokenObj.Audience(); len(aud) > 0 {
-		claims["aud"] = aud
-	}
-	if exp := tokenObj.Expiration(); !exp.IsZero() {
-		claims["exp"] = exp
-	}
-	if iat := tokenObj.IssuedAt(); !iat.IsZero() {
-		claims["iat"] = iat
-	}
-
-	log.Infow("JWT token details",
-		"claims", claims,
-		"header", tokenObj.PrivateClaims())
-
-	// Log expiration time to help with debugging
-	if !tokenObj.Expiration().IsZero() {
-		expiresAt := tokenObj.Expiration()
-		now := time.Now()
-		log.Infow("Token expiration details",
-			"expires_at", expiresAt,
-			"current_time", now,
-			"is_expired", now.After(expiresAt),
-			"time_until_expiry", expiresAt.Sub(now).String())
-	}
 
 	// Get the Supabase configuration
 	cfg, err := config.LoadConfig()
@@ -489,215 +431,33 @@ func validateJWT(tokenString string) (string, error) {
 		return "", fmt.Errorf("failed to load config for JWT validation: %w", err)
 	}
 
-	// Log environment variables for debugging (mask sensitive parts)
-	log.Infow("JWT validation environment variables",
-		"SUPABASE_URL", cfg.ExternalServices.SupabaseURL,
-		"SUPABASE_ANON_KEY_SET", cfg.ExternalServices.SupabaseAnonKey != "",
-		"SUPABASE_ANON_KEY_LENGTH", len(cfg.ExternalServices.SupabaseAnonKey),
-		"SUPABASE_JWT_SECRET_SET", cfg.ExternalServices.SupabaseJWTSecret != "",
-		"SUPABASE_JWT_SECRET_LENGTH", len(cfg.ExternalServices.SupabaseJWTSecret))
-
-	// Extract the kid from the token header
-	kid, ok := tokenObj.PrivateClaims()["kid"].(string)
-	if !ok {
-		log.Infow("No kid found in token header, trying to validate with static secret")
-
-		// Fallback to static secret-based verification (for backward compatibility)
-		rawSecret := cfg.ExternalServices.SupabaseJWTSecret
-
-		// Check for empty JWT secret
-		if rawSecret == "" {
-			log.Errorw("SUPABASE_JWT_SECRET is empty",
-				"error", "JWT validation cannot proceed with empty secret")
-			return "", fmt.Errorf("SUPABASE_JWT_SECRET environment variable is not set")
-		}
-
-		// Try with raw secret
-		log.Debugw("Attempting JWT validation with raw secret", "alg", "HS256")
-		validToken, err := jwt.Parse([]byte(tokenString),
-			jwt.WithVerify(true),
-			jwt.WithKey(jwa.HS256, []byte(rawSecret)),
-			jwt.WithValidate(true),
-			jwt.WithAcceptableSkew(30*time.Second),
-		)
-
-		if err == nil {
-			log.Info("Token validation successful with raw secret")
-			sub := validToken.Subject()
-			if sub == "" {
-				log.Error("Token validation failed: missing subject claim")
-				return "", fmt.Errorf("missing subject claim in token")
-			}
-			return sub, nil
-		} else {
-			log.Warnw("Raw secret validation failed", "error", err)
-		}
-
-		// Try with standard base64 decoded secret
-		decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
-		if err == nil {
-			log.Debugw("Attempting JWT validation with standard base64 decoded secret", "alg", "HS256")
-			validToken, err = jwt.Parse([]byte(tokenString),
-				jwt.WithVerify(true),
-				jwt.WithKey(jwa.HS256, decodedSecret),
-				jwt.WithValidate(true),
-				jwt.WithAcceptableSkew(30*time.Second),
-			)
-
-			if err == nil {
-				log.Info("Token validation successful with standard base64 decoded secret")
-				sub := validToken.Subject()
-				if sub == "" {
-					log.Error("Token validation failed: missing subject claim")
-					return "", fmt.Errorf("missing subject claim in token")
-				}
-				return sub, nil
-			} else {
-				log.Warnw("Standard base64 decoded secret validation failed", "error", err)
-			}
-		} else {
-			log.Warnw("Failed to decode standard base64 secret", "error", err)
-		}
-
-		// Try with Raw URL-safe base64 decoded secret (without padding)
-		decodedSecret, err = base64.RawURLEncoding.DecodeString(rawSecret)
-		if err == nil {
-			log.Debugw("Attempting JWT validation with Raw URL-safe base64 decoded secret", "alg", "HS256")
-			validToken, err = jwt.Parse([]byte(tokenString),
-				jwt.WithVerify(true),
-				jwt.WithKey(jwa.HS256, decodedSecret),
-				jwt.WithValidate(true),
-				jwt.WithAcceptableSkew(30*time.Second),
-			)
-
-			if err == nil {
-				log.Info("Token validation successful with Raw URL-safe base64 decoded secret")
-				sub := validToken.Subject()
-				if sub == "" {
-					log.Error("Token validation failed: missing subject claim")
-					return "", fmt.Errorf("missing subject claim in token")
-				}
-				return sub, nil
-			} else {
-				log.Warnw("Raw URL-safe base64 decoded secret validation failed", "error", err)
-			}
-		} else {
-			log.Warnw("Failed to decode Raw URL-safe base64 secret", "error", err)
-		}
-
-		// Try with URL-safe base64 decoded secret (with padding)
-		decodedSecret, err = base64.URLEncoding.DecodeString(rawSecret)
-		if err == nil {
-			log.Debugw("Attempting JWT validation with URL-safe base64 decoded secret", "alg", "HS256")
-			validToken, err = jwt.Parse([]byte(tokenString),
-				jwt.WithVerify(true),
-				jwt.WithKey(jwa.HS256, decodedSecret),
-				jwt.WithValidate(true),
-				jwt.WithAcceptableSkew(30*time.Second),
-			)
-
-			if err == nil {
-				log.Info("Token validation successful with URL-safe base64 decoded secret")
-				sub := validToken.Subject()
-				if sub == "" {
-					log.Error("Token validation failed: missing subject claim")
-					return "", fmt.Errorf("missing subject claim in token")
-				}
-				return sub, nil
-			} else {
-				log.Warnw("URL-safe base64 decoded secret validation failed", "error", err)
-			}
-		} else {
-			log.Warnw("Failed to decode URL-safe base64 secret", "error", err)
-		}
-
-		log.Errorw("All static secret validation approaches failed",
-			"error", err,
-			"error_type", fmt.Sprintf("%T", err),
-			"error_details", err.Error())
-		return "", fmt.Errorf("failed to validate token with static secret: %w", err)
+	// Check for empty JWT secret
+	if cfg.ExternalServices.SupabaseJWTSecret == "" {
+		log.Errorw("SUPABASE_JWT_SECRET is empty",
+			"error", "JWT validation cannot proceed with empty secret")
+		return "", fmt.Errorf("SUPABASE_JWT_SECRET environment variable is not set")
 	}
 
-	// If kid is present, fetch and use the corresponding JWK
-	supabaseURL := cfg.ExternalServices.SupabaseURL
-	if supabaseURL == "" {
-		log.Error("SUPABASE_URL is not configured")
-		return "", fmt.Errorf("SUPABASE_URL is not configured")
-	}
-
-	// Build the JWKS URL
-	jwksURL := fmt.Sprintf("%s/auth/v1/jwks", strings.TrimSuffix(supabaseURL, "/"))
-	log.Infow("Using JWKS URL", "url", jwksURL, "kid", kid)
-
-	// Get the key from cache or fetch from JWKS endpoint
-	cache := GetJWKSCache(jwksURL)
-	matchingKey, err := cache.GetKey(kid)
-	if err != nil {
-		log.Errorw("Failed to get key from JWKS",
-			"error", err,
-			"kid", kid,
-			"error_details", err.Error())
-		return "", err
-	}
-
-	// Get the algorithm from the token header
-	algStr, ok := tokenObj.PrivateClaims()["alg"].(string)
-	if !ok {
-		log.Errorw("No alg found in token header", "kid", kid)
-		return "", fmt.Errorf("no algorithm specified in token header")
-	}
-
-	// Map the string algorithm to jwa algorithm
-	var alg jwa.SignatureAlgorithm
-	switch algStr {
-	case "HS256":
-		alg = jwa.HS256
-	case "HS384":
-		alg = jwa.HS384
-	case "HS512":
-		alg = jwa.HS512
-	case "RS256":
-		alg = jwa.RS256
-	case "RS384":
-		alg = jwa.RS384
-	case "RS512":
-		alg = jwa.RS512
-	default:
-		log.Errorw("Unsupported algorithm in token", "alg", algStr)
-		return "", fmt.Errorf("unsupported algorithm in token: %s", algStr)
-	}
-
-	log.Infow("Using algorithm for verification", "alg", alg, "kid", kid)
-
-	// Log key details for debugging
-	log.Debugw("JWKS key details",
-		"key_type", fmt.Sprintf("%T", matchingKey),
-		"key_algorithm", matchingKey.Algorithm())
-
-	// Verify the token with the matching key
-	validToken, err := jwt.Parse([]byte(tokenString),
+	// Parse and validate the token
+	token, err := jwt.Parse([]byte(tokenString),
 		jwt.WithVerify(true),
-		jwt.WithKey(alg, matchingKey),
-		jwt.WithValidate(true),
-		jwt.WithAcceptableSkew(30*time.Second),
+		jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
 	)
-
 	if err != nil {
-		log.Errorw("Token validation failed with JWKS key",
+		log.Errorw("Token validation failed",
 			"error", err,
-			"kid", kid,
-			"alg", alg,
-			"error_type", fmt.Sprintf("%T", err),
-			"error_details", err.Error())
-		return "", fmt.Errorf("token validation failed with JWKS key: %w", err)
+			"error_type", fmt.Sprintf("%T", err))
+		return "", fmt.Errorf("failed to validate token: %w", err)
 	}
 
-	log.Info("Token validation successful with JWKS key")
-	sub := validToken.Subject()
+	// Get the subject (user ID)
+	sub := token.Subject()
 	if sub == "" {
 		log.Error("Token validation failed: missing subject claim")
 		return "", fmt.Errorf("missing subject claim in token")
 	}
+
+	log.Info("Token validation successful")
 	return sub, nil
 }
 
