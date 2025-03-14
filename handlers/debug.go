@@ -1,16 +1,15 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"encoding/base64"
-
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -63,70 +62,16 @@ func DebugJWTHandler() gin.HandlerFunc {
 			},
 		}
 
-		// Try to parse without verification to inspect
-		tokenObj, err := jwt.Parse([]byte(token), jwt.WithVerify(false))
-		if err != nil {
-			log.Errorw("Failed to parse token without verification", "error", err)
-			response["parse_error"] = err.Error()
+		// Step 1: Manual parsing to extract token parts
+		parts := strings.Split(token, ".")
+		if len(parts) != 3 {
 			response["parse_success"] = false
+			response["parse_error"] = "Invalid token format: token must have 3 parts"
 			c.JSON(http.StatusOK, response)
 			return
 		}
 
-		// Token parsed successfully, add claims to response
-		response["parse_success"] = true
-
-		// Add detailed token inspection
-		response["token_inspection"] = gin.H{
-			"header":            tokenObj.PrivateClaims(),
-			"current_time":      time.Now().Format(time.RFC3339),
-			"current_time_unix": time.Now().Unix(),
-		}
-
-		// Extract claims
-		claims := make(map[string]interface{})
-		for k, v := range tokenObj.PrivateClaims() {
-			claims[k] = v
-		}
-
-		// Add registered claims with detailed timing information
-		if sub := tokenObj.Subject(); sub != "" {
-			claims["sub"] = sub
-		}
-		if iss := tokenObj.Issuer(); iss != "" {
-			claims["iss"] = iss
-		}
-		if aud := tokenObj.Audience(); len(aud) > 0 {
-			claims["aud"] = aud
-		}
-		if exp := tokenObj.Expiration(); !exp.IsZero() {
-			now := time.Now()
-			claims["exp"] = exp
-			claims["exp_unix"] = exp.Unix()
-			claims["expires_at"] = exp.Format(time.RFC3339)
-			claims["is_expired"] = now.After(exp)
-			claims["time_until_expiry"] = time.Until(exp).String()
-			claims["time_since_expiry"] = time.Since(exp).String()
-			claims["expiration_details"] = gin.H{
-				"expiration_time":    exp.Format(time.RFC3339),
-				"current_time":       now.Format(time.RFC3339),
-				"is_expired":         now.After(exp),
-				"time_until_expiry":  time.Until(exp).String(),
-				"time_since_expiry":  time.Since(exp).String(),
-				"exp_unix":           exp.Unix(),
-				"current_unix":       now.Unix(),
-				"difference_seconds": now.Sub(exp).Seconds(),
-			}
-		}
-		if iat := tokenObj.IssuedAt(); !iat.IsZero() {
-			claims["iat"] = iat
-			claims["iat_unix"] = iat.Unix()
-			claims["issued_at"] = iat.Format(time.RFC3339)
-			claims["age"] = time.Since(iat).String()
-		}
-
 		// Add token format information
-		parts := strings.Split(token, ".")
 		response["token_format"] = gin.H{
 			"parts_count":      len(parts),
 			"header_length":    len(parts[0]),
@@ -134,162 +79,100 @@ func DebugJWTHandler() gin.HandlerFunc {
 			"signature_length": len(parts[2]),
 		}
 
+		// Step 2: Decode the payload manually (which contains the claims)
+		var claims map[string]interface{}
+		payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+		if err != nil {
+			response["parse_success"] = false
+			response["parse_error"] = fmt.Sprintf("Failed to decode payload: %v", err)
+			c.JSON(http.StatusOK, response)
+			return
+		}
+
+		// Unmarshal the JSON payload
+		if err := json.Unmarshal(payloadBytes, &claims); err != nil {
+			response["parse_success"] = false
+			response["parse_error"] = fmt.Sprintf("Failed to unmarshal claims: %v", err)
+			c.JSON(http.StatusOK, response)
+			return
+		}
+
+		response["parse_success"] = true
 		response["claims"] = claims
 
-		// Extract the kid from the token header
-		kid, ok := tokenObj.PrivateClaims()["kid"].(string)
-		response["has_kid"] = ok
-		if ok {
-			response["kid"] = kid
+		// Step 3: Manual check of expiration
+		now := time.Now().Unix()
+		expClaim, hasExp := claims["exp"]
+		if hasExp {
+			// Convert the exp claim to a number
+			var expTime int64
+			switch exp := expClaim.(type) {
+			case float64:
+				expTime = int64(exp)
+			case int64:
+				expTime = exp
+			case json.Number:
+				expTime, _ = exp.Int64()
+			default:
+				log.Warnw("Unexpected type for exp claim", "type", fmt.Sprintf("%T", expClaim))
+			}
 
-			// Test JWKS validation
-			supabaseURL := cfg.ExternalServices.SupabaseURL
-			if supabaseURL != "" {
-				jwksURL := fmt.Sprintf("%s/auth/v1/jwks", strings.TrimSuffix(supabaseURL, "/"))
-				response["jwks_url"] = jwksURL
+			expTimeFormatted := time.Unix(expTime, 0).Format(time.RFC3339)
+			nowFormatted := time.Unix(now, 0).Format(time.RFC3339)
 
-				// Get the JWKS cache
-				cache := middleware.GetJWKSCache(jwksURL)
-				matchingKey, jwksErr := cache.GetKey(kid)
+			response["token_expiration"] = gin.H{
+				"expiration_time": expTimeFormatted,
+				"current_time":    nowFormatted,
+				"is_expired":      now > expTime,
+				"seconds_diff":    expTime - now,
+			}
 
-				if jwksErr != nil {
-					log.Errorw("Failed to get key from JWKS", "error", jwksErr, "kid", kid)
-					response["jwks_error"] = jwksErr.Error()
-					response["jwks_key_found"] = false
-				} else {
-					response["jwks_key_found"] = true
-					response["jwks_key_algorithm"] = matchingKey.Algorithm()
-
-					// Try to verify with the key
-					algStr, ok := tokenObj.PrivateClaims()["alg"].(string)
-					if !ok {
-						response["jwks_validation_error"] = "No alg found in token header"
-					} else {
-						response["token_alg"] = algStr
-
-						// Map the algorithm
-						var alg jwa.SignatureAlgorithm
-						switch algStr {
-						case "HS256":
-							alg = jwa.HS256
-						case "HS384":
-							alg = jwa.HS384
-						case "HS512":
-							alg = jwa.HS512
-						case "RS256":
-							alg = jwa.RS256
-						case "RS384":
-							alg = jwa.RS384
-						case "RS512":
-							alg = jwa.RS512
-						default:
-							response["jwks_validation_error"] = fmt.Sprintf("Unsupported algorithm: %s", algStr)
-							c.JSON(http.StatusOK, response)
-							return
-						}
-
-						// Verify with the key
-						_, jwksValidationErr := jwt.Parse([]byte(token),
-							jwt.WithVerify(true),
-							jwt.WithKey(alg, matchingKey),
-							jwt.WithValidate(true),
-							jwt.WithAcceptableSkew(30*time.Second),
-						)
-
-						if jwksValidationErr != nil {
-							response["jwks_validation_success"] = false
-							response["jwks_validation_error"] = jwksValidationErr.Error()
-						} else {
-							response["jwks_validation_success"] = true
-						}
-					}
-				}
+			if now > expTime {
+				response["token_expiration"].(gin.H)["time_since_expiry"] = time.Since(time.Unix(expTime, 0)).String()
+				response["token_status"] = "expired"
 			} else {
-				response["jwks_error"] = "SUPABASE_URL is not configured"
+				response["token_expiration"].(gin.H)["time_until_expiry"] = time.Until(time.Unix(expTime, 0)).String()
+				response["token_status"] = "valid"
 			}
 		} else {
-			// Try static secret validation
-			rawSecret := cfg.ExternalServices.SupabaseJWTSecret
-			if rawSecret == "" {
-				response["static_validation_error"] = "SUPABASE_JWT_SECRET is not set"
-			} else {
-				// Try with raw secret
-				_, err := jwt.Parse([]byte(token),
-					jwt.WithVerify(true),
-					jwt.WithKey(jwa.HS256, []byte(rawSecret)),
-					jwt.WithValidate(true),
-					jwt.WithAcceptableSkew(30*time.Second),
-				)
+			response["token_status"] = "no_expiration"
+		}
 
-				if err != nil {
-					response["raw_secret_validation_success"] = false
-					response["raw_secret_validation_error"] = err.Error()
-				} else {
-					response["raw_secret_validation_success"] = true
-				}
+		// Step 4: Try to validate the token with our secret
+		_, validationErr := jwt.Parse([]byte(token),
+			jwt.WithVerify(true),
+			jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
+			jwt.WithValidate(true),
+			jwt.WithAcceptableSkew(30*time.Second), // Allow 30 seconds of clock skew
+		)
 
-				// Try with base64 decoded secret
-				if middleware.IsBase64(rawSecret) {
-					decodedSecret, err := middleware.DecodeBase64(rawSecret)
-					if err != nil {
-						response["base64_decode_error"] = err.Error()
-					} else {
-						_, err := jwt.Parse([]byte(token),
-							jwt.WithVerify(true),
-							jwt.WithKey(jwa.HS256, decodedSecret),
-							jwt.WithValidate(true),
-							jwt.WithAcceptableSkew(30*time.Second),
-						)
+		if validationErr != nil {
+			response["validation_success"] = false
+			response["validation_error"] = validationErr.Error()
 
-						if err != nil {
-							response["base64_validation_success"] = false
-							response["base64_validation_error"] = err.Error()
-						} else {
-							response["base64_validation_success"] = true
-						}
-					}
-				}
-
-				// Try with raw URL encoding (no padding)
-				decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
-				if err != nil {
-					response["raw_url_decode_error"] = err.Error()
-				} else {
-					_, err := jwt.Parse([]byte(token),
-						jwt.WithVerify(true),
-						jwt.WithKey(jwa.HS256, decodedSecret),
-						jwt.WithValidate(true),
-						jwt.WithAcceptableSkew(30*time.Second),
-					)
-
-					if err != nil {
-						response["raw_url_validation_success"] = false
-						response["raw_url_validation_error"] = err.Error()
-					} else {
-						response["raw_url_validation_success"] = true
-					}
-				}
-
-				// Try with URL encoding (with padding)
-				decodedSecret, err = base64.URLEncoding.DecodeString(rawSecret)
-				if err != nil {
-					response["url_decode_error"] = err.Error()
-				} else {
-					_, err := jwt.Parse([]byte(token),
-						jwt.WithVerify(true),
-						jwt.WithKey(jwa.HS256, decodedSecret),
-						jwt.WithValidate(true),
-						jwt.WithAcceptableSkew(30*time.Second),
-					)
-
-					if err != nil {
-						response["url_validation_success"] = false
-						response["url_validation_error"] = err.Error()
-					} else {
-						response["url_validation_success"] = true
-					}
-				}
+			// Check specifically for expiration error
+			if strings.Contains(validationErr.Error(), "exp not satisfied") ||
+				strings.Contains(validationErr.Error(), "token expired") {
+				response["error_type"] = "token_expired"
+				response["recommendation"] = "The token has expired. Request a new token from Supabase."
 			}
+		} else {
+			response["validation_success"] = true
+		}
+
+		// Step 5: Try to validate without checking expiration
+		_, signatureErr := jwt.Parse([]byte(token),
+			jwt.WithVerify(true),
+			jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
+			jwt.WithValidate(false), // Don't validate standard claims like expiration
+		)
+
+		if signatureErr != nil {
+			response["signature_valid"] = false
+			response["signature_error"] = signatureErr.Error()
+		} else {
+			response["signature_valid"] = true
+			response["recommendation"] = "Signature is valid, but token may be expired. Check the expiration time."
 		}
 
 		c.JSON(http.StatusOK, response)
