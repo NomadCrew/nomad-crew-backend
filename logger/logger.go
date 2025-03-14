@@ -59,10 +59,11 @@ func InitLogger() {
 	once.Do(initLoggerInternal)
 }
 
+// GetLogger returns the initialized logger
+// This is now thread-safe by always using once.Do
 func GetLogger() *zap.SugaredLogger {
-	if logger == nil {
-		InitLogger()
-	}
+	// Initialize the logger if it hasn't been initialized yet
+	once.Do(initLoggerInternal)
 	return logger
 }
 

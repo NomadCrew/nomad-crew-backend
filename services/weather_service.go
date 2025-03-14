@@ -111,6 +111,7 @@ func (s *WeatherService) startUpdates(ctx context.Context, tripID string, dest t
 }
 
 func (s *WeatherService) updateWeather(ctx context.Context, tripID string, destination types.Destination) {
+	// Get the logger once at the beginning in a thread-safe way
 	log := logger.GetLogger()
 	log.Infow("Starting weather update", "tripID", tripID, "destination", destination.Address)
 
@@ -122,23 +123,17 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 		var err error
 		lat, lon, err = s.getCoordinates(destination.Address)
 		if err != nil {
-			log.Errorw("Failed to get coordinates",
-				"destination", destination,
-				"error", err,
-			)
+			log.Errorw("Failed to get coordinates", "error", err, "address", destination.Address)
 			return
 		}
 	}
 
+	// Use the same log instance throughout the function
+	log.Infow("Fetching weather data", "lat", lat, "lon", lon)
+
 	weather, err := s.getCurrentWeather(lat, lon)
-	log.Infow("Fetching weather data",
-		"lat", lat,
-		"lon", lon)
 	if err != nil {
-		log.Errorw("Failed to get weather",
-			"destination", destination,
-			"error", err,
-		)
+		log.Errorw("Failed to get weather", "destination", destination, "error", err)
 		return
 	}
 
@@ -146,16 +141,11 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 
 	payload, err := json.Marshal(weather)
 	if err != nil {
-		log.Errorw("Failed to marshal weather data",
-			"error", err,
-			"tripId", tripID,
-		)
+		log.Errorw("Failed to marshal weather data", "error", err, "tripId", tripID)
 		return
 	}
 
-	log.Debugw("Publishing weather update event",
-		"tripID", tripID,
-		"payloadSize", len(payload))
+	log.Debugw("Publishing weather update event", "tripID", tripID, "payloadSize", len(payload))
 
 	if apiErr := s.eventService.Publish(ctx, tripID, types.Event{
 		BaseEvent: types.BaseEvent{
@@ -171,16 +161,11 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 		},
 		Payload: payload,
 	}); apiErr != nil {
-		log.Errorw("Event publish failed",
-			"tripID", tripID,
-			"error", apiErr,
-			"event_type", types.EventTypeWeatherUpdated,
-		)
+		log.Errorw("Event publish failed", "tripID", tripID, "error", apiErr, "event_type", types.EventTypeWeatherUpdated)
+		return
 	}
 
-	log.Debugw("Weather event published successfully",
-		"tripID", tripID,
-		"eventType", types.EventTypeWeatherUpdated)
+	log.Infow("Weather update completed successfully", "tripID", tripID, "eventType", types.EventTypeWeatherUpdated)
 }
 
 // getCoordinates fetches the latitude and longitude for a given city/place name

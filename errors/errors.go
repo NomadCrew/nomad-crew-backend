@@ -97,8 +97,11 @@ func AuthenticationFailed(message string) *AppError {
 
 func NewDatabaseError(err error) *AppError {
 	// Only log if not in test mode
+	// No need to get the logger if we're not going to use it
 	if !logger.IsTest {
-		logger.GetLogger().Errorw("Database error", "error", err)
+		// Get the logger in a thread-safe way
+		log := logger.GetLogger()
+		log.Errorw("Database error", "error", err)
 	}
 	return &AppError{
 		Type:       DatabaseError,

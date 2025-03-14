@@ -445,6 +445,7 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // Chat messages are sent as events through the event system rather than through
 // a separate websocket connection.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
+	// Get logger instance once and reuse it
 	log := logger.GetLogger()
 
 	// Get WebSocket connection from middleware
