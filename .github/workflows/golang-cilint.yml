@@ -1,17 +1,15 @@
 name: golangci-lint
 on:
-    push:
-        branches: [ '**' ]
-    pull_request:
-        branches: [ '**' ]
-        paths-ignore:
-            - '**.md'
-            - 'docs/**'
+  push:
+    branches: [ '**' ]
+  pull_request:
+    branches: [ '**' ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 permissions:
   contents: read
-  # Optional: allow read access to pull request. Use with `only-new-issues` option.
-  # pull-requests: read
 
 jobs:
   golangci:
@@ -19,11 +17,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: '1.24'
+      
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+      
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.60
+          version: v1.64.2
+          args: --timeout=5m
           working-directory: ./
+
+    env:
+      GOFLAGS: "-buildvcs=false"
+      GOCACHE: "/home/runner/.cache/go-build"
+      GOMODCACHE: "/home/runner/go/pkg/mod"

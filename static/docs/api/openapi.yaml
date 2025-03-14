@@ -1,0 +1,1290 @@
+openapi: 3.1.0
+info:
+  title: NomadCrew Backend API
+  version: 1.0.0
+  description: API documentation for NomadCrew backend.
+servers:
+  - url: http://localhost:8080/v1
+    description: Local development server
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Trip:
+      type: object
+      description: A trip represents a travel plan. When a trip is created, a default chat group is automatically created for the trip.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        destination:
+          type: object
+          properties:
+            address:
+              type: string
+            placeId:
+              type: string
+            coordinates:
+              type: object
+              properties:
+                lat:
+                  type: number
+                  format: double
+                lng:
+                  type: number
+                  format: double
+        status:
+          type: string
+          enum:
+            - PLANNING
+            - ACTIVE
+            - COMPLETED
+            - CANCELLED
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        backgroundImageUrl:
+          type: string
+      required:
+        - name
+        - destination
+        - startDate
+        - endDate
+    ErrorResponse:
+      type: object
+      properties:
+        type:
+          type: string
+        message:
+          type: string
+        detail:
+          type: string
+    Member:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+            - ADMIN
+            - MEMBER
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SearchCriteria:
+      type: object
+      properties:
+        destination:
+          type: string
+        startDateFrom:
+          type: string
+          format: date
+        startDateTo:
+          type: string
+          format: date
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+            - TRIP_CREATED
+            - TRIP_UPDATED
+            - TRIP_DELETED
+            - TODO_CREATED
+            - TODO_UPDATED
+            - TODO_DELETED
+            - WEATHER_UPDATED
+            - MEMBER_ADDED
+            - MEMBER_REMOVED
+        tripId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        payload:
+          type: object
+    TripUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        destination:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PLANNING, ACTIVE, COMPLETED, CANCELLED]
+    Todo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        text:
+          type: string
+        status:
+          type: string
+          enum:
+            - COMPLETE
+            - INCOMPLETE
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - tripId
+        - text
+    TodoCreate:
+      type: object
+      properties:
+        tripId:
+          type: string
+          format: uuid
+        text:
+          type: string
+      required:
+        - tripId
+        - text
+    TodoUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - COMPLETE
+            - INCOMPLETE
+        text:
+          type: string
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy:
+          type: number
+          format: double
+        timestamp:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    MemberLocation:
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          properties:
+            userName:
+              type: string
+            userRole:
+              type: string
+    ChatGroup:
+      type: object
+      description: A chat group for a trip. A default chat group is automatically created when a trip is created.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - tripId
+        - name
+    ChatGroupCreateRequest:
+      type: object
+      properties:
+        tripId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - tripId
+        - name
+    ChatGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isEdited:
+          type: boolean
+        isDeleted:
+          type: boolean
+    ChatMessageWithUser:
+      type: object
+      properties:
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    ChatMessagePaginatedResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessageWithUser'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            limit:
+              type: integer
+            offset:
+              type: integer
+    ChatGroupPaginatedResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatGroup'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            limit:
+              type: integer
+            offset:
+              type: integer
+    ChatGroupMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        joinedAt:
+          type: string
+          format: date-time
+        lastReadMessageId:
+          type: string
+          format: uuid
+    LastReadMessageRequest:
+      type: object
+      properties:
+        messageId:
+          type: string
+          format: uuid
+      required:
+        - messageId
+  parameters:
+    TripID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserID:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    GroupID:
+      name: groupID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+security:
+  - BearerAuth: []
+paths:
+  /trips:
+    post:
+      summary: Create a trip
+      description: Creates a new trip and automatically creates a default chat group for the trip. The trip creator is automatically added to the chat group.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Trip'
+      responses:
+        '201':
+          description: Trip created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /trips/list:
+    get:
+      summary: List all trips for the authenticated user
+      responses:
+        '200':
+          description: List of trips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trip'
+      security:
+        - BearerAuth: []
+  /trips/search:
+    post:
+      summary: Search trips by criteria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchCriteria'
+      responses:
+        '200':
+          description: List of trips matching criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trip'
+      security:
+        - BearerAuth: []
+  /trips/{id}:
+    get:
+      summary: Get trip details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Trip details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+        '404':
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    put:
+      summary: Update trip
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Trip'
+      responses:
+        '200':
+          description: Trip updated successfully
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    delete:
+      summary: Delete trip
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Trip deleted successfully
+        '404':
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /trips/{id}/status:
+    patch:
+      summary: Update trip status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - PLANNING
+                    - ACTIVE
+                    - COMPLETED
+                    - CANCELLED
+              required:
+                - status
+      responses:
+        '200':
+          description: Status updated successfully
+        '400':
+          description: Validation error
+      security:
+        - BearerAuth: []
+  /trips/{id}/members:
+    get:
+      summary: List trip members
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+      security:
+        - BearerAuth: []
+    post:
+      summary: Add a member to the trip
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                role:
+                  type: string
+                  enum:
+                    - ADMIN
+                    - MEMBER
+              required:
+                - userId
+                - role
+      responses:
+        '201':
+          description: Member added successfully
+        '400':
+          description: Validation error
+      security:
+        - BearerAuth: []
+    put:
+      summary: Update a member's role
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum:
+                    - ADMIN
+                    - MEMBER
+              required:
+                - role
+      responses:
+        '200':
+          description: Member role updated successfully
+        '400':
+          description: Validation error
+      security:
+        - BearerAuth: []
+    delete:
+      summary: Remove a member from the trip
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Member removed successfully
+        '404':
+          description: Member not found
+      security:
+        - BearerAuth: []
+  /trips/{id}/ws:
+    get:
+      summary: WebSocket connection for real-time trip updates
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      security:
+        - BearerAuth: []
+      responses:
+        101:
+          description: Switching Protocols to WebSocket
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+  /trips/{id}/trigger-weather-update:
+    patch:
+      summary: Force immediate weather update
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      responses:
+        200:
+          description: Weather update triggered
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+  /trips/{id}/invitations:
+    post:
+      summary: Invite a member to the trip
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      format: email
+                    role:
+                      type: string
+                      enum:
+                        - OWNER
+                        - ADMIN
+                        - MEMBER
+                  required:
+                    - email
+      responses:
+        '201':
+          description: Invitation created successfully
+      security:
+        - BearerAuth: []
+  /trips/invitations/accept:
+    post:
+      summary: Accept a trip invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: JWT invitation token
+      responses:
+        '200':
+          description: Successfully accepted invitation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+  /trips/{id}/todos:
+    get:
+      summary: List todos for a trip
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      responses:
+        '200':
+          description: List of todos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Todo'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      security:
+        - BearerAuth: []
+    post:
+      summary: Create a todo for a trip
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoCreate'
+      responses:
+        '201':
+          description: Todo created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      security:
+        - BearerAuth: []
+  /trips/{id}/todos/{todoID}:
+    put:
+      summary: Update a todo
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+        - name: todoID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoUpdate'
+      responses:
+        '200':
+          description: Todo updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Todo not found
+      security:
+        - BearerAuth: []
+    post:
+      summary: Update a todo (alternative endpoint)
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+        - name: todoID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoUpdate'
+      responses:
+        '200':
+          description: Todo updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Todo not found
+      security:
+        - BearerAuth: []
+    delete:
+      summary: Delete a todo
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+        - name: todoID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Todo deleted successfully
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Todo not found
+      security:
+        - BearerAuth: []
+  /auth/refresh:
+    post:
+      summary: Refresh authentication token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+        '401':
+          description: Invalid refresh token
+  /health:
+    get:
+      summary: Detailed health check
+      responses:
+        '200':
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  version:
+                    type: string
+                  database:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      latency:
+                        type: number
+                  redis:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      latency:
+                        type: number
+                  websocket:
+                    type: object
+                    properties:
+                      activeConnections:
+                        type: integer
+  /health/liveness:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+  /health/readiness:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  ready:
+                    type: boolean
+  /v1/location/update:
+    post:
+      summary: Update user location
+      description: Updates the current user's location
+      tags:
+        - Location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                latitude:
+                  type: number
+                  format: double
+                  description: Latitude coordinate
+                  example: 37.7749
+                longitude:
+                  type: number
+                  format: double
+                  description: Longitude coordinate
+                  example: -122.4194
+                accuracy:
+                  type: number
+                  format: double
+                  description: Accuracy of the location in meters
+                  example: 10.5
+                timestamp:
+                  type: integer
+                  format: int64
+                  description: Unix timestamp in milliseconds
+                  example: 1625097600000
+              required:
+                - latitude
+                - longitude
+                - accuracy
+                - timestamp
+      responses:
+        '200':
+          description: Location updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+        '400':
+          description: Invalid location data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      security:
+        - BearerAuth: []
+  /v1/trips/{id}/locations:
+    get:
+      summary: Get trip member locations
+      description: Retrieves the latest locations of all members in a trip
+      tags:
+        - Location
+        - Trip
+      parameters:
+        - $ref: '#/components/parameters/TripID'
+      responses:
+        '200':
+          description: Trip member locations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  locations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MemberLocation'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      security:
+        - BearerAuth: []
+  /chats/groups:
+    post:
+      summary: Create a chat group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatGroupCreateRequest'
+      responses:
+        '201':
+          description: Chat group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroup'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      security:
+        - BearerAuth: []
+    get:
+      summary: List chat groups for the authenticated user
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of chat groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroupPaginatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}:
+    get:
+      summary: Get chat group details
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '200':
+          description: Chat group details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroup'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    put:
+      summary: Update chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatGroupUpdateRequest'
+      responses:
+        '200':
+          description: Chat group updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGroup'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+    delete:
+      summary: Delete chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '204':
+          description: Chat group deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/messages:
+    get:
+      summary: List messages for a chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of chat messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessagePaginatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/members:
+    get:
+      summary: List members of a chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '200':
+          description: List of chat group members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/read:
+    put:
+      summary: Update last read message for a user in a chat group
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LastReadMessageRequest'
+      responses:
+        '200':
+          description: Last read message updated successfully
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group or message not found
+      security:
+        - BearerAuth: []
+  /chats/groups/{groupID}/ws:
+    get:
+      summary: WebSocket connection for real-time chat
+      parameters:
+        - $ref: '#/components/parameters/GroupID'
+      responses:
+        '101':
+          description: Switching Protocols to WebSocket
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Chat group not found
+      security:
+        - BearerAuth: []

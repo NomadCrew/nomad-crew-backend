@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+.github
+
+# Docker
+.docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Testing
+coverage.txt
+*.out
+tests/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Deployment
+deployment/
+.aws/
+
+# Misc
+README.md
+LICENSE
+.env
+.env.*
+!.env.example 

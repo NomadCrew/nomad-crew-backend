@@ -3,8 +3,9 @@ package dbutils
 import (
 	"context"
 	"database/sql"
-	"github.com/jackc/pgx/v4/pgxpool"
+
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 // EnsureTableExists checks if a table exists in the database
