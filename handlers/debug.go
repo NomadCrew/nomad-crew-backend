@@ -781,7 +781,7 @@ func DebugJWTDirectHandler() gin.HandlerFunc {
 		}
 
 		// Hardcoded secret from your test script
-		hardcodedSecret := "KwiMJ4NKJW/FFE41DNj5C6fj19mww+ydxyesjZUG+UZ2rHKnTTTf2NkDxv1QTgpM06JDcwdEJJioAIeP5AMO/w=="
+		hardcodedSecret := "KwiMJ4NKJW/FFE41DNj5C6fj19mww+ydxyesjZUG+UZ2rHKnTTTf2NkDxv1QTgpM06JDcwdEJJioAIeP5AMO/w==" // #nosec G101 - intentionally hardcoded for debug purposes only
 
 		// Compare the two secrets (safely display first 8 chars)
 		envSecret := cfg.ExternalServices.SupabaseJWTSecret
