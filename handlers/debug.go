@@ -94,7 +94,7 @@ func DebugJWTHandler() gin.HandlerFunc {
 			claims["exp"] = exp
 			claims["expires_at"] = exp.Format(time.RFC3339)
 			claims["is_expired"] = time.Now().After(exp)
-			claims["time_until_expiry"] = exp.Sub(time.Now()).String()
+			claims["time_until_expiry"] = time.Until(exp).String()
 		}
 		if iat := tokenObj.IssuedAt(); !iat.IsZero() {
 			claims["iat"] = iat
