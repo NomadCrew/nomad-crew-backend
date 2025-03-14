@@ -10,6 +10,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -21,6 +22,127 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// simpleTokenValidation runs a simple direct validation test with the provided token and secret
+// exactly matching the user-provided test snippet
+func simpleTokenValidation(tokenString string, secret string) map[string]interface{} {
+	result := make(map[string]interface{})
+	log := logger.GetLogger()
+
+	// First try to manually extract header information
+	parts := strings.Split(tokenString, ".")
+	if len(parts) == 3 {
+		headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+		if err == nil {
+			var headerMap map[string]interface{}
+			if json.Unmarshal(headerBytes, &headerMap) == nil {
+				// Extract kid if present
+				if kid, ok := headerMap["kid"].(string); ok {
+					result["kid"] = kid
+				}
+
+				// Extract algorithm if present
+				if alg, ok := headerMap["alg"].(string); ok {
+					result["alg"] = alg
+				}
+			}
+		}
+	}
+
+	// Parse without verification to examine the token structure
+	parsedWithoutVerify, err := jwt.Parse([]byte(tokenString), jwt.WithVerify(false))
+	if err == nil && parsedWithoutVerify != nil {
+		// Get basic token information
+		result["issuer"] = parsedWithoutVerify.Issuer()
+		result["subject"] = parsedWithoutVerify.Subject()
+		if !parsedWithoutVerify.Expiration().IsZero() {
+			result["expiration"] = parsedWithoutVerify.Expiration().Format(time.RFC3339)
+			result["is_expired"] = time.Now().After(parsedWithoutVerify.Expiration())
+		}
+	}
+
+	// Now try the exact validation as provided in the test snippet
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(secret)),
+	)
+
+	if err != nil {
+		result["validation_success"] = false
+		result["validation_error"] = err.Error()
+
+		// Check for specific error types
+		if strings.Contains(err.Error(), "could not verify message") {
+			result["signature_error"] = "signature verification failed"
+		} else if strings.Contains(err.Error(), "exp not satisfied") {
+			result["token_expired"] = true
+			result["signature_valid"] = true // The token signature is valid, just expired
+		}
+	} else {
+		result["validation_success"] = true
+		// Include basic token info if validation succeeded
+		if token != nil {
+			result["subject"] = token.Subject()
+			result["issuer"] = token.Issuer()
+			result["expiration"] = token.Expiration().Format(time.RFC3339)
+		}
+	}
+
+	// Add specific test for JWKS-based validation
+	if kid, ok := result["kid"].(string); ok && kid != "" {
+		result["recommendation"] = "Token has 'kid' claim and might require JWKS-based validation instead of static secret"
+
+		// Try fetching the key from the configured JWKS URL if we're using Supabase
+		cfg, _ := config.LoadConfig()
+		if cfg != nil && cfg.ExternalServices.SupabaseURL != "" {
+			jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
+			result["jwks_url"] = jwksURL
+			result["note"] = "Consider using JWKS-based validation for this token"
+
+			// Attempt JWKS validation
+			result["jwks_validation_attempted"] = true
+
+			// Create JWKS cache instance
+			jwksCache := middleware.GetJWKSCache(jwksURL)
+			if jwksCache != nil {
+				// Try to fetch the key for this specific kid
+				key, err := jwksCache.GetKey(kid)
+				if err != nil {
+					result["jwks_key_fetch_error"] = err.Error()
+				} else if key != nil {
+					result["jwks_key_found"] = true
+
+					// Always use RS256 for JWKS validation (most common for JWTs from Supabase)
+					alg := jwa.RS256
+
+					// Attempt validation with the JWKS key
+					_, jwksErr := jwt.Parse([]byte(tokenString),
+						jwt.WithVerify(true),
+						jwt.WithKey(alg, key),
+					)
+
+					if jwksErr != nil {
+						result["jwks_validation_success"] = false
+						result["jwks_validation_error"] = jwksErr.Error()
+
+						// Check if token is just expired
+						if strings.Contains(jwksErr.Error(), "exp not satisfied") {
+							result["jwks_validation_note"] = "Token signature is valid with JWKS but token is expired"
+							result["jwks_signature_valid"] = true
+							result["root_issue"] = "token_expired"
+							log.Infow("JWKS validation identified token expiration as the issue", "kid", kid)
+						}
+					} else {
+						result["jwks_validation_success"] = true
+						log.Infow("JWKS validation successful", "kid", kid)
+					}
+				}
+			}
+		}
+	}
+
+	return result
 }
 
 // DebugJWTHandler handles debug requests for JWT validation
@@ -69,6 +191,9 @@ func DebugJWTHandler() gin.HandlerFunc {
 				"jwt_secret_length":        len(cfg.ExternalServices.SupabaseJWTSecret),
 			},
 		}
+
+		// Add the direct simple token validation result
+		response["direct_validation_test"] = simpleTokenValidation(token, cfg.ExternalServices.SupabaseJWTSecret)
 
 		// Step 1: Manual parsing to extract token parts
 		parts := strings.Split(token, ".")
@@ -162,6 +287,9 @@ func DebugJWTHandler() gin.HandlerFunc {
 		} else {
 			response["token_status"] = "no_expiration"
 		}
+
+		// Step 4: Add the direct simple token validation test
+		response["simple_validation_test"] = simpleTokenValidation(token, cfg.ExternalServices.SupabaseJWTSecret)
 
 		// Step 5: Try to validate without checking expiration - with multiple formats and algorithms
 		response["signature_validation_attempts"] = []gin.H{}
@@ -363,6 +491,21 @@ func DebugJWTHandler() gin.HandlerFunc {
 				"header_decoded":  header,
 				"payload_decoded": claims,
 			}
+		}
+
+		// Check for 'kid' in header - if present, note that JWKS-based validation might be needed
+		if kid, ok := header["kid"].(string); ok && kid != "" {
+			response["has_kid"] = true
+			response["kid_value"] = kid
+			response["jwt_key_type"] = "jwks"
+
+			// Construct the JWKS URL
+			jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
+			response["jwks_url"] = jwksURL
+
+			log.Infow("Token contains 'kid' header, suggesting JWKS validation required",
+				"kid", kid,
+				"jwks_url", jwksURL)
 		}
 
 		response["signature_valid"] = validationSuccess
