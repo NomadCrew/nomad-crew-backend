@@ -103,3 +103,10 @@ resource "google_compute_global_forwarding_rule" "nomadcrew_http_rule" {
   port_range            = "80"
   load_balancing_scheme = "EXTERNAL"
 }
+
+resource "google_cloud_run_service_iam_member" "preview_noauth" {
+  location = google_compute_region_network_endpoint_group.preview_neg.region
+  service  = "preview-environment"
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}

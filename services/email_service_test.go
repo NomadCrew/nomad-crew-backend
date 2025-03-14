@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
@@ -279,6 +280,11 @@ func TestEmailMetrics(t *testing.T) {
 // Helper function to get counter value
 func testGetCounterValue(counter prometheus.Counter) float64 {
 	var m dto.Metric
-	counter.Write(&m)
+	err := counter.Write(&m)
+	if err != nil {
+		// In a test helper like this, we can panic on error since it's unexpected
+		// and indicates a problem with the test itself
+		panic(fmt.Sprintf("Failed to read counter metric: %v", err))
+	}
 	return *m.Counter.Value
 }
