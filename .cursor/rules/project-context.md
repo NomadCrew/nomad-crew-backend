@@ -45,6 +45,17 @@
    - Geoapify for geocoding
    - Pexels API for images
 
+## Recent Changes
+
+### March 14, 2025, 17:45 UTC - Enhanced JWT Validation
+- Updated JWT validation in `middleware/auth.go` to support multiple formats of Supabase JWT secrets:
+  - Raw secret (as is)
+  - Standard base64 decoded (StdEncoding)
+  - Raw URL-safe base64 decoded (RawURLEncoding, without padding)
+  - URL-safe base64 decoded (URLEncoding, with padding)
+- Improved debug handler in `handlers/debug.go` for better JWT validation diagnostics
+- Fixed issue with Supabase tokens not having `kid` claim, falling back to static secret validation
+
 ## CI/CD Pipeline
 1. **Pull Request Workflow**
    - Linting via golang-cilint

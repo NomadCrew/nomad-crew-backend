@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"encoding/base64"
+
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
@@ -214,6 +216,46 @@ func DebugJWTHandler() gin.HandlerFunc {
 						} else {
 							response["base64_validation_success"] = true
 						}
+					}
+				}
+
+				// Try with raw URL encoding (no padding)
+				decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
+				if err != nil {
+					response["raw_url_decode_error"] = err.Error()
+				} else {
+					_, err := jwt.Parse([]byte(token),
+						jwt.WithVerify(true),
+						jwt.WithKey(jwa.HS256, decodedSecret),
+						jwt.WithValidate(true),
+						jwt.WithAcceptableSkew(30*time.Second),
+					)
+
+					if err != nil {
+						response["raw_url_validation_success"] = false
+						response["raw_url_validation_error"] = err.Error()
+					} else {
+						response["raw_url_validation_success"] = true
+					}
+				}
+
+				// Try with URL encoding (with padding)
+				decodedSecret, err = base64.URLEncoding.DecodeString(rawSecret)
+				if err != nil {
+					response["url_decode_error"] = err.Error()
+				} else {
+					_, err := jwt.Parse([]byte(token),
+						jwt.WithVerify(true),
+						jwt.WithKey(jwa.HS256, decodedSecret),
+						jwt.WithValidate(true),
+						jwt.WithAcceptableSkew(30*time.Second),
+					)
+
+					if err != nil {
+						response["url_validation_success"] = false
+						response["url_validation_error"] = err.Error()
+					} else {
+						response["url_validation_success"] = true
 					}
 				}
 			}

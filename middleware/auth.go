@@ -533,36 +533,60 @@ func validateJWT(tokenString string) (string, error) {
 			log.Warnw("Raw secret validation failed", "error", err)
 		}
 
-		// Try with base64 decoded secret (if it looks like base64)
-		if isBase64(rawSecret) {
-			decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
-			if err == nil {
-				log.Debugw("Attempting JWT validation with base64 decoded secret", "alg", "HS256")
-				validToken, err = jwt.Parse([]byte(tokenString),
-					jwt.WithVerify(true),
-					jwt.WithKey(jwa.HS256, decodedSecret),
-					jwt.WithValidate(true),
-					jwt.WithAcceptableSkew(30*time.Second),
-				)
+		// Try with standard base64 decoded secret
+		decodedSecret, err := base64.StdEncoding.DecodeString(rawSecret)
+		if err == nil {
+			log.Debugw("Attempting JWT validation with standard base64 decoded secret", "alg", "HS256")
+			validToken, err = jwt.Parse([]byte(tokenString),
+				jwt.WithVerify(true),
+				jwt.WithKey(jwa.HS256, decodedSecret),
+				jwt.WithValidate(true),
+				jwt.WithAcceptableSkew(30*time.Second),
+			)
 
-				if err == nil {
-					log.Info("Token validation successful with decoded secret")
-					sub := validToken.Subject()
-					if sub == "" {
-						log.Error("Token validation failed: missing subject claim")
-						return "", fmt.Errorf("missing subject claim in token")
-					}
-					return sub, nil
-				} else {
-					log.Warnw("Base64 decoded secret validation failed", "error", err)
+			if err == nil {
+				log.Info("Token validation successful with standard base64 decoded secret")
+				sub := validToken.Subject()
+				if sub == "" {
+					log.Error("Token validation failed: missing subject claim")
+					return "", fmt.Errorf("missing subject claim in token")
 				}
+				return sub, nil
 			} else {
-				log.Warnw("Failed to decode base64 secret", "error", err)
+				log.Warnw("Standard base64 decoded secret validation failed", "error", err)
 			}
+		} else {
+			log.Warnw("Failed to decode standard base64 secret", "error", err)
 		}
 
-		// Try with URL-safe base64 decoded secret
-		decodedSecret, err := base64.RawURLEncoding.DecodeString(rawSecret)
+		// Try with Raw URL-safe base64 decoded secret (without padding)
+		decodedSecret, err = base64.RawURLEncoding.DecodeString(rawSecret)
+		if err == nil {
+			log.Debugw("Attempting JWT validation with Raw URL-safe base64 decoded secret", "alg", "HS256")
+			validToken, err = jwt.Parse([]byte(tokenString),
+				jwt.WithVerify(true),
+				jwt.WithKey(jwa.HS256, decodedSecret),
+				jwt.WithValidate(true),
+				jwt.WithAcceptableSkew(30*time.Second),
+			)
+
+			if err == nil {
+				log.Info("Token validation successful with Raw URL-safe base64 decoded secret")
+				sub := validToken.Subject()
+				if sub == "" {
+					log.Error("Token validation failed: missing subject claim")
+					return "", fmt.Errorf("missing subject claim in token")
+				}
+				return sub, nil
+			} else {
+				log.Warnw("Raw URL-safe base64 decoded secret validation failed", "error", err)
+			}
+		} else {
+			log.Warnw("Failed to decode Raw URL-safe base64 secret", "error", err)
+		}
+
+		// Try with URL-safe base64 decoded secret (with padding)
+		decodedSecret, err = base64.URLEncoding.DecodeString(rawSecret)
 		if err == nil {
 			log.Debugw("Attempting JWT validation with URL-safe base64 decoded secret", "alg", "HS256")
 			validToken, err = jwt.Parse([]byte(tokenString),
@@ -573,7 +597,7 @@ func validateJWT(tokenString string) (string, error) {
 			)
 
 			if err == nil {
-				log.Info("Token validation successful with URL-safe decoded secret")
+				log.Info("Token validation successful with URL-safe base64 decoded secret")
 				sub := validToken.Subject()
 				if sub == "" {
 					log.Error("Token validation failed: missing subject claim")
