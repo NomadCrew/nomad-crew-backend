@@ -530,7 +530,7 @@ func validateJWT(tokenString string) (string, error) {
 				}
 			} else {
 				// Standard asymmetric algorithms (RS256, RS384, RS512)
-				algorithms := []jwa.SignatureAlgorithm{jwa.RS256}
+				var algorithms []jwa.SignatureAlgorithm
 
 				// If we know the algorithm, prioritize it first
 				if algValue == "RS384" {
