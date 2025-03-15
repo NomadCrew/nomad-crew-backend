@@ -48,12 +48,32 @@ Follow the [GitHub Flow](https://docs.github.com/en/get-started/quickstart/githu
 
 ## Environment Variables
 
-Required for operation:
-
-- `SSE_API_KEY`: Secret key for SSE endpoint authentication
-- `JWT_SECRET_KEY`: JWT signing key (min 32 chars)
-- `DB_CONNECTION_STRING`: Postgres connection string
+### Required Core Variables
+- `DB_CONNECTION_STRING`: PostgreSQL connection string
 - `REDIS_ADDRESS`: Redis server address
+- `JWT_SECRET_KEY`: JWT signing key for generating invitation tokens (min 32 chars)
+
+### Required Supabase Integration
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_ANON_KEY`: Supabase anon key for client operations
+- `SUPABASE_SERVICE_KEY`: Supabase service key for admin operations (used by ChatStore)
+- `SUPABASE_JWT_SECRET`: Secret used to validate Supabase JWTs
+
+### Other Required Variables
+- `GEOAPIFY_KEY`: API key for geolocation services
+- `PEXELS_API_KEY`: API key for Pexels image service
+- `RESEND_API_KEY`: API key for the Resend email service
+
+### Optional/Configuration Variables
+- `SERVER_ENVIRONMENT`: Set to 'development', 'staging', or 'production'
+- `ALLOWED_ORIGINS`: CORS allowed origins (comma-separated)
+- `LOG_LEVEL`: Logging level (debug, info, warn, error)
+
+### Database Configuration (Can use DB_CONNECTION_STRING instead)
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_MODE`
+
+### Redis Configuration (Additional options)
+- `REDIS_PASSWORD`, `REDIS_DB`, `REDIS_USE_TLS`, `REDIS_POOL_SIZE`, `REDIS_MIN_IDLE_CONNS`
 
 ## Deployment Notes
 

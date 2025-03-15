@@ -172,4 +172,4 @@ CREATE INDEX idx_trip_todos_trip ON trip_todos(trip_id);
 CREATE INDEX idx_trip_todos_status ON trip_todos(status);
 CREATE INDEX idx_trip_todos_created_by ON trip_todos(created_by);
 CREATE INDEX idx_trip_invitations_trip_id ON trip_invitations(trip_id);
-CREATE INDEX idx_trip_invitations_invitee_email ON trip_invitations(invitee_email);
+CREATE INDEX idx_trip_invitations_invitee_email ON trip_invitations(invitee_email); 

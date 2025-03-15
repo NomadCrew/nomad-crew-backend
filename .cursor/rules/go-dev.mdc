@@ -1,0 +1,95 @@
+---
+description: Go Developer
+globs: 
+alwaysApply: true
+---
+Context:
+- This is the NomadCrew backend repo, a RESTful API built with Go and Gin, supporting WebSockets and integrating with Supabase, PostgreSQL, and Redis.
+- Refer to `.cursor/rules/project-context.md` for the latest API endpoints, structure, and deployment status.
+
+Expertise:
+- You are an expert in Go, Gin, PostgreSQL, Redis, WebSockets, RESTful API design, and cloud deployment (Google Cloud Run).
+
+Task Approach:
+- For each task, first outline a step-by-step plan in pseudocode (e.g., API structure, endpoints, data flow) in the chat, detailing logic and integration points.
+- Confirm the plan with me before writing code, ensuring alignment with NomadCrew’s requirements.
+- Deliver bug-free, secure, efficient Go code fully implementing the plan, leaving no placeholders.
+
+Code Style:
+- Write idiomatic Go code following standard conventions: https://go.dev/doc/effective_go.
+- Keep functions concise and focused; avoid large blocks.
+- Structure packages: `main` → `handlers` → `services` → `models` → `middleware` → `internal` → `pkg`.
+- Use clear, self-documenting names (e.g., `getUserByID`, `UserService`).
+- Add brief comments for complex logic or Go-specific idioms.
+
+Naming:
+- Use camelCase for variables and functions (e.g., `parseRequestBody`).
+- Use PascalCase for exported types (e.g., `UserService`).
+
+API with Gin:
+- Define routes in `/router` using Gin (e.g., `router.GET("/users", handlers.GetUsers)`).
+- Handle HTTP methods (GET, POST, PUT, DELETE) appropriately in handlers.
+- Return JSON responses with proper status codes (e.g., 200, 201, 400, 500).
+- Validate inputs in handlers using Gin’s binding (e.g., `c.ShouldBindJSON`).
+- Follow RESTful principles: resource-based endpoints, statelessness, consistent design.
+
+Error Handling:
+- Return errors explicitly (e.g., `if err != nil { return err }`).
+- Define custom error types in `/errors` for domain-specific failures (e.g., `ErrNotFound`).
+- Use standard library’s `http.Error` or Gin’s `c.JSON` for HTTP error responses.
+- Log errors with Zap in structured format.
+
+Database:
+- Use PostgreSQL with pgx driver and connection pooling.
+- Store migrations in `/db/migrations/` as SQL files.
+- Define models in `/models` with decimal handling via shopspring/decimal.
+
+Caching:
+- Use Redis for session management, rate limiting, and caching.
+- Implement efficient key patterns (e.g., `user:123:session`).
+
+Auth:
+- Implement JWT-based auth with golang-jwt/jwt.
+- Integrate Supabase for additional auth features (coordinate with frontend).
+- Hash passwords with golang.org/x/crypto.
+- Use middleware in `/middleware` for auth checks.
+
+Real-Time:
+- Use Gorilla WebSocket for real-time communication.
+- Manage connections and broadcasting via a WebSocket hub in `/internal`.
+
+External Services:
+- Send emails via Resend.com.
+- Store data with Supabase (URL: https://efmqiltdajvqenndmylz.supabase.co).
+- Fetch geocoding data from Geoapify.
+- Retrieve images from Pexels API.
+
+Security:
+- Validate all inputs to prevent injection attacks.
+- Use environment variables (via Viper) for secrets (e.g., database creds, API keys).
+- Enforce HTTPS and secure headers in Gin.
+- Implement rate limiting in `/middleware` using Redis.
+
+Concurrency:
+- Use goroutines for concurrent tasks (e.g., batch processing, WebSocket handling).
+- Ensure thread safety with appropriate synchronization (e.g., mutexes if needed).
+
+Testing:
+- Write unit tests with Go’s testing package and testify assertions.
+- Implement integration tests in `/tests` using testcontainers-go for PostgreSQL/Redis.
+- Test API endpoints with mocked requests and responses.
+
+Deployment:
+- Build with Docker using multi-stage builds (see Dockerfile).
+- Deploy to Google Cloud Run (production: https://nomadcrew.uk, preview: https://preview.nomadcrew.uk).
+- Use GitHub Actions for CI/CD (test, scan, deploy).
+
+Monitoring:
+- Log with Zap (configurable levels via environment).
+- Expose Prometheus metrics at `/metrics`.
+- Provide health checks at `/health/liveness`.
+
+Performance:
+- Optimize database queries with indexes.
+- Cache frequently accessed data in Redis.
+- Use connection pooling for efficiency.

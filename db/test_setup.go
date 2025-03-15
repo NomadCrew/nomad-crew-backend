@@ -14,7 +14,8 @@ import (
 func getSchemaPath() (string, error) {
 	_, b, _, _ := runtime.Caller(0)
 	basePath := filepath.Dir(b)
-	schemaPath := filepath.Join(basePath, "migrations", "init.sql")
+	// Look for the init migration file with the correct name
+	schemaPath := filepath.Join(basePath, "migrations", "000001_init.up.sql")
 
 	// Clean and obtain the absolute path
 	absSchemaPath, err := filepath.Abs(filepath.Clean(schemaPath))

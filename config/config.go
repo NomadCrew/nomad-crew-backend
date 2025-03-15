@@ -173,6 +173,9 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
 	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_JWT_SECRET: %w", err)
+	}
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
 	}
@@ -189,8 +192,8 @@ func LoadConfig() (*Config, error) {
 	}
 
 	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
-	log.Infow("RESEND_API_KEY check", 
-		"present", resendAPIKey != "", 
+	log.Infow("RESEND_API_KEY check",
+		"present", resendAPIKey != "",
 		"length", len(resendAPIKey),
 		"first_chars", func() string {
 			if len(resendAPIKey) > 3 {
@@ -314,6 +317,10 @@ func validateExternalServices(services *ExternalServices) error {
 
 	if len(services.SupabaseAnonKey) < minKeyLength {
 		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
+	}
+
+	if services.SupabaseJWTSecret == "" {
+		return fmt.Errorf("SUPABASE_JWT_SECRET is required but not set")
 	}
 
 	if len(services.GeoapifyKey) < minKeyLength {
