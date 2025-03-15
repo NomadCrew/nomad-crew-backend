@@ -255,6 +255,28 @@ func validateConfig(cfg *Config) error {
 		log.Warn("JWT_SECRET_KEY is shorter than recommended length")
 	}
 
+	// Validate FrontendURL
+	if cfg.Server.FrontendURL != "" {
+		// Ensure URL has protocol
+		if !strings.HasPrefix(cfg.Server.FrontendURL, "http://") && !strings.HasPrefix(cfg.Server.FrontendURL, "https://") {
+			cfg.Server.FrontendURL = "https://" + cfg.Server.FrontendURL
+			log.Warnw("FrontendURL missing protocol, adding https://", "frontendURL", cfg.Server.FrontendURL)
+		}
+
+		// Remove trailing slash if present
+		cfg.Server.FrontendURL = strings.TrimSuffix(cfg.Server.FrontendURL, "/")
+
+		// Validate URL format
+		_, err := url.Parse(cfg.Server.FrontendURL)
+		if err != nil {
+			return fmt.Errorf("invalid frontend URL format: %v", err)
+		}
+	} else {
+		// Set default if empty
+		cfg.Server.FrontendURL = "https://nomadcrew.uk"
+		log.Warnw("FrontendURL not configured, using default", "default", cfg.Server.FrontendURL)
+	}
+
 	// Validate database config
 	if cfg.Database.Host == "" {
 		return fmt.Errorf("DATABASE.HOST is required")
