@@ -445,6 +445,7 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // Chat messages are sent as events through the event system rather than through
 // a separate websocket connection.
 func (h *TripHandler) WSStreamEvents(c *gin.Context) {
+	// Get logger instance once and reuse it
 	log := logger.GetLogger()
 
 	// Get WebSocket connection from middleware
@@ -983,6 +984,21 @@ func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
 
 	// Get the frontend URL from config
 	frontendURL := h.tripModel.GetCommandContext().Config.FrontendURL
+
+	// Ensure frontendURL is not empty and has a protocol
+	if frontendURL == "" {
+		frontendURL = "https://nomadcrew.uk" // Default fallback
+		log.Warnw("FrontendURL not configured, using default", "default", frontendURL)
+	}
+
+	// Ensure URL has protocol
+	if !strings.HasPrefix(frontendURL, "http://") && !strings.HasPrefix(frontendURL, "https://") {
+		frontendURL = "https://" + frontendURL
+		log.Warnw("FrontendURL missing protocol, adding https://", "frontendURL", frontendURL)
+	}
+
+	// Remove trailing slash if present
+	frontendURL = strings.TrimSuffix(frontendURL, "/")
 
 	// Check if the request is from a mobile device
 	userAgent := c.Request.UserAgent()

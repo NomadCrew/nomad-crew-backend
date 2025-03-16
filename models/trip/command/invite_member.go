@@ -87,10 +87,35 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 	}
 
 	// Build acceptance URL
+	frontendURL := c.Ctx.Config.FrontendURL
+
+	// Ensure frontendURL is not empty and has a protocol
+	if frontendURL == "" {
+		frontendURL = "https://nomadcrew.uk" // Default fallback
+		log := logger.GetLogger()
+		log.Warnw("FrontendURL not configured, using default", "default", frontendURL)
+	}
+
+	// Ensure URL has protocol
+	if !strings.HasPrefix(frontendURL, "http://") && !strings.HasPrefix(frontendURL, "https://") {
+		frontendURL = "https://" + frontendURL
+		log := logger.GetLogger()
+		log.Warnw("FrontendURL missing protocol, adding https://", "frontendURL", frontendURL)
+	}
+
+	// Remove trailing slash if present
+	frontendURL = strings.TrimSuffix(frontendURL, "/")
+
 	acceptanceURL := fmt.Sprintf("%s/invite/accept/%s",
-		c.Ctx.Config.FrontendURL,
+		frontendURL,
 		token,
 	)
+
+	log := logger.GetLogger()
+	log.Infow("Generated invitation acceptance URL",
+		"url", acceptanceURL,
+		"inviteeEmail", c.Invitation.InviteeEmail,
+		"tripId", c.Invitation.TripID)
 
 	// Send invitation email
 	emailData := types.EmailData{

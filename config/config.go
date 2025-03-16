@@ -173,6 +173,9 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
 	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_JWT_SECRET: %w", err)
+	}
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
 	}
@@ -189,8 +192,8 @@ func LoadConfig() (*Config, error) {
 	}
 
 	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
-	log.Infow("RESEND_API_KEY check", 
-		"present", resendAPIKey != "", 
+	log.Infow("RESEND_API_KEY check",
+		"present", resendAPIKey != "",
 		"length", len(resendAPIKey),
 		"first_chars", func() string {
 			if len(resendAPIKey) > 3 {
@@ -250,6 +253,28 @@ func validateConfig(cfg *Config) error {
 
 	if len(cfg.Server.JwtSecretKey) < minJWTLength {
 		log.Warn("JWT_SECRET_KEY is shorter than recommended length")
+	}
+
+	// Validate FrontendURL
+	if cfg.Server.FrontendURL != "" {
+		// Ensure URL has protocol
+		if !strings.HasPrefix(cfg.Server.FrontendURL, "http://") && !strings.HasPrefix(cfg.Server.FrontendURL, "https://") {
+			cfg.Server.FrontendURL = "https://" + cfg.Server.FrontendURL
+			log.Warnw("FrontendURL missing protocol, adding https://", "frontendURL", cfg.Server.FrontendURL)
+		}
+
+		// Remove trailing slash if present
+		cfg.Server.FrontendURL = strings.TrimSuffix(cfg.Server.FrontendURL, "/")
+
+		// Validate URL format
+		_, err := url.Parse(cfg.Server.FrontendURL)
+		if err != nil {
+			return fmt.Errorf("invalid frontend URL format: %v", err)
+		}
+	} else {
+		// Set default if empty
+		cfg.Server.FrontendURL = "https://nomadcrew.uk"
+		log.Warnw("FrontendURL not configured, using default", "default", cfg.Server.FrontendURL)
 	}
 
 	// Validate database config
@@ -314,6 +339,10 @@ func validateExternalServices(services *ExternalServices) error {
 
 	if len(services.SupabaseAnonKey) < minKeyLength {
 		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
+	}
+
+	if services.SupabaseJWTSecret == "" {
+		return fmt.Errorf("SUPABASE_JWT_SECRET is required but not set")
 	}
 
 	if len(services.GeoapifyKey) < minKeyLength {

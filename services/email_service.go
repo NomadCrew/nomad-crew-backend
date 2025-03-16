@@ -11,7 +11,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/resend/resend-go/v2"
 )
 
@@ -28,24 +27,32 @@ type EmailService struct {
 }
 
 func NewEmailService(cfg *config.EmailConfig) *EmailService {
+	return NewEmailServiceWithRegistry(cfg, prometheus.DefaultRegisterer)
+}
+
+func NewEmailServiceWithRegistry(cfg *config.EmailConfig, reg prometheus.Registerer) *EmailService {
 	logger.GetLogger().Infow("Initializing email service",
 		"from", cfg.FromAddress, "apikey", cfg.ResendAPIKey)
 	client := resend.NewClient(cfg.ResendAPIKey)
 	metrics := &EmailMetrics{
-		sendLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+		sendLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "nomadcrew_email_send_duration_seconds",
 			Help:    "Time taken to send emails",
 			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 10},
 		}),
-		errorCount: promauto.NewCounter(prometheus.CounterOpts{
+		errorCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "nomadcrew_email_errors_total",
 			Help: "Total number of email sending errors",
 		}),
-		sentCount: promauto.NewCounter(prometheus.CounterOpts{
+		sentCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "nomadcrew_emails_sent_total",
 			Help: "Total number of emails sent",
 		}),
 	}
+
+	reg.MustRegister(metrics.sendLatency)
+	reg.MustRegister(metrics.errorCount)
+	reg.MustRegister(metrics.sentCount)
 
 	return &EmailService{
 		config:  cfg,
@@ -60,6 +67,17 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	defer func() {
 		s.metrics.sendLatency.Observe(time.Since(startTime).Seconds())
 	}()
+
+	// Validate required template data
+	requiredFields := []string{"UserEmail", "TripName", "AcceptanceURL"}
+	for _, field := range requiredFields {
+		if _, ok := data.TemplateData[field]; !ok {
+			s.metrics.errorCount.Inc()
+			err := fmt.Errorf("missing required template field: %s", field)
+			log.Errorw("Invalid template data", "error", err)
+			return err
+		}
+	}
 
 	// Parse and execute template
 	tmpl, err := template.New("invitation").Parse(invitationEmailTemplate)

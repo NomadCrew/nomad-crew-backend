@@ -1016,10 +1016,18 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 				"clientIP", clientIP,
 				"userAgent", userAgent)
 
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "User authentication required for WebSocket connections",
-			})
-			return
+			// Check if this is a WebSocket upgrade request
+			if strings.ToLower(c.GetHeader("Connection")) == "upgrade" &&
+				strings.ToLower(c.GetHeader("Upgrade")) == "websocket" {
+				// For WebSocket upgrade requests, we'll continue and let the auth middleware handle it
+				log.Debugw("Continuing WebSocket connection without user ID for auth middleware to handle",
+					"path", c.Request.URL.Path)
+			} else {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "User authentication required for WebSocket connections",
+				})
+				return
+			}
 		}
 
 		// Upgrade the connection
