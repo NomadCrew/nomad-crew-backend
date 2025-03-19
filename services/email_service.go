@@ -175,6 +175,11 @@ const invitationEmailTemplate = `<!DOCTYPE html>
             color: #777777;
             word-break: break-all;
         }
+        .note {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #777777;
+        }
     </style>
 </head>
 <body>
@@ -190,6 +195,10 @@ const invitationEmailTemplate = `<!DOCTYPE html>
         <p class="link">
             Or copy this link:<br/>
             {{.AcceptanceURL}}
+        </p>
+        <p class="note">
+            If you're on a mobile device, the link will open directly in the NomadCrew app.
+            On desktop, you'll be redirected to our website.
         </p>
     </div>
 </body>

@@ -1007,13 +1007,11 @@ func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
 		strings.Contains(strings.ToLower(userAgent), "iphone") ||
 		strings.Contains(strings.ToLower(userAgent), "ipad")
 
+	// Use the new format for both mobile and web
 	var redirectURL string
-
 	if isMobile {
-		// For mobile devices, use the app scheme
-		// This should match what's configured in your Expo app
-		redirectURL = fmt.Sprintf("nomadcrew://invite/accept?token=%s&tripId=%s&email=%s",
-			token, claims.TripID, claims.InviteeEmail)
+		// For mobile devices, use the app scheme with the new format
+		redirectURL = fmt.Sprintf("nomadcrew://invite/accept/%s", token)
 	} else {
 		// For web browsers, redirect to the web frontend
 		redirectURL = fmt.Sprintf("%s/invite/accept/%s", frontendURL, token)
