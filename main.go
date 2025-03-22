@@ -333,6 +333,9 @@ func main() {
 		inviteRoutes.GET("/accept/:token", tripHandler.HandleInvitationDeepLink)
 	}
 
+	// Add a root-level route for accessing deep links via a cleaner format
+	r.GET("/invite/:token", tripHandler.HandleInvitationDeepLink)
+
 	// Initialize chat service
 	chatService := services.NewChatService(chatStore, tripModel.GetTripStore(), eventService)
 	chatHandler := handlers.NewChatHandler(chatService, chatStore)
