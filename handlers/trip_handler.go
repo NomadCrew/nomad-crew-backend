@@ -1004,6 +1004,12 @@ func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
 	}
 	frontendURL = strings.TrimSuffix(frontendURL, "/")
 
+	// Use frontendURL in the deepLink variable if not already being used
+	if !strings.Contains(deepLink, frontendURL) {
+		// Only add the frontend URL if it's not already in the deepLink
+		deepLink = strings.ReplaceAll(deepLink, "nomadcrew://", frontendURL+"/")
+	}
+
 	// Generate the HTML for the universal linking page
 	html := fmt.Sprintf(`
 <!DOCTYPE html>
