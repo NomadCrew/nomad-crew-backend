@@ -69,7 +69,7 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	}()
 
 	// Validate required template data
-	requiredFields := []string{"UserEmail", "TripName", "AcceptanceURL"}
+	requiredFields := []string{"UserEmail", "TripName", "InvitationToken"}
 	for _, field := range requiredFields {
 		if _, ok := data.TemplateData[field]; !ok {
 			s.metrics.errorCount.Inc()
@@ -169,6 +169,17 @@ const invitationEmailTemplate = `<!DOCTYPE html>
         .button:hover {
             background-color: #E05A10;
         }
+        .app-link {
+            display: inline-block;
+            margin-top: 20px;
+            background-color: #13B86D;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            text-decoration: none;
+            color: #ffffff;
+            border-radius: 8px;
+        }
         .link {
             margin-top: 20px;
             font-size: 14px;
@@ -187,18 +198,21 @@ const invitationEmailTemplate = `<!DOCTYPE html>
         <h1>You're Invited to Join a Trip!</h1>
         <p>Hi {{.UserEmail}}!</p>
         <p>You've been invited to join the trip "{{.TripName}}". Click below to accept:</p>
+        
+        <!-- Mobile app deep link button -->
         <p>
-            <a href="{{.AcceptanceURL}}" class="button">
-                Accept Invitation
+            <a href="{{if .AppDeepLink}}{{.AppDeepLink}}{{else}}nomadcrew://invite/accept/{{.InvitationToken}}{{end}}" class="button">
+                Open in App
             </a>
         </p>
-        <p class="link">
-            Or copy this link:<br/>
-            {{.AcceptanceURL}}
-        </p>
+        
         <p class="note">
-            If you're on a mobile device, the link will open directly in the NomadCrew app.
-            On desktop, you'll be redirected to our website.
+            The button above will open directly in the NomadCrew app if you have it installed on your mobile device.
+        </p>
+        
+        <p class="link">
+            If you're having trouble with the link, you can copy and paste this in your browser:<br>
+            <code>nomadcrew://invite/accept/{{.InvitationToken}}</code>
         </p>
     </div>
 </body>

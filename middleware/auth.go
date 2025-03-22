@@ -122,7 +122,7 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Get the Supabase anon key from config
+	// Get the Supabase configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Errorw("Failed to load config for JWKS fetch",
@@ -137,6 +137,13 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 		log.Errorw("SUPABASE_ANON_KEY is empty", "error", "JWKS fetch cannot proceed")
 		return nil, fmt.Errorf("SUPABASE_ANON_KEY environment variable is not set")
 	}
+
+	// Enhanced logging for Supabase configuration
+	log.Infow("Supabase configuration",
+		"supabase_url", cfg.ExternalServices.SupabaseURL,
+		"anon_key_present", anonKey != "",
+		"anon_key_length", len(anonKey),
+		"jwks_url", c.jwksURL)
 
 	// Normalize the anon key to ensure it doesn't have any problematic characters for headers
 	// Use two approaches to maximize compatibility with different Supabase configurations
@@ -172,6 +179,7 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 		}())
 
 	// Fetch the JWKS
+	log.Infow("Sending JWKS request now", "url", c.jwksURL)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Errorw("Failed to fetch JWKS",
@@ -427,6 +435,90 @@ func AuthMiddleware(config *config.ServerConfig) gin.HandlerFunc {
 	}
 }
 
+// tryHS256Validation attempts to validate a token using HS256 with the static secret
+func tryHS256Validation(tokenString string) (string, error) {
+	log := logger.GetLogger()
+
+	// Get the Supabase configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Check for empty JWT secret
+	if cfg.ExternalServices.SupabaseJWTSecret == "" {
+		return "", fmt.Errorf("SUPABASE_JWT_SECRET environment variable is not set")
+	}
+
+	// Parse and validate the token using static secret
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
+	)
+	if err != nil {
+		return "", fmt.Errorf("HS256 validation failed: %w", err)
+	}
+
+	// Get the subject (user ID)
+	sub := token.Subject()
+	if sub == "" {
+		return "", fmt.Errorf("missing subject claim in token")
+	}
+
+	log.Infow("Static secret (HS256) token validation successful")
+	return sub, nil
+}
+
+// tryJWKSValidation attempts to validate a token using JWKS
+func tryJWKSValidation(tokenString string, kidValue string, algValue string) (string, error) {
+	log := logger.GetLogger()
+
+	// Get the Supabase configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Check for Supabase URL
+	if cfg.ExternalServices.SupabaseURL == "" {
+		return "", fmt.Errorf("SUPABASE_URL environment variable is not set")
+	}
+
+	// Form JWKS URL
+	jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
+	log.Infow("Attempting JWKS validation",
+		"jwks_url", jwksURL,
+		"kid", kidValue,
+		"alg", algValue)
+
+	// Create JWKS cache instance
+	jwksCache := GetJWKSCache(jwksURL)
+
+	// Try to fetch the key
+	key, err := jwksCache.GetKey(kidValue)
+	if err != nil || key == nil {
+		return "", fmt.Errorf("failed to get key from JWKS: %w", err)
+	}
+
+	// Try to validate with RS256 (most common)
+	token, err := jwt.Parse([]byte(tokenString),
+		jwt.WithVerify(true),
+		jwt.WithKey(jwa.RS256, key),
+	)
+	if err != nil {
+		return "", fmt.Errorf("RS256 validation failed: %w", err)
+	}
+
+	// Get the subject
+	sub := token.Subject()
+	if sub == "" {
+		return "", fmt.Errorf("missing subject claim in token")
+	}
+
+	log.Infow("JWKS (RS256) token validation successful")
+	return sub, nil
+}
+
 // validateJWT validates a JWT token and returns the subject (user ID)
 func validateJWT(tokenString string) (string, error) {
 	log := logger.GetLogger()
@@ -471,146 +563,40 @@ func validateJWT(tokenString string) (string, error) {
 		}
 	}
 
-	// Strategy 1: If token has a kid claim, try JWKS validation first
-	if kidValue != "" && cfg.ExternalServices.SupabaseURL != "" {
-		jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
-		log.Infow("Attempting JWKS validation", "jwks_url", jwksURL, "kid", kidValue, "alg", algValue)
+	// Enhanced debug logging for token information
+	log.Infow("Token debugging information",
+		"token_algorithm", algValue,
+		"token_kid", kidValue,
+		"token_format", fmt.Sprintf("%d parts", len(parts)),
+		"token_length", len(tokenString))
 
-		// Create JWKS cache instance
-		jwksCache := GetJWKSCache(jwksURL)
-
-		// Try to fetch the key for this specific kid
-		key, err := jwksCache.GetKey(kidValue)
-		if err == nil && key != nil {
-			var jwksErr error
-			var token jwt.Token
-
-			// Special case: If the token header specifies HS256 but has a kid, try both approaches
-			if algValue == "HS256" {
-				// First try HS256 with the key material from JWKS (unusual but possible)
-				log.Infow("Token uses HS256 with kid, trying both HS256 and RS256 validation")
-
-				// Try HS256 first
-				publicKey, err := key.PublicKey()
-				if err == nil {
-					// Convert public key to raw bytes to use with HS256
-					keyBytes, err := json.Marshal(publicKey)
-					if err == nil {
-						token, jwksErr = jwt.Parse([]byte(tokenString),
-							jwt.WithVerify(true),
-							jwt.WithKey(jwa.HS256, keyBytes),
-						)
-
-						if jwksErr == nil {
-							log.Infow("HS256 validation with JWKS key successful")
-
-							// Get the subject (user ID)
-							sub := token.Subject()
-							if sub != "" {
-								log.Info("JWKS token validation successful with HS256")
-								return sub, nil
-							}
-						}
-					}
-				}
-
-				// Then try RS256 as fallback
-				token, jwksErr = jwt.Parse([]byte(tokenString),
-					jwt.WithVerify(true),
-					jwt.WithKey(jwa.RS256, key),
-				)
-
-				if jwksErr == nil {
-					// Get the subject (user ID)
-					sub := token.Subject()
-					if sub != "" {
-						log.Info("JWKS token validation successful with RS256 (despite HS256 in header)")
-						return sub, nil
-					}
-				}
-			} else {
-				// Standard asymmetric algorithms (RS256, RS384, RS512)
-				var algorithms []jwa.SignatureAlgorithm
-
-				// If we know the algorithm, prioritize it first
-				if algValue == "RS384" {
-					algorithms = []jwa.SignatureAlgorithm{jwa.RS384, jwa.RS256, jwa.RS512}
-				} else if algValue == "RS512" {
-					algorithms = []jwa.SignatureAlgorithm{jwa.RS512, jwa.RS256, jwa.RS384}
-				} else {
-					// Default: try all RS algorithms with RS256 first (most common)
-					algorithms = []jwa.SignatureAlgorithm{jwa.RS256, jwa.RS384, jwa.RS512}
-				}
-
-				// Try each algorithm
-				for _, alg := range algorithms {
-					token, jwksErr = jwt.Parse([]byte(tokenString),
-						jwt.WithVerify(true),
-						jwt.WithKey(alg, key),
-					)
-
-					if jwksErr == nil {
-						// Found a working algorithm
-						log.Infow("JWKS validation successful", "algorithm", alg.String())
-						break
-					}
-				}
-
-				if jwksErr == nil {
-					// JWKS validation successful
-					sub := token.Subject()
-					if sub != "" {
-						log.Info("JWKS token validation successful")
-						return sub, nil
-					}
-
-					log.Error("JWKS token validation failed: missing subject claim")
-					return "", fmt.Errorf("missing subject claim in token")
-				}
-			}
-
-			// JWKS validation failed with all attempts, log the error and fall back to static secret
-			log.Warnw("JWKS validation failed with all algorithms, falling back to static secret",
-				"jwks_error", jwksErr,
-				"kid", kidValue,
-				"alg", algValue)
-		} else {
-			log.Warnw("Failed to get key from JWKS, falling back to static secret",
-				"key_error", err,
-				"kid", kidValue,
-				"jwks_url", jwksURL)
-		}
+	// WORKAROUND: Try HS256 validation first (static secret)
+	staticUserID, staticErr := tryHS256Validation(tokenString)
+	if staticErr == nil {
+		// Static secret validation succeeded
+		return staticUserID, nil
 	}
 
-	// Strategy 2: Fall back to static secret validation (for backward compatibility)
-	// Parse and validate the token
-	token, err := jwt.Parse([]byte(tokenString),
-		jwt.WithVerify(true),
-		jwt.WithKey(jwa.HS256, []byte(cfg.ExternalServices.SupabaseJWTSecret)),
-	)
-	if err != nil {
-		log.Errorw("Token validation failed with static secret",
-			"error", err,
-			"error_type", fmt.Sprintf("%T", err),
-			"kid_present", kidValue != "")
+	log.Infow("Static secret validation failed, trying JWKS next",
+		"error", staticErr)
 
-		// If kid was present, provide a more specific error message
-		if kidValue != "" {
-			return "", fmt.Errorf("token validation failed with both JWKS and static secret: %w", err)
+	// If token has a kid claim, try JWKS validation
+	if kidValue != "" {
+		jwksUserID, jwksErr := tryJWKSValidation(tokenString, kidValue, algValue)
+		if jwksErr == nil {
+			// JWKS validation succeeded
+			return jwksUserID, nil
 		}
 
-		return "", fmt.Errorf("failed to validate token: %w", err)
+		log.Errorw("Both validation methods failed",
+			"static_error", staticErr,
+			"jwks_error", jwksErr)
+
+		return "", fmt.Errorf("token validation failed with both methods: %w", jwksErr)
 	}
 
-	// Get the subject (user ID)
-	sub := token.Subject()
-	if sub == "" {
-		log.Error("Token validation failed: missing subject claim")
-		return "", fmt.Errorf("missing subject claim in token")
-	}
-
-	log.Info("Static secret token validation successful")
-	return sub, nil
+	// If we got here, static validation failed and there was no kid
+	return "", fmt.Errorf("failed to validate token: %w", staticErr)
 }
 
 // Helper function to check if a string is base64 encoded

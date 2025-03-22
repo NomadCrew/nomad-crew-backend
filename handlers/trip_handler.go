@@ -982,53 +982,118 @@ func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
 		return
 	}
 
-	// Get the frontend URL from config
-	frontendURL := h.tripModel.GetCommandContext().Config.FrontendURL
+	// Build the deep link directly to the app
+	deepLink := fmt.Sprintf("nomadcrew://invite/accept/%s", token)
 
-	// Ensure frontendURL is not empty and has a protocol
-	if frontendURL == "" {
-		frontendURL = "https://nomadcrew.uk" // Default fallback
-		log.Warnw("FrontendURL not configured, using default", "default", frontendURL)
-	}
-
-	// Ensure URL has protocol
-	if !strings.HasPrefix(frontendURL, "http://") && !strings.HasPrefix(frontendURL, "https://") {
-		frontendURL = "https://" + frontendURL
-		log.Warnw("FrontendURL missing protocol, adding https://", "frontendURL", frontendURL)
-	}
-
-	// Remove trailing slash if present
-	frontendURL = strings.TrimSuffix(frontendURL, "/")
-
-	// Check if the request is from a mobile device
+	// Get user agent to determine if this is a mobile device
 	userAgent := c.Request.UserAgent()
+
+	// Check if the request comes from a mobile device
 	isMobile := strings.Contains(strings.ToLower(userAgent), "mobile") ||
 		strings.Contains(strings.ToLower(userAgent), "android") ||
 		strings.Contains(strings.ToLower(userAgent), "iphone") ||
 		strings.Contains(strings.ToLower(userAgent), "ipad")
 
-	// Use the new format for both mobile and web
-	var redirectURL string
-	if isMobile {
-		// For mobile devices, use the app scheme with the new format
-		redirectURL = fmt.Sprintf("nomadcrew://invite/accept/%s", token)
-	} else {
-		// For web browsers, redirect to the web frontend
-		redirectURL = fmt.Sprintf("%s/invite/accept/%s", frontendURL, token)
+	// Get the frontend URL from config for fallback
+	frontendURL := h.tripModel.GetCommandContext().Config.FrontendURL
+	if frontendURL == "" {
+		frontendURL = "https://nomadcrew.uk" // Default fallback
 	}
+	if !strings.HasPrefix(frontendURL, "http://") && !strings.HasPrefix(frontendURL, "https://") {
+		frontendURL = "https://" + frontendURL
+	}
+	frontendURL = strings.TrimSuffix(frontendURL, "/")
 
-	log.Infow("Redirecting invitation",
+	// Generate the HTML for the universal linking page
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opening NomadCrew</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 40px 20px;
+            background-color: #f7f7f7;
+            color: #333;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #F46315;
+            margin-bottom: 30px;
+        }
+        .logo {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+        }
+        .button {
+            display: inline-block;
+            background-color: #F46315;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px;
+        }
+        .note {
+            margin-top: 30px;
+            color: #777;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="https://nomadcrew.uk/logo.png" alt="NomadCrew Logo" class="logo">
+        <h1>Opening NomadCrew App</h1>
+        <p>We're redirecting you to the NomadCrew app. If it doesn't open automatically, please use one of these options:</p>
+        <p>
+            <a href="%s" class="button" id="openApp">Open in App</a>
+        </p>
+        <p class="note">
+            Don't have the app? Download it from the 
+            <a href="https://apps.apple.com/app/nomadcrew/id123456789">App Store</a> or 
+            <a href="https://play.google.com/store/apps/details?id=com.nomadcrew.app">Google Play</a>
+        </p>
+    </div>
+    <script>
+        // Try to open the app immediately
+        window.location.href = "%s";
+        
+        // Set a fallback timer for iOS
+        setTimeout(function() {
+            document.getElementById('openApp').click();
+        }, 1000);
+    </script>
+</body>
+</html>`, deepLink, deepLink)
+
+	// Log redirection attempt
+	log.Infow("Handling invitation deeplink",
+		"tripId", claims.TripID,
 		"isMobile", isMobile,
-		"redirectURL", redirectURL,
-		"tripId", claims.TripID)
+		"userAgent", userAgent)
 
 	// Set headers to prevent caching
 	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 	c.Header("Pragma", "no-cache")
 	c.Header("Expires", "0")
 
-	// Redirect to the appropriate URL
-	c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+	// Return HTML that attempts to open the app
+	c.Header("Content-Type", "text/html")
+	c.String(http.StatusOK, html)
 }
 
 // secureRandomFloat returns a cryptographically secure random float64 between 0 and 1

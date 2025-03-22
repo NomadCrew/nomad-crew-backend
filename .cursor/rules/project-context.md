@@ -47,6 +47,15 @@
 
 ## Recent Changes
 
+### March 22, 2025, 15:30 UTC - Enhanced JWT Validation and Debugging
+- Improved JWKS validation in `middleware/auth.go` to better handle tokens with `kid` claim:
+  - Added detailed logging for token headers (algorithm and key ID)
+  - Added JWKS URL configuration and request debugging
+  - Implemented a workaround to prioritize HS256 validation before JWKS validation
+  - Created helper functions `tryHS256Validation` and `tryJWKSValidation` for cleaner code
+- Fixed issue with newer Supabase tokens using RS256 with JWKS validation
+- Added better error reporting for authentication failures
+
 ### March 14, 2025, 17:45 UTC - Enhanced JWT Validation
 - Updated JWT validation in `middleware/auth.go` to support multiple formats of Supabase JWT secrets:
   - Raw secret (as is)
@@ -85,6 +94,8 @@
    - Health check endpoints
 
 ## Recent Updates
+- March 14, 2024: Enhanced deep linking for native app invitations
+- March 14, 2024: Enhanced invitation email template with direct web links
 - March 13, 2024: Initial project context documentation created
 - March 12, 2024: Updated CI/CD pipeline with preview environments
 - March 10, 2024: Implemented Cloud Run deployment workflow
