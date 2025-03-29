@@ -109,10 +109,29 @@ func main() {
 
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	eventService := services.NewRedisEventService(redisClient)
+
+	// ---> Configuration loading for Event Service (Using Viper Values) <---
+	// Load config from Viper-populated struct cfg.EventService
+	eventServiceConfig := services.RedisEventServiceConfig{
+		PublishTimeout:   time.Duration(cfg.EventService.PublishTimeoutSeconds) * time.Second,
+		SubscribeTimeout: time.Duration(cfg.EventService.SubscribeTimeoutSeconds) * time.Second,
+		EventBufferSize:  cfg.EventService.EventBufferSize,
+	}
+
+	// Log the actual config being used (read from cfg)
+	log.Infow("Initializing RedisEventService with config",
+		"publishTimeout", eventServiceConfig.PublishTimeout,
+		"subscribeTimeout", eventServiceConfig.SubscribeTimeout,
+		"eventBufferSize", eventServiceConfig.EventBufferSize,
+	)
+	// Pass the loaded config to the constructor
+	eventService := services.NewRedisEventService(redisClient, eventServiceConfig)
+	// ---> End Event Service configuration <---
+
 	weatherService := services.NewWeatherService(eventService)
 	emailService := services.NewEmailService(&cfg.Email)
-	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
+	// Pass eventService to HealthService if it needs it
+	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version) // healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version, eventService)
 	locationService := services.NewLocationService(locationDB, eventService)
 
 	// Initialize chat store

@@ -137,6 +137,9 @@ jobs:
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             EMAIL_FROM_ADDRESS=${{ secrets.EMAIL_FROM_ADDRESS }}
             EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
+            EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS=5
+            EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS=10
+            EVENT_SERVICE_EVENT_BUFFER_SIZE=100
           secrets: |
             JWT_SECRET_KEY=JWT_SECRET_KEY:latest
             DB_PASSWORD=DB_PASSWORD:latest
