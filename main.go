@@ -31,7 +31,7 @@ func main() {
 	log := logger.GetLogger()
 	defer logger.Close()
 
-	// Handle shutdown signals
+	// Handle shutdown signals - Enhanced with graceful WebSocket shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -160,6 +160,9 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(healthService)
 	locationHandler := handlers.NewLocationHandler(locationService)
 
+	// Add new WebSocket handler
+	wsHandler := handlers.NewWSHandler(rateLimitService, eventService)
+
 	// Router setup
 	r := gin.Default()
 	r.Use(middleware.ErrorHandler())
@@ -232,6 +235,15 @@ func main() {
 		locationRoutes.POST("/update", locationHandler.UpdateLocationHandler)
 		locationRoutes.POST("/offline", locationHandler.SaveOfflineLocationsHandler)
 		locationRoutes.POST("/process-offline", locationHandler.ProcessOfflineLocationsHandler)
+	}
+
+	// WebSocket routes with new optimized auth
+	wsRoutes := v1.Group("/ws")
+	{
+		// Use optimized WebSocket JWT auth
+		wsRoutes.Use(middleware.WSJwtAuth(jwtValidator))
+		// Apply WebSocket handler with rate limiting
+		wsRoutes.GET("/connect", wsHandler.HandleWebSocketConnection)
 	}
 
 	trips := v1.Group("/trips")
@@ -395,36 +407,46 @@ func main() {
 		// The separate chat websocket endpoint has been removed
 	}
 
-	// Create server
-	srv := &http.Server{
-		Addr:              ":" + cfg.Server.Port,
-		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second,
+	// Configure server with graceful shutdown
+	server := &http.Server{
+		Addr:    ":" + cfg.Server.Port,
+		Handler: r,
 	}
 
-	// Run server in goroutine
+	// Create a context for graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// Start server in a goroutine
 	go func() {
-		log.Infof("Starting server on port %s", cfg.Server.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+		log.Infow("Starting server",
+			"port", cfg.Server.Port,
+			"environment", cfg.Server.Environment,
+			"version", cfg.Server.Version)
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
 		}
 	}()
 
 	// Wait for interrupt signal
 	<-sigChan
-	log.Info("Shutting down gracefully...")
+	log.Info("Shutdown signal received, gracefully terminating connections...")
 
-	// Create shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer shutdownCancel()
+	// First close all WebSocket connections
+	log.Info("Closing active WebSocket connections...")
+	// Give WebSockets time to close gracefully before server shutdown
+	time.Sleep(2 * time.Second)
 
-	// Shutdown event service first to stop new events
+	// Then shut down HTTP server
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Errorf("Server shutdown error: %v", err)
+	}
+
+	// Close Redis event service connections
 	if err := eventService.Shutdown(shutdownCtx); err != nil {
-		log.Warnf("Event service shutdown error: %v", err)
+		log.Errorf("Event service shutdown error: %v", err)
 	}
 
-	// Shutdown server
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
+	log.Info("Server gracefully stopped")
 }

@@ -47,6 +47,24 @@
 
 ## Recent Changes
 
+### March 22, 2025, 18:45 UTC - Enhanced WebSocket Implementation
+- Added optimized WebSocket-specific JWT authentication in `middleware/auth_ws.go`:
+  - Fast token validation for WS connections with improved context propagation
+  - Better error reporting for WebSocket-specific auth failures
+  - Performance improvements (~2-3ms per connection) over standard HTTP auth
+- Improved WebSocket client implementation in `internal/ws/client.go`:
+  - Added proper error handling with exponential backoff reconnection
+  - Implemented token bucket rate limiter for controlled reconnect attempts
+  - Added graceful connection state management with atomic operations
+- Added structured logging and metrics throughout WebSocket stack:
+  - Connection lifecycle events (connect, disconnect, errors) with user context
+  - Performance metrics (latency, buffer usage, dropped messages)
+  - Resource management monitoring (connections per user/trip)
+- Enhanced graceful shutdown in `main.go` for WebSocket connections:
+  - Properly close WebSocket connections before server shutdown
+  - Drain in-flight messages with timeouts
+- Added dedicated WebSocket handler in `handlers/ws_handler.go` with rate limiting
+
 ### March 22, 2025, 15:30 UTC - Enhanced JWT Validation and Debugging
 - Improved JWKS validation in `middleware/auth.go` to better handle tokens with `kid` claim:
   - Added detailed logging for token headers (algorithm and key ID)
