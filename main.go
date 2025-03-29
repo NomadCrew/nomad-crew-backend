@@ -100,6 +100,13 @@ func main() {
 		"url", cfg.ExternalServices.SupabaseURL,
 		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
 
+	// Initialize JWT Validator
+	jwtValidator, err := middleware.NewJWTValidator(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize JWT Validator: %v", err)
+	}
+	log.Info("JWT Validator initialized successfully")
+
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
 	eventService := services.NewRedisEventService(redisClient)
@@ -202,7 +209,7 @@ func main() {
 	// Location routes
 	locationRoutes := v1.Group("/location")
 	{
-		locationRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
+		locationRoutes.Use(middleware.AuthMiddleware(jwtValidator))
 		locationRoutes.POST("/update", locationHandler.UpdateLocationHandler)
 		locationRoutes.POST("/offline", locationHandler.SaveOfflineLocationsHandler)
 		locationRoutes.POST("/process-offline", locationHandler.ProcessOfflineLocationsHandler)
@@ -210,7 +217,7 @@ func main() {
 
 	trips := v1.Group("/trips")
 	{
-		trips.Use(middleware.AuthMiddleware(&cfg.Server))
+		trips.Use(middleware.AuthMiddleware(jwtValidator))
 
 		// List and search endpoints
 		trips.GET("/list", tripHandler.ListUserTripsHandler)  // GET all trips related to the user
@@ -267,10 +274,6 @@ func main() {
 		// Todo routes setup
 		todoRoutes := trips.Group("/:id/todos")
 		{
-			todoRoutes.Use(
-				middleware.AuthMiddleware(&cfg.Server), // Auth first
-			)
-
 			todoRoutes.GET("",
 				middleware.RequireRole(tripModel, types.MemberRoleMember),
 				todoHandler.ListTodosHandler,
@@ -343,7 +346,7 @@ func main() {
 	// Chat routes
 	chatRoutes := v1.Group("/chats")
 	{
-		chatRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
+		chatRoutes.Use(middleware.AuthMiddleware(jwtValidator))
 
 		// Create a chat group
 		chatRoutes.POST("/groups", chatHandler.CreateChatGroup)

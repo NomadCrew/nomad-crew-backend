@@ -104,7 +104,7 @@ func simpleTokenValidation(tokenString string, secret string) map[string]interfa
 			result["jwks_validation_attempted"] = true
 
 			// Create JWKS cache instance
-			jwksCache := middleware.GetJWKSCache(jwksURL)
+			jwksCache := middleware.GetJWKSCache(jwksURL, cfg.ExternalServices.SupabaseAnonKey, 15*time.Minute)
 			if jwksCache != nil {
 				// Try to fetch the key for this specific kid
 				key, err := jwksCache.GetKey(kid)
@@ -621,7 +621,7 @@ func comprehensiveValidationTests(tokenString string, cfg *config.Config, tokenH
 			jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
 
 			// Create JWKS cache instance
-			jwksCache := middleware.GetJWKSCache(jwksURL)
+			jwksCache := middleware.GetJWKSCache(jwksURL, cfg.ExternalServices.SupabaseAnonKey, 15*time.Minute)
 
 			// Try to fetch the key for this specific kid
 			key, err := jwksCache.GetKey(kidValue)
@@ -725,7 +725,7 @@ if len(parts) == 3 {
 
 // Get key from JWKS
 jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
-jwksCache := middleware.GetJWKSCache(jwksURL)
+jwksCache := middleware.GetJWKSCache(jwksURL, cfg.ExternalServices.SupabaseAnonKey, 15*time.Minute)
 key, err := jwksCache.GetKey(kidValue)
 if err == nil && key != nil {
 	token, err := jwt.Parse([]byte(tokenString),
