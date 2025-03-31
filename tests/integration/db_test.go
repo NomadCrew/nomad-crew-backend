@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,11 @@ func authIDtoUUID(authID string) string {
 }
 
 func setupTestDatabase(t *testing.T) (*db.DatabaseClient, func()) {
+	// Skip if running on Windows
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping integration test on Windows - rootless Docker is not supported")
+	}
+
 	ctx := context.Background()
 
 	req := testcontainers.ContainerRequest{
@@ -93,6 +99,11 @@ func mustGetwd(t *testing.T) string {
 }
 
 func TestTripDB_Integration(t *testing.T) {
+	// Skip if running on Windows
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping integration test on Windows - rootless Docker is not supported")
+	}
+
 	dbClient, cleanup := setupTestDatabase(t)
 	ctx := context.Background()
 	tripDB := db.NewTripDB(dbClient)

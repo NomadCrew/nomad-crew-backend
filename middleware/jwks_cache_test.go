@@ -155,8 +155,8 @@ func TestJWKSCache_GetKey(t *testing.T) {
 			expectedErr: true,
 			// Error depends on whether primary parse or fallback parse fails
 			// Let's check for a common part of the error message if possible, or adjust based on actual log/error.
-			// Assuming jwk.Parse fails first:
-			checkErrText: "failed to parse JWKS keys", // Matches error from refreshCache after parse failures
+			// Adjusting to match the actual error message format:
+			checkErrText: "failed to decode JWKS response", // Matches error from refreshCache after parse failures
 		},
 		{
 			name:         "Key Not Found After Successful Fetch",

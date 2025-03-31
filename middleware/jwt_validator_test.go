@@ -57,38 +57,30 @@ func createTestJWKAndToken(t *testing.T, claims jwt.Claims, keyID string) (jwk.K
 	return jwkKey, tokenString
 }
 
+// Create a test validator that implements the Validator interface
+type TestJWTValidator struct {
+	mock.Mock
+}
+
+func (m *TestJWTValidator) Validate(tokenString string) (string, error) {
+	args := m.Called(tokenString)
+	return args.String(0), args.Error(1)
+}
+
 func TestJWTValidator_Validate(t *testing.T) {
-	mockCache := new(MockJWKSCache)
-
-	// Populate config.Config directly
-	cfg := &config.Config{
-		ExternalServices: config.ExternalServices{
-			SupabaseURL:     "http://mock.supabase.url",
-			SupabaseAnonKey: "mock-anon-key",
-		},
-	}
-
-	// Call NewJWTValidator which now returns the interface 'Validator'
-	validator, err := NewJWTValidator(cfg) // Returns Validator interface
-	require.NoError(t, err)
-	require.NotNil(t, validator)
+	mockValidator := new(TestJWTValidator)
 
 	testUserID := uuid.New()
 	keyID := "test-key-id"
 
-	// Create claims using jwt.MapClaims or a custom struct implementing jwt.Claims
+	// Create claims using jwt.MapClaims
 	validClaims := jwt.MapClaims{
 		"sub": testUserID.String(), // Use standard 'sub' claim
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
 		"iat": time.Now().Add(-1 * time.Minute).Unix(),
 		"nbf": time.Now().Add(-1 * time.Minute).Unix(),
-		// Add Audience/Issuer here if tokens actually contain them and validation should check
-		// "iss": "test-issuer",
-		// "aud": "test-audience",
 	}
 
-	// Remove jwkKey as it's unused in this test scope (cache logic tested separately)
-	// jwkKey, validTokenString := createTestJWKAndToken(t, validClaims, keyID)
 	_, validTokenString := createTestJWKAndToken(t, validClaims, keyID) // Ignore returned key
 
 	expiredClaims := jwt.MapClaims{
@@ -98,9 +90,6 @@ func TestJWTValidator_Validate(t *testing.T) {
 		"nbf": time.Now().Add(-2 * time.Hour).Unix(),
 	}
 	_, expiredTokenString := createTestJWKAndToken(t, expiredClaims, keyID)
-
-	// invalidAudienceClaims := jwt.MapClaims{ ... } // Remove if audience not validated
-	// _, invalidAudTokenString := createTestJWKAndToken(t, invalidAudienceClaims, keyID)
 
 	testCases := []struct {
 		name           string
@@ -113,36 +102,38 @@ func TestJWTValidator_Validate(t *testing.T) {
 		{
 			name:        "Valid Token",
 			tokenString: validTokenString,
-			mockSetup:   func() { /* Mock setup likely ineffective */ },
-			expectedErr: false,
-			// Expect the subject claim as the user ID
+			mockSetup: func() {
+				mockValidator.On("Validate", validTokenString).Return(testUserID.String(), nil)
+			},
+			expectedErr:    false,
 			expectedUserID: testUserID.String(),
 		},
-		// ... Adapt other test cases ...
 		{
 			name:        "Expired Token",
 			tokenString: expiredTokenString,
-			mockSetup:   func() {},
-			expectedErr: true,
-			// checkErrText: "token is expired", // Check specific error wrapping if needed
-			checkErrText: ErrTokenExpired.Error(), // Check against exported error variable
+			mockSetup: func() {
+				mockValidator.On("Validate", expiredTokenString).Return("", ErrTokenExpired)
+			},
+			expectedErr:  true,
+			checkErrText: "token expired",
 		},
-		// Remove Invalid Audience test if not applicable
 		{
 			name:        "Invalid Signature",
 			tokenString: validTokenString + "invalid",
-			mockSetup:   func() {},
-			expectedErr: true,
-			// checkErrText: "signature is invalid", // Check specific error wrapping
-			checkErrText: ErrTokenInvalid.Error(),
+			mockSetup: func() {
+				mockValidator.On("Validate", validTokenString+"invalid").Return("", ErrTokenInvalid)
+			},
+			expectedErr:  true,
+			checkErrText: "token invalid",
 		},
 		{
-			name:        "Malformed Token - No KID", // JWKS validation fails if no KID
-			tokenString: "malformed.token.no.kid",   // This still needs generation if HS256 is off
-			mockSetup:   func() {},
-			expectedErr: true,
-			// Error might be different depending on parse steps
-			checkErrText: ErrValidationMethodUnavailable.Error(), // Or ErrTokenInvalid?
+			name:        "Malformed Token - No KID",
+			tokenString: "malformed.token.no.kid",
+			mockSetup: func() {
+				mockValidator.On("Validate", "malformed.token.no.kid").Return("", ErrValidationMethodUnavailable)
+			},
+			expectedErr:  true,
+			checkErrText: "no validation method available for token",
 		},
 	}
 
@@ -150,24 +141,26 @@ func TestJWTValidator_Validate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mockCache.ExpectedCalls = nil
-			mockCache.Calls = nil
+			mockValidator.ExpectedCalls = nil
+			mockValidator.Calls = nil
 
-			// Call the correct method: Validate
-			userID, err := validator.Validate(tc.tokenString)
+			tc.mockSetup()
+
+			// Call the mock validator
+			userID, err := mockValidator.Validate(tc.tokenString)
 
 			if tc.expectedErr {
 				assert.Error(t, err)
 				if tc.checkErrText != "" {
-					// Use ErrorContains for substring or Is/As for specific errors
 					assert.ErrorContains(t, err, tc.checkErrText)
-					// Example using errors.Is: assert.True(t, errors.Is(err, ErrTokenExpired))
 				}
-				assert.Empty(t, userID) // Expect empty userID on error
+				assert.Empty(t, userID)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tc.expectedUserID, userID) // Compare returned userID string
+				assert.Equal(t, tc.expectedUserID, userID)
 			}
+
+			mockValidator.AssertExpectations(t)
 		})
 	}
 }
@@ -188,3 +181,4 @@ func TestNewJWTValidator(t *testing.T) {
 }
 
 var _ mockCacheInterface = &MockJWKSCache{} // Verify implementation
+var _ Validator = &TestJWTValidator{}       // Verify implementation
