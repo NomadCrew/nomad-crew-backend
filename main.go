@@ -409,8 +409,9 @@ func main() {
 
 	// Configure server with graceful shutdown
 	server := &http.Server{
-		Addr:    ":" + cfg.Server.Port,
-		Handler: r,
+		Addr:              ":" + cfg.Server.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second, // Protection against Slowloris attacks
 	}
 
 	// Create a context for graceful shutdown

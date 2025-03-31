@@ -2,9 +2,10 @@ package ws
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -97,7 +98,11 @@ func (tb *TokenBucket) Take() bool {
 // readPump pumps messages from the WebSocket connection to the hub
 func (c *Client) readPump() {
 	defer func() {
-		c.Close()
+		if err := c.Close(); err != nil {
+			zap.L().Debug("Error closing WebSocket in readPump",
+				zap.String("userID", c.userID),
+				zap.Error(err))
+		}
 	}()
 
 	for {
@@ -126,7 +131,11 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.Close()
+		if err := c.Close(); err != nil {
+			zap.L().Debug("Error closing WebSocket in writePump",
+				zap.String("userID", c.userID),
+				zap.Error(err))
+		}
 	}()
 
 	retryCount := 0
@@ -232,8 +241,17 @@ func (c *Client) attemptReconnect(retryCount int) bool {
 	}
 
 	// Add jitter (±20%)
-	jitter := float64(retryInterval) * (0.8 + 0.4*rand.Float64())
-	retryInterval = time.Duration(jitter)
+	jitterMultiplier, err := rand.Int(rand.Reader, big.NewInt(401))
+	if err != nil {
+		// Fallback to a fixed jitter if crypto/rand fails
+		zap.L().Warn("Failed to generate secure random jitter", zap.Error(err))
+		jitter := float64(retryInterval) * 0.9 // Fixed 10% reduction as safe fallback
+		retryInterval = time.Duration(jitter)
+	} else {
+		// Apply 0.8 + (0-0.4) jitter
+		jitter := float64(retryInterval) * (0.8 + float64(jitterMultiplier.Int64())/1000.0)
+		retryInterval = time.Duration(jitter)
+	}
 
 	zap.L().Info("Attempting WebSocket reconnect",
 		zap.String("userID", c.userID),
