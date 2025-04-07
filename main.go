@@ -16,7 +16,11 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
-	"github.com/NomadCrew/nomad-crew-backend/services"
+	service "github.com/NomadCrew/nomad-crew-backend/service"        // New service package
+	"github.com/NomadCrew/nomad-crew-backend/services"               // Old services package
+	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres" // Alias for postgres store implementations
+
+	// Alias for store interfaces
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -75,6 +79,10 @@ func main() {
 	tripDB := db.NewTripDB(dbClient)
 	todoDB := db.NewTodoDB(dbClient)
 	locationDB := db.NewLocationDB(dbClient)
+	// --> Add Notification and User Stores <--
+	notificationDB := dbStore.NewPgNotificationStore(pool) // Assuming this exists based on pattern
+	userDB := dbStore.NewPgUserStore(pool)                 // Based on grep results
+	// --> End Add Notification and User Stores <--
 
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
@@ -133,6 +141,9 @@ func main() {
 	// Pass eventService to HealthService if it needs it
 	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version) // healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version, eventService)
 	locationService := services.NewLocationService(locationDB, eventService)
+	// --> Add Notification Service <--
+	notificationService := service.NewNotificationService(notificationDB, userDB, tripDB, eventService, log.Desugar())
+	// --> End Add Notification Service <--
 
 	// Initialize chat store
 	chatStore := db.NewPostgresChatStore(pool, supabaseClient, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_KEY"))
@@ -159,6 +170,9 @@ func main() {
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 	healthHandler := handlers.NewHealthHandler(healthService)
 	locationHandler := handlers.NewLocationHandler(locationService)
+	// --> Add Notification Handler <--
+	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
+	// --> End Add Notification Handler <--
 
 	// Add new WebSocket handler
 	wsHandler := handlers.NewWSHandler(rateLimitService, eventService)
@@ -245,6 +259,17 @@ func main() {
 		// Apply WebSocket handler with rate limiting
 		wsRoutes.GET("/connect", wsHandler.HandleWebSocketConnection)
 	}
+
+	// --> Add Notification Routes <--
+	notificationRoutes := v1.Group("/notifications")
+	{
+		notificationRoutes.Use(middleware.AuthMiddleware(jwtValidator))
+		notificationRoutes.GET("", notificationHandler.GetNotificationsByUser)
+		notificationRoutes.PATCH("/:notificationId/read", notificationHandler.MarkNotificationAsRead)
+		notificationRoutes.PATCH("/read-all", notificationHandler.MarkAllNotificationsRead)
+		notificationRoutes.DELETE("/:notificationId", notificationHandler.DeleteNotification) // Optional delete endpoint
+	}
+	// --> End Add Notification Routes <--
 
 	trips := v1.Group("/trips")
 	{

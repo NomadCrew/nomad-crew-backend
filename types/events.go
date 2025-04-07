@@ -7,6 +7,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -81,6 +82,27 @@ const (
 	EventTypeChatReactionRemoved EventType = CategoryChat + "_REACTION_REMOVED"
 	EventTypeChatReadReceipt     EventType = CategoryChat + "_READ_RECEIPT"
 	EventTypeChatTypingStatus    EventType = CategoryChat + "_TYPING_STATUS"
+
+	// EventTypeLocationProcessed indicates that a user's location has been processed.
+	EventTypeLocationProcessed = "location.processed"
+
+	// EventTypeUserJoinedTrip indicates a user has joined a trip.
+	EventTypeUserJoinedTrip = "user.joined_trip"
+
+	// EventTypeUserLeftTrip indicates a user has left a trip.
+	EventTypeUserLeftTrip = "user.left_trip"
+
+	// EventTypeUserInvitedToTrip indicates a user has been invited to a trip.
+	EventTypeUserInvitedToTrip = "user.invited_to_trip"
+
+	// EventTypeTripInvitationAccepted indicates a trip invitation was accepted.
+	EventTypeTripInvitationAccepted = "trip.invitation_accepted"
+
+	// EventTypeTripInvitationDeclined indicates a trip invitation was declined.
+	EventTypeTripInvitationDeclined = "trip.invitation_declined"
+
+	// EventTypeNotificationCreated indicates a new notification has been created.
+	EventTypeNotificationCreated = "notification.created"
 )
 
 // Base event interface
@@ -198,4 +220,13 @@ type ChatTypingStatusEvent struct {
 	TripID   string       `json:"tripId"`
 	IsTyping bool         `json:"isTyping"`
 	User     UserResponse `json:"user,omitempty"`
+}
+
+// NotificationCreatedEvent signifies that a new notification has been created.
+// It contains identifiers for the consumer (e.g., WebSocket service) to fetch
+// the full notification details before broadcasting.
+type NotificationCreatedEvent struct {
+	Timestamp      time.Time `json:"timestamp"`
+	NotificationID uuid.UUID `json:"notificationId"`
+	UserID         uuid.UUID `json:"userId"` // The ID of the user the notification is for
 }

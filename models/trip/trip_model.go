@@ -6,9 +6,9 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/command"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	store "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
 )

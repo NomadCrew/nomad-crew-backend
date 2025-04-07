@@ -737,3 +737,10 @@ func getCallerInfo() string {
 	}
 	return "unknown caller"
 }
+
+// GetTripByID implements the store.TripStore interface by calling GetTrip.
+func (tdb *TripDB) GetTripByID(ctx context.Context, id string) (*types.Trip, error) {
+	// This method satisfies the TripStore interface required by NotificationService.
+	// It delegates the call to the existing GetTrip method.
+	return tdb.GetTrip(ctx, id)
+}
