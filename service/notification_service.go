@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -74,57 +75,47 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 
 	log.Info("Notification created successfully", zap.String("notificationID", notification.ID.String()))
 
-	// 4. Prepare and publish NotificationCreatedEvent
-	eventPayload := types.NotificationCreatedEvent{
-		Timestamp:      time.Now(),
-		NotificationID: notification.ID,
-		UserID:         notification.UserID,
-	}
-	payloadBytes, err := json.Marshal(eventPayload)
-	if err != nil {
-		// Log error but don't fail the operation, maybe add to a dead-letter queue later
-		log.Error("Failed to marshal NotificationCreatedEvent payload", zap.String("notificationID", notification.ID.String()), zap.Error(err))
-	} else {
-		event := types.Event{
-			BaseEvent: types.BaseEvent{
-				// ID: Should be generated, e.g., uuid.NewString()
-				ID:   uuid.NewString(),
-				Type: types.EventTypeNotificationCreated,
-				// TripID: Notifications might not always be tied to a specific trip context directly.
-				// If they are, this needs to be passed into CreateAndPublishNotification.
-				// For now, leaving it empty or using a placeholder if required by EventPublisher.
-				// TripID:    "",
-				UserID:    notification.UserID.String(), // BaseEvent uses string ID
-				Timestamp: time.Now(),
-				Version:   1, // Or manage versioning scheme
-			},
-			Metadata: types.EventMetadata{
-				Source: "NotificationService",
-				// CorrelationID/CausationID could be passed via context if needed
-			},
-			Payload: json.RawMessage(payloadBytes),
+	// 4. Prepare and publish NotificationCreatedEvent using the centralized helper
+	go func() {
+		log := s.logger.With(zap.String("operation", "publishNotificationEvent"), zap.String("notificationID", notification.ID.String()))
+
+		// Prepare the specific event payload structure
+		eventPayloadData := types.NotificationCreatedEvent{
+			Timestamp:      time.Now(), // Use current time for event payload timestamp
+			NotificationID: notification.ID,
+			UserID:         notification.UserID,
 		}
 
-		// Publish asynchronously
-		go func() {
-			// Determine the appropriate TripID for publishing scope if needed by EventPublisher
-			// If notifications are user-scoped, not trip-scoped, the publisher might need adjustment
-			// or use a generic/user-specific channel.
-			// Using a placeholder trip ID for now, this needs review based on EventPublisher impl.
-			publishTripID := "user_notifications" // Placeholder, review required
+		// Convert payload struct to map[string]interface{}
+		var payloadMap map[string]interface{}
+		eventPayloadJSON, err := json.Marshal(eventPayloadData)
+		if err != nil {
+			log.Error("Failed to marshal NotificationCreatedEvent payload for publishing", zap.Error(err))
+			return
+		}
+		if err := json.Unmarshal(eventPayloadJSON, &payloadMap); err != nil {
+			log.Error("Failed to unmarshal NotificationCreatedEvent payload into map for publishing", zap.Error(err))
+			return
+		}
 
-			if pubErr := s.eventPublisher.Publish(context.Background(), publishTripID, event); pubErr != nil {
-				log.Error("Failed to publish NotificationCreatedEvent",
-					zap.String("notificationID", notification.ID.String()),
-					zap.String("eventID", event.ID),
-					zap.Error(pubErr))
-			} else {
-				log.Debug("Published NotificationCreatedEvent",
-					zap.String("notificationID", notification.ID.String()),
-					zap.String("eventID", event.ID))
-			}
-		}()
-	}
+		// Use UserID as the publishing scope/key since notifications are user-centric
+		publishScopeID := notification.UserID.String()
+
+		if pubErr := events.PublishEventWithContext(
+			s.eventPublisher,
+			context.Background(), // Use background context for async
+			string(types.EventTypeNotificationCreated),
+			publishScopeID,               // Use UserID as the scope identifier
+			notification.UserID.String(), // UserID who triggered/owns the notification
+			payloadMap,
+			"NotificationService",
+		); pubErr != nil {
+			// Log error but don't fail the original operation
+			log.Error("Failed to publish NotificationCreatedEvent", zap.String("scopeID", publishScopeID), zap.Error(pubErr))
+		} else {
+			log.Debug("Published NotificationCreatedEvent", zap.String("scopeID", publishScopeID))
+		}
+	}()
 
 	return notification, nil
 }

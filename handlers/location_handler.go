@@ -7,20 +7,20 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/services"
+	locationService "github.com/NomadCrew/nomad-crew-backend/models/location/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 )
 
 // LocationHandler handles location-related API requests
 type LocationHandler struct {
-	locationService *services.LocationService
+	locationService *locationService.ManagementService
 }
 
 // NewLocationHandler creates a new LocationHandler
-func NewLocationHandler(locationService *services.LocationService) *LocationHandler {
+func NewLocationHandler(locService *locationService.ManagementService) *LocationHandler {
 	return &LocationHandler{
-		locationService: locationService,
+		locationService: locService,
 	}
 }
 
@@ -49,9 +49,11 @@ func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 	location, err := h.locationService.UpdateLocation(c.Request.Context(), userID, locationUpdate)
 	if err != nil {
 		log.Errorw("Failed to update location", "userID", userID, "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			c.JSON(appErr.HTTPStatus, gin.H{"error": appErr.Message, "details": appErr.Detail})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update location"})
+		}
 		return
 	}
 
@@ -101,9 +103,11 @@ func (h *LocationHandler) SaveOfflineLocationsHandler(c *gin.Context) {
 	err := h.locationService.SaveOfflineLocations(c.Request.Context(), userID, request.Updates, deviceID)
 	if err != nil {
 		log.Errorw("Failed to save offline locations", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to save offline locations",
-		})
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			c.JSON(appErr.HTTPStatus, gin.H{"error": appErr.Message, "details": appErr.Detail})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save offline locations"})
+		}
 		return
 	}
 
@@ -139,9 +143,11 @@ func (h *LocationHandler) ProcessOfflineLocationsHandler(c *gin.Context) {
 	err := h.locationService.ProcessOfflineLocations(c.Request.Context(), userID)
 	if err != nil {
 		log.Errorw("Failed to process offline locations", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to process offline locations",
-		})
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			c.JSON(appErr.HTTPStatus, gin.H{"error": appErr.Message, "details": appErr.Detail})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process offline locations"})
+		}
 		return
 	}
 
@@ -154,6 +160,7 @@ func (h *LocationHandler) ProcessOfflineLocationsHandler(c *gin.Context) {
 func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
+	userID := c.GetString("user_id")
 
 	if tripID == "" {
 		log.Errorw("Trip ID not provided")
@@ -163,12 +170,20 @@ func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 		return
 	}
 
-	locations, err := h.locationService.GetTripMemberLocations(c.Request.Context(), tripID)
+	if userID == "" {
+		log.Errorw("User ID not found in context for GetTripMemberLocationsHandler")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	locations, err := h.locationService.GetTripMemberLocations(c.Request.Context(), tripID, userID)
 	if err != nil {
-		log.Errorw("Failed to get trip member locations", "tripID", tripID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to retrieve member locations",
-		})
+		log.Errorw("Failed to get trip member locations", "tripID", tripID, "userID", userID, "error", err)
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			c.JSON(appErr.HTTPStatus, gin.H{"error": appErr.Message, "details": appErr.Detail})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve member locations"})
+		}
 		return
 	}
 

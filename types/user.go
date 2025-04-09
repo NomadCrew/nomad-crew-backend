@@ -15,12 +15,13 @@ type UserMetadata struct {
 	ProfilePicture string `json:"avatar_url,omitempty"`
 }
 
-// We keep UserResponse for API consistency
+// UserResponse represents a simplified user object for API responses
 type UserResponse struct {
-	ID             string `json:"id"`
-	Email          string `json:"email"`
-	Username       string `json:"username"`
-	FirstName      string `json:"firstName,omitempty"`
-	LastName       string `json:"lastName,omitempty"`
-	ProfilePicture string `json:"profilePicture,omitempty"`
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	Username    string `json:"username"`
+	FirstName   string `json:"firstName,omitempty"`
+	LastName    string `json:"lastName,omitempty"`
+	AvatarURL   string `json:"avatarUrl,omitempty"`   // Changed from ProfilePicture to match Supabase
+	DisplayName string `json:"displayName,omitempty"` // Added for UI display purposes
 }

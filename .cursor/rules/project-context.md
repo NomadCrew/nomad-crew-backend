@@ -47,6 +47,18 @@
 
 ## Recent Changes
 
+### April 7, 2025, 12:45 UTC - Refactored Trip Model into Service Architecture
+- Decomposed the TripModel "God Object" into smaller, more focused services in `models/trip/service/`:
+  - `TripManagementService`: Handles core trip CRUD, search, status management
+  - `TripMemberService`: Manages trip memberships and roles
+  - `InvitationService`: Handles invitation creation and processing
+  - `TripChatService`: Handles trip chat operations
+  - `TripModelCoordinator`: Facade that orchestrates these services and maintains backward compatibility
+- Improved Separation of Concerns (SoC) and Single Responsibility Principle
+- Enhanced testability of individual components
+- Reduced code complexity and improved maintainability
+- Added documentation in `models/trip/service/README.md` explaining the architecture
+
 ### March 30, 2025, 20:05 UTC - Test Suite Fixes and Middleware Improvements
 - Fixed CORS middleware implementation in `middleware/cors.go`:
   - Modified the handling of disallowed origins to return 200 OK instead of 403
@@ -100,6 +112,12 @@
   - URL-safe base64 decoded (URLEncoding, with padding)
 - Improved debug handler in `handlers/debug.go` for better JWT validation diagnostics
 - Fixed issue with Supabase tokens not having `kid` claim, falling back to static secret validation
+
+### May 21, 2024, 16:15 UTC
+- Refactored `services/chat_service.go`:
+    - Corrected `GetChatMessages` to use `store.ListTripMessages` and standard `types.PaginatedResponse`.
+    - Standardized `NotFoundError` checks in `GetChatMessages`, `UpdateChatMessage`, `DeleteChatMessage`, and `GetUserInfo` using `*internal_errors.AppError` type assertion.
+- Added `types.PaginationParams` struct definition to `types/response.go`.
 
 ## CI/CD Pipeline
 1. **Pull Request Workflow**

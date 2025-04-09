@@ -55,11 +55,10 @@ type ChatStore interface {
 
 	// Chat Message operations
 	CreateChatMessage(ctx context.Context, message types.ChatMessage) (string, error)
-	GetChatMessage(ctx context.Context, messageID string) (*types.ChatMessage, error)
+	GetChatMessageByID(ctx context.Context, messageID string) (*types.ChatMessage, error)
 	UpdateChatMessage(ctx context.Context, messageID string, content string) error
 	DeleteChatMessage(ctx context.Context, messageID string) error
-	ListChatMessages(ctx context.Context, groupID string, limit, offset int) (*types.ChatMessagePaginatedResponse, error)
-	ListTripMessages(ctx context.Context, tripID string, limit, offset int) ([]types.ChatMessage, int, error)
+	ListChatMessages(ctx context.Context, groupID string, params types.PaginationParams) ([]types.ChatMessage, int, error)
 
 	// Chat Group Member operations
 	AddChatGroupMember(ctx context.Context, groupID, userID string) error
@@ -68,12 +67,12 @@ type ChatStore interface {
 	UpdateLastReadMessage(ctx context.Context, groupID, userID, messageID string) error
 
 	// Chat Message Reaction operations
-	AddChatMessageReaction(ctx context.Context, messageID, userID, reaction string) error
-	RemoveChatMessageReaction(ctx context.Context, messageID, userID, reaction string) error
+	AddReaction(ctx context.Context, messageID, userID, reaction string) error
+	RemoveReaction(ctx context.Context, messageID, userID, reaction string) error
 	ListChatMessageReactions(ctx context.Context, messageID string) ([]types.ChatMessageReaction, error)
 
 	// User operations
-	GetUserInfo(ctx context.Context, userID string) (*types.UserResponse, error)
+	GetUserByID(ctx context.Context, userID string) (*types.SupabaseUser, error)
 }
 
 type Transaction interface {

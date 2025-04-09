@@ -75,6 +75,7 @@ const (
 	EventTypeInvitationStatusUpdated EventType = "invitation_status_updated"
 
 	// Chat events
+	EventTypeChatGroupCreated    EventType = CategoryChat + "_GROUP_CREATED"
 	EventTypeChatMessageSent     EventType = CategoryChat + "_MESSAGE_SENT"
 	EventTypeChatMessageEdited   EventType = CategoryChat + "_MESSAGE_EDITED"
 	EventTypeChatMessageDeleted  EventType = CategoryChat + "_MESSAGE_DELETED"

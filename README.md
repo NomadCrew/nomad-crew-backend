@@ -2,144 +2,106 @@
 
 ## Overview
 
-This repository is dedicated to the backend services of Nomad Crew. Built using Go, it handles functionalities like user authentication, group management, location tracking, messaging, media handling, and expense management through microservices.
+This repository contains the backend API for the Nomad Crew platform. It is a monolithic application built with Go and the Gin framework, providing RESTful endpoints and WebSocket capabilities to support features like user authentication, crew management, trip planning, and real-time communication. It integrates with PostgreSQL for primary data storage, Redis for caching and session management, and Supabase for authentication features.
 
-## Services
+## Architecture
 
-- User Service
-- Group Service
-- Location Service
-- Messaging Service
-- Media Service
-- Expense Service
+The backend follows a layered architecture to promote separation of concerns:
+
+1.  **`main.go`**: Entry point, orchestrates setup.
+2.  **`router/`**: Defines API routes using Gin.
+3.  **`handlers/`**: Contains Gin handlers to process HTTP requests, validate input, and call appropriate services.
+4.  **`models/*/service/`**: Encapsulates business logic for specific domains (e.g., `models/trip/service/`, `models/location/service/`). This is the standard pattern for new development and ongoing refactoring. Permission checks are typically handled within these services.
+5.  **`db/`**: Data access layer interacting with the PostgreSQL database using `pgx`.
+6.  **`middleware/`**: Provides Gin middleware for concerns like authentication (JWT/JWKS), CORS, error handling, and rate limiting.
+7.  **`internal/`**: Houses internal packages like WebSocket management (`ws/`) and event definitions (`events/`).
+
+*Note:* Some older business logic might still reside in the `services/` directory, which is being progressively refactored into the `models/*/service/` pattern.
+
+Refer to `PROJECT_STRUCTURE.md` for a detailed breakdown of directories and files.
 
 ## Technology Stack
 
-- Go with gRPC for service communication
-- PostgreSQL and Redis for database management
-- Apache Kafka for messaging and event streaming
-
-## Development Guidelines
-
-- Robust error handling and logging (using Zap for Go logging).
-- Efficient inter-service communication with gRPC.
-- Adherence to RESTful principles where applicable.
-- Database normalization and proper indexing for location-based queries.
+-   **Language**: Go
+-   **Web Framework**: Gin
+-   **Database**: PostgreSQL (using `pgx` driver)
+-   **Cache/KV Store**: Redis
+-   **WebSockets**: Gorilla WebSocket
+-   **Configuration**: Viper (YAML files + Environment Variables)
+-   **Logging**: Zap
+-   **Authentication**: JWT (`golang-jwt/jwt/v5`), Supabase integration
+-   **Migrations**: SQL files (`db/migrations/`)
+-   **Containerization**: Docker
+-   **Testing**: Go `testing`, `testify`, `testcontainers-go`
+-   **CI/CD**: GitHub Actions
+-   **Deployment**: Google Cloud Run (Primary), Fly.io (Secondary)
 
 ## Getting Started
 
-Instructions for setting up the backend development environment will be provided here.
-
-## Contribution Guidelines
-
-Follow the [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow). Branches for new features should be named as `feature/your-feature-name`, and bug fixes as `bugfix/bug-name`. Ensure compliance with [OWASP security standards](https://owasp.org/www-project-mobile-app-security/).
-
-## Project Roadmap
-
-- Phase 1: Setup and Basic Functionality
-- Phase 2: Advanced Features
-- Phase 3: Additional Features
-- Phase 4: Testing and Deployment
-
-## Contact and Support
-
-- **Maintainers**: [List of Maintainers]
-- **Community**: [Slack Channel](https://join.slack.com/t/slack-les9847/shared_invite/zt-2a0dqjzvk-YLC9TQFBExNnPFsH9yAB6g)
+1.  **Clone the repository.**
+2.  **Install Go** (See official Go documentation).
+3.  **Setup Environment Variables**: Copy `.env.example` to `.env` and fill in the required values (Database connection, Redis address, JWT secrets, Supabase keys, external API keys).
+4.  **Setup Dependencies**: Run `go mod tidy`.
+5.  **Setup Local Database & Redis**: Use Docker Compose for easy setup: `docker-compose up -d`.
+6.  **Run Database Migrations**: Execute the migration scripts located in `db/migrations/` (e.g., using `psql` or a migration tool).
+7.  **Run the Application**: `go run main.go`.
 
 ## Environment Variables
 
+Refer to the `.env.example` file for a comprehensive list. Key variables include:
+
 ### Required Core Variables
-- `DB_CONNECTION_STRING`: PostgreSQL connection string
+- `DB_CONNECTION_STRING`: PostgreSQL connection string (alternative to individual DB vars)
 - `REDIS_ADDRESS`: Redis server address
-- `JWT_SECRET_KEY`: JWT signing key for generating invitation tokens (min 32 chars)
+- `JWT_SECRET_KEY`: JWT signing key
 
 ### Required Supabase Integration
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_ANON_KEY`: Supabase anon key for client operations
-- `SUPABASE_SERVICE_KEY`: Supabase service key for admin operations (used by ChatStore)
-- `SUPABASE_JWT_SECRET`: Secret used to validate Supabase JWTs
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWT_SECRET`
 
 ### Other Required Variables
-- `GEOAPIFY_KEY`: API key for geolocation services
-- `PEXELS_API_KEY`: API key for Pexels image service
-- `RESEND_API_KEY`: API key for the Resend email service
+- `GEOAPIFY_KEY`, `PEXELS_API_KEY`, `RESEND_API_KEY`
 
 ### Optional/Configuration Variables
-- `SERVER_ENVIRONMENT`: Set to 'development', 'staging', or 'production'
+- `SERVER_ENVIRONMENT`: `development`, `staging`, or `production`
 - `ALLOWED_ORIGINS`: CORS allowed origins (comma-separated)
-- `LOG_LEVEL`: Logging level (debug, info, warn, error)
+- `LOG_LEVEL`: `debug`, `info`, `warn`, `error`
 
-### Database Configuration (Can use DB_CONNECTION_STRING instead)
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_MODE`
+## Deployment
 
-### Redis Configuration (Additional options)
-- `REDIS_PASSWORD`, `REDIS_DB`, `REDIS_USE_TLS`, `REDIS_POOL_SIZE`, `REDIS_MIN_IDLE_CONNS`
+The application is containerized using Docker and designed for cloud deployment.
 
-## Deployment Notes
+-   **Primary Target**: Google Cloud Run
+-   **Secondary Target**: Fly.io (Configuration available in `fly.toml`)
 
-Always:
+Deployment is automated via GitHub Actions workflows (`.github/workflows/`):
 
-1. Use HTTPS in production
-2. Rotate secrets regularly
-3. Monitor database connection pool metrics
-4. Enable Redis persistence
+1.  **`deploy.yml`**: Handles deployment (likely configured for GCR or Fly.io). Requires necessary secrets (`FLY_API_TOKEN` for Fly.io, or GCP credentials for GCR) configured in GitHub repository secrets.
+2.  **`main.yml`**: Handles CI steps like testing, linting, security scanning, and building/pushing the Docker image.
+3.  **`golang-cilint.yml`**: Runs `golangci-lint`.
 
-## Fly.io Deployment
+### Deployment Notes
 
-This project is configured for deployment on Fly.io, a platform that provides a cost-effective way to host applications.
+-   Always use HTTPS in production.
+-   Manage secrets securely (e.g., using cloud provider secret managers or environment variables injected during deployment).
+-   Monitor application performance, logs, and database metrics.
 
-### Prerequisites
+## Contribution Guidelines
 
-1. Install the Fly CLI: [Installation Guide](https://fly.io/docs/hands-on/install-flyctl/)
-2. Sign up for a Fly.io account
-3. Log in to Fly.io: `flyctl auth login`
+Follow the [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow). Branches should be named `feature/<your-feature-name>` or `bugfix/<bug-name>`. Ensure code quality and adherence to security best practices.
 
-### Deployment Steps
+## Project Roadmap
 
-1. Set up your secrets:
-   ```bash
-   flyctl secrets set JWT_SECRET_KEY=your_jwt_secret \
-     DB_PASSWORD=your_db_password \
-     REDIS_PASSWORD=your_redis_password \
-     # Add other required secrets here
-   ```
+*(Keep this section updated with high-level goals and phases)*
 
-2. Deploy the application:
-   ```bash
-   flyctl deploy
-   ```
+-   Phase 1: Core setup, Auth, Trip Management (Refactored)
+-   Phase 2: Location Service Refactoring (Complete), Service Pattern Standardization (Ongoing)
+-   Phase 3: Documentation Update (Ongoing), Feature Verification & Implementation
+-   Phase 4: Comprehensive Testing, Deployment Hardening
 
-3. Check the deployment status:
-   ```bash
-   flyctl status
-   ```
+## Contact and Support
 
-### Database and Redis Setup
-
-This project uses:
-- **Database**: Neon.tech PostgreSQL (free tier)
-- **Redis Cache**: Upstash Redis (free tier)
-
-Make sure to set up these services and update the connection details in your Fly.io secrets.
-
-### GitHub Actions Integration
-
-The repository includes a GitHub Actions workflow for automatic deployment to Fly.io. To use it:
-
-1. Add your `FLY_API_TOKEN` to your GitHub repository secrets
-2. Add all other required environment variables to your GitHub repository secrets
-3. Push to the main branch or manually trigger the workflow
+-   **Maintainers**: [List of Maintainers]
+-   **Community**: [Slack Channel](https://join.slack.com/t/slack-les9847/shared_invite/zt-2a0dqjzvk-YLC9TQFBExNnPFsH9yAB6g)
 
 ---
-Generated using GPT-4
-## Workflow Consolidation
-
-The GitHub Actions workflows have been consolidated to eliminate redundancy:
-
-1. **deploy.yml** - This is the consolidated workflow that handles all AWS infrastructure deployment using Terraform. It combines the best features of the previous `deploy.yml` and `terraform-deploy.yml` workflows.
-
-2. **main.yml** - This workflow handles CI/CD for the Go backend, including testing, security scanning, and building/pushing Docker images to GitHub Container Registry.
-
-3. **golang-cilint.yml** - This workflow runs Go linting checks.
-
-The redundant `terraform-deploy.yml` workflow has been removed.
+*README maintained with AI assistance. Refer to Memory Bank and `PROJECT_STRUCTURE.md` for detailed context.*

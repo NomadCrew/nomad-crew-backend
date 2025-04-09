@@ -1,3 +1,5 @@
+// Package config handles loading and validation of application configuration
+// from environment variables and potentially configuration files.
 package config
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Environment represents the application's running environment (development or production).
 type Environment string
 
 const (
@@ -21,6 +24,7 @@ const (
 	minKeyLength      = 8
 )
 
+// ServerConfig holds server-specific configuration.
 type ServerConfig struct {
 	Environment    Environment `mapstructure:"ENVIRONMENT" yaml:"environment"`
 	Port           string      `mapstructure:"PORT" yaml:"port"`
@@ -30,6 +34,7 @@ type ServerConfig struct {
 	FrontendURL    string      `mapstructure:"FRONTEND_URL" yaml:"frontend_url"`
 }
 
+// DatabaseConfig holds PostgreSQL database connection details.
 type DatabaseConfig struct {
 	Host           string `mapstructure:"HOST" yaml:"host"`
 	Port           int    `mapstructure:"PORT" yaml:"port"`
@@ -43,6 +48,7 @@ type DatabaseConfig struct {
 	ConnMaxLife    string `mapstructure:"CONN_MAX_LIFE" yaml:"conn_max_life"`
 }
 
+// RedisConfig holds Redis connection details.
 type RedisConfig struct {
 	Address      string `mapstructure:"ADDRESS" yaml:"address"`
 	Password     string `mapstructure:"PASSWORD" yaml:"password"`
@@ -52,6 +58,7 @@ type RedisConfig struct {
 	MinIdleConns int    `mapstructure:"MIN_IDLE_CONNS" yaml:"min_idle_conns"`
 }
 
+// ExternalServices holds API keys and URLs for external services.
 type ExternalServices struct {
 	GeoapifyKey       string `mapstructure:"GEOAPIFY_KEY"`
 	PexelsAPIKey      string `mapstructure:"PEXELS_API_KEY"`
@@ -63,6 +70,7 @@ type ExternalServices struct {
 	EmailBaseURL      string `mapstructure:"EMAIL_BASE_URL" default:"https://api.mailchannels.net"`
 }
 
+// EmailConfig holds configuration for sending emails.
 type EmailConfig struct {
 	FromAddress  string `mapstructure:"FROM_ADDRESS" yaml:"from_address"`
 	FromName     string `mapstructure:"FROM_NAME" yaml:"from_name"`
@@ -70,7 +78,7 @@ type EmailConfig struct {
 	ResendAPIKey string `mapstructure:"RESEND_API_KEY" yaml:"resend_api_key"`
 }
 
-// +++ Add EventService specific configuration +++
+// EventServiceConfig holds configuration for the Redis-based event service.
 type EventServiceConfig struct {
 	// Timeout for publishing a single event to Redis (in seconds)
 	PublishTimeoutSeconds int `mapstructure:"PUBLISH_TIMEOUT_SECONDS" yaml:"publish_timeout_seconds"`
@@ -80,6 +88,7 @@ type EventServiceConfig struct {
 	EventBufferSize int `mapstructure:"EVENT_BUFFER_SIZE" yaml:"event_buffer_size"`
 }
 
+// Config aggregates all application configuration sections.
 type Config struct {
 	Server           ServerConfig       `mapstructure:"SERVER" yaml:"server"`
 	Database         DatabaseConfig     `mapstructure:"DATABASE" yaml:"database"`
@@ -89,19 +98,23 @@ type Config struct {
 	EventService     EventServiceConfig `mapstructure:"EVENT_SERVICE" yaml:"event_service"` // +++ Add EventService config field +++
 }
 
+// IsDevelopment returns true if the application is running in development environment.
 func (c *Config) IsDevelopment() bool {
 	return c.Server.Environment == EnvDevelopment
 }
 
+// IsProduction returns true if the application is running in production environment.
 func (c *Config) IsProduction() bool {
 	return c.Server.Environment == EnvProduction
 }
 
+// LoadConfig loads configuration from environment variables using Viper,
+// sets default values, binds environment variables to config struct fields,
+// unmarshals the configuration, and validates it.
 func LoadConfig() (*Config, error) {
 	v := viper.New()
 	log := logger.GetLogger()
 
-	// Set defaults
 	v.SetDefault("SERVER.ENVIRONMENT", EnvDevelopment)
 	v.SetDefault("SERVER.PORT", "8080")
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
@@ -125,12 +138,10 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", 10)
 	v.SetDefault("EVENT_SERVICE.EVENT_BUFFER_SIZE", 100)
 
-	// Configure Viper to read from environment variables
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// Bind all environment variables first
-	// Server config bindings
+	// Bind environment variables
 	if err := v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT"); err != nil {
 		return nil, fmt.Errorf("failed to bind SERVER.ENVIRONMENT: %w", err)
 	}
@@ -144,7 +155,6 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind SERVER.JWT_SECRET_KEY: %w", err)
 	}
 
-	// Database config bindings
 	if err := v.BindEnv("DATABASE.HOST", "DB_HOST"); err != nil {
 		return nil, fmt.Errorf("failed to bind DATABASE.HOST: %w", err)
 	}
@@ -164,7 +174,6 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind DATABASE.SSL_MODE: %w", err)
 	}
 
-	// Redis config bindings
 	if err := v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS"); err != nil {
 		return nil, fmt.Errorf("failed to bind REDIS.ADDRESS: %w", err)
 	}
@@ -178,7 +187,6 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind REDIS.USE_TLS: %w", err)
 	}
 
-	// External services bindings
 	if err := v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.GEOAPIFY_KEY: %w", err)
 	}
@@ -195,7 +203,6 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
 	}
 
-	// Email config bindings
 	if err := v.BindEnv("EMAIL.FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
 		return nil, fmt.Errorf("failed to bind EMAIL.FROM_ADDRESS: %w", err)
 	}
@@ -228,7 +235,6 @@ func LoadConfig() (*Config, error) {
 			return ""
 		}())
 
-	// Log loaded configuration
 	env := v.GetString("SERVER.ENVIRONMENT")
 	log.Infow("Configuration loaded",
 		"environment", env,
@@ -241,171 +247,136 @@ func LoadConfig() (*Config, error) {
 		"event_service_buffer_size", v.GetInt("EVENT_SERVICE.EVENT_BUFFER_SIZE"),
 	)
 
-	// Unmarshal configuration
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("config unmarshal failed: %w", err)
 	}
 
-	// Validate configuration
 	if err := validateConfig(&cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// Validate external services
+	log.Info("Configuration validated successfully")
+	return &cfg, nil
+}
+
+// validateConfig checks if the loaded configuration values are valid.
+func validateConfig(cfg *Config) error {
+	log := logger.GetLogger()
+
+	// Validate Server Config
+	if cfg.Server.Port == "" {
+		return fmt.Errorf("server port is required")
+	}
+	if len(cfg.Server.JwtSecretKey) < minJWTLength {
+		return fmt.Errorf("JWT secret key must be at least %d characters long", minJWTLength)
+	}
+	// Validate AllowedOrigins format if not wildcard
+	if !containsWildcard(cfg.Server.AllowedOrigins) {
+		for _, origin := range cfg.Server.AllowedOrigins {
+			if _, err := url.ParseRequestURI(origin); err != nil {
+				return fmt.Errorf("invalid allowed origin '%s': %w", origin, err)
+			}
+		}
+	}
+
+	// Validate Database Config
+	if cfg.Database.Host == "" {
+		return fmt.Errorf("database host is required")
+	}
+	if cfg.Database.User == "" {
+		return fmt.Errorf("database user is required")
+	}
+	if cfg.Database.Password == "" {
+		log.Warn("Database password is not set. Ensure this is intended (e.g., using trusted auth).")
+	}
+	if cfg.Database.Name == "" {
+		return fmt.Errorf("database name is required")
+	}
+
+	// Validate Redis Config
+	if cfg.Redis.Address == "" {
+		return fmt.Errorf("redis address is required")
+	}
+	if cfg.Redis.Password == "" && cfg.Redis.UseTLS {
+		// Upstash typically requires a password with TLS
+		log.Warn("Redis password is not set, but TLS is enabled. Ensure this is correct for your Redis provider.")
+	}
+
+	// Validate External Services
 	if err := validateExternalServices(&cfg.ExternalServices); err != nil {
-		return nil, err
+		return err
 	}
 
-	// RESEND_API_KEY validation with detailed error
-	if len(cfg.Email.ResendAPIKey) < minKeyLength {
-		log.Errorw("RESEND_API_KEY validation failed",
-			"key_length", len(cfg.Email.ResendAPIKey),
-			"min_required", minKeyLength)
-		return nil, fmt.Errorf("RESEND_API_KEY is invalid or too short (length: %d, required: %d)",
-			len(cfg.Email.ResendAPIKey), minKeyLength)
-	}
-
+	// Validate Email Config
 	if cfg.Email.FromAddress == "" {
-		return nil, fmt.Errorf("FROM_ADDRESS is required")
+		return fmt.Errorf("email from address is required")
+	}
+	if cfg.Email.ResendAPIKey == "" {
+		return fmt.Errorf("resend API key is required")
 	}
 
 	// +++ Validate EventService config +++
 	if cfg.EventService.PublishTimeoutSeconds <= 0 {
-		return nil, fmt.Errorf("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS must be positive")
+		return fmt.Errorf("event service publish timeout must be positive")
 	}
 	if cfg.EventService.SubscribeTimeoutSeconds <= 0 {
-		return nil, fmt.Errorf("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS must be positive")
+		return fmt.Errorf("event service subscribe timeout must be positive")
 	}
 	if cfg.EventService.EventBufferSize <= 0 {
-		return nil, fmt.Errorf("EVENT_SERVICE.EVENT_BUFFER_SIZE must be positive")
+		return fmt.Errorf("event service buffer size must be positive")
 	}
-
-	return &cfg, nil
-}
-
-func validateConfig(cfg *Config) error {
-	log := logger.GetLogger()
-
-	// Validate server config
-	if cfg.Server.JwtSecretKey == "" {
-		return fmt.Errorf("JWT_SECRET_KEY is required")
-	}
-
-	if len(cfg.Server.JwtSecretKey) < minJWTLength {
-		log.Warn("JWT_SECRET_KEY is shorter than recommended length")
-	}
-
-	// Validate FrontendURL
-	if cfg.Server.FrontendURL != "" {
-		// Ensure URL has protocol
-		if !strings.HasPrefix(cfg.Server.FrontendURL, "http://") && !strings.HasPrefix(cfg.Server.FrontendURL, "https://") {
-			cfg.Server.FrontendURL = "https://" + cfg.Server.FrontendURL
-			log.Warnw("FrontendURL missing protocol, adding https://", "frontendURL", cfg.Server.FrontendURL)
-		}
-
-		// Remove trailing slash if present
-		cfg.Server.FrontendURL = strings.TrimSuffix(cfg.Server.FrontendURL, "/")
-
-		// Validate URL format
-		_, err := url.Parse(cfg.Server.FrontendURL)
-		if err != nil {
-			return fmt.Errorf("invalid frontend URL format: %v", err)
-		}
-	} else {
-		// Set default if empty
-		cfg.Server.FrontendURL = "https://nomadcrew.uk"
-		log.Warnw("FrontendURL not configured, using default", "default", cfg.Server.FrontendURL)
-	}
-
-	// Validate database config
-	if cfg.Database.Host == "" {
-		return fmt.Errorf("DATABASE.HOST is required")
-	}
-
-	if cfg.Database.User == "" {
-		return fmt.Errorf("DATABASE.USER is required")
-	}
-
-	if cfg.Database.Password == "" {
-		return fmt.Errorf("DATABASE.PASSWORD is required")
-	}
-
-	if cfg.Database.Name == "" {
-		return fmt.Errorf("DATABASE.NAME is required")
-	}
-
-	// Log only non-sensitive configuration information
-	log.Infow("Configuration validated",
-		"environment", cfg.Server.Environment,
-		"database_host", cfg.Database.Host,
-		"database_name", cfg.Database.Name,
-		"redis_address", cfg.Redis.Address,
-		// +++ Log validated EventService config +++
-		"event_service_publish_timeout", cfg.EventService.PublishTimeoutSeconds,
-		"event_service_subscribe_timeout", cfg.EventService.SubscribeTimeoutSeconds,
-		"event_service_buffer_size", cfg.EventService.EventBufferSize,
-	)
 
 	return nil
 }
 
-// nolint:unused
+// validateConnectionString parses and validates a database connection string.
+// Note: This function is currently unused but kept for potential future use.
 func validateConnectionString(connStr string) error {
-	if connStr == "" {
-		return fmt.Errorf("DB_CONNECTION_STRING is required")
-	}
-
-	u, err := url.Parse(connStr)
+	config, err := url.Parse(connStr)
 	if err != nil {
-		return fmt.Errorf("invalid DB_CONNECTION_STRING format: %w", err)
+		return fmt.Errorf("invalid database connection string format: %w", err)
 	}
-
-	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
-		return fmt.Errorf("DB_CONNECTION_STRING must use postgres:// or postgresql:// scheme")
+	if config.Scheme != "postgres" && config.Scheme != "postgresql" {
+		return fmt.Errorf("invalid database scheme: %s", config.Scheme)
 	}
-
-	if u.User == nil || u.User.Username() == "" {
-		return fmt.Errorf("DB_CONNECTION_STRING must contain username")
+	if config.Host == "" {
+		return fmt.Errorf("database host is required in connection string")
 	}
-
-	_, hasPassword := u.User.Password()
-	if !hasPassword {
-		return fmt.Errorf("DB_CONNECTION_STRING must contain password")
+	if config.User == nil || config.User.Username() == "" {
+		return fmt.Errorf("database user is required in connection string")
 	}
-
+	// Password presence check is often done separately or handled by the driver
+	if config.Path == "" || config.Path == "/" {
+		return fmt.Errorf("database name is required in connection string path")
+	}
 	return nil
 }
 
-// nolint:unused
+// validateExternalServices checks the configuration for external services.
 func validateExternalServices(services *ExternalServices) error {
+	if services.GeoapifyKey == "" {
+		return fmt.Errorf("geoapify key is required")
+	}
+	if services.PexelsAPIKey == "" {
+		return fmt.Errorf("pexels API key is required")
+	}
+	if services.SupabaseAnonKey == "" {
+		return fmt.Errorf("supabase anon key is required")
+	}
 	if services.SupabaseURL == "" {
-		return fmt.Errorf("SUPABASE_URL is required")
+		return fmt.Errorf("supabase URL is required")
 	}
-
-	if len(services.SupabaseAnonKey) < minKeyLength {
-		return fmt.Errorf("SUPABASE_ANON_KEY is invalid or too short")
+	if len(services.SupabaseJWTSecret) < minJWTLength {
+		return fmt.Errorf("supabase JWT secret must be at least %d characters long", minJWTLength)
 	}
-
-	if services.SupabaseJWTSecret == "" {
-		return fmt.Errorf("SUPABASE_JWT_SECRET is required but not set")
-	}
-
-	if len(services.GeoapifyKey) < minKeyLength {
-		return fmt.Errorf("GEOAPIFY_KEY is invalid or too short")
-	}
-
-	if len(services.PexelsAPIKey) < minKeyLength {
-		return fmt.Errorf("PEXELS_API_KEY is invalid or too short")
-	}
-
 	return nil
 }
 
-// nolint:unused
+// containsWildcard checks if the list of allowed origins contains the wildcard "*".
 func containsWildcard(origins []string) bool {
-	for _, o := range origins {
-		if o == "*" {
+	for _, origin := range origins {
+		if origin == "*" {
 			return true
 		}
 	}

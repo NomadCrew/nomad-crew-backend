@@ -1,3 +1,5 @@
+// Package db provides implementations for data access interfaces defined in internal/store.
+// It interacts with the PostgreSQL database using pgxpool and potentially other external services like Supabase.
 package db
 
 import (
@@ -9,14 +11,19 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
+// TodoDB provides methods for interacting with todo items in the database.
+// It uses a DatabaseClient for database connections.
 type TodoDB struct {
 	client *DatabaseClient
 }
 
+// NewTodoDB creates a new instance of TodoDB.
 func NewTodoDB(client *DatabaseClient) *TodoDB {
 	return &TodoDB{client: client}
 }
 
+// CreateTodo inserts a new todo item into the trip_todos table.
+// It sets the initial status to Incomplete and populates the ID and CreatedAt fields.
 func (tdb *TodoDB) CreateTodo(ctx context.Context, todo *types.Todo) error {
 	query := `
         INSERT INTO trip_todos (trip_id, text, created_by, status)
@@ -32,14 +39,17 @@ func (tdb *TodoDB) CreateTodo(ctx context.Context, todo *types.Todo) error {
 	).Scan(&todo.ID, &todo.CreatedAt)
 
 	if err != nil {
-		return errors.NewDatabaseError(err)
+		return errors.NewDatabaseError(fmt.Errorf("failed to create todo: %w", err))
 	}
 
 	return nil
 }
 
+// ListTodos retrieves a paginated list of non-deleted todos for a specific trip.
+// It returns the list of todos and the total count of non-deleted todos for that trip.
+// Todos are ordered by status (incomplete first) and then by creation date (newest first).
 func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string, limit int, offset int) ([]*types.Todo, int, error) {
-	// First get total count
+	// Get total count of non-deleted todos for the trip.
 	var total int
 	countQuery := `
         SELECT COUNT(*) 
@@ -49,21 +59,21 @@ func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string, limit int, offs
 
 	err := tdb.client.GetPool().QueryRow(ctx, countQuery, tripID).Scan(&total)
 	if err != nil {
-		return nil, 0, errors.NewDatabaseError(err)
+		return nil, 0, errors.NewDatabaseError(fmt.Errorf("failed to count todos for trip %s: %w", tripID, err))
 	}
 
-	// Then get paginated results
+	// Get the paginated list of non-deleted todos.
 	query := `
         SELECT t.id, t.trip_id, t.text, t.status, t.created_by, t.created_at, t.updated_at 
         FROM trip_todos t
         LEFT JOIN metadata m ON m.table_name = 'trip_todos' AND m.record_id = t.id
         WHERE t.trip_id = $1 AND m.deleted_at IS NULL 
-        ORDER BY t.status = 'COMPLETE', t.created_at DESC
+        ORDER BY t.status = 'COMPLETE', t.created_at DESC -- Incomplete first, then newest
         LIMIT $2 OFFSET $3`
 
 	rows, err := tdb.client.GetPool().Query(ctx, query, tripID, limit, offset)
 	if err != nil {
-		return nil, 0, errors.NewDatabaseError(err)
+		return nil, 0, errors.NewDatabaseError(fmt.Errorf("failed to query todos for trip %s: %w", tripID, err))
 	}
 	defer rows.Close()
 
@@ -80,50 +90,65 @@ func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string, limit int, offs
 			&todo.UpdatedAt,
 		)
 		if err != nil {
-			return nil, 0, errors.NewDatabaseError(err)
+			// Return partial results along with the error.
+			return todos, total, errors.NewDatabaseError(fmt.Errorf("failed to scan todo row: %w", err))
 		}
 		todos = append(todos, &todo)
+	}
+
+	if err = rows.Err(); err != nil {
+		// Error during iteration.
+		return todos, total, errors.NewDatabaseError(fmt.Errorf("error iterating todo rows: %w", err))
 	}
 
 	return todos, total, nil
 }
 
+// UpdateTodo updates the status and/or text of an existing todo item.
+// It dynamically builds the SQL query based on the fields provided in the update struct.
 func (tdb *TodoDB) UpdateTodo(ctx context.Context, id string, update *types.TodoUpdate) error {
-	query := `
-        UPDATE trip_todos 
-        SET updated_at = CURRENT_TIMESTAMP`
-
+	// Start building the query and arguments.
+	query := "UPDATE trip_todos SET updated_at = CURRENT_TIMESTAMP"
 	var args []interface{}
-	args = append(args, id)
+	args = append(args, id) // $1 will always be the id for the WHERE clause.
 	paramCount := 1
 
+	// Append status update if provided.
 	if update.Status != nil {
 		paramCount++
 		query += fmt.Sprintf(", status = $%d", paramCount)
 		args = append(args, *update.Status)
 	}
 
+	// Append text update if provided.
 	if update.Text != nil {
 		paramCount++
 		query += fmt.Sprintf(", text = $%d", paramCount)
 		args = append(args, *update.Text)
 	}
 
+	// Add the WHERE clause and RETURNING id to check if the row was updated.
 	query += " WHERE id = $1 RETURNING id"
 
 	var returnedID string
 	err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&returnedID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			// The ID did not match any row, likely meaning it doesn't exist or was deleted.
 			return errors.NotFound("Todo", id)
 		}
-		return errors.NewDatabaseError(err)
+		// Other potential database error during update.
+		return errors.NewDatabaseError(fmt.Errorf("failed to update todo %s: %w", id, err))
 	}
 
 	return nil
 }
 
+// DeleteTodo performs a soft delete on a todo item.
+// It removes the row from trip_todos and adds a corresponding record to the metadata table.
 func (tdb *TodoDB) DeleteTodo(ctx context.Context, id string, userID string) error {
+	// Use a Common Table Expression (CTE) to delete the row and immediately insert
+	// the metadata record in a single atomic operation.
 	query := `
         WITH deleted AS (
             DELETE FROM trip_todos 
@@ -133,11 +158,23 @@ func (tdb *TodoDB) DeleteTodo(ctx context.Context, id string, userID string) err
         INSERT INTO metadata (table_name, record_id, deleted_by, deleted_at)
         SELECT 'trip_todos', id, $2, NOW()
         FROM deleted
+        RETURNING record_id -- Return something to check if deletion occurred.
     `
-	_, err := tdb.client.GetPool().Exec(ctx, query, id, userID)
-	return err
+	var deletedID string
+	// Use QueryRow(...).Scan(...) to check if the CTE affected any rows.
+	err := tdb.client.GetPool().QueryRow(ctx, query, id, userID).Scan(&deletedID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// No rows were returned by the CTE, meaning the todo didn't exist to be deleted.
+			return errors.NotFound("Todo", id)
+		}
+		// Other potential database error during soft delete.
+		return errors.NewDatabaseError(fmt.Errorf("failed to soft delete todo %s: %w", id, err))
+	}
+	return nil
 }
 
+// GetTodosByCreator retrieves all non-deleted todos created by a specific user for a given trip.
 func (tdb *TodoDB) GetTodosByCreator(ctx context.Context, tripID string, userID string) ([]*types.Todo, error) {
 	query := `
         SELECT t.id, t.trip_id, t.text, t.status, t.created_by, t.created_at, t.updated_at 
@@ -146,11 +183,11 @@ func (tdb *TodoDB) GetTodosByCreator(ctx context.Context, tripID string, userID 
         WHERE t.trip_id = $1 
         AND t.created_by = $2
         AND m.deleted_at IS NULL
-        ORDER BY t.status = 'COMPLETE', t.created_at DESC`
+        ORDER BY t.status = 'COMPLETE', t.created_at DESC -- Incomplete first, then newest`
 
 	rows, err := tdb.client.GetPool().Query(ctx, query, tripID, userID)
 	if err != nil {
-		return nil, errors.NewDatabaseError(err)
+		return nil, errors.NewDatabaseError(fmt.Errorf("failed to query todos for creator %s in trip %s: %w", userID, tripID, err))
 	}
 	defer rows.Close()
 
@@ -167,14 +204,20 @@ func (tdb *TodoDB) GetTodosByCreator(ctx context.Context, tripID string, userID 
 			&todo.UpdatedAt,
 		)
 		if err != nil {
-			return nil, errors.NewDatabaseError(err)
+			return todos, errors.NewDatabaseError(fmt.Errorf("failed to scan todo row for creator %s: %w", userID, err))
 		}
 		todos = append(todos, &todo)
+	}
+
+	if err = rows.Err(); err != nil {
+		return todos, errors.NewDatabaseError(fmt.Errorf("error iterating todo rows for creator %s: %w", userID, err))
 	}
 
 	return todos, nil
 }
 
+// GetTodo retrieves a single todo item by its ID, regardless of its deleted status.
+// Note: This method currently does not check the metadata table for soft deletion.
 func (tdb *TodoDB) GetTodo(ctx context.Context, id string) (*types.Todo, error) {
 	query := `
         SELECT id, trip_id, text, status, created_by, created_at, updated_at 
@@ -196,7 +239,7 @@ func (tdb *TodoDB) GetTodo(ctx context.Context, id string) (*types.Todo, error) 
 		return nil, errors.NotFound("Todo", id)
 	}
 	if err != nil {
-		return nil, errors.NewDatabaseError(err)
+		return nil, errors.NewDatabaseError(fmt.Errorf("failed to get todo %s: %w", id, err))
 	}
 
 	return &todo, nil

@@ -5,6 +5,7 @@ alwaysApply: true
 ---
 Context:
 - This is the NomadCrew backend repo, a RESTful API built with Go and Gin, supporting WebSockets and integrating with Supabase, PostgreSQL, and Redis.
+- Refer to `PROJECT_STRUCTURE.md` in the root directory for a detailed project layout and file summaries.
 - Refer to `.cursor/rules/project-context.md` for the latest API endpoints, structure, and deployment status.
 
 Expertise:
@@ -12,7 +13,7 @@ Expertise:
 
 Task Approach:
 - For each task, first outline a step-by-step plan in pseudocode (e.g., API structure, endpoints, data flow) in the chat, detailing logic and integration points.
-- Confirm the plan with me before writing code, ensuring alignment with NomadCrew’s requirements.
+- Confirm the plan with me before writing code, ensuring alignment with NomadCrew's requirements.
 - Deliver bug-free, secure, efficient Go code fully implementing the plan, leaving no placeholders.
 
 Code Style:
@@ -30,13 +31,13 @@ API with Gin:
 - Define routes in `/router` using Gin (e.g., `router.GET("/users", handlers.GetUsers)`).
 - Handle HTTP methods (GET, POST, PUT, DELETE) appropriately in handlers.
 - Return JSON responses with proper status codes (e.g., 200, 201, 400, 500).
-- Validate inputs in handlers using Gin’s binding (e.g., `c.ShouldBindJSON`).
+- Validate inputs in handlers using Gin's binding (e.g., `c.ShouldBindJSON`).
 - Follow RESTful principles: resource-based endpoints, statelessness, consistent design.
 
 Error Handling:
 - Return errors explicitly (e.g., `if err != nil { return err }`).
 - Define custom error types in `/errors` for domain-specific failures (e.g., `ErrNotFound`).
-- Use standard library’s `http.Error` or Gin’s `c.JSON` for HTTP error responses.
+- Use standard library's `http.Error` or Gin's `c.JSON` for HTTP error responses.
 - Log errors with Zap in structured format.
 
 Database:
@@ -75,7 +76,7 @@ Concurrency:
 - Ensure thread safety with appropriate synchronization (e.g., mutexes if needed).
 
 Testing:
-- Write unit tests with Go’s testing package and testify assertions.
+- Write unit tests with Go's testing package and testify assertions.
 - Implement integration tests in `/tests` using testcontainers-go for PostgreSQL/Redis.
 - Test API endpoints with mocked requests and responses.
 

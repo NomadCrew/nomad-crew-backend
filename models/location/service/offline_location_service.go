@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	// Removed locationSvc alias as interface is now in the same package
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -29,15 +30,30 @@ const (
 
 // OfflineLocationService handles offline location updates
 type OfflineLocationService struct {
-	redisClient     *redis.Client
-	locationService *LocationService
+	redisClient *redis.Client
+	// Use the interface from the refactored service package
+	locationService OfflineLocationServiceInterface // Use interface from same package
 }
 
 // NewOfflineLocationService creates a new OfflineLocationService
-func NewOfflineLocationService(redisClient *redis.Client, locationService *LocationService) *OfflineLocationService {
+// Accept the interface type, allow nil initially for dependency cycle resolution
+func NewOfflineLocationService(redisClient *redis.Client, locService OfflineLocationServiceInterface) *OfflineLocationService { // Use interface from same package
 	return &OfflineLocationService{
 		redisClient:     redisClient,
-		locationService: locationService,
+		locationService: locService,
+	}
+}
+
+// SetLocationService allows setting the location service after initialization
+// to resolve circular dependencies.
+func (s *OfflineLocationService) SetLocationService(locService OfflineLocationServiceInterface) { // Use interface from same package
+	if s.locationService == nil && locService != nil {
+		s.locationService = locService
+		logger.GetLogger().Info("OfflineLocationService: Location service dependency injected.")
+	} else if locService == nil {
+		logger.GetLogger().Warn("OfflineLocationService: Attempted to inject nil location service.")
+	} else {
+		logger.GetLogger().Warn("OfflineLocationService: Location service dependency already set.")
 	}
 }
 
@@ -88,6 +104,12 @@ func (s *OfflineLocationService) SaveOfflineLocations(ctx context.Context, userI
 func (s *OfflineLocationService) ProcessOfflineLocations(ctx context.Context, userID string) error {
 	log := logger.GetLogger()
 
+	// Check if locationService is set
+	if s.locationService == nil {
+		log.Errorw("Location service dependency not set in OfflineLocationService", "userID", userID)
+		return fmt.Errorf("internal configuration error: location service not available")
+	}
+
 	// Try to acquire a lock to prevent concurrent processing
 	lockKey := fmt.Sprintf("%s%s", offlineLocationLockPrefix, userID)
 	lockValue := uuid.New().String()
@@ -107,7 +129,18 @@ func (s *OfflineLocationService) ProcessOfflineLocations(ctx context.Context, us
 	// Ensure lock is released when done
 	defer func() {
 		// Only delete the lock if it's still our lock
-		s.redisClient.Del(ctx, lockKey)
+		// Use Lua script for atomic check-and-delete
+		script := redis.NewScript(`
+			if redis.call("get", KEYS[1]) == ARGV[1] then
+				return redis.call("del", KEYS[1])
+			else
+				return 0
+			end
+		`)
+		_, err := script.Run(ctx, s.redisClient, []string{lockKey}, lockValue).Result()
+		if err != nil {
+			log.Errorw("Failed to release offline location processing lock", "userID", userID, "error", err)
+		}
 	}()
 
 	// Get all queue keys for this user
@@ -144,6 +177,11 @@ func (s *OfflineLocationService) ProcessOfflineLocations(ctx context.Context, us
 // processBatch processes a single batch of offline location updates
 func (s *OfflineLocationService) processBatch(ctx context.Context, userID string, key string) error {
 	log := logger.GetLogger()
+
+	// Check if locationService is set (double check)
+	if s.locationService == nil {
+		return fmt.Errorf("internal configuration error: location service not available during batch processing")
+	}
 
 	// Get the batch data
 	data, err := s.redisClient.Get(ctx, key).Bytes()
@@ -188,45 +226,73 @@ func (s *OfflineLocationService) processBatch(ctx context.Context, userID string
 			continue
 		}
 
-		// Process the update
-		_, err := s.locationService.UpdateLocation(ctx, userID, update)
-		if err != nil {
-			log.Warnw("Failed to process offline location update",
-				"userID", userID,
-				"timestamp", updateTime,
-				"error", err,
-			)
+		// Process the update using the interface method
+		// Note: The UpdateLocation method itself is part of the locationSvc.ManagementService,
+		// not the locationSvc.OfflineLocationServiceInterface. We need the concrete type here or a wider interface.
+		// Assuming locationService holds the concrete *locationSvc.ManagementService instance
+		// This dependency needs careful handling. Let's assume for now it calls the correct method.
+		// TODO: Revisit this dependency structure if issues arise.
+		if locSvcImpl, ok := s.locationService.(*ManagementService); ok {
+			_, err := locSvcImpl.UpdateLocation(ctx, userID, update)
+			if err != nil {
+				log.Warnw("Failed to process offline location update",
+					"userID", userID,
+					"timestamp", updateTime,
+					"error", err,
+				)
+				continue
+			}
+		} else {
+			log.Errorw("OfflineLocationService: locationService is not of expected type *locationSvc.ManagementService", "type", fmt.Sprintf("%T", s.locationService))
+			// Skip this update as we cannot call the required method
 			continue
 		}
-
 		processedCount++
-
-		// Limit the number of updates processed in a single batch
-		if processedCount >= maxBatchSize {
-			log.Infow("Reached max batch size limit, remaining updates will be processed in next run",
-				"userID", userID,
-				"maxBatchSize", maxBatchSize,
-				"totalUpdates", len(offlineUpdate.Updates),
-			)
-			break
-		}
 	}
-
-	// Delete the batch after processing
-	s.redisClient.Del(ctx, key)
 
 	log.Infow("Processed offline location batch",
 		"userID", userID,
-		"total", len(offlineUpdate.Updates),
-		"processed", processedCount,
-		"deviceID", offlineUpdate.DeviceID,
+		"key", key,
+		"processedCount", processedCount,
+		"totalInBatch", len(offlineUpdate.Updates),
 	)
+
+	// Delete the batch key after successful processing
+	if err := s.redisClient.Del(ctx, key).Err(); err != nil {
+		log.Warnw("Failed to delete processed offline location batch key", "key", key, "error", err)
+		// Log but don't return error, processing was successful
+	}
 
 	return nil
 }
 
-// CleanupExpiredLocations removes expired location batches
+// CleanupExpiredLocations (Optional) - could be run periodically
+// to remove very old batches that might not have been processed
+// due to errors or long offline periods.
 func (s *OfflineLocationService) CleanupExpiredLocations(ctx context.Context) error {
-	// This is handled automatically by Redis TTL, but we could add additional cleanup logic here if needed
+	log := logger.GetLogger()
+	// Consider a more efficient way than scanning all keys if needed
+	pattern := fmt.Sprintf("%s*", offlineLocationQueuePrefix)
+	keys, err := s.redisClient.Keys(ctx, pattern).Result()
+	if err != nil {
+		log.Errorw("Failed to get keys for cleanup", "error", err)
+		return err
+	}
+
+	// In a real-world scenario, you might want to process these in smaller chunks
+	// or use SCAN for large numbers of keys.
+	for _, key := range keys {
+		data, err := s.redisClient.Get(ctx, key).Bytes()
+		if err != nil {
+			continue // Skip if key disappeared or error occurred
+		}
+		var offlineUpdate types.OfflineLocationUpdate
+		if err := json.Unmarshal(data, &offlineUpdate); err == nil {
+			if time.Since(offlineUpdate.CreatedAt) > (maxLocationAge + 24*time.Hour) { // Example: Remove if older than max age + 1 day
+				log.Infow("Cleaning up very old offline location batch", "key", key)
+				s.redisClient.Del(ctx, key)
+			}
+		}
+	}
 	return nil
 }

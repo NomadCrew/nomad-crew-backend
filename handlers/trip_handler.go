@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -13,12 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	trip "github.com/NomadCrew/nomad-crew-backend/models/trip"
-	tcommand "github.com/NomadCrew/nomad-crew-backend/models/trip/command"
+	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -37,17 +37,23 @@ type TripHandler struct {
 	tripModel    *trip.TripModel
 	eventService types.EventPublisher
 	supabase     *supabase.Client
+	config       *config.ServerConfig
+	weatherSvc   types.WeatherServiceInterface
+	chatStore    store.ChatStore
 }
 
 type UpdateTripStatusRequest struct {
 	Status string `json:"status" binding:"required"`
 }
 
-func NewTripHandler(model *trip.TripModel, eventService types.EventPublisher, supabase *supabase.Client) *TripHandler {
+func NewTripHandler(model *trip.TripModel, eventService types.EventPublisher, supabase *supabase.Client, cfg *config.ServerConfig, weatherSvc types.WeatherServiceInterface, chatStore store.ChatStore) *TripHandler {
 	return &TripHandler{
 		tripModel:    model,
 		eventService: eventService,
 		supabase:     supabase,
+		config:       cfg,
+		weatherSvc:   weatherSvc,
+		chatStore:    chatStore,
 	}
 }
 
@@ -75,49 +81,26 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	// Set the creator from the context.
 	req.CreatedBy = c.GetString("user_id")
 
-	cmd := &tcommand.CreateTripCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: c.GetString("user_id"),
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		Trip: &req,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
+	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &req)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	// Publish creation events
-	for _, event := range result.Events {
-		if err := h.eventService.Publish(c, result.Data.(*types.Trip).ID, event); err != nil {
-			logger.GetLogger().Errorw("Failed to publish create event", "error", err)
-		}
-	}
-
-	c.JSON(http.StatusCreated, result.Data)
+	c.JSON(http.StatusCreated, createdTrip)
 }
 
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	userID := c.GetString("user_id")
 
-	cmd := &tcommand.GetTripCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		TripID: tripID,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Data)
+	c.JSON(http.StatusOK, trip)
 }
 
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
@@ -134,37 +117,22 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 		return
 	}
 
-	cmd := &tcommand.UpdateTripCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		TripID: tripID,
-		Update: &update,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
+	// Pass userID and update pointer, expect (*Trip, error)
+	updatedTrip, err := h.tripModel.UpdateTrip(c.Request.Context(), tripID, userID, &update)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	// Process command result events
-	for _, event := range result.Events {
-		if err := h.eventService.Publish(c, tripID, event); err != nil {
-			log.Errorw("Failed to publish update event", "error", err)
-		}
-	}
-
-	c.JSON(http.StatusOK, result.Data)
+	c.JSON(http.StatusOK, updatedTrip)
 }
 
-// UpdateTripStatusHandler updates trip status using command pattern
+// UpdateTripStatusHandler updates trip status using the facade
 func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
 	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+	// userID := c.GetString("user_id") // UserID check should happen in the model/service layer now
 
 	var req UpdateTripStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -175,28 +143,24 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 		return
 	}
 
-	// Create and execute command
-	cmd := &tcommand.UpdateTripStatusCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		TripID:    tripID,
-		NewStatus: types.TripStatus(req.Status),
-	}
+	newStatus := types.TripStatus(req.Status)
+	// TODO: Add validation for TripStatus enum if needed here or rely on service layer
 
-	log.Debugw("Command context state before execution",
-		"emailSvcExists", cmd.Ctx.EmailSvc != nil,
-		"configExists", cmd.Ctx.Config != nil,
-		"storeExists", cmd.Ctx.Store != nil)
-
-	result, err := cmd.Execute(c.Request.Context())
+	err := h.tripModel.UpdateTripStatus(c.Request.Context(), tripID, newStatus)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	updatedTrip := result.Data.(*types.Trip)
+	// Fetch the updated trip to return it (optional, could just return success)
+	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString("user_id")) // Need user ID for fetch
+	if err != nil {
+		// Log this error but potentially still return success for the update itself
+		log.Errorw("Failed to fetch updated trip after status change", "tripID", tripID, "error", err)
+		c.JSON(http.StatusOK, gin.H{"message": "Trip status updated successfully"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Trip status updated successfully",
 		"data":    updatedTrip,
@@ -227,46 +191,29 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 }
 
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
-	cmd := &tcommand.ListTripsCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: c.GetString("user_id"),
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-	}
+	userID := c.GetString("user_id")
 
-	result, err := cmd.Execute(c.Request.Context())
+	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userID)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Data)
+	c.JSON(http.StatusOK, trips)
 }
 
 func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+	// userID := c.GetString("user_id") // UserID check should happen in the model/service layer now
 
-	cmd := &tcommand.DeleteTripCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		TripID: tripID,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
+	err := h.tripModel.DeleteTrip(c.Request.Context(), tripID)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	// Publish deletion events
-	for _, event := range result.Events {
-		if err := h.eventService.Publish(c, tripID, event); err != nil {
-			logger.GetLogger().Errorw("Failed to publish delete event", "error", err)
-		}
-	}
+	// Event publishing should now happen within the service/model layer
+	// Remove event publishing logic from here
 
 	c.Status(http.StatusNoContent)
 }
@@ -282,21 +229,16 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 		return
 	}
 
-	cmd := &tcommand.SearchTripsCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: c.GetString("user_id"),
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		Criteria: criteria,
-	}
+	// UserID from context can be added to criteria if needed for filtering/auth
+	// criteria.UserID = c.GetString("user_id")
 
-	result, err := cmd.Execute(c.Request.Context())
+	trips, err := h.tripModel.SearchTrips(c.Request.Context(), criteria)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, result.Data)
+	c.JSON(http.StatusOK, trips)
 }
 
 type AddMemberRequest struct {
@@ -308,15 +250,14 @@ type UpdateMemberRoleRequest struct {
 	Role types.MemberRole `json:"role" binding:"required"`
 }
 
-// AddMemberHandler handles adding a new member to a trip
 func (h *TripHandler) AddMemberHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	// requestingUserID := c.GetString("user_id")
+	// invokerUserID := c.GetString("user_id") // Authorization should happen in service layer
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if err := c.Error(apperrors.ValidationFailed("Invalid request body", err.Error())); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid member data", err.Error())); err != nil {
 			log.Errorw("Failed to add validation error", "error", err)
 		}
 		return
@@ -326,28 +267,538 @@ func (h *TripHandler) AddMemberHandler(c *gin.Context) {
 		TripID: tripID,
 		UserID: req.UserID,
 		Role:   req.Role,
+		Status: types.MembershipStatusActive, // Assuming direct add means active
 	}
 
 	err := h.tripModel.AddMember(c.Request.Context(), membership)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add member error", "error", err)
+		h.handleModelError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Member added successfully"})
+}
+
+func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	memberID := c.Param("memberId")
+	// invokerUserID := c.GetString("user_id") // Authorization should happen in service layer
+
+	var req UpdateMemberRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid role data", err.Error())); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Member added successfully",
+	// The model method signature takes ctx, tripID, memberID, newRole
+	_, err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, memberID, req.Role)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Member role updated successfully"})
+}
+
+func (h *TripHandler) RemoveMemberHandler(c *gin.Context) {
+	tripID := c.Param("id")
+	memberID := c.Param("memberId") // This is the User ID to be removed
+	// invokerUserID := c.GetString("user_id") // Authorization should happen in service layer
+
+	err := h.tripModel.RemoveMember(c.Request.Context(), tripID, memberID)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Member removed successfully"})
+}
+
+func (h *TripHandler) GetTripMembersHandler(c *gin.Context) {
+	tripID := c.Param("id")
+	// userID := c.GetString("user_id") // Authorization should happen in service layer
+
+	members, err := h.tripModel.GetTripMembers(c.Request.Context(), tripID)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, members)
+}
+
+func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
+	tripID := c.Param("id")
+	userID := c.GetString("user_id") // UserID needed for GetTripWithMembers
+
+	tripWithMembers, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID, userID)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, tripWithMembers)
+}
+
+// WSStreamEvents handles WebSocket connections for streaming trip events.
+func (h *TripHandler) WSStreamEvents(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get SafeConn from context (set by WSMiddleware)
+	safeConnGeneric, exists := c.Get(middleware.WebSocketConnectionKey) // Use the correct key
+	if !exists {
+		log.Error("WebSocket connection not found in context")
+		// Don't use handleModelError, just abort
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "WebSocket connection unavailable"})
+		return
+	}
+	safeConn, ok := safeConnGeneric.(*middleware.SafeConn)
+	if !ok || safeConn == nil {
+		log.Error("WebSocket connection in context has incorrect type or is nil")
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "WebSocket connection invalid"})
+		return
+	}
+
+	// UserID and TripID should be available on SafeConn, set by AuthWS middleware
+	userID := safeConn.UserID
+	tripID := safeConn.TripID
+
+	if userID == "" || tripID == "" {
+		log.Errorw("Missing UserID or TripID on WebSocket connection context", "userID", userID, "tripID", tripID)
+		// Close the connection cleanly if possible
+		safeConn.Close() // SafeConn.Close is safe to call multiple times
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "WebSocket authentication missing"})
+		return
+	}
+
+	log.Infow("WebSocket connection context established", "tripID", tripID, "userID", userID, "remoteAddr", safeConn.RemoteAddr())
+
+	// Create context tied to the request lifecycle for graceful shutdown
+	wsCtx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel() // Ensure cancellation happens on handler exit
+
+	// Subscribe the user to trip-specific events via the injected eventService
+	subChan, err := h.eventService.Subscribe(wsCtx, tripID, userID)
+	if err != nil {
+		log.Errorw("Failed to subscribe to events", "tripID", tripID, "userID", userID, "error", err)
+		// Try to send error before closing
+		safeConn.WriteJSON(gin.H{"error": "Failed to subscribe to events"})
+		safeConn.Close()
+		return // Don't proceed if subscription fails
+	}
+	// Defer Unsubscribe: Use context.Background() for Unsubscribe to ensure it runs
+	// even if the request context (wsCtx) is cancelled prematurely.
+	defer func() {
+		if err := h.eventService.Unsubscribe(context.Background(), tripID, userID); err != nil {
+			log.Errorw("Error during WebSocket unsubscribe", "tripID", tripID, "userID", userID, "error", err)
+		}
+	}()
+
+	// Goroutine to forward subscribed events to the WebSocket client
+	go func() {
+		defer cancel() // If this goroutine exits (e.g., error), cancel the context
+		for {
+			select {
+			case event, ok := <-subChan:
+				if !ok {
+					log.Infow("Subscription channel closed by publisher", "tripID", tripID, "userID", userID)
+					return // Exit goroutine if channel is closed
+				}
+
+				// Marshal the event struct to JSON bytes for sending
+				eventBytes, marshalErr := json.Marshal(event)
+				if marshalErr != nil {
+					log.Errorw("Error marshalling event to JSON for WebSocket", "tripID", tripID, "userID", userID, "eventType", event.Type, "eventID", event.ID, "error", marshalErr)
+					continue // Skip this event, but keep listening
+				}
+
+				// Send the JSON bytes as a WebSocket text message
+				if writeErr := safeConn.WriteMessage(websocket.TextMessage, eventBytes); writeErr != nil {
+					log.Errorw("Error writing event to WebSocket", "tripID", tripID, "userID", userID, "eventType", event.Type, "eventID", event.ID, "error", writeErr)
+					// Check if the error indicates the connection is closed
+					if websocket.IsCloseError(writeErr, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
+						strings.Contains(writeErr.Error(), "use of closed network connection") {
+						log.Infow("WebSocket connection closed while writing event", "tripID", tripID, "userID", userID)
+					} else {
+						log.Warnw("Unexpected WebSocket write error", "tripID", tripID, "userID", userID, "error", writeErr)
+					}
+					return // Stop sending on any write error
+				}
+
+			case <-wsCtx.Done(): // Use the handler's context for cancellation
+				log.Infow("WebSocket context cancelled, stopping event forwarder goroutine", "tripID", tripID, "userID", userID)
+				return
+			}
+		}
+	}()
+
+	// Read loop (blocking) - This goroutine handles incoming messages
+	// It runs in the main handler goroutine context
+	// It relies on SafeConn's internal readPump to put messages onto sc.readBuffer
+	// and handle pings/pongs/close messages internally.
+	// The readPump will close the connection and signal `sc.done` on error/close.
+
+	for {
+		select {
+		case message, ok := <-safeConn.ReadChannel(): // Use the read channel provided by SafeConn
+			if !ok {
+				log.Infow("SafeConn read channel closed, likely connection terminated.", "tripID", tripID, "userID", userID)
+				// Connection is handled by SafeConn's readPump, just exit handler
+				return
+			}
+
+			log.Debugw("Received WebSocket message from client", "tripID", tripID, "userID", userID, "size", len(message))
+			// Handle incoming message (e.g., chat) in a separate goroutine
+			// to avoid blocking the read loop if processing takes time.
+			go func(msg []byte) {
+				if err := h.HandleChatMessage(wsCtx, safeConn, msg, userID, tripID); err != nil {
+					log.Errorw("Failed to handle incoming WebSocket message", "tripID", tripID, "userID", userID, "error", err)
+					// Optionally notify the client about the error
+					safeConn.WriteJSON(gin.H{"error": "Failed to process message", "details": err.Error()})
+				}
+			}(message)
+
+		case <-wsCtx.Done():
+			log.Infow("WebSocket handler context done, exiting read loop.", "tripID", tripID, "userID", userID)
+			// SafeConn.Close() will be called by its internal pumps or defer
+			return
+		case <-safeConn.DoneChannel(): // Listen for done signal from SafeConn's internal pumps
+			log.Infow("SafeConn done channel closed, connection terminated.", "tripID", tripID, "userID", userID)
+			return
+		}
+	}
+}
+
+func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+
+	// Fetch trip details to get destination - Requires GetTripByID
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString("user_id")) // Need user ID for fetch
+	if err != nil {
+		log.Errorw("Failed to get trip details for weather update trigger", "tripID", tripID, "error", err)
+		h.handleModelError(c, err)
+		return
+	}
+
+	// Use the injected weather service
+	if h.weatherSvc == nil {
+		log.Errorw("Weather service not configured in handler", "tripID", tripID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Weather service unavailable"})
+		return
+	}
+
+	log.Infow("Triggering immediate weather update", "tripID", tripID, "destination", trip.Destination.Address)
+	// Pass the whole Destination struct as per interface expectation (based on previous analysis)
+	if err := h.weatherSvc.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination); err != nil {
+		log.Errorw("Failed to trigger immediate weather update", "tripID", tripID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger weather update"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Weather update triggered successfully"})
+}
+
+// InviteMemberRequest structure
+type InviteMemberRequest struct {
+	Email string           `json:"email" binding:"required,email"`
+	Role  types.MemberRole `json:"role" binding:"required"`
+}
+
+func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	invokerUserID := c.GetString("user_id")
+
+	var req InviteMemberRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid invitation data", err.Error())); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
+		return
+	}
+
+	// Check if user exists in Supabase (optional, could be done in service)
+	invitedUser, err := h.tripModel.LookupUserByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		// Handle cases where lookup fails, but maybe still allow invitation
+		log.Warnw("Failed to lookup user by email during invitation", "email", req.Email, "error", err)
+		// Decide if this is a fatal error or just a warning
+		// h.handleModelError(c, err) // Or maybe not fatal?
+	}
+
+	invitation := &types.TripInvitation{
+		TripID:      tripID,
+		InviterID:   invokerUserID,
+		InviteeEmail: req.Email,
+		Role:        req.Role,
+		Status:      types.InvitationStatusPending,
+		// InviteeID might be set later or if user lookup was successful
+	}
+	if invitedUser != nil {
+		invitation.InviteeID = &invitedUser.ID
+	}
+
+	// Create invitation using the model facade
+	err = h.tripModel.CreateInvitation(c.Request.Context(), invitation)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	// Note: Email sending logic should now be within the CreateInvitation service/model method.
+	// We don't need JWT generation or frontend URL construction here anymore.
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":      "Invitation sent successfully",
+		"invitationId": invitation.ID, // Return the ID if needed
 	})
 }
 
-// UpdateMemberRoleHandler handles updating a member's role
-func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
+// AcceptInvitationRequest structure
+type AcceptInvitationRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	// UserID from context is the user accepting the invitation
+	acceptingUserID := c.GetString("user_id")
+
+	var req AcceptInvitationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid token data", err.Error())); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
+		return
+	}
+
+	// Validate the token using the injected config
+	claims, err := auth.ValidateInvitationToken(req.Token, h.config.JwtSecretKey)
+	if err != nil {
+		log.Errorw("Invalid invitation token", "error", err)
+		c.Error(apperrors.AuthenticationFailed("Invalid or expired invitation token"))
+		return
+	}
+
+	// Basic validation: Ensure the user accepting is the one invited (if email matches)
+	// More robust checks (e.g., if user ID was in token) should happen in service layer
+	userProfile, ok := c.Get(middleware.UserProfileKey)
+	if !ok {
+		log.Error("User profile not found in context for invitation acceptance")
+		c.Error(apperrors.InternalServerError("User profile unavailable"))
+		return
+	}
+	profile, ok := userProfile.(types.UserProfile)
+	if !ok {
+		log.Error("User profile has incorrect type")
+		c.Error(apperrors.InternalServerError("Invalid user profile type"))
+		return
+	}
+
+	if claims.Email != "" && claims.Email != profile.Email {
+		log.Warnw("Invitation email mismatch", "tokenEmail", claims.Email, "userEmail", profile.Email)
+		c.Error(apperrors.AuthorizationFailed("Invitation not intended for this user"))
+		return
+	}
+
+	invitationID := claims.InvitationID
+
+	// Update invitation status via model facade
+	err = h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitationID, types.InvitationStatusAccepted)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	// Add member implicitly via the UpdateInvitationStatus logic (should be handled in service)
+	// No need to call AddMember separately here if the service does it.
+
+	// Fetch the trip details to return (optional)
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), claims.TripID, acceptingUserID)
+	if err != nil {
+		log.Warnw("Failed to fetch trip details after accepting invitation", "tripID", claims.TripID, "error", err)
+		// Still return success for the acceptance itself
+		c.JSON(http.StatusOK, gin.H{"message": "Invitation accepted successfully"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Invitation accepted successfully",
+		"trip":    trip,
+	})
+}
+
+// HandleInvitationDeepLink handles clicks from email links
+func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
+	log := logger.GetLogger()
+	token := c.Query("token")
+	if token == "" {
+		log.Warn("Invitation deep link called without token")
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/auth/invitation-error?error=missing_token", h.config.FrontendURL))
+		return
+	}
+
+	// Validate the token using the injected config
+	claims, err := auth.ValidateInvitationToken(token, h.config.JwtSecretKey)
+	if err != nil {
+		log.Errorw("Invalid invitation token from deep link", "error", err)
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/auth/invitation-error?error=invalid_token", h.config.FrontendURL))
+		return
+	}
+
+	invitationID := claims.InvitationID
+	tripID := claims.TripID
+
+	// Check invitation status - Ensure it's still pending
+	invitation, err := h.tripModel.GetInvitation(c.Request.Context(), invitationID)
+	if err != nil {
+		log.Errorw("Failed to retrieve invitation details for deep link", "invitationID", invitationID, "error", err)
+		h.handleModelError(c, err) // Or redirect to a generic error page
+		// c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/auth/invitation-error?error=invitation_not_found", h.config.FrontendURL))
+		return
+	}
+
+	if invitation.Status != types.InvitationStatusPending {
+		log.Warnw("Invitation already processed", "invitationID", invitationID, "status", invitation.Status)
+		// Redirect based on status? e.g., to the trip page if already accepted
+		redirectURL := fmt.Sprintf("%s/trips/%s?invitation_status=%s", h.config.FrontendURL, tripID, strings.ToLower(string(invitation.Status)))
+		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+		return
+	}
+
+	// At this point, the token is valid and the invitation is pending.
+	// The frontend should handle the actual acceptance logic.
+	// We redirect the user to a frontend page that can use the token.
+	// This page might prompt login/signup if needed, then call AcceptInvitationHandler.
+
+	redirectURL := fmt.Sprintf("%s/auth/accept-invitation?token=%s", h.config.FrontendURL, token)
+	log.Infow("Redirecting valid invitation deep link to frontend handler", "invitationID", invitationID, "tripID", tripID, "redirectURL", redirectURL)
+	c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+
+	/*
+		// --- Alternative: Auto-accept if user is logged in and matches ---
+		// This is less common as it bypasses explicit user confirmation on the frontend
+
+		acceptingUserID, exists := c.Get("user_id")
+		if !exists {
+			// User not logged in, redirect to frontend to handle login/signup then acceptance
+			redirectURL := fmt.Sprintf("%s/auth/accept-invitation?token=%s", h.config.FrontendURL, token)
+			log.Infow("User not logged in, redirecting invitation deep link", "redirectURL", redirectURL)
+			c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+			return
+		}
+
+		userIDStr := acceptingUserID.(string)
+
+		// Check if logged-in user matches invitation email (requires profile access)
+		userProfile, ok := c.Get(middleware.UserProfileKey)
+		// ... (fetch profile and check email against claims.Email) ...
+		// if !ok || profile.Email != claims.Email {
+		//    // Mismatch, redirect to error or standard acceptance page
+		//    // ...
+		//    return
+		// }
+
+		// If logged in user matches, attempt auto-acceptance
+		err = h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitationID, types.InvitationStatusAccepted)
+		if err != nil {
+			log.Errorw("Auto-acceptance failed for deep link", "invitationID", invitationID, "error", err)
+			// Redirect to frontend error page
+			c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/auth/invitation-error?error=acceptance_failed", h.config.FrontendURL))
+			return
+		}
+
+		// Redirect to the trip page after successful auto-acceptance
+		log.Infow("Invitation auto-accepted successfully via deep link", "invitationID", invitationID, "tripID", tripID, "userID", userIDStr)
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/trips/%s", h.config.FrontendURL, tripID))
+
+	*/
+}
+
+// --- Utility Functions ---
+
+func secureRandomFloat() float64 {
+	var b [8]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		// Fallback to pseudo-random if crypto/rand fails
+		return float64(time.Now().UnixNano()%1000000) / 1000000.0
+	}
+	// Convert random bytes to a uint64, then scale to [0, 1)
+	val := binary.LittleEndian.Uint64(b[:])
+	return float64(val) / float64(^uint64(0)) // Divide by max uint64 value
+}
+
+// --- Chat related handlers ---
+
+func (h *TripHandler) ListTripMessages(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	userID := c.Param("userId")
+	userID := c.GetString("user_id")
 
-	var req UpdateMemberRoleRequest
+	// Pagination parameters
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+	limit, errL := strconv.Atoi(limitStr)
+	offset, errO := strconv.Atoi(offsetStr)
+
+	if errL != nil || errO != nil || limit <= 0 || offset < 0 {
+		if err := c.Error(apperrors.ValidationFailed("Invalid pagination parameters", "limit or offset invalid")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
+		return
+	}
+
+	// Authorization should happen in service/model layer
+
+	// Use injected chatStore
+	if h.chatStore == nil {
+		log.Errorw("Chat store is not available in handler", "tripID", tripID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Chat service unavailable"})
+		return
+	}
+
+	messages, err := h.chatStore.GetMessages(c.Request.Context(), tripID, limit, offset)
+	if err != nil {
+		log.Errorw("Failed to retrieve chat messages", "tripID", tripID, "userID", userID, "error", err)
+		h.handleModelError(c, err) // Handle potential db errors
+		return
+	}
+
+	// Get total message count for pagination headers/metadata (optional)
+	totalMessages, err := h.chatStore.GetMessageCount(c.Request.Context(), tripID)
+	if err != nil {
+		log.Warnw("Failed to get total message count", "tripID", tripID, "error", err)
+		// Don't fail the request, just omit the total count
+	}
+
+	response := gin.H{
+		"messages": messages,
+		"limit":    limit,
+		"offset":   offset,
+	}
+	if err == nil {
+		response["total"] = totalMessages
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+type UpdateLastReadRequest struct {
+	LastReadMessageID *string    `json:"lastReadMessageId"` // Pointer to allow null/clearing
+	LastReadTimestamp *time.Time `json:"lastReadTimestamp"` // Alternatively use timestamp
+}
+
+func (h *TripHandler) UpdateLastReadMessage(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	var req UpdateLastReadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		if err := c.Error(apperrors.ValidationFailed("Invalid request body", err.Error())); err != nil {
 			log.Errorw("Failed to add validation error", "error", err)
@@ -355,1078 +806,310 @@ func (h *TripHandler) UpdateMemberRoleHandler(c *gin.Context) {
 		return
 	}
 
-	result, err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, userID, req.Role)
+	// Validate: At least one field should be provided
+	if req.LastReadMessageID == nil && req.LastReadTimestamp == nil {
+		if err := c.Error(apperrors.ValidationFailed("Invalid request", "Either lastReadMessageId or lastReadTimestamp must be provided")); err != nil {
+			log.Errorw("Failed to add validation error", "error", err)
+		}
+		return
+	}
+
+	// Authorization check should happen in service/model layer
+
+	// Use injected chatStore
+	if h.chatStore == nil {
+		log.Errorw("Chat store is not available in handler", "tripID", tripID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Chat service unavailable"})
+		return
+	}
+
+	// Determine which update method to call based on request
+	var err error
+	if req.LastReadMessageID != nil {
+		err = h.chatStore.UpdateLastReadMessageID(c.Request.Context(), tripID, userID, *req.LastReadMessageID)
+	} else if req.LastReadTimestamp != nil {
+		err = h.chatStore.UpdateLastReadTimestamp(c.Request.Context(), tripID, userID, *req.LastReadTimestamp)
+	}
+
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+		log.Errorw("Failed to update last read message indicator", "tripID", tripID, "userID", userID, "error", err)
+		h.handleModelError(c, err) // Handle potential db errors
 		return
 	}
-
-	// Handle successful command events
-	for _, event := range result.Events {
-		if pubErr := h.eventService.Publish(c.Request.Context(), event.TripID, event); pubErr != nil {
-			log.Errorw("Failed to publish role update event", "error", pubErr)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Member role updated successfully",
-	})
-}
-
-// RemoveMemberHandler handles removing a member from a trip
-func (h *TripHandler) RemoveMemberHandler(c *gin.Context) {
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
-	memberID := c.Param("memberId")
-
-	cmd := &tcommand.RemoveMemberCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		TripID:   tripID,
-		MemberID: memberID,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
-	if err != nil {
-		h.handleModelError(c, err)
-		return
-	}
-
-	// Publish removal events
-	for _, event := range result.Events {
-		if err := h.eventService.Publish(c, tripID, event); err != nil {
-			logger.GetLogger().Errorw("Failed to publish member removal event", "error", err)
-		}
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
-// GetTripMembersHandler handles getting all members of a trip
-func (h *TripHandler) GetTripMembersHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	tripID := c.Param("id")
-
-	members, err := h.tripModel.GetTripMembers(c.Request.Context(), tripID)
-	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to get members error", "error", err)
-		}
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"members": members,
-	})
-}
-
-// GetTripWithMembersHandler handles getting a trip with its members
-func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	tripID := c.Param("id")
-
-	trip, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID)
-	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to get trip with members error", "error", err)
-		}
-		return
-	}
-
-	c.JSON(http.StatusOK, trip)
-}
-
-// WSStreamEvents upgrades the HTTP connection to a WebSocket and streams events.
-// This handler now processes all events for a trip, including chat messages.
-// Chat messages are sent as events through the event system rather than through
-// a separate websocket connection.
-func (h *TripHandler) WSStreamEvents(c *gin.Context) {
-	// Get logger instance once and reuse it
-	log := logger.GetLogger()
-
-	// Get WebSocket connection from middleware
-	conn, ok := c.MustGet("wsConnection").(*middleware.SafeConn)
-	if !ok {
-		log.Error("WebSocket connection not found in context")
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	// Get user and trip IDs
-	userID := conn.UserID
-	tripID := conn.TripID
-
-	if userID == "" || tripID == "" {
-		log.Error("Missing user or trip ID in WebSocket connection")
-		if err := conn.Close(); err != nil {
-			log.Warnw("Error closing connection with missing IDs", "error", err)
-		}
-		return
-	}
-
-	log.Infow("WebSocket connection established",
-		"tripID", tripID,
-		"userID", userID,
-		"remoteAddr", conn.RemoteAddr())
-
-	// Create context with cancellation for cleanup
-	wsCtx, cancel := context.WithCancel(c.Request.Context())
-	defer cancel()
-
-	// Ensure the user_id is propagated to the new context
-	wsCtx = context.WithValue(wsCtx, userIDKey, userID)
-
-	// Debug log to confirm user_id is in the context
-	log.Debugw("User ID set in WebSocket context",
-		"userID", userID,
-		"contextHasUserID", wsCtx.Value(userIDKey) != nil,
-		"contextUserIDValue", wsCtx.Value(userIDKey))
-
-	// Subscribe to events
-	eventChan, err := h.eventService.Subscribe(wsCtx, tripID, userID)
-	if err != nil {
-		log.Errorw("Failed to subscribe to events",
-			"error", err,
-			"tripID", tripID,
-			"userID", userID)
-		if closeErr := conn.Close(); closeErr != nil {
-			log.Errorw("Error closing WebSocket connection", "error", closeErr, "tripID", tripID)
-		}
-		return
-	}
-
-	// Set up cleanup on exit
-	defer func() {
-		if err := h.eventService.Unsubscribe(context.Background(), tripID, userID); err != nil {
-			log.Errorw("Failed to unsubscribe properly",
-				"error", err,
-				"tripID", tripID,
-				"userID", userID)
-		}
-	}()
-
-	// Start weather service for this trip
-	// Use an explicit GetTripByID implementation that doesn't rely on the context for user ID
-	cmd := &tcommand.GetTripCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID, // Set user ID directly rather than extracting from context
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		TripID: tripID,
-	}
-
-	// Debug log to confirm user ID is set in the command
-	log.Debugw("Command created with user ID",
-		"commandUserID", cmd.UserID,
-		"tripID", cmd.TripID)
-
-	result, err := cmd.Execute(wsCtx)
-	if err != nil {
-		log.Errorw("Failed to get trip details",
-			"error", err,
-			"tripID", tripID)
-		if closeErr := conn.Close(); closeErr != nil {
-			log.Errorw("Error closing WebSocket connection", "error", closeErr, "tripID", tripID)
-		}
-		return
-	}
-
-	trip := result.Data.(*types.Trip)
-
-	// Continue with the existing weather service setup
-	h.tripModel.GetCommandContext().WeatherSvc.IncrementSubscribers(tripID, trip.Destination)
-	defer h.tripModel.GetCommandContext().WeatherSvc.DecrementSubscribers(tripID)
-
-	// Create dedicated goroutine for reading from the client (if needed)
-	// This is mostly for future bi-directional communication
-	go func() {
-		defer func() {
-			// Recover from any panics in the read loop
-			if r := recover(); r != nil {
-				log.Errorw("Panic in WebSocket read goroutine",
-					"recover", r,
-					"tripID", tripID,
-					"userID", userID)
-			}
-
-			log.Debugw("WebSocket read goroutine exiting",
-				"tripID", tripID,
-				"userID", userID)
-
-			// Ensure context is cancelled to clean up other goroutines
-			cancel()
-		}()
-
-		for {
-			// Check if connection is still valid
-			if conn == nil || middleware.ConnIsClosed(conn) {
-				log.Debugw("Connection closed or nil in read goroutine",
-					"conn_nil", conn == nil,
-					"tripID", tripID,
-					"userID", userID)
-				return
-			}
-
-			// Read message from client
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					log.Debugw("WebSocket closed normally",
-						"tripID", tripID,
-						"userID", userID)
-				} else {
-					log.Warnw("WebSocket read error",
-						"error", err,
-						"tripID", tripID,
-						"userID", userID)
-				}
-				return
-			}
-
-			// Process the message
-			if len(message) > 0 {
-				// Handle the message in a separate goroutine to avoid blocking the read loop
-				go func(msg []byte) {
-					if err := h.HandleChatMessage(wsCtx, conn, msg, userID, tripID); err != nil {
-						log.Warnw("Failed to handle chat message",
-							"error", err,
-							"tripID", tripID,
-							"userID", userID)
-					}
-				}(message)
-			}
-		}
-	}()
-
-	// Process incoming events and send to client
-	pingTicker := time.NewTicker(30 * time.Second)
-	defer pingTicker.Stop()
-
-	for {
-		select {
-		case <-wsCtx.Done():
-			log.Debugw("WebSocket context done",
-				"tripID", tripID,
-				"userID", userID)
-			return
-
-		case <-pingTicker.C:
-			// Send ping to keep connection alive
-			deadline := time.Now().Add(10 * time.Second)
-			if err := conn.WriteControl(websocket.PingMessage, nil, deadline); err != nil {
-				log.Warnw("Failed to write ping message",
-					"error", err,
-					"tripID", tripID,
-					"userID", userID)
-				// Don't immediately return on ping error - check if connection is still valid
-				if err.Error() == "connection is nil" || err == websocket.ErrCloseSent {
-					log.Debugw("Connection is no longer valid, exiting ping loop",
-						"tripID", tripID,
-						"userID", userID)
-					return
-				}
-			}
-
-		case event, ok := <-eventChan:
-			if !ok {
-				log.Infow("Event channel closed",
-					"tripID", tripID,
-					"userID", userID)
-				return
-			}
-
-			// Check if connection is closed before sending
-			if conn == nil || middleware.ConnIsClosed(conn) {
-				log.Debugw("Connection closed or nil before sending event",
-					"conn_nil", conn == nil,
-					"tripID", tripID,
-					"userID", userID,
-					"eventType", event.Type)
-				return
-			}
-
-			// Serialize event efficiently using pool
-			data, err := json.Marshal(event)
-			if err != nil {
-				log.Errorw("Failed to marshal event",
-					"error", err,
-					"eventType", event.Type,
-					"tripID", tripID)
-				continue
-			}
-
-			// Add debugging info for event types
-			log.Debugw("Sending event to WebSocket client",
-				"eventType", event.Type,
-				"dataSize", len(data),
-				"tripID", tripID,
-				"userID", userID)
-
-			// Send event to client - add timeout to prevent blocking indefinitely
-			writeErr := make(chan error, 1)
-
-			// Use a context with timeout for cancellation
-			writeCtx, writeCancel := context.WithTimeout(context.Background(), 5*time.Second)
-
-			go func() {
-				defer writeCancel()
-				defer close(writeErr)
-
-				// Check once more if connection is closed or became nil
-				if conn == nil || middleware.ConnIsClosed(conn) {
-					writeErr <- fmt.Errorf("connection closed or nil before write attempt")
-					return
-				}
-
-				// Add one more defensive check
-				select {
-				case <-writeCtx.Done():
-					// Don't even attempt to write if already timed out
-					return
-				default:
-					writeErr <- conn.WriteMessage(websocket.TextMessage, data)
-				}
-			}()
-
-			// Wait with timeout
-			select {
-			case err := <-writeErr:
-				if err != nil {
-					log.Warnw("Failed to write event to WebSocket",
-						"error", err,
-						"eventType", event.Type,
-						"tripID", tripID,
-						"userID", userID,
-						"errorType", fmt.Sprintf("%T", err))
-
-					// Check for specific error types that indicate client issues
-					if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure,
-						websocket.CloseNoStatusReceived) {
-						log.Infow("Client closed connection normally",
-							"tripID", tripID,
-							"userID", userID)
-					} else if strings.Contains(err.Error(), "broken pipe") ||
-						strings.Contains(err.Error(), "connection reset by peer") ||
-						strings.Contains(err.Error(), "use of closed network connection") {
-						log.Warnw("Client connection lost unexpectedly",
-							"errorDetails", err.Error(),
-							"tripID", tripID,
-							"userID", userID)
-					}
-
-					// When write timeouts, we should terminate the websocket connection
-					if conn != nil {
-						if err := conn.Close(); err != nil {
-							log.Warnw("Error closing connection", "error", err, "userID", userID)
-						}
-					}
-					return
-				}
-
-				// Log occasional success for debugging
-				if secureRandomFloat() < 0.01 { // Log ~1% of successful sends
-					log.Debugw("Successfully sent event to client",
-						"eventType", event.Type,
-						"tripID", tripID,
-						"userID", userID)
-				}
-
-			case <-writeCtx.Done():
-				log.Warnw("WebSocket write timed out",
-					"eventType", event.Type,
-					"tripID", tripID,
-					"userID", userID)
-				// When write timeouts, we should terminate the websocket connection
-				if conn != nil {
-					if err := conn.Close(); err != nil {
-						log.Warnw("Error closing connection", "error", err, "userID", userID)
-					}
-				}
-				return
-			}
-		}
-	}
-}
-
-func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
-	tripID := c.Param("id")
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID)
-	if err != nil {
-		log := logger.GetLogger()
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	h.tripModel.GetCommandContext().WeatherSvc.TriggerImmediateUpdate(
-		c.Request.Context(),
-		tripID,
-		trip.Destination,
-	)
-
-	c.Status(http.StatusAccepted)
-}
-
-func (h *TripHandler) InviteMemberHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
-
-	// Read and log the raw request body
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Errorw("Failed to read request body", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", "Failed to read request body")); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Log the raw request body
-	log.Debugw("Raw invitation request body", "body", string(bodyBytes))
-
-	// Restore the request body for binding
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-	// Update the request structure to match the actual client format
-	type InviteMemberRequest struct {
-		Email string `json:"email"`
-		Role  string `json:"role"`
-	}
-
-	var reqPayload InviteMemberRequest
-	if err := c.ShouldBindJSON(&reqPayload); err != nil {
-		log.Errorw("Invalid invitation request", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Log the parsed payload
-	log.Debugw("Parsed invitation request",
-		"email", reqPayload.Email,
-		"role", reqPayload.Role)
-
-	invitation := &types.TripInvitation{
-		InviteeEmail: reqPayload.Email,
-		TripID:       tripID,
-		InviterID:    userID,
-		Status:       types.InvitationStatusPending,
-		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
-	}
-
-	if reqPayload.Role != "" {
-		invitation.Role = types.MemberRole(reqPayload.Role)
-	} else {
-		invitation.Role = types.MemberRoleMember
-	}
-
-	cmd := &tcommand.InviteMemberCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		Invitation: invitation,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
-	if err != nil {
-		h.handleModelError(c, err)
-		return
-	}
-
-	// Publish events from command result.
-	for _, event := range result.Events {
-		if err := h.eventService.Publish(c.Request.Context(), tripID, event); err != nil {
-			log.Errorw("Failed to publish event", "error", err)
-		}
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Invitation sent successfully",
-		"data":    result.Data,
-	})
-}
-
-func (h *TripHandler) AcceptInvitationHandler(c *gin.Context) {
-	log := logger.GetLogger()
-	var token string
-
-	// Try to get token from URL query parameter first (for deep links)
-	tokenParam := c.Query("token")
-	if tokenParam != "" {
-		token = tokenParam
-		log.Debugw("Using token from URL query parameter", "token", token)
-	} else {
-		// If not in URL, try to get from JSON body (for API calls)
-		var req struct {
-			Token string `json:"token" binding:"required"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Errorw("Invalid invitation acceptance request", "error", err)
-			if err := c.Error(apperrors.ValidationFailed("invalid_request", "Token is required. Provide it either as a query parameter or in the request body")); err != nil {
-				log.Errorw("Failed to set error in context", "error", err)
-			}
-			return
-		}
-		token = req.Token
-		log.Debugw("Using token from request body", "token", token)
-	}
-
-	// Validate JWT
-	claims, err := auth.ValidateInvitationToken(token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
-	if err != nil {
-		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Check if invitationId is empty (which would be an issue)
-	if claims.InvitationID == "" {
-		// If invitationId is empty but tripId and email are present, try to find the invitation
-		if claims.TripID != "" && claims.InviteeEmail != "" {
-			invitation, err := h.tripModel.FindInvitationByTripAndEmail(c.Request.Context(), claims.TripID, claims.InviteeEmail)
-			if err != nil {
-				log.Errorw("Failed to find invitation by trip and email",
-					"error", err,
-					"tripId", claims.TripID,
-					"email", claims.InviteeEmail)
-				if err := c.Error(apperrors.NotFound("invitation_not_found", "Invitation not found")); err != nil {
-					log.Errorw("Failed to set error in context", "error", err)
-				}
-				return
-			}
-			claims.InvitationID = invitation.ID
-			log.Infow("Found invitation ID from trip and email",
-				"invitationId", claims.InvitationID,
-				"tripId", claims.TripID,
-				"email", claims.InviteeEmail)
-		} else {
-			if err := c.Error(apperrors.ValidationFailed("invalid_token", "Invitation token is missing required data")); err != nil {
-				log.Errorw("Failed to set error in context", "error", err)
-			}
-			return
-		}
-	}
-
-	// Get user ID from context or token
-	userID := c.GetString("user_id")
-
-	// If user is not authenticated but we have their email from the token,
-	// we can try to find or create their account
-	if userID == "" {
-		// This would require integration with your auth system
-		// For now, we'll return an error requiring authentication
-		if err := c.Error(apperrors.Unauthorized("authentication_required", "You must be logged in to accept an invitation")); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Execute accept invitation command
-	cmd := &tcommand.AcceptInvitationCommand{
-		BaseCommand: tcommand.BaseCommand{
-			UserID: userID,
-			Ctx:    h.tripModel.GetCommandContext(),
-		},
-		InvitationID: claims.InvitationID,
-	}
-
-	result, err := cmd.Execute(c.Request.Context())
-	if err != nil {
-		h.handleModelError(c, err)
-		return
-	}
-
-	// Publish events from command result
-	for _, event := range result.Events {
-		if err := h.eventService.Publish(c.Request.Context(), event.TripID, event); err != nil {
-			log.Errorw("Failed to publish event", "error", err)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Invitation accepted successfully",
-		"data":    result.Data,
-	})
-}
-
-// HandleInvitationDeepLink handles direct URL access to invitation links
-// and redirects to the appropriate app URL scheme
-func (h *TripHandler) HandleInvitationDeepLink(c *gin.Context) {
-	log := logger.GetLogger()
-	token := c.Param("token")
-
-	if token == "" {
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", "Token is required")); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Validate the token to ensure it's legitimate before redirecting
-	claims, err := auth.ValidateInvitationToken(token, h.tripModel.GetCommandContext().Config.JwtSecretKey)
-	if err != nil {
-		log.Errorw("Invalid invitation token", "error", err)
-		if err := c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired invitation")); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
-		return
-	}
-
-	// Build the deep link directly to the app
-	deepLink := fmt.Sprintf("nomadcrew://invite/accept/%s", token)
-
-	// Get user agent to determine if this is a mobile device
-	userAgent := c.Request.UserAgent()
-
-	// Check if the request comes from a mobile device
-	isMobile := strings.Contains(strings.ToLower(userAgent), "mobile") ||
-		strings.Contains(strings.ToLower(userAgent), "android") ||
-		strings.Contains(strings.ToLower(userAgent), "iphone") ||
-		strings.Contains(strings.ToLower(userAgent), "ipad")
-
-	// Get the frontend URL from config for fallback
-	frontendURL := h.tripModel.GetCommandContext().Config.FrontendURL
-	if frontendURL == "" {
-		frontendURL = "https://nomadcrew.uk" // Default fallback
-	}
-	if !strings.HasPrefix(frontendURL, "http://") && !strings.HasPrefix(frontendURL, "https://") {
-		frontendURL = "https://" + frontendURL
-	}
-	frontendURL = strings.TrimSuffix(frontendURL, "/")
-
-	// Use frontendURL in the deepLink variable if not already being used
-	if !strings.Contains(deepLink, frontendURL) {
-		// Only add the frontend URL if it's not already in the deepLink
-		deepLink = strings.ReplaceAll(deepLink, "nomadcrew://", frontendURL+"/")
-	}
-
-	// Generate the HTML for the universal linking page
-	html := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Opening NomadCrew</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            text-align: center;
-            padding: 40px 20px;
-            background-color: #f7f7f7;
-            color: #333;
-        }
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 10px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #F46315;
-            margin-bottom: 30px;
-        }
-        .logo {
-            width: 100px;
-            height: 100px;
-            margin-bottom: 20px;
-        }
-        .button {
-            display: inline-block;
-            background-color: #F46315;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-            margin: 10px;
-        }
-        .note {
-            margin-top: 30px;
-            color: #777;
-            font-size: 14px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://nomadcrew.uk/logo.png" alt="NomadCrew Logo" class="logo">
-        <h1>Opening NomadCrew App</h1>
-        <p>We're redirecting you to the NomadCrew app. If it doesn't open automatically, please use one of these options:</p>
-        <p>
-            <a href="%s" class="button" id="openApp">Open in App</a>
-        </p>
-        <p class="note">
-            Don't have the app? Download it from the 
-            <a href="https://apps.apple.com/app/nomadcrew/id123456789">App Store</a> or 
-            <a href="https://play.google.com/store/apps/details?id=com.nomadcrew.app">Google Play</a>
-        </p>
-    </div>
-    <script>
-        // Try to open the app immediately
-        window.location.href = "%s";
-        
-        // Set a fallback timer for iOS
-        setTimeout(function() {
-            document.getElementById('openApp').click();
-        }, 1000);
-    </script>
-</body>
-</html>`, deepLink, deepLink)
-
-	// Log redirection attempt
-	log.Infow("Handling invitation deeplink",
-		"tripId", claims.TripID,
-		"isMobile", isMobile,
-		"userAgent", userAgent)
-
-	// Set headers to prevent caching
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Pragma", "no-cache")
-	c.Header("Expires", "0")
-
-	// Return HTML that attempts to open the app
-	c.Header("Content-Type", "text/html")
-	c.String(http.StatusOK, html)
-}
-
-// secureRandomFloat returns a cryptographically secure random float64 between 0 and 1
-func secureRandomFloat() float64 {
-	var buf [8]byte
-	_, err := rand.Read(buf[:])
-	if err != nil {
-		// If crypto/rand fails, return 1.0 to ensure logging happens rather than silently failing
-		return 1.0
-	}
-	return float64(binary.LittleEndian.Uint64(buf[:])) / float64(1<<64)
-}
-
-// ListTripMessages lists all messages in a trip
-func (h *TripHandler) ListTripMessages(c *gin.Context) {
-	log := logger.GetLogger()
-
-	// Get user ID from context
-	_, exists := c.Get("user_id")
-	if !exists {
-		log.Warnw("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Get trip ID from path
-	tripID := c.Param("id")
-	if tripID == "" {
-		log.Warnw("Trip ID not provided")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
-		return
-	}
-
-	// Parse pagination parameters
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if err != nil {
-		limit = 20
-	}
-
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if err != nil {
-		offset = 0
-	}
-
-	// Get the chat store from the trip model
-	chatStore := h.tripModel.GetChatStore()
-	if chatStore == nil {
-		log.Errorw("Chat store not available")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Chat service not available"})
-		return
-	}
-
-	// List chat messages for the trip
-	messages, total, err := chatStore.ListTripMessages(c.Request.Context(), tripID, limit, offset)
-	if err != nil {
-		log.Errorw("Failed to list trip messages", "error", err, "tripID", tripID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list trip messages"})
-		return
-	}
-
-	// Convert messages to ChatMessageWithUser format
-	messagesWithUsers := make([]types.ChatMessageWithUser, 0, len(messages))
-	for _, msg := range messages {
-		// Get user information
-		user, err := chatStore.GetUserInfo(c.Request.Context(), msg.UserID)
-		if err != nil {
-			log.Warnw("Failed to get user info for message", "error", err, "userID", msg.UserID)
-			user = &types.UserResponse{
-				ID: msg.UserID,
-			}
-		}
-
-		messageWithUser := types.ChatMessageWithUser{
-			Message: msg,
-			User:    *user,
-		}
-		messagesWithUsers = append(messagesWithUsers, messageWithUser)
-	}
-
-	// Create response
-	response := types.ChatMessagePaginatedResponse{
-		Messages: messagesWithUsers,
-		Total:    total,
-		Limit:    limit,
-		Offset:   offset,
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
-// UpdateLastReadMessage updates the last read message for a user in a trip
-func (h *TripHandler) UpdateLastReadMessage(c *gin.Context) {
-	log := logger.GetLogger()
-
-	// Get user ID from context
-	userID, exists := c.Get("user_id")
-	if !exists {
-		log.Warnw("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Get trip ID from path
-	tripID := c.Param("id")
-	if tripID == "" {
-		log.Warnw("Trip ID not provided")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
-		return
-	}
-
-	// Get message ID from request body
-	var req struct {
-		MessageID string `json:"messageId"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Warnw("Failed to parse request body", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// Validate message ID
-	if req.MessageID == "" {
-		log.Warnw("Empty message ID provided", "tripID", tripID, "userID", userID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Message ID cannot be empty"})
-		return
-	}
-
-	// Get the chat store from the trip model
-	chatStore := h.tripModel.GetChatStore()
-	if chatStore == nil {
-		log.Errorw("Chat store not available")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Chat service not available"})
-		return
-	}
-
-	// Update the last read message
-	err := chatStore.UpdateLastReadMessage(c.Request.Context(), tripID, userID.(string), req.MessageID)
-	if err != nil {
-		log.Errorw("Failed to update last read message", "error", err, "tripID", tripID, "userID", userID, "messageID", req.MessageID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update last read message"})
-		return
-	}
-
-	// Create a read receipt event
-	readReceiptEvent := types.ChatReadReceiptEvent{
-		TripID:    tripID,
-		MessageID: req.MessageID,
-		User: types.UserResponse{
-			ID: userID.(string),
-		},
-	}
-
-	// Marshal the event payload
-	payload, err := json.Marshal(readReceiptEvent)
-	if err != nil {
-		log.Errorw("Failed to marshal read receipt event", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process read receipt"})
-		return
-	}
-
-	// Create and publish the event
-	event := types.Event{
-		BaseEvent: types.BaseEvent{
-			Type:      types.EventTypeChatReadReceipt,
-			TripID:    tripID,
-			UserID:    userID.(string),
-			Timestamp: time.Now(),
-			Version:   1,
-		},
-		Metadata: types.EventMetadata{
-			Source: "trip_handler",
-		},
-		Payload: payload,
-	}
-
-	// Publish the event asynchronously to not block the response
-	go func() {
-		if err := h.eventService.Publish(context.Background(), tripID, event); err != nil {
-			log.Errorw("Failed to publish read receipt event", "error", err, "messageID", req.MessageID)
-		}
-	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Last read message updated successfully"})
 }
 
-// HandleChatMessage handles incoming chat messages from WebSocket
+// HandleChatMessage processes incoming WebSocket messages (e.g., new chat messages)
 func (h *TripHandler) HandleChatMessage(ctx context.Context, conn *middleware.SafeConn, message []byte, userID, tripID string) error {
-	log := logger.GetLogger()
+	// Ensure logger includes context
+	log := logger.FromContext(ctx).With("tripID", tripID, "userID", userID)
 
-	// Parse the message
-	var wsMessage types.WebSocketChatMessage
-	err := json.Unmarshal(message, &wsMessage)
-	if err != nil {
-		log.Errorw("Failed to unmarshal WebSocket message", "error", err)
+	var chatMsg types.ChatMessagePayload
+	if err := json.Unmarshal(message, &chatMsg); err != nil {
+		log.Warnw("Failed to unmarshal incoming WebSocket message", "error", err, "rawMessage", string(message))
+		conn.WriteJSON(gin.H{"error": "Invalid message format", "details": err.Error()}) // Notify client
 		return fmt.Errorf("invalid message format: %w", err)
 	}
 
-	// Set the trip ID
-	wsMessage.TripID = tripID
-
-	// Handle different message types
-	switch wsMessage.Type {
-	case types.WebSocketMessageTypeChat:
-		// Create a new chat message
-		chatMessage := types.ChatMessage{
-			TripID:  tripID,
-			UserID:  userID,
-			Content: wsMessage.Content,
-		}
-
-		// Get the chat store from the trip model
-		chatStore := h.tripModel.GetChatStore()
-		if chatStore == nil {
-			return fmt.Errorf("chat service not available")
-		}
-
-		// Get user information
-		user, err := chatStore.GetUserInfo(ctx, userID)
-		if err != nil {
-			log.Warnw("Failed to get user info", "error", err, "userID", userID)
-			user = &types.UserResponse{
-				ID: userID,
-			}
-		}
-
-		// Create the chat message
-		messageID, err := chatStore.CreateChatMessage(ctx, chatMessage)
-		if err != nil {
-			log.Errorw("Failed to create chat message", "error", err)
-			return fmt.Errorf("failed to send message: %w", err)
-		}
-
-		// Create a chat message event
-		chatEvent := types.ChatMessageEvent{
-			MessageID: messageID,
-			TripID:    tripID,
-			Content:   wsMessage.Content,
-			User:      *user,
-			Timestamp: time.Now(),
-		}
-
-		// Marshal the event payload
-		payload, err := json.Marshal(chatEvent)
-		if err != nil {
-			log.Errorw("Failed to marshal chat message event", "error", err)
-			return fmt.Errorf("failed to process message: %w", err)
-		}
-
-		// Create and publish the event
-		event := types.Event{
-			BaseEvent: types.BaseEvent{
-				Type:      types.EventTypeChatMessageSent,
-				TripID:    tripID,
-				UserID:    userID,
-				Timestamp: time.Now(),
-				Version:   1,
-			},
-			Metadata: types.EventMetadata{
-				Source: "trip_handler",
-			},
-			Payload: payload,
-		}
-
-		// Publish the event
-		if err := h.eventService.Publish(ctx, tripID, event); err != nil {
-			log.Errorw("Failed to publish chat message event", "error", err, "messageID", messageID)
-			return fmt.Errorf("failed to publish message: %w", err)
-		}
-
-		return nil
-
-	case types.WebSocketMessageTypeTypingStatus:
-		// Create a typing status event
-		typingEvent := types.ChatTypingStatusEvent{
-			TripID:   tripID,
-			IsTyping: wsMessage.IsTyping,
-			User: types.UserResponse{
-				ID: userID,
-			},
-		}
-
-		// Get the chat store from the trip model
-		chatStore := h.tripModel.GetChatStore()
-		if chatStore == nil {
-			return fmt.Errorf("chat service not available")
-		}
-
-		// Get user information
-		user, err := chatStore.GetUserInfo(ctx, userID)
-		if err != nil {
-			log.Warnw("Failed to get user info", "error", err, "userID", userID)
-		} else {
-			typingEvent.User = *user
-		}
-
-		// Marshal the event payload
-		payload, err := json.Marshal(typingEvent)
-		if err != nil {
-			log.Errorw("Failed to marshal typing status event", "error", err)
-			return fmt.Errorf("failed to process typing status: %w", err)
-		}
-
-		// Create and publish the event
-		event := types.Event{
-			BaseEvent: types.BaseEvent{
-				Type:      types.EventTypeChatTypingStatus,
-				TripID:    tripID,
-				UserID:    userID,
-				Timestamp: time.Now(),
-				Version:   1,
-			},
-			Metadata: types.EventMetadata{
-				Source: "trip_handler",
-			},
-			Payload: payload,
-		}
-
-		// Publish the event
-		if err := h.eventService.Publish(ctx, tripID, event); err != nil {
-			log.Errorw("Failed to publish typing status event", "error", err)
-			return fmt.Errorf("failed to publish typing status: %w", err)
-		}
-
-		return nil
-
-	default:
-		return fmt.Errorf("unsupported message type: %s", wsMessage.Type)
+	// Basic validation
+	if strings.TrimSpace(chatMsg.Content) == "" {
+		log.Warn("Received empty or whitespace-only chat message content")
+		conn.WriteJSON(gin.H{"error": "Message content cannot be empty"})
+		return fmt.Errorf("empty message content")
 	}
+	// Add more validation as needed (length limits, etc.)
+	const maxChatMsgLength = 2048
+	if len(chatMsg.Content) > maxChatMsgLength {
+		log.Warnw("Chat message exceeds length limit", "length", len(chatMsg.Content), "limit", maxChatMsgLength)
+		conn.WriteJSON(gin.H{"error": fmt.Sprintf("Message exceeds maximum length of %d characters", maxChatMsgLength)})
+		return fmt.Errorf("message too long")
+	}
+
+	// Create the message object to be stored and broadcasted
+	dbMessage := &types.ChatMessage{
+		TripID:    tripID,
+		UserID:    userID,
+		Content:   chatMsg.Content,
+		Type:      types.ChatMessageTypeText, // Assuming text for now
+		// MessageID and Timestamp will be set by the store/DB
+	}
+
+	// Use injected chatStore
+	if h.chatStore == nil {
+		log.Error("Chat store is not available in HandleChatMessage")
+		conn.WriteJSON(gin.H{"error": "Chat service temporarily unavailable"})
+		return fmt.Errorf("chat store unavailable")
+	}
+
+	// Store the message
+	storedMessage, err := h.chatStore.SaveMessage(ctx, dbMessage)
+	if err != nil {
+		log.Errorw("Failed to save chat message to store", "error", err)
+		conn.WriteJSON(gin.H{"error": "Failed to save message", "details": "Internal server error"})
+		return fmt.Errorf("failed to save message: %w", err)
+	}
+	log.Infow("Chat message saved", "messageID", storedMessage.ID)
+
+	// Prepare the event payload (using the stored message)
+	eventPayload := types.ChatMessageEvent{
+		MessageID: storedMessage.ID,
+		TripID:    storedMessage.TripID,
+		Content:   storedMessage.Content,
+		Timestamp: storedMessage.CreatedAt, // Use timestamp from DB
+		// User details might be enriched by subscriber or fetched separately if needed
+		User: types.UserResponse{ID: storedMessage.UserID},
+	}
+
+	// Marshal the specific payload struct
+	payloadBytes, err := json.Marshal(eventPayload)
+	if err != nil {
+		log.Errorw("Failed to marshal chat message event payload", "error", err, "messageID", storedMessage.ID)
+		// Message is saved, but broadcast fails. Log and potentially notify sender.
+		conn.WriteJSON(gin.H{"warning": "Message saved, but broadcast failed internally"})
+		return fmt.Errorf("failed to marshal event payload: %w", err)
+	}
+
+	// Create the generic Event wrapper
+	chatEvent := types.Event{
+		BaseEvent: types.BaseEvent{
+			ID:        uuid.New().String(), // Generate event ID
+			Type:      types.EventTypeChatMessageSent,
+			TripID:    tripID,
+			UserID:    userID, // User who sent the message
+			Timestamp: storedMessage.CreatedAt, // Align event timestamp with message creation
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "HandleChatMessage",
+			// CorrelationID could be passed via message payload if needed
+		},
+		Payload: payloadBytes, // Use the marshaled specific payload
+	}
+
+	// Publish the wrapped event using the injected event service
+	err = h.eventService.Publish(ctx, tripID, chatEvent)
+	if err != nil {
+		log.Errorw("Failed to publish chat message event", "error", err, "messageID", storedMessage.ID, "eventID", chatEvent.ID)
+		conn.WriteJSON(gin.H{"error": "Failed to broadcast message", "details": "Internal server error"})
+		return fmt.Errorf("failed to publish event: %w", err)
+	}
+
+	log.Infow("Chat message processed and published", "messageID", storedMessage.ID, "eventID", chatEvent.ID)
+	// Optionally send confirmation back to the original sender immediately
+	// conn.WriteJSON(gin.H{"status": "Message sent", "messageId": storedMessage.ID})
+
+	return nil
+}
+
+// --- File Upload Handlers ---
+
+// UploadTripImage handles uploading an image for a specific trip.
+func (h *TripHandler) UploadTripImage(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	userID := c.GetString("user_id") // For authorization and associating the upload
+
+	// Authorization check should happen in service layer
+
+	// Retrieve the file from the form-data
+	fileHeader, err := c.FormFile("file") // "file" is the name attribute in the form
+	if err != nil {
+		log.Errorw("Failed to get file from form", "error", err)
+		c.Error(apperrors.ValidationFailed("Missing or invalid file in request", err.Error()))
+		return
+	}
+
+	// Open the file
+	file, err := fileHeader.Open()
+	if err != nil {
+		log.Errorw("Failed to open uploaded file", "filename", fileHeader.Filename, "error", err)
+		c.Error(apperrors.InternalServerError("Failed to process uploaded file"))
+		return
+	}
+	defer file.Close()
+
+	// Read the file content
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		log.Errorw("Failed to read uploaded file content", "filename", fileHeader.Filename, "error", err)
+		c.Error(apperrors.InternalServerError("Failed to read uploaded file"))
+		return
+	}
+
+	// TODO: Add validation for file type and size here if needed
+	// E.g., check http.DetectContentType(fileBytes[:512])
+	// E.g., check len(fileBytes) against a limit
+
+	// Define storage path in Supabase Storage
+	filePath := fmt.Sprintf("trips/%s/images/%s_%d_%s",
+		tripID,
+		userID,
+		time.Now().UnixNano(),
+		strings.ReplaceAll(fileHeader.Filename, " ", "_"), // Basic sanitization
+	)
+
+	log.Infow("Attempting to upload file to Supabase Storage", "bucket", "trip_assets", "path", filePath, "size", len(fileBytes))
+
+	// Upload to Supabase Storage using the injected client
+	res, err := h.supabase.Storage.UploadFile(c.Request.Context(), "trip_assets", filePath, fileBytes, supabase.FileUploadOptions{
+		ContentType: http.DetectContentType(fileBytes),
+		Upsert:      false,
+	})
+	if err != nil {
+		log.Errorw("Failed to upload file to Supabase Storage", "bucket", "trip_assets", "path", filePath, "error", err)
+		c.Error(apperrors.InternalServerError("Failed to upload image"))
+		return
+	}
+
+	log.Infow("File uploaded successfully to Supabase Storage", "response", res, "path", filePath)
+
+	// Get the public URL
+	publicURL := h.supabase.Storage.GetPublicUrl("trip_assets", filePath)
+
+	// TODO: Persist the image URL associated with the trip (Service layer responsibility)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Image uploaded successfully",
+		"imageUrl": publicURL,
+		"filePath": filePath,
+	})
+}
+
+// ListTripImages retrieves a list of images associated with a trip.
+func (h *TripHandler) ListTripImages(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	// userID := c.GetString("user_id") // For authorization - should be handled in service/model layer
+
+	// Define the directory path in Supabase Storage
+	dirPath := fmt.Sprintf("trips/%s/images", tripID)
+
+	log.Infow("Listing files from Supabase Storage", "bucket", "trip_assets", "path", dirPath)
+
+	// List files from Supabase Storage
+	files, err := h.supabase.Storage.ListFiles(c.Request.Context(), "trip_assets", dirPath, supabase.FileSearchOptions{})
+	if err != nil {
+		log.Errorw("Failed to list files from Supabase Storage", "bucket", "trip_assets", "path", dirPath, "error", err)
+		c.Error(apperrors.InternalServerError("Failed to retrieve trip images"))
+		return
+	}
+
+	// Process the file list to generate public URLs
+	type ImageInfo struct {
+		Name      string     `json:"name"`
+		ID        string     `json:"id"`
+		Size      int64      `json:"size"`
+		MimeType  string     `json:"mimeType"`
+		CreatedAt *time.Time `json:"createdAt"`
+		UpdatedAt *time.Time `json:"updatedAt"`
+		PublicURL string     `json:"publicUrl"`
+		FilePath  string     `json:"filePath"`
+	}
+
+	imageList := make([]ImageInfo, 0, len(files))
+	for _, file := range files {
+		if file.Name == ".emptyFolderPlaceholder" { continue }
+		fullPath := dirPath + "/" + file.Name
+		publicURL := h.supabase.Storage.GetPublicUrl("trip_assets", fullPath)
+		imageList = append(imageList, ImageInfo{
+			Name:      file.Name,
+			ID:        file.Id,
+			Size:      file.Metadata.Size,
+			MimeType:  file.Metadata.Mimetype,
+			CreatedAt: file.CreatedAt,
+			UpdatedAt: file.UpdatedAt,
+			PublicURL: publicURL,
+			FilePath:  fullPath,
+		})
+	}
+
+	log.Infow("Successfully listed files", "count", len(imageList), "path", dirPath)
+
+	c.JSON(http.StatusOK, gin.H{
+		"images": imageList,
+	})
+}
+
+// DeleteTripImage handles deleting an image associated with a trip.
+func (h *TripHandler) DeleteTripImage(c *gin.Context) {
+	log := logger.GetLogger()
+	tripID := c.Param("id")
+	imageName := c.Param("imageName")
+	// userID := c.GetString("user_id") // For authorization - should be handled in service/model layer
+
+	if imageName == "" {
+		c.Error(apperrors.ValidationFailed("Missing image name in request path", ""))
+		return
+	}
+
+	// Authorization check should happen in service layer
+
+	// Construct the full path to the file in Supabase Storage
+	filePath := fmt.Sprintf("trips/%s/images/%s", tripID, imageName)
+
+	log.Infow("Attempting to delete file from Supabase Storage", "bucket", "trip_assets", "path", filePath)
+
+	// Delete the file from Supabase Storage
+	deletedFiles, err := h.supabase.Storage.DeleteFile(c.Request.Context(), "trip_assets", []string{filePath})
+	if err != nil {
+		log.Errorw("Failed to delete file from Supabase Storage", "bucket", "trip_assets", "path", filePath, "error", err)
+		c.Error(apperrors.InternalServerError("Failed to delete image"))
+		return
+	}
+
+	if len(deletedFiles) == 0 {
+		log.Warnw("File not found or already deleted in Supabase Storage", "path", filePath)
+		c.Error(apperrors.NotFound("Image not found", fmt.Sprintf("Image '%s' not found for trip '%s'", imageName, tripID)))
+		return
+	}
+
+	log.Infow("Successfully deleted file from Supabase Storage", "path", filePath, "deletedInfo", deletedFiles)
+
+	// TODO: Remove the image URL reference from the Trip model/record (Service layer responsibility)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Image deleted successfully",
+		"filePath": filePath,
+	})
 }

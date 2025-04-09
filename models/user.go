@@ -9,13 +9,14 @@ import (
 // User represents a user within the application's domain model,
 // potentially distinct from external representations like SupabaseUser.
 type User struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	Username  string    `json:"username" db:"username"`
-	FirstName string    `json:"firstName,omitempty" db:"first_name"`
-	LastName  string    `json:"lastName,omitempty" db:"last_name"`
-	Email     string    `json:"email" db:"email"` // Assuming email is also stored locally
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID                uuid.UUID `json:"id" db:"id"`
+	Username          string    `json:"username" db:"username"`
+	FirstName         string    `json:"firstName,omitempty" db:"first_name"`
+	LastName          string    `json:"lastName,omitempty" db:"last_name"`
+	Email             string    `json:"email" db:"email"` // Assuming email is also stored locally
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	ProfilePictureURL string    `json:"profilePictureUrl,omitempty" db:"profile_picture_url"`
 	// Add other fields as necessary, e.g., ProfilePictureURL
 }
 
