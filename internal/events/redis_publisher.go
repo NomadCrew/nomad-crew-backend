@@ -41,32 +41,46 @@ type metrics struct {
 	activeSubscribers prometheus.Gauge
 }
 
-// newMetrics initializes and registers Prometheus metrics
+// metricsInstance is a singleton instance of metrics
+var (
+	metricsInstance *metrics
+	metricsOnce     sync.Once
+)
+
+// newMetrics initializes and registers Prometheus metrics - now using a singleton pattern
 func newMetrics() *metrics {
-	return &metrics{
-		publishLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "event_publish_duration_seconds",
-			Help:    "Time taken to publish events",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
-		}),
-		subscribeLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "event_subscribe_duration_seconds",
-			Help:    "Time taken to establish subscriptions",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
-		}),
-		errorCount: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "event_errors_total",
-			Help: "Total number of event-related errors",
-		}, []string{"operation", "type"}),
-		eventCount: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "events_total",
-			Help: "Total number of events by operation and type",
-		}, []string{"operation", "type"}),
-		activeSubscribers: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "event_active_subscribers",
-			Help: "Current number of active subscribers",
-		}),
-	}
+	metricsOnce.Do(func() {
+		metricsInstance = &metrics{
+			publishLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+				Name:    "event_publish_duration_seconds",
+				Help:    "Time taken to publish events",
+				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+			}),
+			subscribeLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+				Name:    "event_subscribe_duration_seconds",
+				Help:    "Time taken to establish subscriptions",
+				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+			}),
+			errorCount: promauto.NewCounterVec(prometheus.CounterOpts{
+				Name: "event_errors_total",
+				Help: "Total number of event-related errors",
+			}, []string{"operation", "type"}),
+			eventCount: promauto.NewCounterVec(prometheus.CounterOpts{
+				Name: "events_total",
+				Help: "Total number of events by operation and type",
+			}, []string{"operation", "type"}),
+			activeSubscribers: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "event_active_subscribers",
+				Help: "Current number of active subscribers",
+			}),
+		}
+	})
+	return metricsInstance
+}
+
+// For testing purposes - reset metrics
+func resetMetricsForTesting() {
+	metricsInstance = nil
 }
 
 // RedisPublisher implements types.EventPublisher using Redis Pub/Sub

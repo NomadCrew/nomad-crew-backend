@@ -207,8 +207,10 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 	suite.ctx = context.Background()
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
-	// Use the existing testUserIDKey from the same package (defined in trip_service_test.go)
-	suite.ctx = context.WithValue(suite.ctx, testUserIDKey, suite.testUserID)
+
+	// Use the correct key for user authentication
+	// This matches what GetUserIDFromContext checks for
+	suite.ctx = context.WithValue(suite.ctx, "userID", suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {

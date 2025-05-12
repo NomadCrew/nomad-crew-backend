@@ -13,6 +13,7 @@ import (
 // setupRedisContainer is defined in test_helpers.go
 
 func TestRedisPublisher_PublishAndSubscribe(t *testing.T) {
+	resetMetricsForTesting()
 	rdb, cleanup := setupRedisContainer(t)
 	defer cleanup()
 
@@ -60,6 +61,7 @@ func TestRedisPublisher_PublishAndSubscribe(t *testing.T) {
 }
 
 func TestRedisPublisher_PublishBatch(t *testing.T) {
+	resetMetricsForTesting()
 	rdb, cleanup := setupRedisContainer(t)
 	defer cleanup()
 
@@ -129,6 +131,7 @@ func TestRedisPublisher_PublishBatch(t *testing.T) {
 }
 
 func TestRedisPublisher_FilteredSubscription(t *testing.T) {
+	resetMetricsForTesting()
 	rdb, cleanup := setupRedisContainer(t)
 	defer cleanup()
 
@@ -196,6 +199,7 @@ func TestRedisPublisher_FilteredSubscription(t *testing.T) {
 }
 
 func TestRedisPublisher_DuplicateSubscription(t *testing.T) {
+	resetMetricsForTesting()
 	rdb, cleanup := setupRedisContainer(t)
 	defer cleanup()
 
@@ -215,6 +219,7 @@ func TestRedisPublisher_DuplicateSubscription(t *testing.T) {
 }
 
 func TestRedisPublisher_UnsubscribeNonexistent(t *testing.T) {
+	resetMetricsForTesting()
 	rdb, cleanup := setupRedisContainer(t)
 	defer cleanup()
 
@@ -226,6 +231,7 @@ func TestRedisPublisher_UnsubscribeNonexistent(t *testing.T) {
 }
 
 func TestRedisPublisher_Shutdown(t *testing.T) {
+	resetMetricsForTesting()
 	rdb, cleanup := setupRedisContainer(t)
 	defer cleanup()
 

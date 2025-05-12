@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -517,26 +518,23 @@ func (s *ChatStore) ListChatMessageReactions(ctx context.Context, messageID stri
 // This method is added to support tests and interfaces,
 // but user operations should be performed through UserStore
 func (s *ChatStore) GetUserByID(ctx context.Context, userID string) (*types.User, error) {
-	// Delegate to the companion UserStore if possible
-	// But for standalone usage/testing, implement basic functionality
-
+	// Use only the columns that exist in our schema
 	query := `
-		SELECT id, email, raw_user_meta_data, username, first_name, last_name, profile_picture_url
+		SELECT id, email, name, raw_user_meta_data, created_at, updated_at
 		FROM users
 		WHERE id = $1`
 
 	var (
-		id                string
-		email             string
-		rawUserMetaData   []byte
-		username          string
-		firstName         string
-		lastName          string
-		profilePictureURL string
+		id          string
+		email       string
+		name        string
+		rawMetaData []byte
+		createdAt   time.Time
+		updatedAt   time.Time
 	)
 
 	row := s.queryRow(ctx, query, userID)
-	err := row.Scan(&id, &email, &rawUserMetaData, &username, &firstName, &lastName, &profilePictureURL)
+	err := row.Scan(&id, &email, &name, &rawMetaData, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -545,13 +543,24 @@ func (s *ChatStore) GetUserByID(ctx context.Context, userID string) (*types.User
 	}
 
 	user := &types.User{
-		ID:                id,
-		Email:             email,
-		RawUserMetaData:   rawUserMetaData,
-		Username:          username,
-		FirstName:         firstName,
-		LastName:          lastName,
-		ProfilePictureURL: profilePictureURL,
+		ID:              id,
+		Email:           email,
+		Name:            name,
+		RawUserMetaData: rawMetaData,
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
+	}
+
+	// Extract additional fields from metadata if needed
+	if len(rawMetaData) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(rawMetaData, &metadata); err == nil {
+			// Extract username if available in metadata
+			if username, ok := metadata["username"].(string); ok {
+				user.Username = username
+			}
+			// Extract other fields as needed
+		}
 	}
 
 	return user, nil

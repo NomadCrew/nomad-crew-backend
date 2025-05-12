@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,6 +22,11 @@ var (
 )
 
 func setupTestDB(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
+	// Skip container tests on Windows to avoid rootless Docker issues
+	if os.Getenv("OS") == "Windows_NT" {
+		t.Skip("Skipping container tests on Windows due to rootless Docker issues")
+	}
+
 	ctx := context.Background()
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:15",
@@ -58,24 +64,22 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
 	require.NoError(t, err)
 
 	// Run migrations
+	// First try to read from relative path
 	initSQL, err := os.ReadFile("../../../db/migrations/000001_init.up.sql")
-	require.NoError(t, err)
+	if err != nil {
+		// If relative path fails, try absolute path based on git repo root detection
+		wd, _ := os.Getwd()
+		repoRoot := findRepoRoot(wd)
+
+		initSQL, err = os.ReadFile(filepath.Join(repoRoot, "db/migrations/000001_init.up.sql"))
+		require.NoError(t, err, "Failed to read init migration file")
+	}
 
 	_, err = testPool.Exec(ctx, string(initSQL))
-	require.NoError(t, err)
+	require.NoError(t, err, "Failed to execute init migration")
 
-	todosSQL, err := os.ReadFile("../../../db/migrations/000003_create_todos_table.up.sql")
-	require.NoError(t, err)
-
-	_, err = testPool.Exec(ctx, string(todosSQL))
-	require.NoError(t, err)
-
-	// Run migration 000004
-	locationMigrationSQL, err := os.ReadFile("../../../db/migrations/000004_add_location_accuracy_and_offline.up.sql")
-	require.NoError(t, err)
-
-	_, err = testPool.Exec(ctx, string(locationMigrationSQL))
-	require.NoError(t, err)
+	// No need to try to find missing migrations since they're now included in the main migration file
+	// All table creation is now in 000001_init.up.sql
 
 	// Create test user and trip
 	userID := uuid.New()
@@ -280,4 +284,23 @@ func TestTodoStore(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, err)
 	})
+}
+
+// Helper function to find Git repository root
+func findRepoRoot(dir string) string {
+	for i := 0; i < 5; i++ { // Limit search to 5 levels up
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// We've reached the root of the filesystem
+			break
+		}
+		dir = parent
+	}
+
+	// Fallback to current directory if repo root not found
+	return "."
 }

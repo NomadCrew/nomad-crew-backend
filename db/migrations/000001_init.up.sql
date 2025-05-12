@@ -264,6 +264,12 @@ CREATE TRIGGER update_chat_messages_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Add missing trigger for chat_group_members
+CREATE TRIGGER update_chat_group_members_updated_at
+    BEFORE UPDATE ON chat_group_members
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- Add indexes for better performance
 CREATE INDEX idx_trips_created_by ON trips(created_by);
 CREATE INDEX idx_expenses_user_id ON expenses(user_id);
@@ -287,4 +293,23 @@ CREATE INDEX idx_notifications_user_id_created_at ON notifications (user_id, cre
 CREATE INDEX idx_notifications_user_id_is_read ON notifications (user_id, is_read);
 CREATE INDEX idx_chat_groups_trip_id ON chat_groups(trip_id);
 CREATE INDEX idx_chat_group_members_user_id ON chat_group_members(user_id);
-CREATE INDEX idx_chat_messages_group_id_created_at ON chat_messages(group_id, created_at DESC); 
+CREATE INDEX idx_chat_messages_group_id_created_at ON chat_messages(group_id, created_at DESC);
+CREATE INDEX idx_chat_message_reactions_message_id ON chat_message_reactions(message_id);
+CREATE INDEX idx_chat_message_reactions_user_id ON chat_message_reactions(user_id);
+
+-- Add an offline location updates table for storing offline tracking data
+CREATE TABLE IF NOT EXISTS offline_location_updates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    latitude DECIMAL(10, 8) NOT NULL,
+    longitude DECIMAL(11, 8) NOT NULL,
+    accuracy DECIMAL(10, 5) NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    is_uploaded BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_offline_location_updates_trip_user ON offline_location_updates(trip_id, user_id);
+CREATE INDEX idx_offline_location_updates_is_uploaded ON offline_location_updates(is_uploaded); 
