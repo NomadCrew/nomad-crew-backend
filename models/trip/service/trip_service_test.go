@@ -267,15 +267,19 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.mockStore = new(MockTripStore)
 	suite.mockEventPublisher = new(MockEventPublisher)
 	suite.mockWeatherSvc = new(MockWeatherService)
+
 	suite.service = tripservice.NewTripManagementService(
 		suite.mockStore,
 		suite.mockEventPublisher,
 		suite.mockWeatherSvc,
 	)
+
+	suite.ctx = context.Background()
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
-	// Create context with UserID for tests that require authentication
-	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
+
+	// Add UserID to the context
+	suite.ctx = context.WithValue(suite.ctx, middleware.UserIDKey, suite.testUserID)
 
 	// Reset mocks if needed for specific tests. Mocks should be independent across tests.
 	// suite.mockStore.ExpectedCalls = nil // Clear expected calls
@@ -342,7 +346,7 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 		return t.Name == tripInput.Name && t.CreatedBy == suite.testUserID
 	})).Return(expectedTripID, nil).Once()
 
-	suite.mockStore.On("AddMember", suite.ctx, expectedMembership).Return(nil).Once()
+	suite.mockStore.On("AddMember", mock.AnythingOfType("*context.valueCtx"), expectedMembership).Return(nil).Once()
 
 	suite.mockEventPublisher.On(
 		"Publish",

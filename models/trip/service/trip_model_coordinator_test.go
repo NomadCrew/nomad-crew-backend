@@ -207,10 +207,10 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 	}
 
 	// Basic context and test IDs
-	suite.testUserID = uuid.New().String()
-	suite.testTripID = uuid.New().String()
+	suite.testUserID = uuid.NewString()
+	suite.testTripID = uuid.NewString()
 
-	// Use the actual UserIDKey from the middleware package
+	// Add UserID to the context using the actual UserIDKey from the middleware package
 	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
 }
 
