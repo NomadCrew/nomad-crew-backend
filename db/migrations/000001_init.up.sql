@@ -19,9 +19,16 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Create users table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    supabase_id TEXT,
     email TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
+    encrypted_password TEXT,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    profile_picture_url TEXT,
     raw_user_meta_data JSONB,
+    last_seen_at TIMESTAMPTZ,
+    is_online BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
