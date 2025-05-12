@@ -8,6 +8,7 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store" // Import internal store for Transaction
+	"github.com/NomadCrew/nomad-crew-backend/middleware"     // Added import
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
@@ -16,12 +17,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
-
-// Define context key to avoid collisions
-type serviceTestContextKey string
-
-// Create a typed key for user ID in context
-const serviceTestUserIDKey serviceTestContextKey = "userID"
 
 // MockTransaction implements store.Transaction
 type MockTransaction struct {
@@ -272,12 +267,15 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.mockStore = new(MockTripStore)
 	suite.mockEventPublisher = new(MockEventPublisher)
 	suite.mockWeatherSvc = new(MockWeatherService)
-	suite.service = tripservice.NewTripManagementService(suite.mockStore, suite.mockEventPublisher, suite.mockWeatherSvc)
-	suite.testUserID = uuid.NewString()
-	suite.testTripID = uuid.NewString()
-
-	// Use the typed context key instead of a string literal
-	suite.ctx = context.WithValue(context.Background(), serviceTestUserIDKey, suite.testUserID)
+	suite.service = tripservice.NewTripManagementService(
+		suite.mockStore,
+		suite.mockEventPublisher,
+		suite.mockWeatherSvc,
+	)
+	suite.testUserID = uuid.New().String()
+	suite.testTripID = uuid.New().String()
+	// Use the actual UserIDKey from the middleware package
+	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
 
 	// Reset mocks if needed for specific tests. Mocks should be independent across tests.
 	// suite.mockStore.ExpectedCalls = nil // Clear expected calls

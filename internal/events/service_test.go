@@ -26,7 +26,7 @@ func TestService_RegisterHandler(t *testing.T) {
 	t.Run("duplicate registration", func(t *testing.T) {
 		err := service.RegisterHandler("test-handler", handler)
 		require.Error(t, err)
-		assert.Equal(t, "handler already registered with name test-handler", err.Error())
+		assert.Equal(t, "handler with name test-handler already registered", err.Error())
 	})
 }
 

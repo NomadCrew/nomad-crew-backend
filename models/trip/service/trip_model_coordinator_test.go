@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -13,12 +14,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	// Add other necessary imports like config, interfaces etc. as needed
 )
-
-// contextKey is used to avoid key collisions in context values
-type testContextKey string
-
-// Define constants for context keys
-const testUserIDKey testContextKey = "userID"
 
 // --- Mock Services --- //
 // Define mocks by embedding mock.Mock into structs with the same names
@@ -215,8 +210,8 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 	suite.testUserID = uuid.New().String()
 	suite.testTripID = uuid.New().String()
 
-	// Use typed context key to prevent collisions
-	suite.ctx = context.WithValue(context.Background(), testUserIDKey, suite.testUserID)
+	// Use the actual UserIDKey from the middleware package
+	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {

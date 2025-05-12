@@ -21,31 +21,40 @@ type RouterMetrics struct {
 	eventsDiscarded *prometheus.CounterVec
 }
 
-// newRouterMetrics initializes router metrics
-func newRouterMetrics() *RouterMetrics {
-	return &RouterMetrics{
-		handlerCount: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "event_handlers_total",
-			Help: "Total number of registered event handlers",
-		}),
-		handlerLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "event_handler_duration_seconds",
-			Help:    "Time taken to handle events",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
-		}),
-		handlerErrors: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "event_handler_errors_total",
-			Help: "Total number of handler errors by event type",
-		}, []string{"event_type"}),
-		eventsRouted: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "events_routed_total",
-			Help: "Total number of events routed by type",
-		}, []string{"event_type"}),
-		eventsDiscarded: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "events_discarded_total",
-			Help: "Total number of events discarded by reason",
-		}, []string{"reason"}),
-	}
+var (
+	routerMetricsOnce   sync.Once
+	globalRouterMetrics *RouterMetrics
+)
+
+// getRouterMetrics initializes router metrics if they haven't been, and returns them.
+// This ensures metrics are registered only once.
+func getRouterMetrics() *RouterMetrics {
+	routerMetricsOnce.Do(func() {
+		globalRouterMetrics = &RouterMetrics{
+			handlerCount: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "event_handlers_total",
+				Help: "Total number of registered event handlers",
+			}),
+			handlerLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+				Name:    "event_handler_duration_seconds",
+				Help:    "Time taken to handle events",
+				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+			}),
+			handlerErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+				Name: "event_handler_errors_total",
+				Help: "Total number of handler errors by event type",
+			}, []string{"event_type"}),
+			eventsRouted: promauto.NewCounterVec(prometheus.CounterOpts{
+				Name: "events_routed_total",
+				Help: "Total number of events routed by type",
+			}, []string{"event_type"}),
+			eventsDiscarded: promauto.NewCounterVec(prometheus.CounterOpts{
+				Name: "events_discarded_total",
+				Help: "Total number of events discarded by reason",
+			}, []string{"reason"}),
+		}
+	})
+	return globalRouterMetrics
 }
 
 // Router handles event routing and distribution to registered handlers
@@ -61,7 +70,7 @@ type Router struct {
 func NewRouter() *Router {
 	return &Router{
 		log:      logger.GetLogger().Named("event_router"),
-		metrics:  newRouterMetrics(),
+		metrics:  getRouterMetrics(),
 		handlers: make(map[types.EventType][]types.EventHandler),
 	}
 }

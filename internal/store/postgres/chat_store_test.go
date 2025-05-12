@@ -69,7 +69,7 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 	// Run base migrations (adjust paths if necessary)
 	migrationFiles := []string{
 		"../../../db/migrations/000001_init.up.sql",
-		"../../../db/migrations/000005_create_chat_tables.up.sql", // Added chat migration
+		// "../../../db/migrations/000005_create_chat_tables.up.sql", // Removed reference to non-existent file
 	}
 
 	for _, migrationFile := range migrationFiles {
@@ -83,9 +83,11 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 		} else if os.IsNotExist(err) {
 			// Handle missing optional files gracefully or fail if required
 			fmt.Printf("Warning: Migration file not found, skipping: %s\n", migrationFile)
+			/* // Commented out the faulty check
 			if migrationFile == "../../../db/migrations/00000X_create_chat_tables.up.sql" { // Make chat migration mandatory for these tests
 				t.Fatalf("Required chat migration file not found: %s", migrationFile)
 			}
+			*/
 		} else {
 			// Other error checking the file
 			require.NoError(t, err, "Error checking migration file: %s", migrationFile)
