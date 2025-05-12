@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store" // Import for internal store types
 	"github.com/NomadCrew/nomad-crew-backend/models"
-	"github.com/NomadCrew/nomad-crew-backend/store"
+	"github.com/NomadCrew/nomad-crew-backend/store" // Keep for NotificationStore and TripStore (old)
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -28,18 +29,18 @@ type NotificationService interface {
 
 // notificationService implements NotificationService.
 type notificationService struct {
-	notificationStore store.NotificationStore
-	userStore         store.UserStore      // Correctly typed UserStore
-	tripStore         store.TripStore      // Correctly typed TripStore
-	eventPublisher    types.EventPublisher // Use EventPublisher interface
+	notificationStore store.NotificationStore // Remains old store.NotificationStore
+	userStore         istore.UserStore        // Changed to internal/store.UserStore
+	tripStore         store.TripStore         // Remains old store.TripStore
+	eventPublisher    types.EventPublisher
 	logger            *zap.Logger
 }
 
 // NewNotificationService creates a new NotificationService.
-func NewNotificationService(ns store.NotificationStore, us store.UserStore, ts store.TripStore, ep types.EventPublisher, logger *zap.Logger) NotificationService {
+func NewNotificationService(ns store.NotificationStore, us istore.UserStore, ts store.TripStore, ep types.EventPublisher, logger *zap.Logger) NotificationService {
 	return &notificationService{
 		notificationStore: ns,
-		userStore:         us,
+		userStore:         us, // us is now istore.UserStore
 		tripStore:         ts,
 		eventPublisher:    ep,
 		logger:            logger.Named("NotificationService"),

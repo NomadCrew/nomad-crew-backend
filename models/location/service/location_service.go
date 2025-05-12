@@ -22,25 +22,23 @@ import (
 
 // ManagementService handles location-related operations (Renamed from LocationService)
 type ManagementService struct { // Renamed from LocationService
-	store          store.LocationStore             // Changed from LocationDBInterface to store.LocationStore
-	eventPublisher types.EventPublisher            // Changed name from eventService
-	offlineService OfflineLocationServiceInterface // Use interface from same package
+	store          store.LocationStore  // Changed from LocationDBInterface to store.LocationStore
+	eventPublisher types.EventPublisher // Changed name from eventService
 }
+
+// Ensure ManagementService implements LocationManagementServiceInterface
+var _ LocationManagementServiceInterface = (*ManagementService)(nil)
 
 // NewManagementService creates a new ManagementService (Renamed from NewLocationService)
 func NewManagementService(
 	store store.LocationStore, // Changed from LocationDBInterface
 	eventPublisher types.EventPublisher, // Changed name from eventService
-	offlineService OfflineLocationServiceInterface, // Use interface from same package
 ) *ManagementService { // Renamed from NewLocationService
 	return &ManagementService{
 		store:          store,
 		eventPublisher: eventPublisher,
-		offlineService: offlineService, // Added offlineService initialization
 	}
 }
-
-// SetOfflineService removed
 
 // UpdateLocation updates a user's location and publishes an event
 func (s *ManagementService) UpdateLocation(ctx context.Context, userID string, update types.LocationUpdate) (*types.Location, error) {
@@ -62,10 +60,8 @@ func (s *ManagementService) UpdateLocation(ctx context.Context, userID string, u
 
 	// Publish location update event
 	if err := s.publishLocationUpdateEvent(ctx, location); err != nil {
-		log.Warnw("Failed to publish location update event", "userID", userID, "error", err)
-		// Continue even if event publishing fails, but return the specific error if needed
-		// Optionally return a wrapped error if publishing failure should halt the operation:
-		// return nil, apperrors.Wrap(err, apperrors.EventPublishError, "failed to publish location update")
+		log.Errorw("Failed to publish location update event", "userID", userID, "error", err)
+		// Non-critical error, so we don't return it, just log
 	}
 
 	return location, nil
@@ -86,7 +82,7 @@ func (s *ManagementService) GetTripMemberLocations(ctx context.Context, tripID s
 		}
 		// Handle other potential errors (e.g., database connection)
 		log.Errorw("Failed to check user role for trip", "userID", userID, "tripID", tripID, "error", err)
-		return nil, apperrors.Wrap(err, apperrors.DatabaseError, "failed to check user role for trip")
+		return nil, apperrors.Wrap(err, apperrors.ServerError, "failed to get trip member locations")
 	}
 
 	// Fetch locations if permission check passes
@@ -96,33 +92,6 @@ func (s *ManagementService) GetTripMemberLocations(ctx context.Context, tripID s
 		return nil, apperrors.NewDatabaseError(err)
 	}
 	return locations, nil
-}
-
-// SaveOfflineLocations saves a batch of location updates to be processed later
-func (s *ManagementService) SaveOfflineLocations(ctx context.Context, userID string, updates []types.LocationUpdate, deviceID string) error {
-	if s.offlineService == nil {
-		// This check might be redundant if constructor guarantees non-nil, but safe to keep.
-		// Use apperrors for internal server error
-		return apperrors.InternalServerError("Offline service not initialized")
-	}
-	if err := s.offlineService.SaveOfflineLocations(ctx, userID, updates, deviceID); err != nil {
-		// Wrap potential errors from the offline service as ServerError
-		return apperrors.Wrap(err, apperrors.ServerError, "failed to save offline locations")
-	}
-	return nil
-}
-
-// ProcessOfflineLocations processes all offline location updates for a user
-func (s *ManagementService) ProcessOfflineLocations(ctx context.Context, userID string) error {
-	if s.offlineService == nil {
-		// Use apperrors for internal server error
-		return apperrors.InternalServerError("Offline service not initialized")
-	}
-	if err := s.offlineService.ProcessOfflineLocations(ctx, userID); err != nil {
-		// Wrap potential errors from the offline service as ServerError
-		return apperrors.Wrap(err, apperrors.ServerError, "failed to process offline locations")
-	}
-	return nil
 }
 
 // validateLocationUpdate validates the location update data

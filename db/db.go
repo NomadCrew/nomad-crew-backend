@@ -1,5 +1,6 @@
-// Package db provides implementations for data access interfaces defined in internal/store.
-// It interacts with the PostgreSQL database using pgxpool and potentially other external services like Supabase.
+// Package db provides database access functionality.
+// Note: This package is being phased out in favor of the store/postgres package.
+// Please use the appropriate store implementation from store/postgres instead.
 package db
 
 import (

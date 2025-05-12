@@ -5,15 +5,51 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// Create a test router with non-registering metrics to avoid duplicate registration
+func testRouter() *Router {
+	// Create test metrics that don't use promauto (which always registers to the global registry)
+	metrics := &RouterMetrics{
+		handlerCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "test_event_handlers_total",
+			Help: "Test metric",
+		}),
+		handlerLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "test_event_handler_duration_seconds",
+			Help:    "Test metric",
+			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+		}),
+		handlerErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "test_event_handler_errors_total",
+			Help: "Test metric",
+		}, []string{"event_type"}),
+		eventsRouted: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "test_events_routed_total",
+			Help: "Test metric",
+		}, []string{"event_type"}),
+		eventsDiscarded: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "test_events_discarded_total",
+			Help: "Test metric",
+		}, []string{"reason"}),
+	}
+
+	return &Router{
+		log:      logger.GetLogger().Named("test_event_router"),
+		metrics:  metrics,
+		handlers: make(map[types.EventType][]types.EventHandler),
+	}
+}
+
 // mockHandler is defined in test_helpers.go
 
 func TestRouter_RegisterHandler(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler := newMockHandler(types.EventTypeTripCreated, types.EventTypeTripUpdated)
 
 	router.RegisterHandler(handler)
@@ -32,7 +68,7 @@ func TestRouter_RegisterHandler(t *testing.T) {
 }
 
 func TestRouter_UnregisterHandler(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler := newMockHandler(types.EventTypeTripCreated, types.EventTypeTripUpdated)
 
 	router.RegisterHandler(handler)
@@ -51,7 +87,7 @@ func TestRouter_UnregisterHandler(t *testing.T) {
 }
 
 func TestRouter_HandleEvent(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler1 := newMockHandler(types.EventTypeTripCreated)
 	handler2 := newMockHandler(types.EventTypeTripCreated)
 
@@ -76,7 +112,7 @@ func TestRouter_HandleEvent(t *testing.T) {
 }
 
 func TestRouter_HandleEvent_NoHandlers(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	event := types.Event{
 		BaseEvent: types.BaseEvent{
 			Type:   types.EventTypeTripCreated,
@@ -90,7 +126,7 @@ func TestRouter_HandleEvent_NoHandlers(t *testing.T) {
 }
 
 func TestRouter_HandleEvent_HandlerError(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler := newMockHandler(types.EventTypeTripCreated)
 	handler.shouldError = true
 
@@ -108,7 +144,7 @@ func TestRouter_HandleEvent_HandlerError(t *testing.T) {
 }
 
 func TestRouter_HandleEvent_Concurrent(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler1 := newMockHandler(types.EventTypeTripCreated)
 	handler2 := newMockHandler(types.EventTypeTripCreated)
 	handler1.handlerLatency = 100 * time.Millisecond
@@ -136,7 +172,7 @@ func TestRouter_HandleEvent_Concurrent(t *testing.T) {
 }
 
 func TestRouter_HandleEvent_Context(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler := newMockHandler(types.EventTypeTripCreated)
 	handler.handlerBlocking = true
 
@@ -158,7 +194,7 @@ func TestRouter_HandleEvent_Context(t *testing.T) {
 }
 
 func TestRouter_MultipleEventTypes(t *testing.T) {
-	router := NewRouter()
+	router := testRouter()
 	handler := newMockHandler(types.EventTypeTripCreated, types.EventTypeTripUpdated)
 
 	router.RegisterHandler(handler)

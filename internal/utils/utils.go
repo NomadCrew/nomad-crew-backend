@@ -28,3 +28,9 @@ func GetUserIDFromContext(ctx context.Context) (string, error) {
 func GenerateEventID() string {
 	return time.Now().UTC().Format("20060102150405") + "-" + uuid.New().String()[:8]
 }
+
+// RandomString produces a random string of specified length
+// Useful for generating IDs or tokens
+func RandomString(length int) string {
+	return uuid.New().String()[:length]
+}

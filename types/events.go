@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -75,14 +74,19 @@ const (
 	EventTypeInvitationStatusUpdated EventType = "invitation_status_updated"
 
 	// Chat events
-	EventTypeChatGroupCreated    EventType = CategoryChat + "_GROUP_CREATED"
-	EventTypeChatMessageSent     EventType = CategoryChat + "_MESSAGE_SENT"
-	EventTypeChatMessageEdited   EventType = CategoryChat + "_MESSAGE_EDITED"
-	EventTypeChatMessageDeleted  EventType = CategoryChat + "_MESSAGE_DELETED"
-	EventTypeChatReactionAdded   EventType = CategoryChat + "_REACTION_ADDED"
-	EventTypeChatReactionRemoved EventType = CategoryChat + "_REACTION_REMOVED"
-	EventTypeChatReadReceipt     EventType = CategoryChat + "_READ_RECEIPT"
-	EventTypeChatTypingStatus    EventType = CategoryChat + "_TYPING_STATUS"
+	EventTypeChatGroupCreated       EventType = CategoryChat + "_GROUP_CREATED"
+	EventTypeChatMessageSent        EventType = CategoryChat + "_MESSAGE_SENT"
+	EventTypeChatMessageEdited      EventType = CategoryChat + "_MESSAGE_EDITED"
+	EventTypeChatMessageDeleted     EventType = CategoryChat + "_MESSAGE_DELETED"
+	EventTypeChatReactionAdded      EventType = CategoryChat + "_REACTION_ADDED"
+	EventTypeChatReactionRemoved    EventType = CategoryChat + "_REACTION_REMOVED"
+	EventTypeChatReadReceipt        EventType = CategoryChat + "_READ_RECEIPT"
+	EventTypeChatMemberAdded        EventType = CategoryChat + "_MEMBER_ADDED"
+	EventTypeChatMemberRemoved      EventType = CategoryChat + "_MEMBER_REMOVED"
+	EventTypeChatReadReceiptUpdated EventType = CategoryChat + "_READ_RECEIPT_UPDATED"
+	EventTypeChatTypingStatus       EventType = CategoryChat + "_TYPING_STATUS"
+	EventTypeChatGroupUpdated       EventType = CategoryChat + "_GROUP_UPDATED"
+	EventTypeChatGroupDeleted       EventType = CategoryChat + "_GROUP_DELETED"
 
 	// EventTypeLocationProcessed indicates that a user's location has been processed.
 	EventTypeLocationProcessed = "location.processed"
@@ -187,13 +191,6 @@ type InvitationStatusUpdatedEvent struct {
 	NewStatus    InvitationStatus `json:"newStatus"`
 }
 
-type InvitationClaims struct {
-	InvitationID string `json:"invitationId"`
-	TripID       string `json:"tripId"`
-	InviteeEmail string `json:"inviteeEmail"`
-	jwt.RegisteredClaims
-}
-
 // Chat event payloads
 type ChatMessageEvent struct {
 	MessageID string       `json:"messageId"`
@@ -221,6 +218,21 @@ type ChatTypingStatusEvent struct {
 	TripID   string       `json:"tripId"`
 	IsTyping bool         `json:"isTyping"`
 	User     UserResponse `json:"user,omitempty"`
+}
+
+// ChatMemberEvent represents an event related to a chat group member being added or removed.
+// Used for both ChatMemberAdded and ChatMemberRemoved event types.
+type ChatMemberEvent struct {
+	GroupID string       `json:"groupId"`
+	User    UserResponse `json:"user"` // The user who was added or removed
+}
+
+// ChatGroupEvent represents an event related to chat group creation, update, or deletion.
+type ChatGroupEvent struct {
+	GroupID   string `json:"groupId"`
+	TripID    string `json:"tripId"`
+	UserID    string `json:"userId"`              // User performing the action
+	GroupName string `json:"groupName,omitempty"` // Included for create/update
 }
 
 // NotificationCreatedEvent signifies that a new notification has been created.

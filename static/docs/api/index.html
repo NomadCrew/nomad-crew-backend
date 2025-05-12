@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NomadCrew API Documentation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            background-color: #f4f4f4;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #0066cc;
+        }
+        h2 {
+            color: #0066cc;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #444;
+            margin-top: 20px;
+        }
+        .endpoint {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            border-left: 4px solid #0066cc;
+        }
+        .method {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .get {
+            background-color: #61affe;
+            color: white;
+        }
+        .post {
+            background-color: #49cc90;
+            color: white;
+        }
+        .put {
+            background-color: #fca130;
+            color: white;
+        }
+        .delete {
+            background-color: #f93e3e;
+            color: white;
+        }
+        .patch {
+            background-color: #50e3c2;
+            color: white;
+        }
+        .path {
+            font-family: monospace;
+            font-size: 1.1em;
+        }
+        .description {
+            margin-top: 10px;
+        }
+        .parameters, .responses {
+            margin-top: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .authorization {
+            background-color: #f2f2f2;
+            padding: 10px;
+            border-radius: 3px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NomadCrew API Documentation</h1>
+        <p>RESTful API with authentication and WebSocket support for the NomadCrew platform</p>
+        <p><strong>Base URL:</strong> <code>/v1</code></p>
+    </header>
+
+    <section>
+        <h2>Authentication</h2>
+        <p>Most endpoints require authentication using a JWT token.</p>
+        <div class="authorization">
+            <p><strong>Type:</strong> Bearer Token</p>
+            <p><strong>Header:</strong> <code>Authorization: Bearer YOUR_JWT_TOKEN</code></p>
+        </div>
+    </section>
+
+    <section>
+        <h2>Trip Endpoints</h2>
+        
+        <div class="endpoint">
+            <div class="method get">GET</div>
+            <span class="path">/trips</span>
+            <div class="description">Retrieves all trips that the current user is a member of</div>
+            <div class="authorization">Requires authentication</div>
+            <div class="responses">
+                <h4>Responses</h4>
+                <table>
+                    <tr>
+                        <th>Code</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>200</td>
+                        <td>List of user's trips</td>
+                    </tr>
+                    <tr>
+                        <td>401</td>
+                        <td>Unauthorized - User not logged in</td>
+                    </tr>
+                    <tr>
+                        <td>500</td>
+                        <td>Internal server error</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="method post">POST</div>
+            <span class="path">/trips</span>
+            <div class="description">Creates a new trip with the given details</div>
+            <div class="authorization">Requires authentication</div>
+            <div class="parameters">
+                <h4>Request Body</h4>
+                <table>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Trip name</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td>No</td>
+                        <td>Trip description</td>
+                    </tr>
+                    <tr>
+                        <td>destination</td>
+                        <td>object</td>
+                        <td>Yes</td>
+                        <td>Destination information with address, placeId, and coordinates</td>
+                    </tr>
+                    <tr>
+                        <td>startDate</td>
+                        <td>string (date-time)</td>
+                        <td>Yes</td>
+                        <td>Trip start date</td>
+                    </tr>
+                    <tr>
+                        <td>endDate</td>
+                        <td>string (date-time)</td>
+                        <td>Yes</td>
+                        <td>Trip end date</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>string</td>
+                        <td>No</td>
+                        <td>Trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="responses">
+                <h4>Responses</h4>
+                <table>
+                    <tr>
+                        <th>Code</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>201</td>
+                        <td>Created trip information</td>
+                    </tr>
+                    <tr>
+                        <td>400</td>
+                        <td>Bad request - Invalid input data</td>
+                    </tr>
+                    <tr>
+                        <td>401</td>
+                        <td>Unauthorized - User not logged in</td>
+                    </tr>
+                    <tr>
+                        <td>500</td>
+                        <td>Internal server error</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="method get">GET</div>
+            <span class="path">/trips/{id}</span>
+            <div class="description">Retrieves detailed information about a specific trip</div>
+            <div class="authorization">Requires authentication</div>
+            <div class="parameters">
+                <h4>Parameters</h4>
+                <table>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>In</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>id</td>
+                        <td>path</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Trip ID</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="responses">
+                <h4>Responses</h4>
+                <table>
+                    <tr>
+                        <th>Code</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>200</td>
+                        <td>Trip details</td>
+                    </tr>
+                    <tr>
+                        <td>400</td>
+                        <td>Bad request - Invalid trip ID</td>
+                    </tr>
+                    <tr>
+                        <td>401</td>
+                        <td>Unauthorized - User not logged in</td>
+                    </tr>
+                    <tr>
+                        <td>403</td>
+                        <td>Forbidden - User not a member of this trip</td>
+                    </tr>
+                    <tr>
+                        <td>404</td>
+                        <td>Not found - Trip not found</td>
+                    </tr>
+                    <tr>
+                        <td>500</td>
+                        <td>Internal server error</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Notification Endpoints</h2>
+        
+        <div class="endpoint">
+            <div class="method get">GET</div>
+            <span class="path">/notifications</span>
+            <div class="description">Retrieves notifications for the authenticated user with pagination and filtering</div>
+            <div class="authorization">Requires authentication</div>
+            <div class="parameters">
+                <h4>Query Parameters</h4>
+                <table>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>limit</td>
+                        <td>integer</td>
+                        <td>No</td>
+                        <td>Number of notifications to return (default 20, max 100)</td>
+                    </tr>
+                    <tr>
+                        <td>offset</td>
+                        <td>integer</td>
+                        <td>No</td>
+                        <td>Offset for pagination (default 0)</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>string</td>
+                        <td>No</td>
+                        <td>Filter by status ('read' or 'unread')</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="responses">
+                <h4>Responses</h4>
+                <table>
+                    <tr>
+                        <th>Code</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>200</td>
+                        <td>List of notifications</td>
+                    </tr>
+                    <tr>
+                        <td>400</td>
+                        <td>Invalid query parameters</td>
+                    </tr>
+                    <tr>
+                        <td>401</td>
+                        <td>Unauthorized</td>
+                    </tr>
+                    <tr>
+                        <td>500</td>
+                        <td>Internal Server Error</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>For more detailed information about the API, refer to the codebase documentation or contact the development team.</p>
+    </footer>
+</body>
+</html> 

@@ -123,6 +123,15 @@ type TripWithMembers struct {
 	// Expenses  []Expense          `json:"expenses,omitempty"`
 }
 
+// TripBasicInfo provides a concise summary of trip details.
+type TripBasicInfo struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	StartDate   time.Time `json:"startDate"`
+	EndDate     time.Time `json:"endDate"`
+}
+
 func (s InvitationStatus) IsValid() bool {
 	switch s {
 	case InvitationStatusPending, InvitationStatusAccepted, InvitationStatusDeclined:

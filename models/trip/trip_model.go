@@ -5,9 +5,10 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/service"
-	store "github.com/NomadCrew/nomad-crew-backend/store"
+	appstore "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
 )
@@ -16,7 +17,7 @@ import (
 // This maintains backward compatibility while using the new service architecture
 type TripModel struct {
 	coordinator *service.TripModelCoordinator
-	store       store.TripStore
+	store       appstore.TripStore
 	config      *config.ServerConfig
 }
 
@@ -24,28 +25,33 @@ var _ interfaces.TripModelInterface = (*TripModel)(nil)
 
 // NewTripModel creates a new TripModel using the coordinator
 func NewTripModel(
-	store store.TripStore,
+	tripStoreApp appstore.TripStore,
+	chatStoreApp appstore.ChatStore,
+	userStoreInternal istore.UserStore,
 	eventBus types.EventPublisher,
 	weatherSvc types.WeatherServiceInterface,
 	supabaseClient *supabase.Client,
 	config *config.ServerConfig,
 	emailSvc types.EmailService,
-	chatStore store.ChatStore,
 ) *TripModel {
 	// Create the coordinator
+	var internalTripStore istore.TripStore = tripStoreApp
+	var internalChatStore istore.ChatStore = chatStoreApp
+
 	coordinator := service.NewTripModelCoordinator(
-		store,
+		internalTripStore,
+		internalChatStore,
+		userStoreInternal,
 		eventBus,
 		weatherSvc,
 		supabaseClient,
 		config,
 		emailSvc,
-		chatStore,
 	)
 
 	return &TripModel{
 		coordinator: coordinator,
-		store:       store,
+		store:       tripStoreApp,
 		config:      config,
 	}
 }
@@ -72,7 +78,7 @@ func (tm *TripModel) RemoveMember(ctx context.Context, tripID, userID string) er
 	return tm.coordinator.RemoveMember(ctx, tripID, userID)
 }
 
-func (tm *TripModel) GetTripMembers(ctx context.Context, tripID string) ([]*types.TripMembership, error) {
+func (tm *TripModel) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
 	return tm.coordinator.GetTripMembers(ctx, tripID)
 }
 
@@ -101,7 +107,7 @@ func (tm *TripModel) GetTripWithMembers(ctx context.Context, tripID string, user
 }
 
 // GetTripStore returns the trip store
-func (tm *TripModel) GetTripStore() store.TripStore {
+func (tm *TripModel) GetTripStore() appstore.TripStore {
 	return tm.store
 }
 
@@ -142,4 +148,14 @@ func (tm *TripModel) GetUserRole(ctx context.Context, tripID, userID string) (ty
 
 func (tm *TripModel) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
 	return tm.coordinator.LookupUserByEmail(ctx, email)
+}
+
+// GetTrip retrieves a trip by its ID, without user-specific checks (used for general trip info like for invitations)
+func (tm *TripModel) GetTrip(ctx context.Context, tripID string) (*types.Trip, error) {
+	return tm.coordinator.GetTrip(ctx, tripID)
+}
+
+// GetCommandContext returns the command context from the coordinator
+func (tm *TripModel) GetCommandContext() *interfaces.CommandContext {
+	return tm.coordinator.GetCommandContext() // Delegate to coordinator
 }

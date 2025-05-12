@@ -5,21 +5,21 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
-	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 // TripMemberService handles operations related to trip members
 type TripMemberService struct {
-	store          store.TripStore
+	store          istore.TripStore
 	eventPublisher types.EventPublisher
 }
 
 // NewTripMemberService creates a new trip member service
 func NewTripMemberService(
-	store store.TripStore,
+	store istore.TripStore,
 	eventPublisher types.EventPublisher,
 ) *TripMemberService {
 	return &TripMemberService{
@@ -97,19 +97,14 @@ func (s *TripMemberService) RemoveMember(ctx context.Context, tripID, userID str
 }
 
 // GetTripMembers gets all members of a trip
-func (s *TripMemberService) GetTripMembers(ctx context.Context, tripID string) ([]*types.TripMembership, error) {
+func (s *TripMemberService) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
 	members, err := s.store.GetTripMembers(ctx, tripID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert slice of structs to slice of pointers if needed
-	memberPtrs := make([]*types.TripMembership, len(members))
-	for i := range members {
-		memberPtrs[i] = &members[i]
-	}
-
-	return memberPtrs, nil
+	// No longer convert to slice of pointers, return directly
+	return members, nil
 }
 
 // GetUserRole gets a user's role in a trip
@@ -122,6 +117,21 @@ func (s *TripMemberService) GetUserRole(ctx context.Context, tripID, userID stri
 		}
 	}
 	return role, nil
+}
+
+// IsTripMember checks if a user is a member of a specific trip
+// This is needed to satisfy the handlers.TripServiceInterface
+func (s *TripMemberService) IsTripMember(ctx context.Context, tripID, userID string) (bool, error) {
+	role, err := s.store.GetUserRole(ctx, tripID, userID)
+	if err != nil {
+		// If there's an error, check if it's because the user isn't a member
+		if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.NotFoundError {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return role != types.MemberRoleNone, nil
 }
 
 // Helper method to publish events using the centralized helper
@@ -146,10 +156,3 @@ func (s *TripMemberService) publishEvent(ctx context.Context, eventType string, 
 		)
 	}
 }
-
-// generateEventID moved to internal/utils
-/*
-func generateEventID() string {
-	return time.Now().UTC().Format("20060102150405") + "-" + uuid.New().String()[:8]
-}
-*/

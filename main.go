@@ -1,6 +1,25 @@
 // Package main is the entry point for the NomadCrew backend application.
 // It initializes configurations, database connections, services, handlers,
 // sets up the HTTP router, starts the server, and handles graceful shutdown.
+//
+// @title           NomadCrew Backend API
+// @version         1.0.0
+// @description     NomadCrew RESTful API with authentication and WebSocket support
+//
+// @contact.name    NomadCrew Team
+// @contact.url     https://nomadcrew.uk
+// @contact.email   support@nomadcrew.uk
+//
+// @license.name    MIT
+// @license.url     https://opensource.org/licenses/MIT
+//
+// @host            api.nomadcrew.uk
+// @BasePath        /v1
+//
+// @securityDefinitions.apikey    BearerAuth
+// @in                            header
+// @name                          Authorization
+// @description                   JWT token for authentication
 package main
 
 import (
@@ -15,21 +34,22 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
+	"github.com/NomadCrew/nomad-crew-backend/internal/events"
+	internalService "github.com/NomadCrew/nomad-crew-backend/internal/service"
+	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
-
-	// Import the new location service package
 	locationSvc "github.com/NomadCrew/nomad-crew-backend/models/location/service"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
-	"github.com/NomadCrew/nomad-crew-backend/router"                 // Import the new router package
-	service "github.com/NomadCrew/nomad-crew-backend/service"        // New service package
-	"github.com/NomadCrew/nomad-crew-backend/services"               // Old services package - Keep for now if other services remain
-	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres" // Alias for postgres store implementations
+	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
+	userSvc "github.com/NomadCrew/nomad-crew-backend/models/user/service"
+	weatherSvc "github.com/NomadCrew/nomad-crew-backend/models/weather/service"
+	"github.com/NomadCrew/nomad-crew-backend/router"
+	"github.com/NomadCrew/nomad-crew-backend/service"
+	services "github.com/NomadCrew/nomad-crew-backend/services"
+	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
-	// Alias for store interfaces
-
-	// "github.com/gin-gonic/gin" // Gin is now primarily used within the router package
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
@@ -92,11 +112,14 @@ func main() {
 
 	// Initialize database dependencies with concrete implementation
 	dbClient := db.NewDatabaseClient(pool)
-	tripDB := db.NewTripDB(dbClient)
-	todoDB := db.NewTodoDB(dbClient)
-	locationDB := db.NewLocationDB(dbClient)               // This implements store.LocationStore
-	notificationDB := dbStore.NewPgNotificationStore(pool) // Assuming this exists based on pattern
-	userDB := dbStore.NewPgUserStore(pool)                 // Based on grep results
+	tripStore := dbStore.NewPgTripStore(pool)
+	todoStore := db.NewTodoDB(dbClient)
+	locationDB := db.NewLocationDB(dbClient)
+	notificationDB := dbStore.NewPgNotificationStore(pool)
+
+	// Get Supabase service key from environment variable
+	supabaseServiceKey := os.Getenv("SUPABASE_SERVICE_KEY")
+	userDB := internalPgStore.NewUserStore(pool, cfg.ExternalServices.SupabaseURL, supabaseServiceKey)
 
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
@@ -110,7 +133,7 @@ func main() {
 
 	// Initialize Supabase client
 	supabaseClient, err := supabase.NewClient(
-		cfg.ExternalServices.SupabaseURL, // Changed from AnonKey to ServiceKey if admin actions needed?
+		cfg.ExternalServices.SupabaseURL,
 		cfg.ExternalServices.SupabaseAnonKey,
 		nil,
 	)
@@ -131,53 +154,68 @@ func main() {
 
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	eventServiceConfig := services.RedisEventServiceConfig{
+
+	// Create event service config based on application configuration
+	eventServiceConfig := events.Config{
 		PublishTimeout:   time.Duration(cfg.EventService.PublishTimeoutSeconds) * time.Second,
 		SubscribeTimeout: time.Duration(cfg.EventService.SubscribeTimeoutSeconds) * time.Second,
 		EventBufferSize:  cfg.EventService.EventBufferSize,
 	}
-	eventService := services.NewRedisEventService(redisClient, eventServiceConfig)
-	weatherService := services.NewWeatherService(eventService)
+
+	// Initialize the event service from the internal/events package
+	eventService := events.NewService(redisClient, eventServiceConfig)
+
+	weatherService := weatherSvc.NewWeatherService(eventService)
 	emailService := services.NewEmailService(&cfg.Email)
 	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
-	notificationService := service.NewNotificationService(notificationDB, userDB, tripDB, eventService, log.Desugar())
 
-	// Initialize offline location service (pass nil initially for location service dependency)
-	offlineLocationService := services.NewOfflineLocationService(redisClient, nil)
+	// Initialize notification service with correct dependencies
+	notificationService := service.NewNotificationService(notificationDB, userDB, tripStore, eventService, log.Desugar())
 
 	// Initialize refactored location service
-	// It needs the OfflineLocationServiceInterface, which offlineLocationService implements
 	locationManagementService := locationSvc.NewManagementService(
-		locationDB, // Implements store.LocationStore now
+		locationDB,
 		eventService,
-		offlineLocationService, // Pass the instance
 	)
 
-	// Now, set the location service dependency in the offline service
-	offlineLocationService.SetLocationService(locationManagementService) // Use the setter method
+	// Initialize Chat Store and Service
+	chatStore := internalPgStore.NewChatStore(pool)
 
-	// Initialize Chat Store (Needs Supabase Client)
-	chatStore := db.NewPostgresChatStore(pool, supabaseClient, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_KEY"))
+	// Use the internal service package's ChatService implementation
+	chatService := internalService.NewChatService(chatStore, tripStore, eventService)
 
-	// Initialize Models / Facades
+	tripMemberService := trip_service.NewTripMemberService(tripStore, eventService)
+	chatHandler := handlers.NewChatHandler(
+		chatService,
+		tripMemberService,
+		eventService,
+		log.Desugar(),
+	)
+
+	// Initialize trip model with new store
 	tripModel := trip.NewTripModel(
-		tripDB,
+		tripStore,
+		chatStore,
+		userDB,
 		eventService,
 		weatherService,
 		supabaseClient,
 		&cfg.Server,
 		emailService,
-		chatStore, // Pass initialized chat store
 	)
-	todoModel := models.NewTodoModel(todoDB, tripModel)
+	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
 
 	// Initialize Handlers
-	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService, chatStore)
+	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 	healthHandler := handlers.NewHealthHandler(healthService)
 	locationHandler := handlers.NewLocationHandler(locationManagementService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
-	wsHandler := handlers.NewWSHandler(rateLimitService, eventService) // Ensure dependencies are correct
+	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
+
+	// Initialize User Service and Handler
+	userService := userSvc.NewUserService(userDB)
+	userHandler := handlers.NewUserHandler(userService)
 
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
@@ -186,9 +224,12 @@ func main() {
 		TripHandler:         tripHandler,
 		TodoHandler:         todoHandler,
 		HealthHandler:       healthHandler,
-		LocationHandler:     locationHandler, // Ensure handler uses the refactored service
+		LocationHandler:     locationHandler,
 		NotificationHandler: notificationHandler,
 		WSHandler:           wsHandler,
+		ChatHandler:         chatHandler,
+		UserHandler:         userHandler,
+		Logger:              log,
 	}
 
 	// Setup Router using the new package
@@ -202,26 +243,18 @@ func main() {
 		}),
 		MessagesReceived: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "websocket_messages_received_total",
-			Help: "Total received WebSocket messages",
+			Help: "Total number of WebSocket messages received.",
 		}),
 		MessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "websocket_messages_sent_total",
-			Help: "Total sent WebSocket messages",
+			Help: "Total number of WebSocket messages sent.",
 		}),
 		ErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "websocket_errors_total",
-			Help: "Total WebSocket errors by type",
-		}, []string{"type"}),
+			Help: "Total number of WebSocket errors.",
+		}, []string{"trip_id", "type"}),
 	}
-	prometheus.MustRegister(
-		wsMetrics.ConnectionsActive,
-		wsMetrics.MessagesReceived,
-		wsMetrics.MessagesSent,
-		wsMetrics.ErrorsTotal,
-	)
-	// Connect WebSocket metrics to health service (if GetActiveConnectionCount is still global/accessible)
-	// This might need adjustment depending on how WS connections are managed now
-	healthService.SetActiveConnectionsGetter(middleware.GetActiveConnectionCount)
+	prometheus.MustRegister(wsMetrics.ConnectionsActive, wsMetrics.MessagesReceived, wsMetrics.MessagesSent, wsMetrics.ErrorsTotal)
 
 	// Start the server
 	srv := &http.Server{
@@ -229,33 +262,25 @@ func main() {
 		Handler: r,
 	}
 
+	// Start server in a goroutine so it doesn't block shutdown handling
 	go func() {
+		log.Infow("Starting server", "port", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
-	log.Infof("Server started on port %s", cfg.Server.Port)
 
-	// Wait for shutdown signal
+	// Wait for shutdown signal and then gracefully shut down
 	<-shutdownCtx.Done()
-
-	// Perform graceful shutdown
 	log.Info("Shutting down server...")
 
-	// Create a deadline context for shutdown
-	shutdownTimeout := 5 * time.Second // Configurable?
-	shutdownDeadlineCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer shutdownCancel()
+	// Create a deadline to wait for current operations to complete
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	// Attempt graceful server shutdown
-	if err := srv.Shutdown(shutdownDeadlineCtx); err != nil {
-		log.Errorf("Server shutdown failed: %v", err)
-	} else {
-		log.Info("Server gracefully stopped")
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalw("Server forced to shutdown", "error", err)
 	}
 
-	// Add any other cleanup needed (e.g., closing WebSocket hub/manager)
-	// wsManager.Shutdown() // Example
-
-	log.Info("Application shut down complete.")
+	log.Info("Server has been gracefully shut down")
 }

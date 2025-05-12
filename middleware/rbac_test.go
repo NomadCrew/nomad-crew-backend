@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -25,19 +26,28 @@ func (m *MockTripModel) GetUserRole(ctx context.Context, tripID string, userID s
 	return args.Get(0).(types.MemberRole), args.Error(1)
 }
 
-func (m *MockTripModel) CreateTrip(ctx context.Context, trip *types.Trip) error {
+func (m *MockTripModel) CreateTrip(ctx context.Context, trip *types.Trip) (*types.Trip, error) {
 	args := m.Called(ctx, trip)
-	return args.Error(0)
-}
-
-func (m *MockTripModel) GetTripByID(ctx context.Context, id string) (*types.Trip, error) {
-	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(*types.Trip), args.Error(1)
 }
 
-func (m *MockTripModel) UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error {
-	args := m.Called(ctx, id, update)
-	return args.Error(0)
+func (m *MockTripModel) GetTripByID(ctx context.Context, id string, userID string) (*types.Trip, error) {
+	args := m.Called(ctx, id, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Trip), args.Error(1)
+}
+
+func (m *MockTripModel) UpdateTrip(ctx context.Context, id string, userID string, update *types.TripUpdate) (*types.Trip, error) {
+	args := m.Called(ctx, id, userID, update)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Trip), args.Error(1)
 }
 
 func (m *MockTripModel) DeleteTrip(ctx context.Context, id string) error {
@@ -88,6 +98,61 @@ func (m *MockTripModel) UpdateInvitationStatus(ctx context.Context, invitationID
 func (m *MockTripModel) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
 	args := m.Called(ctx, email)
 	return args.Get(0).(*types.SupabaseUser), args.Error(1)
+}
+
+func (m *MockTripModel) GetTripWithMembers(ctx context.Context, tripID string, userID string) (*types.TripWithMembers, error) {
+	args := m.Called(ctx, tripID, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.TripWithMembers), args.Error(1)
+}
+
+// GetCommandContext returns the command context for testing
+func (m *MockTripModel) GetCommandContext() *interfaces.CommandContext {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return &interfaces.CommandContext{
+			RequestData: &sync.Map{},
+		}
+	}
+	return args.Get(0).(*interfaces.CommandContext)
+}
+
+// UpdateTripStatus mock implementation
+func (m *MockTripModel) UpdateTripStatus(ctx context.Context, tripID string, newStatus types.TripStatus) error {
+	args := m.Called(ctx, tripID, newStatus)
+	return args.Error(0)
+}
+
+// GetTripMembers mock implementation
+func (m *MockTripModel) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
+	args := m.Called(ctx, tripID)
+	return args.Get(0).([]types.TripMembership), args.Error(1)
+}
+
+// InviteMember mock implementation
+func (m *MockTripModel) InviteMember(ctx context.Context, invitation *types.TripInvitation) error {
+	args := m.Called(ctx, invitation)
+	return args.Error(0)
+}
+
+// FindInvitationByTripAndEmail mock implementation
+func (m *MockTripModel) FindInvitationByTripAndEmail(ctx context.Context, tripID, email string) (*types.TripInvitation, error) {
+	args := m.Called(ctx, tripID, email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.TripInvitation), args.Error(1)
+}
+
+// GetTrip mock implementation
+func (m *MockTripModel) GetTrip(ctx context.Context, tripID string) (*types.Trip, error) {
+	args := m.Called(ctx, tripID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Trip), args.Error(1)
 }
 
 func TestRequireRole(t *testing.T) {

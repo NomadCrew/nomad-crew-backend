@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strconv"
-	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
@@ -31,34 +30,30 @@ func ErrorHandler() gin.HandlerFunc {
 			err := c.Errors.Last().Err
 			log := logger.GetLogger()
 
-			// Log request details for all errors
-			log.Infow("Request details for error",
-				"path", c.Request.URL.Path,
-				"method", c.Request.Method,
-				"client_ip", c.ClientIP(),
-				"user_agent", c.Request.UserAgent(),
-				"headers", func() map[string]string {
-					headers := make(map[string]string)
-					for k, v := range c.Request.Header {
-						if k != "Authorization" && k != "Cookie" { // Skip sensitive headers
-							headers[k] = strings.Join(v, ",")
-						}
-					}
-					return headers
-				}())
+			// Basic metadata for all errors
+			metadata := map[string]interface{}{
+				"path":        c.Request.URL.Path,
+				"method":      c.Request.Method,
+				"client_ip":   c.ClientIP(),
+				"user_agent":  c.Request.UserAgent(),
+				"stack_trace": string(stackTrace),
+			}
 
 			// Handle AppError
 			if appError, ok := err.(*errors.AppError); ok {
+				statusCode := appError.GetHTTPStatus()
+
+				// Use enhanced error logging for application errors
+				metadata["error_type"] = string(appError.Type)
+				metadata["error_message"] = appError.Message
+
+				if appError.Detail != "" {
+					metadata["error_detail"] = appError.Detail
+				}
+
 				// Extra logging for auth errors
 				if appError.Type == errors.AuthError {
-					log.Errorw("Authentication error",
-						"type", appError.Type,
-						"message", appError.Message,
-						"detail", appError.Detail,
-						"path", c.Request.URL.Path,
-						"method", c.Request.Method,
-						"stack_trace", string(stackTrace),
-					)
+					logger.LogHTTPError(c, err, statusCode, "Authentication error")
 
 					// Try to load config for environment checks
 					cfg, err := config.LoadConfig()
@@ -74,20 +69,14 @@ func ErrorHandler() gin.HandlerFunc {
 						log.Warnw("Failed to load config for environment check", "error", err)
 					}
 				} else {
-					log.Errorw("Application error",
-						"type", appError.Type,
-						"message", appError.Message,
-						"detail", appError.Detail,
-						"path", c.Request.URL.Path,
-						"method", c.Request.Method,
-					)
+					logger.LogHTTPError(c, err, statusCode, fmt.Sprintf("%s error", appError.Type))
 				}
 
 				// Create the response
 				response := map[string]interface{}{
 					"type":    string(appError.Type),
 					"message": appError.Message,
-					"code":    strconv.Itoa(appError.HTTPStatus),
+					"code":    strconv.Itoa(statusCode),
 				}
 
 				// Only include details for validation and not-found errors or in debug mode
@@ -104,22 +93,19 @@ func ErrorHandler() gin.HandlerFunc {
 					if v, exists := c.Get("auth_error_response"); exists {
 						if authError, ok := v.(gin.H); ok {
 							// Just set the status code but use the existing response
-							c.JSON(appError.HTTPStatus, authError)
+							c.JSON(statusCode, authError)
 							return
 						}
 					}
 				}
 
-				c.JSON(appError.HTTPStatus, response)
+				c.JSON(statusCode, response)
 				return
 			}
 
 			// Handle Gin binding errors - which come as public errors
 			if c.Errors.Last().Type == gin.ErrorTypeBind {
-				log.Warnw("Request binding error",
-					"error", err,
-					"path", c.Request.URL.Path,
-					"method", c.Request.Method)
+				logger.LogHTTPError(c, err, 400, "Request binding error")
 
 				response := map[string]interface{}{
 					"type":    string(errors.ValidationError),
@@ -138,10 +124,7 @@ func ErrorHandler() gin.HandlerFunc {
 
 			// Handle Gin public errors
 			if c.Errors.Last().Type == gin.ErrorTypePublic {
-				log.Warnw("Public error",
-					"error", err,
-					"path", c.Request.URL.Path,
-					"method", c.Request.Method)
+				logger.LogHTTPError(c, err, 400, "Public error")
 
 				c.JSON(400, map[string]interface{}{
 					"type":    string(errors.ValidationError),
@@ -152,14 +135,7 @@ func ErrorHandler() gin.HandlerFunc {
 			}
 
 			// Handle unknown errors
-			log.Errorw("Unexpected error",
-				"error", err,
-				"error_type", fmt.Sprintf("%T", err),
-				"error_details", fmt.Sprintf("%+v", err),
-				"path", c.Request.URL.Path,
-				"method", c.Request.Method,
-				"stack_trace", string(stackTrace),
-			)
+			logger.LogHTTPError(c, err, 500, "Unexpected server error")
 
 			response := map[string]interface{}{
 				"type":    string(errors.ServerError),

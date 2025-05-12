@@ -42,7 +42,12 @@ func (s *TripChatService) ListMessages(ctx context.Context, tripID string, userI
 	}
 
 	// Using appropriate method from the store
-	messages, _, err := s.chatStore.ListTripMessages(ctx, tripID, limit, 0)
+	paginationParams := types.PaginationParams{
+		Limit:  limit,
+		Offset: 0, // Assuming offset is 0 for now, 'before' parameter is not directly used
+		// Before/After cursor logic could be added here if needed based on 'before' param
+	}
+	messages, _, err := s.chatStore.ListChatMessages(ctx, tripID, paginationParams)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +89,7 @@ func (s *TripChatService) UpdateLastReadMessage(ctx context.Context, tripID stri
 	return events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
-		EventTypeLastReadUpdated,
+		"chat.last_read_updated",
 		tripID,
 		userID,
 		data,

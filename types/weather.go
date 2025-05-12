@@ -67,7 +67,8 @@ type WeatherServiceInterface interface {
 	StartWeatherUpdates(ctx context.Context, tripID string, destination Destination)
 	IncrementSubscribers(tripID string, dest Destination)
 	DecrementSubscribers(tripID string)
-	TriggerImmediateUpdate(ctx context.Context, tripID string, destination Destination)
+	TriggerImmediateUpdate(ctx context.Context, tripID string, destination Destination) error
+	GetWeather(ctx context.Context, tripID string) (*WeatherInfo, error)
 }
 
 type HourlyWeather struct {

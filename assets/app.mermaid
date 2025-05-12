@@ -38,25 +38,48 @@ classDiagram
         %% Logger dependencies from other packages added below
 
         %% Database Package (Stores)
-        subgraph Stores ["Database (db, store)"]
-            class store_TripStore["store.TripStore"] { <<interface>> }
+        subgraph Stores ["Database (store)"]
+            class store_TripStore["store.TripStore"] {
+                +CreateTrip(context.Context, types.Trip) (string, error)
+                +GetTrip(context.Context, string) (*types.Trip, error)
+                +UpdateTrip(context.Context, string, types.TripUpdate) (*types.Trip, error)
+                +DeleteTrip(context.Context, string) error
+                +ListUserTrips(context.Context, string) ([]*types.Trip, error)
+                +SearchTrips(context.Context, types.TripSearchCriteria) ([]*types.Trip, error)
+                +AddMember(context.Context, *types.TripMembership) error
+                +UpdateMemberRole(context.Context, string, string, types.MemberRole) error
+                +RemoveMember(context.Context, string, string) error
+                +GetTripMembers(context.Context, string) ([]*types.TripMembership, error)
+                +GetUserRole(context.Context, string, string) (types.MemberRole, error)
+                +LookupUserByEmail(context.Context, string) (*types.SupabaseUser, error)
+                +CreateInvitation(context.Context, *types.TripInvitation) error
+                +GetInvitation(context.Context, string) (*types.TripInvitation, error)
+                +GetInvitationsByTripID(context.Context, string) ([]*types.TripInvitation, error)
+                +UpdateInvitationStatus(context.Context, string, types.InvitationStatus) error
+                +BeginTx(context.Context) (store.Transaction, error)
+            }
             class store_UserStore["store.UserStore"] { <<interface>> }
             class store_NotificationStore["store.NotificationStore"] { <<interface>> }
 
-            class db_DatabaseClient["db.DatabaseClient"] { +Pool: *pgxpool.Pool }
-            class db_TripDB["db.TripDB"] {
-                +db: *DatabaseClient
-                +GetTripByID(...)
+            class dbStore_PgTripStore["dbStore.PgTripStore"] {
+                +Pool: *pgxpool.Pool
                 +CreateTrip(...)
+                +GetTrip(...)
                 +UpdateTrip(...)
                 +DeleteTrip(...)
                 +ListUserTrips(...)
                 +SearchTrips(...)
-                +UpdateTripStatus(...)
-                +AddMember(...) : *types.TripMembership
+                +AddMember(...)
                 +UpdateMemberRole(...)
                 +RemoveMember(...)
                 +GetTripMembers(...)
+                +GetUserRole(...)
+                +LookupUserByEmail(...)
+                +CreateInvitation(...)
+                +GetInvitation(...)
+                +GetInvitationsByTripID(...)
+                +UpdateInvitationStatus(...)
+                +BeginTx(...)
             }
             class db_TodoDB["db.TodoDB"] {
                 +db: *DatabaseClient
@@ -98,28 +121,26 @@ classDiagram
                +SaveMessage(...)
             }
             %% Store implementations
+            store_TripStore <|.. dbStore_PgTripStore
             store_NotificationStore <|.. dbStore_PgNotificationStore
             store_UserStore <|.. dbStore_PgUserStore
-            %% PlantUML noted: db.TripDB does NOT satisfy store.TripStore for NotificationService
         end
-        Main --> db_DatabaseClient
-        db_DatabaseClient --> PostgreSQL_DB
-        Main -.-> db_TripDB  %% initializes
+        Main --> PostgreSQL_DB
+        Main -.-> dbStore_PgTripStore %% initializes
         Main -.-> db_TodoDB  %% initializes
         Main -.-> db_LocationDB  %% initializes
         Main -.-> dbStore_PgNotificationStore %% initializes
         Main -.-> dbStore_PgUserStore %% initializes
         Main -.-> db_PostgresChatStore %% initializes
 
-        db_TripDB --> db_DatabaseClient
-        db_TodoDB --> db_DatabaseClient
-        db_LocationDB --> db_DatabaseClient
+        dbStore_PgTripStore --> PostgreSQL_DB
+        db_TodoDB --> PostgreSQL_DB
+        db_LocationDB --> PostgreSQL_DB
         dbStore_PgNotificationStore --> PostgreSQL_DB
         dbStore_PgUserStore --> PostgreSQL_DB
         db_PostgresChatStore --> PostgreSQL_DB
         db_PostgresChatStore --> Supabase
-        Stores -.-> Logger %% db/store package uses Logger
-
+        Stores -.-> Logger %% store package uses Logger
 
         %% Services Package
         subgraph Services ["Services (services, service)"]
@@ -172,7 +193,7 @@ classDiagram
             class service_NotificationService["service.NotificationService"] {
                 +NotificationStore: store.NotificationStore
                 +UserStore: store.UserStore
-                +TripStore: store.TripStore %% expects interface
+                +TripStore: store.TripStore
                 +EventService: services.EventService
                 +Logger: *zap.Logger
                 +CreateNotificationForEvent(...)
@@ -183,7 +204,7 @@ classDiagram
             }
             class services_ChatService["services.ChatService"] {
                 +ChatStore: *db.PostgresChatStore
-                +TripStore: *db.TripDB %% uses concrete type
+                +TripStore: store.TripStore
                 +EventService: services.EventService
                 +HandleIncomingMessage(...)
             }
@@ -213,10 +234,10 @@ classDiagram
         services_OfflineLocationService --> services_LocationService
         service_NotificationService --> store_NotificationStore
         service_NotificationService --> store_UserStore
-        service_NotificationService --> store_TripStore %% Dependency issue noted in PlantUML
+        service_NotificationService --> store_TripStore
         service_NotificationService --> services_EventService
         services_ChatService --> db_PostgresChatStore
-        services_ChatService --> db_TripDB %% Concrete dependency noted in PlantUML
+        services_ChatService --> store_TripStore
         services_ChatService --> services_EventService
         Services -.-> Logger %% services package uses Logger
 
@@ -225,10 +246,10 @@ classDiagram
             class models_TripMembershipChecker["models.TripMembershipChecker"] {
                 <<interface>>
                 +CheckUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error)
-                +GetTripStore() *db.TripDB
+                +GetTripStore() store.TripStore
             }
             class trip_TripModel["trip.TripModel"] {
-               +TripDB: *db.TripDB
+               +TripStore: store.TripStore
                +EventService: services.EventService
                +WeatherService: *services.WeatherService
                +Supabase: *supabase.Client
@@ -252,7 +273,7 @@ classDiagram
                +CheckUserRole(...)
                +ListMessages(...)
                +UpdateLastReadMessage(...)
-               +GetTripStore() *db.TripDB
+               +GetTripStore() store.TripStore
             }
             class models_TodoModel["models.TodoModel"] {
                +TodoDB: *db.TodoDB
@@ -269,7 +290,7 @@ classDiagram
         Main -.-> trip_TripModel %% initializes
         Main -.-> models_TodoModel %% initializes
 
-        trip_TripModel --> db_TripDB
+        trip_TripModel --> store_TripStore
         trip_TripModel --> services_EventService
         trip_TripModel --> services_WeatherService
         trip_TripModel --> Supabase
@@ -427,3 +448,31 @@ classDiagram
     classDef default fill:#f8f8f8,stroke:#333,stroke-width:1px;
     classDef interface fill:#e8f8ff,stroke:#33a,stroke-width:1px;
     class store_TripStore,store_UserStore,store_NotificationStore,services_EventService,models_TripMembershipChecker interface;
+
+    class postgres_PgTripStore["store/postgres.PgTripStore"] {
+        +CreateTrip(context.Context, types.Trip) (string, error)
+        +GetTrip(context.Context, string) (*types.Trip, error)
+        +UpdateTrip(context.Context, string, types.TripUpdate) (*types.Trip, error)
+        +DeleteTrip(context.Context, string) error
+        +ListUserTrips(context.Context, string) ([]*types.Trip, error)
+        +SearchTrips(context.Context, types.TripSearchCriteria) ([]*types.Trip, error)
+        +AddMember(context.Context, *types.TripMembership) error
+        +UpdateMemberRole(context.Context, string, string, types.MemberRole) error
+        +RemoveMember(context.Context, string, string) error
+        +GetTripMembers(context.Context, string) ([]*types.TripMembership, error)
+        +GetUserRole(context.Context, string, string) (types.MemberRole, error)
+        +LookupUserByEmail(context.Context, string) (*types.SupabaseUser, error)
+        +CreateInvitation(context.Context, *types.TripInvitation) error
+        +GetInvitation(context.Context, string) (*types.TripInvitation, error)
+        +GetInvitationsByTripID(context.Context, string) ([]*types.TripInvitation, error)
+        +UpdateInvitationStatus(context.Context, string, types.InvitationStatus) error
+        +BeginTx(context.Context) (store.Transaction, error)
+    }
+
+    postgres_PgTripStore ..|> store_TripStore : implements
+
+    Main -.-> postgres_PgTripStore  %% initializes
+    postgres_PgTripStore --> pgxpool.Pool
+
+    trip_TripModel --> store_TripStore
+    services_ChatService --> store_TripStore

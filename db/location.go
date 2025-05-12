@@ -8,8 +8,8 @@ import (
 	"time"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
-	// "github.com/NomadCrew/nomad-crew-backend/internal/store" // Removed import for now
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/store" // Added import for store package
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
@@ -28,9 +28,8 @@ func NewLocationDB(client *DatabaseClient) *LocationDB {
 	}
 }
 
-// // Ensure LocationDB implements the store.LocationStore interface.
-// // Commented out as store.LocationStore appears undefined or inaccessible.
-// var _ store.LocationStore = (*LocationDB)(nil)
+// Ensure LocationDB implements the store.LocationStore interface.
+var _ store.LocationStore = (*LocationDB)(nil)
 
 // UpdateLocation saves a new location record for a user.
 // It first verifies the user is part of an active trip.

@@ -1,13 +1,14 @@
 package router
 
 import (
-	"net/http"
-
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.uber.org/zap"
 )
 
 // Dependencies struct holds all dependencies required for setting up routes.
@@ -20,6 +21,12 @@ type Dependencies struct {
 	LocationHandler     *handlers.LocationHandler
 	NotificationHandler *handlers.NotificationHandler
 	WSHandler           *handlers.WSHandler
+	ChatHandler         *handlers.ChatHandler
+	UserHandler         *handlers.UserHandler
+	Logger              *zap.SugaredLogger
+	MemberHandler       *handlers.MemberHandler
+	InvitationHandler   *handlers.InvitationHandler
+	TripChatHandler     *handlers.TripChatHandler
 	// Add any other handlers or dependencies needed for routes
 }
 
@@ -28,6 +35,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	r := gin.Default()
 
 	// Global Middleware
+	r.Use(middleware.RequestIDMiddleware()) // Add RequestID middleware
 	r.Use(middleware.ErrorHandler())
 	// Pass pointer to ServerConfig for CORS middleware
 	r.Use(middleware.CORSMiddleware(&deps.Config.Server))
@@ -40,43 +48,34 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	r.GET("/health/readiness", deps.HealthHandler.ReadinessCheck)
 	r.GET("/metrics", gin.WrapH(promhttp.Handler())) // Prometheus metrics endpoint
 
+	// Swagger documentation
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// Debug routes (only in non-production)
-	if deps.Config.Server.Environment != config.EnvProduction {
-		debugRoutes := r.Group("/debug")
-		{
-			debugRoutes.GET("/jwt", handlers.DebugJWTHandler())
-			debugRoutes.GET("/jwt/direct", handlers.DebugJWTDirectHandler())
-			// Add other debug routes if necessary
-		}
-	}
+	// if deps.Config.Server.Environment != config.EnvProduction {
+	// 	// No debug routes currently active
+	// }
 
 	// Versioned API Group (v1)
 	v1 := r.Group("/v1")
 	{
-		// WebSocket Route - Placeholder
-		// Need to verify correct middleware and handler method name
-		/*
-			wsConfig := middleware.WSConfig{ // This config might be used within the handler now
-				PongWait:        60 * time.Second,
-				PingPeriod:      30 * time.Second,
-				WriteWait:       10 * time.Second,
-				MaxMessageSize:  1024,
-				ReauthInterval:  5 * time.Minute,
-				BufferHighWater: 256,
-				BufferLowWater:  64,
-			}
-			// Placeholder middleware/handler call - This may need significant adjustment
-			v1.GET("/ws", deps.WSHandler.HandleConnection) // Placeholder name - Linter Error
-		*/
-		// TODO: Define correct WebSocket route (middleware & handler)
-		v1.GET("/ws", func(c *gin.Context) {
-			c.String(http.StatusNotImplemented, "WebSocket endpoint not fully configured in router")
-		})
+		// WebSocket Route
+		v1.GET("/ws", deps.WSHandler.HandleWebSocketConnection)
+
+		// Invitation specific routes (typically non-trip-nested for token-based actions)
+		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink)     // For deep links from emails
+		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)      // To get details using a token
+		v1.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)   // To accept an invitation using a token
+		v1.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler) // Route for declining invitations
 
 		// --- Authenticated Routes ---
+		authMiddleware := middleware.AuthMiddleware(deps.JWTValidator)
 		authRoutes := v1.Group("")
-		authRoutes.Use(middleware.AuthMiddleware(deps.JWTValidator))
+		authRoutes.Use(authMiddleware)
 		{
+			// WebSocket for Chat (requires authentication)
+			// v1.GET("/trips/:tripID/ws", deps.WSHandler.HandleChatWebSocketConnection) // Moved to tripChatRoutes
+
 			// Trip Routes
 			tripRoutes := authRoutes.Group("/trips")
 			{
@@ -91,56 +90,87 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				// Trip Member Routes
 				memberRoutes := tripRoutes.Group("/:id/members")
 				{
-					memberRoutes.GET("", deps.TripHandler.GetTripMembersHandler)
-					memberRoutes.POST("", deps.TripHandler.AddMemberHandler)
-					memberRoutes.PUT("/:memberId/role", deps.TripHandler.UpdateMemberRoleHandler)
-					memberRoutes.DELETE("/:memberId", deps.TripHandler.RemoveMemberHandler)
+					memberRoutes.GET("", deps.MemberHandler.GetTripMembersHandler)
+					memberRoutes.POST("", deps.MemberHandler.AddMemberHandler)
+					memberRoutes.PUT("/:memberId/role", deps.MemberHandler.UpdateMemberRoleHandler)
+					memberRoutes.DELETE("/:memberId", deps.MemberHandler.RemoveMemberHandler)
 				}
 
 				// Trip Invitation Routes
 				invitationRoutes := tripRoutes.Group("/:id/invitations")
 				{
-					invitationRoutes.POST("", deps.TripHandler.InviteMemberHandler)
+					invitationRoutes.POST("", deps.InvitationHandler.InviteMemberHandler)
+					// invitationRoutes.GET("", deps.TripHandler.GetTripWithMembersHandler) // To be replaced with ListTripInvitationsHandler
+					// invitationRoutes.PUT("/:invitationId/status", deps.TripHandler.AcceptInvitationHandler) // To be reviewed and mapped to a new/correct InvitationHandler method
 				}
 
-				// Trip Todo Routes - Placeholders for methods with linter errors
+				// Trip Todo Routes
 				todoRoutes := tripRoutes.Group("/:id/todos")
 				{
 					todoRoutes.POST("", deps.TodoHandler.CreateTodoHandler)
 					todoRoutes.GET("", deps.TodoHandler.ListTodosHandler)
-					// todoRoutes.GET("/:todoId", deps.TodoHandler.GetTodoHandler) // Placeholder name - Linter Error
+					todoRoutes.GET("/:todoId", deps.TodoHandler.GetTodoHandler)
 					todoRoutes.PUT("/:todoId", deps.TodoHandler.UpdateTodoHandler)
 					todoRoutes.DELETE("/:todoId", deps.TodoHandler.DeleteTodoHandler)
-					// todoRoutes.PATCH("/:todoId/status", deps.TodoHandler.UpdateTodoStatusHandler) // Placeholder name - Linter Error
 				}
 
-				// Trip Chat Routes (Placeholder - Add actual handlers)
-				// ...
+				// Location Routes
+				locationRoutes := tripRoutes.Group("/:id/locations")
+				{
+					locationRoutes.POST("", deps.LocationHandler.UpdateLocationHandler)
+					locationRoutes.GET("", deps.LocationHandler.GetTripMemberLocationsHandler)
+				}
+
+				// Trip Chat Routes
+				chatRoutes := tripRoutes.Group("/:id/chat")
+				{
+					chatRoutes.GET("/ws/events", deps.TripChatHandler.WSStreamEvents)  // Added WebSocket stream
+					chatRoutes.GET("/messages", deps.TripChatHandler.ListTripMessages) // Updated to TripChatHandler
+					// chatRoutes.POST("/messages", deps.ChatHandler.SendMessage) // To be mapped to TripChatHandler.SendChatMessageViaHTTP (needs creating)
+					// chatRoutes.PUT("/messages/:messageId", deps.ChatHandler.UpdateMessage) // To be mapped to TripChatHandler.UpdateChatMessageViaHTTP (needs creating)
+					// chatRoutes.DELETE("/messages/:messageId", deps.ChatHandler.DeleteMessage) // To be mapped to TripChatHandler.DeleteChatMessageViaHTTP (needs creating)
+
+					// Chat reaction routes
+					// chatRoutes.GET("/messages/:messageId/reactions", deps.ChatHandler.ListReactions) // To be mapped to TripChatHandler (needs creating)
+					// chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandler.AddReaction) // To be mapped to TripChatHandler (needs creating)
+					// chatRoutes.DELETE("/messages/:messageId/reactions/:reactionType", deps.ChatHandler.RemoveReaction) // To be mapped to TripChatHandler (needs creating)
+
+					// Chat read status route
+					chatRoutes.PUT("/read", deps.TripChatHandler.UpdateLastReadMessage) // Updated to TripChatHandler
+
+					// Chat members route
+					// chatRoutes.GET("/members", deps.ChatHandler.ListMembers) // To be mapped to TripChatHandler (needs creating)
+				}
 			}
 
 			// Location Routes
 			locationRoutes := authRoutes.Group("/location")
 			{
 				locationRoutes.POST("/update", deps.LocationHandler.UpdateLocationHandler)
-				locationRoutes.POST("/offline", deps.LocationHandler.SaveOfflineLocationsHandler)
 			}
 
-			// Notification Routes - Placeholders for methods with linter errors
-			// notificationRoutes := authRoutes.Group("/notifications") // Commented out as unused
-			// {
-			// 	// notificationRoutes.GET("", deps.NotificationHandler.GetUserNotificationsHandler) // Placeholder name - Linter Error
-			// 	// notificationRoutes.POST("/read", deps.NotificationHandler.MarkNotificationsAsReadHandler) // Placeholder name - Linter Error
-			// 	// notificationRoutes.DELETE("", deps.NotificationHandler.DeleteNotificationsHandler) // Placeholder name - Linter Error
-			// }
+			// Notification Routes
+			notificationRoutes := authRoutes.Group("/notifications")
+			{
+				notificationRoutes.GET("", deps.NotificationHandler.GetNotificationsByUser)
+				notificationRoutes.PATCH("/:notificationId/read", deps.NotificationHandler.MarkNotificationAsRead)
+				notificationRoutes.PATCH("/read-all", deps.NotificationHandler.MarkAllNotificationsRead)
+				notificationRoutes.DELETE("/:notificationId", deps.NotificationHandler.DeleteNotification)
+			}
 
-			// User Routes (Placeholder - Add actual handlers)
-			// ...
+			// User Routes
+			userRoutes := authRoutes.Group("/users")
+			{
+				userRoutes.GET("/me", deps.UserHandler.GetCurrentUser)
+				userRoutes.GET("/:id", deps.UserHandler.GetUserByID)
+				userRoutes.GET("", deps.UserHandler.ListUsers)
+				userRoutes.PUT("/:id", deps.UserHandler.UpdateUser)
+				userRoutes.PUT("/:id/preferences", deps.UserHandler.UpdateUserPreferences)
+				// Add SyncWithSupabase as a special endpoint
+				userRoutes.POST("/sync", deps.UserHandler.SyncWithSupabase)
+			}
 		}
 	}
 
 	return r
 }
-
-// TODO: Verify/implement correct handler method calls for WS, Todo, Notification routes.
-// TODO: Add handlers for Chat, User, Invitation Acceptance if they exist
-// TODO: Ensure all routes from main.go have been migrated here.

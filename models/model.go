@@ -201,7 +201,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 	// Validate the status transition
 	if !trip.Status.IsValidTransition(newStatus) {
 		return &errors.AppError{
-			Type:    errors.InvalidStatusTransitionError,
+			Type:    errors.ValidationError,
 			Message: fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus),
 		}
 	}
@@ -270,9 +270,9 @@ func NewTodoModelFacade(todoStore interface{}, tripModel *TripModelFacade) *Todo
 }
 
 // CreateTodo implements a facade method for tests
-func (tm *TodoModelFacade) CreateTodo(ctx context.Context, todo *types.Todo) error {
+func (tm *TodoModelFacade) CreateTodo(ctx context.Context, todo *types.Todo) (string, error) {
 	// Implementation will depend on the todoStore interface
-	return nil
+	return "", nil
 }
 
 // ListTripTodos implements a facade method for tests

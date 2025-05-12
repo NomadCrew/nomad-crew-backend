@@ -15,7 +15,7 @@ GOLINT=golangci-lint
 all: test build
 
 build:
-	$(GOBUILD) -o $(BINARY_NAME) -v ./...
+	$(GOBUILD) -o $(BINARY_NAME) -v .
 
 test:
 	$(GOTEST) -v -race ./...

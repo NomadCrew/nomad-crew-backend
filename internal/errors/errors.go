@@ -45,7 +45,7 @@ func NewUnauthorizedError(message string) *errors.AppError {
 // NewForbiddenError creates a new forbidden error
 func NewForbiddenError(message string) *errors.AppError {
 	return &errors.AppError{
-		Type:    errors.ForbiddenError,
+		Type:    errors.AuthorizationError,
 		Message: message,
 	}
 }
@@ -55,7 +55,7 @@ func NewNotFoundError(entity, id string) *errors.AppError {
 	return &errors.AppError{
 		Type:    errors.NotFoundError,
 		Message: fmt.Sprintf("%s not found", entity),
-		Detail:  id,
+		Details: id,
 	}
 }
 
@@ -77,6 +77,6 @@ func NewOperationFailedError(message string, err error) *errors.AppError {
 	return &errors.AppError{
 		Type:    errors.ServerError,
 		Message: message,
-		Detail:  detail,
+		Details: detail,
 	}
 }

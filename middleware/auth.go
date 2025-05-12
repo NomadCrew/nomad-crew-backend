@@ -1,18 +1,19 @@
 package middleware
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	apperrors "github.com/NomadCrew/nomad-crew-backend/errors" // Use project's custom errors
+	stderrors "errors"
+
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/gin-gonic/gin"
 )
 
 // AuthMiddleware creates a Gin middleware for authenticating requests using JWT.
-// Change argument to accept the Validator interface.
 func AuthMiddleware(validator Validator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log := logger.GetLogger()
@@ -23,27 +24,19 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 		if err != nil {
 			// If extractToken returns a specific type of error (like BadRequest), handle it
 			var appErr *apperrors.AppError
-			if errors.As(err, &appErr) && appErr.HTTPStatus == http.StatusBadRequest {
+			if stderrors.As(err, &appErr) && appErr.GetHTTPStatus() == http.StatusBadRequest {
 				log.Infow("Bad request during token extraction", "error", err, "path", requestPath)
-				_ = c.Error(err) // Pass the original bad request error
+				c.Error(err) // Pass the original bad request error
 			} else {
 				// Handle other extraction errors (like token_missing) as Unauthorized
 				log.Warnw("Authentication failed: Token extraction error", "error", err, "path", requestPath)
-				_ = c.Error(apperrors.Unauthorized("token_missing", "Authorization required"))
-			}
-
-			// Use the exact error message from the error for testing compatibility
-			var errorMsg string
-			if strings.Contains(err.Error(), "Invalid authorization header format") {
-				errorMsg = "Invalid authorization header format"
-			} else {
-				errorMsg = "Authorization header is missing"
+				c.Error(apperrors.Unauthorized("token_missing", "Authorization required"))
 			}
 
 			// Set appropriate HTTP status and response in context
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    http.StatusUnauthorized,
-				"message": errorMsg,
+				"message": err.Error(),
 			})
 			c.Abort()
 			return
@@ -54,17 +47,17 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 		if err != nil {
 			// Determine appropriate error response based on validation error type
 			log.Warnw("Authentication failed: Token validation error", "error", err, "path", requestPath)
-			// Map validation errors (like ErrTokenExpired) to specific AppError types
+
 			var statusCode = http.StatusUnauthorized
 			var errorMsg = "Invalid or expired token"
 			var errorDetails = err.Error()
 
-			if errors.Is(err, ErrTokenExpired) {
-				_ = c.Error(apperrors.Unauthorized("token_expired", "Token has expired"))
-			} else if errors.Is(err, ErrTokenInvalid) || errors.Is(err, ErrJWKSKeyNotFound) {
-				_ = c.Error(apperrors.Unauthorized("token_invalid", "Invalid token provided"))
+			if stderrors.Is(err, auth.ErrTokenExpired) {
+				c.Error(apperrors.Unauthorized("token_expired", "Token has expired"))
+			} else if stderrors.Is(err, auth.ErrTokenInvalid) {
+				c.Error(apperrors.Unauthorized("token_invalid", "Invalid token provided"))
 			} else {
-				_ = c.Error(apperrors.Unauthorized("auth_failed", "Authentication failed")) // Generic fallback
+				c.Error(apperrors.Unauthorized("auth_failed", "Authentication failed")) // Generic fallback
 			}
 
 			// Set appropriate HTTP status and response in context
@@ -81,7 +74,7 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 		// Step 3: Set UserID in Context
 		if userID == "" {
 			log.Errorw("Authentication failed: Valid token resulted in empty UserID", "path", requestPath)
-			_ = c.Error(apperrors.InternalServerError("internal_error"))
+			c.Error(apperrors.InternalServerError("internal_error"))
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"code":    http.StatusInternalServerError,
 				"message": "Internal server error",
@@ -128,7 +121,7 @@ func extractToken(c *gin.Context) (string, error) {
 		}
 		log.Warnw("WebSocket upgrade request missing 'token' in query parameter", "path", c.Request.URL.Path)
 		// Use ValidationError type constant for bad request input
-		return "", apperrors.New(apperrors.ValidationError, "websocket_token_missing", "WebSocket token required in query parameter")
+		return "", apperrors.ValidationFailed("websocket_token_missing", "WebSocket token required in query parameter")
 	}
 
 	// 3. No token found
@@ -139,7 +132,7 @@ func extractToken(c *gin.Context) (string, error) {
 func ValidateTokenWithoutAbort(validator Validator, token string) (string, error) {
 	if token == "" {
 		// Use ValidationError type constant for bad request input
-		return "", apperrors.New(apperrors.ValidationError, "token_empty", "Token cannot be empty")
+		return "", apperrors.ValidationFailed("token_empty", "Token cannot be empty")
 	}
 	if validator == nil {
 		return "", apperrors.InternalServerError("validator_nil")
@@ -148,7 +141,7 @@ func ValidateTokenWithoutAbort(validator Validator, token string) (string, error
 	userID, err := validator.Validate(token)
 	if err != nil {
 		// Map validation errors to appropriate app errors if needed, or return raw validation error
-		if errors.Is(err, ErrTokenExpired) {
+		if stderrors.Is(err, auth.ErrTokenExpired) {
 			return "", apperrors.Unauthorized("token_expired", err.Error())
 		}
 		return "", apperrors.Unauthorized("invalid_token", fmt.Sprintf("Invalid token: %v", err))

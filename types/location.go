@@ -32,18 +32,8 @@ type MemberLocation struct {
 	UserRole string `json:"userRole"`
 }
 
-// OfflineLocationUpdate represents a location update that was captured while offline
-type OfflineLocationUpdate struct {
-	UserID    string           `json:"userId"`
-	Updates   []LocationUpdate `json:"updates"`
-	DeviceID  string           `json:"deviceId"`
-	CreatedAt time.Time        `json:"createdAt"`
-}
-
 // LocationServiceInterface defines the interface for location-related operations
 type LocationServiceInterface interface {
 	UpdateLocation(ctx interface{}, userID string, update LocationUpdate) (*Location, error)
 	GetTripMemberLocations(ctx interface{}, tripID string) ([]MemberLocation, error)
-	SaveOfflineLocations(ctx interface{}, userID string, updates []LocationUpdate, deviceID string) error
-	ProcessOfflineLocations(ctx interface{}, userID string) error
 }

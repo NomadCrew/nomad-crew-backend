@@ -3,599 +3,642 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/internal/service"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/middleware"
-	"github.com/NomadCrew/nomad-crew-backend/models"
-	services "github.com/NomadCrew/nomad-crew-backend/models/chat/service"
-	stor "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
+
+// TripServiceInterface defines the trip service methods needed by ChatHandler
+type TripServiceInterface interface {
+	IsTripMember(ctx context.Context, tripID, userID string) (bool, error)
+}
 
 // ChatHandler encapsulates dependencies and methods for handling chat-related HTTP requests.
 type ChatHandler struct {
-	// chatService contains business logic for chat operations (e.g., creating groups).
-	chatService *services.ChatService
-	// chatStore provides direct data access methods for chat entities.
-	chatStore store.ChatStore
-	// userStore provides access to user data.
-	userStore stor.UserStore
+	chatService    service.ChatService
+	tripService    TripServiceInterface
+	eventPublisher types.EventPublisher
+	logger         *zap.Logger
 }
 
 // NewChatHandler creates a new instance of ChatHandler with required dependencies.
-func NewChatHandler(chatService *services.ChatService, chatStore store.ChatStore, userStore stor.UserStore) *ChatHandler {
+func NewChatHandler(
+	chatService service.ChatService,
+	tripService TripServiceInterface,
+	eventPublisher types.EventPublisher,
+	logger *zap.Logger,
+) *ChatHandler {
 	return &ChatHandler{
-		chatService: chatService,
-		chatStore:   chatStore,
-		userStore:   userStore,
+		chatService:    chatService,
+		tripService:    tripService,
+		eventPublisher: eventPublisher,
+		logger:         logger,
 	}
 }
 
-// CreateChatGroup handles the HTTP POST request to create a new chat group for a trip.
-// It expects trip details in the request body and the creator's user ID from the context.
-// @Summary Create Chat Group
-// @Description Creates a new chat group associated with a trip.
+// verifyTripMembership checks if the user is a member of the specified trip
+func (h *ChatHandler) verifyTripMembership(ctx context.Context, tripID, userID string) error {
+	// Check if the user is a member of the trip
+	isMember, err := h.tripService.IsTripMember(ctx, tripID, userID)
+	if err != nil {
+		return err
+	}
+
+	if !isMember {
+		return errors.Forbidden("not_trip_member", "User is not a member of this trip")
+	}
+
+	return nil
+}
+
+// ListMessages godoc
+// @Summary List chat messages
+// @Description Retrieves messages for a trip's chat with pagination
 // @Tags chat
 // @Accept json
 // @Produce json
-// @Param group body types.ChatGroupCreateRequest true "Chat Group Creation Payload"
-// @Success 201 {object} types.ChatGroup "Successfully created chat group"
-// @Failure 400 {object} errors.HTTPError "Invalid request body"
-// @Failure 401 {object} errors.HTTPError "Unauthorized (user ID not found in context)"
-// @Failure 500 {object} errors.HTTPError "Internal server error (failed to create or retrieve group)"
-// @Router /chat/groups [post]
-func (h *ChatHandler) CreateChatGroup(c *gin.Context) {
+// @Param id path string true "Trip ID"
+// @Param limit query int false "Number of messages to return (default 50)"
+// @Param offset query int false "Offset for pagination (default 0)"
+// @Success 200 {object} types.ChatMessagePaginatedResponse "List of chat messages with pagination info"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or query parameters"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/messages [get]
+// @Security BearerAuth
+func (h *ChatHandler) ListMessages(c *gin.Context) {
 	log := logger.GetLogger()
 
-	userIDAny, exists := c.Get(string(middleware.UserIDKey)) // Use string cast
-	if !exists {
-		log.Warn("CreateChatGroup: User ID not found in context")
-		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
-		return
-	}
-	userID, ok := userIDAny.(string)
-	if !ok || userID == "" {
-		log.Error("CreateChatGroup: User ID in context is not a valid string")
-		_ = c.Error(errors.InternalServerError("Invalid user ID in context"))
-		return
-	}
-
-	var req types.ChatGroupCreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Warnw("CreateChatGroup: Failed to bind JSON request", "error", err)
-		_ = c.Error(errors.ValidationFailed("invalid_request", fmt.Sprintf("Invalid request body: %v", err)))
-		return
-	}
-
-	// Prepare the group data for creation.
-	group := types.ChatGroup{
-		TripID:      req.TripID,
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedBy:   userID,
-	}
-
-	// Call the service to create the group.
-	groupID, err := h.chatService.CreateChatGroup(c.Request.Context(), group)
-	if err != nil {
-		log.Errorw("CreateChatGroup: Failed to create chat group via service", "error", err)
-		_ = c.Error(err) // Propagate the error from the service/store layer
-		return
-	}
-
-	// Retrieve the newly created group to return it in the response.
-	createdGroup, err := h.chatStore.GetChatGroup(c.Request.Context(), groupID)
-	if err != nil {
-		// Log the error, but might still return success (201) if creation itself was okay.
-		// However, failing to retrieve is usually indicative of a problem.
-		log.Errorw("CreateChatGroup: Failed to retrieve created chat group", "error", err, "groupID", groupID)
-		_ = c.Error(errors.InternalServerError(fmt.Sprintf("Failed to retrieve created chat group %s", groupID)))
-		return
-	}
-
-	c.JSON(http.StatusCreated, createdGroup)
-}
-
-// GetChatGroup handles the HTTP GET request to retrieve a specific chat group by its ID.
-// @Summary Get Chat Group
-// @Description Retrieves details of a specific chat group by ID.
-// @Tags chat
-// @Produce json
-// @Param groupID path string true "Chat Group ID"
-// @Success 200 {object} types.ChatGroup "Successfully retrieved chat group"
-// @Failure 400 {object} errors.HTTPError "Group ID parameter is missing"
-// @Failure 401 {object} errors.HTTPError "Unauthorized (user ID not found in context)"
-// @Failure 404 {object} errors.HTTPError "Chat group not found"
-// @Failure 500 {object} errors.HTTPError "Internal server error (failed to retrieve group)"
-// @Router /chat/groups/{groupID} [get]
-func (h *ChatHandler) GetChatGroup(c *gin.Context) {
-	log := logger.GetLogger()
-
-	_, exists := c.Get(string(middleware.UserIDKey)) // Use string cast
-	if !exists {
-		log.Warn("GetChatGroup: User ID not found in context")
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("ListMessages: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
 		return
 	}
 
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warn("GetChatGroup: Group ID not provided in path")
-		_ = c.Error(errors.ValidationFailed("missing_param", "Group ID path parameter is required"))
-		return
-	}
-
-	// Retrieve the group directly from the store.
-	group, err := h.chatStore.GetChatGroup(c.Request.Context(), groupID)
-	if err != nil {
-		log.Errorw("GetChatGroup: Failed to get chat group from store", "error", err, "groupID", groupID)
-		_ = c.Error(err) // Propagate store/db error (e.g., NotFound, DatabaseError)
-		return
-	}
-
-	c.JSON(http.StatusOK, group)
-}
-
-// UpdateChatGroup handles the HTTP PUT request to update an existing chat group.
-// @Summary Update Chat Group
-// @Description Updates the name and/or description of a specific chat group.
-// @Tags chat
-// @Accept json
-// @Produce json
-// @Param groupID path string true "Chat Group ID"
-// @Param group body types.ChatGroupUpdateRequest true "Chat Group Update Payload"
-// @Success 200 {object} types.ChatGroup "Successfully updated chat group"
-// @Failure 400 {object} errors.HTTPError "Group ID parameter missing or Invalid request body"
-// @Failure 401 {object} errors.HTTPError "Unauthorized (user ID not found in context)"
-// @Failure 404 {object} errors.HTTPError "Chat group not found"
-// @Failure 500 {object} errors.HTTPError "Internal server error (failed to update or retrieve group)"
-// @Router /chat/groups/{groupID} [put]
-func (h *ChatHandler) UpdateChatGroup(c *gin.Context) {
-	log := logger.GetLogger()
-
-	_, exists := c.Get(string(middleware.UserIDKey)) // Use string cast
-	if !exists {
-		log.Warn("UpdateChatGroup: User ID not found in context")
-		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
-		return
-	}
-
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warn("UpdateChatGroup: Group ID not provided in path")
-		_ = c.Error(errors.ValidationFailed("missing_param", "Group ID path parameter is required"))
-		return
-	}
-
-	var req types.ChatGroupUpdateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Warnw("UpdateChatGroup: Failed to bind JSON request", "error", err, "groupID", groupID)
-		_ = c.Error(errors.ValidationFailed("invalid_request", fmt.Sprintf("Invalid request body: %v", err)))
-		return
-	}
-
-	// Update the group in the store.
-	err := h.chatStore.UpdateChatGroup(c.Request.Context(), groupID, req)
-	if err != nil {
-		log.Errorw("UpdateChatGroup: Failed to update chat group in store", "error", err, "groupID", groupID)
-		_ = c.Error(err) // Propagate store/db error (e.g., NotFound, DatabaseError)
-		return
-	}
-
-	// Retrieve the updated group to return it.
-	updatedGroup, err := h.chatStore.GetChatGroup(c.Request.Context(), groupID)
-	if err != nil {
-		log.Errorw("UpdateChatGroup: Failed to retrieve updated chat group", "error", err, "groupID", groupID)
-		_ = c.Error(errors.InternalServerError(fmt.Sprintf("Failed to retrieve updated chat group %s", groupID)))
-		return
-	}
-
-	c.JSON(http.StatusOK, updatedGroup)
-}
-
-// DeleteChatGroup handles the HTTP DELETE request to remove a chat group.
-// @Summary Delete Chat Group
-// @Description Deletes a specific chat group by ID.
-// @Tags chat
-// @Produce json
-// @Param groupID path string true "Chat Group ID"
-// @Success 200 {object} gin.H{"message"=\"Chat group deleted successfully\"} "Successfully deleted chat group"
-// @Failure 400 {object} errors.HTTPError "Group ID parameter is missing"
-// @Failure 401 {object} errors.HTTPError "Unauthorized (user ID not found in context)"
-// @Failure 404 {object} errors.HTTPError "Chat group not found"
-// @Failure 500 {object} errors.HTTPError "Internal server error (failed to delete group)"
-// @Router /chat/groups/{groupID} [delete]
-func (h *ChatHandler) DeleteChatGroup(c *gin.Context) {
-	log := logger.GetLogger()
-
-	_, exists := c.Get(string(middleware.UserIDKey)) // Use string cast
-	if !exists {
-		log.Warn("DeleteChatGroup: User ID not found in context")
-		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
-		return
-	}
-
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warn("DeleteChatGroup: Group ID not provided in path")
-		_ = c.Error(errors.ValidationFailed("missing_param", "Group ID path parameter is required"))
-		return
-	}
-
-	// Delete the group via the store.
-	err := h.chatStore.DeleteChatGroup(c.Request.Context(), groupID)
-	if err != nil {
-		log.Errorw("DeleteChatGroup: Failed to delete chat group from store", "error", err, "groupID", groupID)
-		_ = c.Error(err) // Propagate store/db error (e.g., NotFound, DatabaseError)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Chat group deleted successfully"})
-}
-
-// ListChatGroups handles the HTTP GET request to list chat groups for a specific trip.
-// Supports pagination via query parameters (limit, offset).
-// @Summary List Chat Groups
-// @Description Retrieves a paginated list of chat groups for a given trip ID.
-// @Tags chat
-// @Produce json
-// @Param tripID query string true "Trip ID to filter groups by"
-// @Param limit query int false "Pagination limit (default 10)"
-// @Param offset query int false "Pagination offset (default 0)"
-// @Success 200 {object} types.ChatGroupPaginatedResponse "Successfully retrieved chat groups"
-// @Failure 400 {object} errors.HTTPError "Trip ID query parameter is missing or invalid pagination parameters"
-// @Failure 401 {object} errors.HTTPError "Unauthorized (user ID not found in context)"
-// @Failure 500 {object} errors.HTTPError "Internal server error (failed to list groups)"
-// @Router /chat/groups [get]
-func (h *ChatHandler) ListChatGroups(c *gin.Context) {
-	log := logger.GetLogger()
-
-	_, exists := c.Get(string(middleware.UserIDKey)) // Use string cast
-	if !exists {
-		log.Warn("ListChatGroups: User ID not found in context")
-		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
-		return
-	}
-
-	tripID := c.Query("tripID")
+	// Get trip ID from path
+	tripID := c.Param("id")
 	if tripID == "" {
-		log.Warn("ListChatGroups: Trip ID query parameter not provided")
-		_ = c.Error(errors.ValidationFailed("missing_query_param", "Trip ID query parameter is required"))
+		log.Warn("ListMessages: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
 		return
 	}
 
-	// Parse pagination parameters with defaults and basic validation.
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	if err != nil || limit <= 0 {
-		log.Warnw("ListChatGroups: Invalid limit query parameter", "value", c.Query("limit"), "error", err)
-		limit = 10 // Default limit
-	}
-
-	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if err != nil || offset < 0 {
-		log.Warnw("ListChatGroups: Invalid offset query parameter", "value", c.Query("offset"), "error", err)
-		offset = 0 // Default offset
-	}
-
-	// Retrieve the list from the store.
-	groupsResponse, err := h.chatStore.ListChatGroupsByTrip(c.Request.Context(), tripID, limit, offset)
-	if err != nil {
-		log.Errorw("ListChatGroups: Failed to list chat groups from store", "error", err, "tripID", tripID)
-		_ = c.Error(err) // Propagate store/db error
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("ListMessages: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusOK, groupsResponse)
-}
-
-// ListChatMessages handles the HTTP GET request to list messages in a chat group.
-// Supports pagination via query parameters (limit, offset).
-// @Summary List Chat Messages
-// @Description Retrieves a paginated list of messages for a given chat group ID.
-// @Tags chat
-// @Produce json
-// @Param groupID path string true "Chat Group ID to list messages for"
-// @Param limit query int false "Pagination limit (default 50)"
-// @Param offset query int false "Pagination offset (default 0)"
-// @Success 200 {object} types.ChatMessagePaginatedResponse "Successfully retrieved chat messages"
-// @Failure 400 {object} errors.HTTPError "Group ID parameter missing or invalid pagination parameters"
-// @Failure 401 {object} errors.HTTPError "Unauthorized"
-// @Failure 500 {object} errors.HTTPError "Internal server error"
-// @Router /chat/groups/{groupID}/messages [get]
-func (h *ChatHandler) ListChatMessages(c *gin.Context) {
-	log := logger.GetLogger()
-
-	_, exists := c.Get(string(middleware.UserIDKey)) // Use string cast
-	if !exists {
-		log.Warn("ListChatMessages: User ID not found in context")
-		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
-		return
-	}
-
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warn("ListChatMessages: Group ID path parameter not provided")
-		_ = c.Error(errors.ValidationFailed("missing_param", "Group ID path parameter is required"))
-		return
-	}
-
-	// Parse pagination parameters.
+	// Parse pagination parameters
 	limit, err := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	if err != nil || limit <= 0 {
-		log.Warnw("ListChatMessages: Invalid limit query parameter", "value", c.Query("limit"), "error", err)
+		log.Warnw("ListMessages: Invalid limit query parameter", "value", c.Query("limit"), "error", err)
 		limit = 50 // Default limit
 	}
 
 	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	if err != nil || offset < 0 {
-		log.Warnw("ListChatMessages: Invalid offset query parameter", "value", c.Query("offset"), "error", err)
+		log.Warnw("ListMessages: Invalid offset query parameter", "value", c.Query("offset"), "error", err)
 		offset = 0 // Default offset
 	}
 
-	// Create pagination parameters struct.
+	// Create pagination parameters
 	paginationParams := types.PaginationParams{
 		Limit:  limit,
 		Offset: offset,
 	}
 
-	// Call the store method with the correct signature.
-	messages, total, err := h.chatStore.ListChatMessages(c.Request.Context(), groupID, paginationParams)
+	// Get messages from the service - we need to get the first group for the trip
+	// In a real implementation, we would have a more robust way to get the correct group
+	groups, err := h.chatService.ListTripGroups(c.Request.Context(), tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})
 	if err != nil {
-		log.Errorw("ListChatMessages: Failed to list chat messages from store", "error", err, "groupID", groupID)
-		_ = c.Error(err) // Propagate store/db error
+		log.Errorw("ListMessages: Failed to get trip groups", "error", err, "tripID", tripID)
+		_ = c.Error(err)
 		return
 	}
 
-	// Fetch user details for each message and construct ChatMessageWithUser slice.
-	messagesWithUser := make([]types.ChatMessageWithUser, 0, len(messages))
-	for _, msg := range messages {
-		userIDUUID, err := uuid.Parse(msg.UserID)
-		if err != nil {
-			// Log the error but potentially continue, or return an error depending on requirements
-			log.Errorw("ListChatMessages: Failed to parse user ID for message", "error", err, "userID", msg.UserID, "messageID", msg.ID)
-			// Decide how to handle this - skip message, return error? Skipping for now.
-			continue
-		}
-
-		// Fetch user details using UserStore
-		// Assuming UserStore.GetUserByID returns *models.User
-		userModel, err := h.userStore.GetUserByID(c.Request.Context(), userIDUUID)
-		if err != nil {
-			// Log the error but potentially continue, or return an error.
-			log.Errorw("ListChatMessages: Failed to get user details from store", "error", err, "userID", msg.UserID)
-			// Skipping message if user not found or error occurs
-			continue
-		}
-
-		// Convert models.User to types.UserResponse
-		userResponse := types.UserResponse{
-			ID:          userModel.ID.String(),
-			Email:       userModel.Email,
-			Username:    userModel.Username,
-			FirstName:   userModel.FirstName,
-			LastName:    userModel.LastName,
-			AvatarURL:   userModel.ProfilePictureURL,
-			DisplayName: getUserDisplayName(userModel),
-		}
-
-		messagesWithUser = append(messagesWithUser, types.ChatMessageWithUser{
-			Message: msg,          // The original ChatMessage
-			User:    userResponse, // The fetched user details
+	if len(groups.Groups) == 0 {
+		log.Warn("ListMessages: No chat groups found for trip", "tripID", tripID)
+		c.JSON(http.StatusOK, types.ChatMessagePaginatedResponse{
+			Messages: []types.ChatMessageWithUser{},
+			Total:    0,
+			Limit:    limit,
+			Offset:   offset,
 		})
-	}
-
-	// Construct the paginated response according to types.ChatMessagePaginatedResponse definition.
-	response := types.ChatMessagePaginatedResponse{
-		Messages: messagesWithUser,
-		Total:    total,
-		Limit:    limit,
-		Offset:   offset,
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
-// getUserDisplayName generates a display name from user data
-func getUserDisplayName(user *models.User) string {
-	if user.FirstName != "" {
-		if user.LastName != "" {
-			return fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-		return user.FirstName
-	}
-	return user.Username
-}
-
-// ListChatGroupMembers lists all members of a chat group
-func (h *ChatHandler) ListChatGroupMembers(c *gin.Context) {
-	log := logger.GetLogger()
-
-	// Get user ID from context
-	_, exists := c.Get("user_id")
-	if !exists {
-		log.Warnw("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	// Get group ID from path
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warnw("Group ID not provided")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Group ID is required"})
-		return
-	}
-
-	// List chat group members
-	members, err := h.chatStore.ListChatGroupMembers(c.Request.Context(), groupID)
+	groupID := groups.Groups[0].ID
+	messagesResponse, err := h.chatService.ListMessages(c.Request.Context(), groupID, userID, paginationParams)
 	if err != nil {
-		log.Errorw("Failed to list chat group members", "error", err, "groupID", groupID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list chat group members"})
+		log.Errorw("ListMessages: Failed to list chat messages", "error", err, "tripID", tripID, "groupID", groupID)
+		_ = c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusOK, members)
+	c.JSON(http.StatusOK, messagesResponse)
 }
 
-// HandleChatWebSocket handles WebSocket connections for chat
-func (h *ChatHandler) HandleChatWebSocket(c *gin.Context) {
+// SendMessage godoc
+// @Summary Send chat message
+// @Description Sends a new message in a trip's chat
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param request body types.ChatMessageCreateRequest true "Message content"
+// @Success 201 {object} types.ChatMessage "Created message details"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or message content"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/messages [post]
+// @Security BearerAuth
+func (h *ChatHandler) SendMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID, exists := c.Get("user_id")
-	if !exists {
-		log.Warnw("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("SendMessage: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
 		return
 	}
 
-	// Get group ID from path
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warnw("Group ID not provided")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Group ID is required"})
+	// Get trip ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("SendMessage: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
 		return
 	}
 
-	// Get the chat group to verify it exists
-	_, err := h.chatStore.GetChatGroup(c.Request.Context(), groupID)
-	if err != nil {
-		log.Errorw("Failed to get chat group", "error", err, "groupID", groupID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat group"})
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("SendMessage: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
 		return
 	}
 
-	// Get WebSocket connection from middleware
-	conn, ok := c.MustGet("wsConnection").(*middleware.SafeConn)
-	if !ok {
-		log.Error("WebSocket connection not found in context")
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	// Register the connection with the chat service
-	h.chatService.RegisterConnection(groupID, userID.(string), conn)
-
-	// Create context with cancellation for cleanup
-	wsCtx, cancel := context.WithCancel(c.Request.Context())
-	defer cancel()
-
-	// Set up a goroutine to read messages from the WebSocket
-	go func() {
-		defer func() {
-			// Unregister the connection when done
-			h.chatService.UnregisterConnection(groupID, userID.(string))
-
-			// Close the connection
-			if err := conn.Close(); err != nil {
-				log.Warnw("Error closing WebSocket connection", "error", err, "groupID", groupID, "userID", userID)
-			}
-
-			// Cancel the context
-			cancel()
-		}()
-
-		for {
-			// Check if the context is done
-			select {
-			case <-wsCtx.Done():
-				return
-			default:
-				// Continue processing
-			}
-
-			// Read a message from the connection
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					log.Infow("WebSocket connection closed normally", "groupID", groupID, "userID", userID)
-				} else {
-					log.Warnw("Error reading WebSocket message", "error", err, "groupID", groupID, "userID", userID)
-				}
-				return
-			}
-
-			// Handle the message
-			if err := h.chatService.HandleWebSocketMessage(wsCtx, conn, message, userID.(string)); err != nil {
-				log.Errorw("Failed to handle WebSocket message", "error", err, "groupID", groupID, "userID", userID)
-
-				// Send an error message back to the client
-				errorMsg := types.WebSocketChatMessage{
-					Type:  types.WebSocketMessageTypeError,
-					Error: err.Error(),
-				}
-
-				errorJSON, err := json.Marshal(errorMsg)
-				if err != nil {
-					log.Errorw("Failed to marshal error message", "error", err)
-					continue
-				}
-
-				if err := conn.WriteMessage(websocket.TextMessage, errorJSON); err != nil {
-					log.Errorw("Failed to send error message", "error", err)
-				}
-			}
-		}
-	}()
-
-	// Keep the handler running until the request context is done
-	<-c.Request.Context().Done()
-}
-
-// UpdateLastReadMessage updates the last read message for a user in a chat group
-func (h *ChatHandler) UpdateLastReadMessage(c *gin.Context) {
-	log := logger.GetLogger()
-
-	// Get user ID from context
-	userID, exists := c.Get("user_id")
-	if !exists {
-		log.Warnw("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Get group ID from path
-	groupID := c.Param("groupID")
-	if groupID == "" {
-		log.Warnw("Group ID not provided")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Group ID is required"})
-		return
-	}
-
-	// Get message ID from request body
-	var req struct {
-		MessageID string `json:"messageId"`
-	}
-
+	// Parse request body
+	var req types.ChatMessageCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Warnw("Failed to parse request body", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		log.Warnw("SendMessage: Failed to bind JSON request", "error", err)
+		_ = c.Error(errors.ValidationFailed("invalid_request", fmt.Sprintf("Invalid request body: %v", err)))
 		return
 	}
 
-	// Validate message ID
-	if req.MessageID == "" {
-		log.Warnw("Empty message ID provided", "groupID", groupID, "userID", userID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Message ID cannot be empty"})
-		return
-	}
-
-	// Update the last read message
-	err := h.chatService.UpdateLastReadMessage(c.Request.Context(), groupID, userID.(string), req.MessageID)
+	// Get the chat group for this trip
+	groups, err := h.chatService.ListTripGroups(c.Request.Context(), tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})
 	if err != nil {
-		log.Errorw("Failed to update last read message", "error", err, "groupID", groupID, "userID", userID, "messageID", req.MessageID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update last read message"})
+		log.Errorw("SendMessage: Failed to get trip groups", "error", err, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	var groupID string
+	if len(groups.Groups) == 0 {
+		// Create a default group if none exists
+		log.Info("SendMessage: No group found for trip, creating default group", "tripID", tripID)
+		group, err := h.chatService.CreateGroup(c.Request.Context(), tripID, "Trip Chat", userID)
+		if err != nil {
+			log.Errorw("SendMessage: Failed to create default group", "error", err, "tripID", tripID)
+			_ = c.Error(err)
+			return
+		}
+		groupID = group.ID
+	} else {
+		groupID = groups.Groups[0].ID
+	}
+
+	// Send message via service
+	message, err := h.chatService.PostMessage(c.Request.Context(), groupID, userID, req.Content)
+	if err != nil {
+		log.Errorw("SendMessage: Failed to send message", "error", err, "tripID", tripID, "groupID", groupID)
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, message)
+}
+
+// UpdateMessage handles the HTTP PUT request to update a message in a trip's chat.
+func (h *ChatHandler) UpdateMessage(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("UpdateMessage: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
+		return
+	}
+
+	// Get trip ID and message ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("UpdateMessage: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
+		return
+	}
+
+	messageID := c.Param("messageId")
+	if messageID == "" {
+		log.Warn("UpdateMessage: Message ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Message ID path parameter is required"))
+		return
+	}
+
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("UpdateMessage: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	// Parse request body
+	var req types.ChatMessageUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnw("UpdateMessage: Failed to bind JSON request", "error", err)
+		_ = c.Error(errors.ValidationFailed("invalid_request", fmt.Sprintf("Invalid request body: %v", err)))
+		return
+	}
+
+	// Update message via service
+	message, err := h.chatService.UpdateMessage(c.Request.Context(), messageID, userID, req.Content)
+	if err != nil {
+		log.Errorw("UpdateMessage: Failed to update message", "error", err, "messageID", messageID)
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, message)
+}
+
+// DeleteMessage godoc
+// @Summary Delete chat message
+// @Description Deletes a message from a trip's chat
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param messageId path string true "Message ID"
+// @Success 200 {object} map[string]string "Success response with message"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or message ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/messages/{messageId} [delete]
+// @Security BearerAuth
+// DeleteMessage handles the HTTP DELETE request to delete a message in a trip's chat.
+func (h *ChatHandler) DeleteMessage(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("DeleteMessage: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
+		return
+	}
+
+	// Get trip ID and message ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("DeleteMessage: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
+		return
+	}
+
+	messageID := c.Param("messageId")
+	if messageID == "" {
+		log.Warn("DeleteMessage: Message ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Message ID path parameter is required"))
+		return
+	}
+
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("DeleteMessage: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	// Delete message via service
+	err := h.chatService.DeleteMessage(c.Request.Context(), messageID, userID)
+	if err != nil {
+		log.Errorw("DeleteMessage: Failed to delete message", "error", err, "messageID", messageID)
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Message deleted successfully"})
+}
+
+// AddReaction godoc
+// @Summary Add reaction to message
+// @Description Adds a reaction to a message in a trip's chat
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param messageId path string true "Message ID"
+// @Param request body types.ChatMessageReactionRequest true "Reaction details"
+// @Success 200 {object} map[string]string "Success response with message"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID, message ID, or reaction"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/messages/{messageId}/reactions [post]
+// @Security BearerAuth
+// AddReaction handles the HTTP POST request to add a reaction to a message.
+func (h *ChatHandler) AddReaction(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("AddReaction: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
+		return
+	}
+
+	// Get trip ID and message ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("AddReaction: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
+		return
+	}
+
+	messageID := c.Param("messageId")
+	if messageID == "" {
+		log.Warn("AddReaction: Message ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Message ID path parameter is required"))
+		return
+	}
+
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("AddReaction: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	// Parse request body
+	var req types.ChatMessageReactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnw("AddReaction: Failed to bind JSON request", "error", err)
+		_ = c.Error(errors.ValidationFailed("invalid_request", fmt.Sprintf("Invalid request body: %v", err)))
+		return
+	}
+
+	// Add reaction via service
+	err := h.chatService.AddReaction(c.Request.Context(), messageID, userID, req.Reaction)
+	if err != nil {
+		log.Errorw("AddReaction: Failed to add reaction", "error", err, "messageID", messageID)
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reaction added successfully"})
+}
+
+// RemoveReaction godoc
+// @Summary Remove reaction from message
+// @Description Removes a reaction from a message in a trip's chat
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param messageId path string true "Message ID"
+// @Param reactionType path string true "Reaction type"
+// @Success 200 {object} map[string]string "Success response with message"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID, message ID, or reaction type"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/messages/{messageId}/reactions/{reactionType} [delete]
+// @Security BearerAuth
+// RemoveReaction handles the HTTP DELETE request to remove a reaction from a message.
+func (h *ChatHandler) RemoveReaction(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("RemoveReaction: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
+		return
+	}
+
+	// Get trip ID, message ID, and reaction type from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("RemoveReaction: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
+		return
+	}
+
+	messageID := c.Param("messageId")
+	if messageID == "" {
+		log.Warn("RemoveReaction: Message ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Message ID path parameter is required"))
+		return
+	}
+
+	reactionType := c.Param("reactionType")
+	if reactionType == "" {
+		log.Warn("RemoveReaction: Reaction type path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Reaction type path parameter is required"))
+		return
+	}
+
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("RemoveReaction: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	// Remove reaction via service
+	err := h.chatService.RemoveReaction(c.Request.Context(), messageID, userID, reactionType)
+	if err != nil {
+		log.Errorw("RemoveReaction: Failed to remove reaction", "error", err, "messageID", messageID, "reactionType", reactionType)
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reaction removed successfully"})
+}
+
+// ListReactions godoc
+// @Summary List message reactions
+// @Description Lists all reactions for a message in a trip's chat (currently not implemented)
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param messageId path string true "Message ID"
+// @Success 200 {object} map[string][]string "List of reactions by type"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or message ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Failure 501 {object} map[string]string "Not implemented"
+// @Router /trips/{id}/chat/messages/{messageId}/reactions [get]
+// @Security BearerAuth
+// ListReactions handles the HTTP GET request to list all reactions for a message.
+// NOTE: This functionality is not directly supported by the current ChatService interface
+// and should be implemented in the future.
+func (h *ChatHandler) ListReactions(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Listing reactions is not implemented"})
+}
+
+// UpdateLastRead godoc
+// @Summary Update last read message
+// @Description Updates the user's last read message for a trip's chat
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param request body types.ChatLastReadRequest true "Last read details"
+// @Success 200 {object} map[string]string "Success response with message"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or missing last read message ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/last-read [put]
+// @Security BearerAuth
+// UpdateLastRead handles the HTTP PUT request to update the user's last read message.
+func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("UpdateLastRead: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
+		return
+	}
+
+	// Get trip ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("UpdateLastRead: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
+		return
+	}
+
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("UpdateLastRead: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	// Parse request body
+	var req types.ChatLastReadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warnw("UpdateLastRead: Failed to bind JSON request", "error", err)
+		_ = c.Error(errors.ValidationFailed("invalid_request", fmt.Sprintf("Invalid request body: %v", err)))
+		return
+	}
+
+	if req.LastReadMessageID == nil || *req.LastReadMessageID == "" {
+		log.Warn("UpdateLastRead: Last read message ID not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Last read message ID is required"))
+		return
+	}
+
+	// Get the chat group for this trip
+	groups, err := h.chatService.ListTripGroups(c.Request.Context(), tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})
+	if err != nil {
+		log.Errorw("UpdateLastRead: Failed to get trip groups", "error", err, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	if len(groups.Groups) == 0 {
+		log.Warn("UpdateLastRead: No chat group found for trip", "tripID", tripID)
+		_ = c.Error(errors.NotFound("group_not_found", "No chat group found for this trip"))
+		return
+	}
+
+	groupID := groups.Groups[0].ID
+
+	// Update last read message via service
+	err = h.chatService.UpdateLastRead(c.Request.Context(), groupID, userID, *req.LastReadMessageID)
+	if err != nil {
+		log.Errorw("UpdateLastRead: Failed to update last read message", "error", err, "tripID", tripID, "groupID", groupID)
+		_ = c.Error(err)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Last read message updated successfully"})
+}
+
+// ListMembers handles the HTTP GET request to list all members of a trip's chat.
+func (h *ChatHandler) ListMembers(c *gin.Context) {
+	log := logger.GetLogger()
+
+	// Get user ID from context
+	userID := c.GetString("user_id")
+	if userID == "" {
+		log.Warn("ListMembers: User ID not found in context")
+		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
+		return
+	}
+
+	// Get trip ID from path
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("ListMembers: Trip ID path parameter not provided")
+		_ = c.Error(errors.ValidationFailed("missing_param", "Trip ID path parameter is required"))
+		return
+	}
+
+	// Verify the user is a member of the trip
+	if err := h.verifyTripMembership(c.Request.Context(), tripID, userID); err != nil {
+		log.Warnw("ListMembers: User is not a member of the trip", "userID", userID, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	// Get the chat group for this trip
+	groups, err := h.chatService.ListTripGroups(c.Request.Context(), tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})
+	if err != nil {
+		log.Errorw("ListMembers: Failed to get trip groups", "error", err, "tripID", tripID)
+		_ = c.Error(err)
+		return
+	}
+
+	if len(groups.Groups) == 0 {
+		log.Warn("ListMembers: No chat group found for trip", "tripID", tripID)
+		c.JSON(http.StatusOK, []types.UserResponse{})
+		return
+	}
+
+	groupID := groups.Groups[0].ID
+
+	// List group members via service
+	members, err := h.chatService.ListMembers(c.Request.Context(), groupID, userID)
+	if err != nil {
+		log.Errorw("ListMembers: Failed to list group members", "error", err, "tripID", tripID, "groupID", groupID)
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, members)
 }

@@ -54,10 +54,9 @@ func NewWeatherService(eventPublisher types.EventPublisher) *WeatherService {
 
 // --- Internal methods for managing subscriptions and updates ---
 
-// incrementSubscribers handles adding a subscriber for a trip's weather updates.
+// IncrementSubscribers handles adding a subscriber for a trip's weather updates.
 // It starts the update loop for the trip if it's the first subscriber.
-// Renamed from IncrementSubscribers and made internal.
-func (s *WeatherService) incrementSubscribers(tripID string, dest types.Destination) {
+func (s *WeatherService) IncrementSubscribers(tripID string, dest types.Destination) {
 	// TODO: Permission Check - Verify user requesting this (via an external method)
 	// has access to the tripID before incrementing/starting updates.
 
@@ -76,10 +75,9 @@ func (s *WeatherService) incrementSubscribers(tripID string, dest types.Destinat
 	}
 }
 
-// decrementSubscribers handles removing a subscriber.
+// DecrementSubscribers handles removing a subscriber.
 // It stops the update loop if it's the last subscriber.
-// Renamed from DecrementSubscribers and made internal.
-func (s *WeatherService) decrementSubscribers(tripID string) {
+func (s *WeatherService) DecrementSubscribers(tripID string) {
 	// TODO: Permission Check - Verify user requesting this has access to the tripID.
 
 	actual, ok := s.activeTrips.Load(tripID)
@@ -97,6 +95,12 @@ func (s *WeatherService) decrementSubscribers(tripID string) {
 		}
 		s.activeTrips.Delete(tripID)
 	}
+}
+
+// StartWeatherUpdates starts weather updates for a trip.
+// This method implements the WeatherServiceInterface.
+func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
+	s.IncrementSubscribers(tripID, destination)
 }
 
 // startUpdates runs the periodic weather update loop for a specific trip.
@@ -377,7 +381,7 @@ func (s *WeatherService) getCurrentWeather(lat, lon float64) (*types.WeatherInfo
 
 // TriggerImmediateUpdate fetches and publishes weather data immediately for a trip.
 // This can be called externally, e.g., when a destination changes.
-func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) {
+func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) error {
 	log := logger.GetLogger()
 
 	// TODO: Permission Check - Verify the user/caller has permission to trigger updates for this tripID.
@@ -387,10 +391,51 @@ func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID stri
 	// role, err := s.store.GetUserRole(ctx, tripID, userID)
 	// if err != nil || role == types.MemberRoleNone {
 	// 	 log.Warnw("Permission denied for TriggerImmediateUpdate", "tripID", tripID, "userID", userID)
-	// 	 return // Or return an error
+	// 	 return fmt.Errorf("permission denied for trip: %s", tripID)
 	// }
 
 	log.Infow("Triggering immediate weather update", "tripID", tripID, "destination", destination.Address)
-	// Run updateWeather directly (potentially in a goroutine if it's long-running)
+	// Run updateWeather directly
 	s.updateWeather(ctx, tripID, destination)
+	return nil
+}
+
+// GetWeather fetches the latest weather information for a trip
+// This method implements WeatherServiceInterface
+func (s *WeatherService) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
+	log := logger.GetLogger()
+
+	// Check if we have this trip in our active trips
+	actual, ok := s.activeTrips.Load(tripID)
+	if !ok {
+		return nil, fmt.Errorf("no active weather subscription for trip: %s", tripID)
+	}
+
+	subs := actual.(*tripSubscribers)
+	destination := subs.destination
+
+	var lat, lon float64
+	var err error
+
+	// Use coordinates if available, otherwise geocode
+	if destination.Coordinates != nil {
+		lat = destination.Coordinates.Lat
+		lon = destination.Coordinates.Lng
+	} else {
+		lat, lon, err = s.getCoordinates(destination.Address)
+		if err != nil {
+			log.Errorw("Failed to get coordinates for weather", "error", err, "address", destination.Address, "tripID", tripID)
+			return nil, fmt.Errorf("failed to geocode destination: %w", err)
+		}
+	}
+
+	// Get the current weather
+	weather, err := s.getCurrentWeather(lat, lon)
+	if err != nil {
+		log.Errorw("Failed to get current weather data", "latitude", lat, "longitude", lon, "error", err, "tripID", tripID)
+		return nil, fmt.Errorf("failed to fetch weather: %w", err)
+	}
+
+	weather.TripID = tripID
+	return weather, nil
 }

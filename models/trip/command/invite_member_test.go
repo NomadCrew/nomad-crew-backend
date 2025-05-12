@@ -58,6 +58,7 @@ func TestInviteMemberCommand_AcceptanceURL(t *testing.T) {
 			mockEmailSvc.On("SendInvitationEmail", mock.Anything, mock.Anything).Return(nil)
 
 			// Create a test invitation
+			expiresAt := time.Now().Add(7 * 24 * time.Hour)
 			invitation := &types.TripInvitation{
 				ID:           "test-invitation-id",
 				TripID:       "test-trip-id",
@@ -65,7 +66,7 @@ func TestInviteMemberCommand_AcceptanceURL(t *testing.T) {
 				InviteeEmail: "test@example.com",
 				Role:         types.MemberRoleMember,
 				Status:       types.InvitationStatusPending,
-				ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+				ExpiresAt:    &expiresAt,
 			}
 
 			// Create a command with the test configuration

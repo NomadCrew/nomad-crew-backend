@@ -36,9 +36,9 @@ func NewNotificationHandler(ns service.NotificationService, logger *zap.Logger) 
 // @Param offset query int false "Offset for pagination (default 0)"
 // @Param status query string false "Filter by status ('read' or 'unread')"
 // @Success 200 {array} models.Notification
-// @Failure 400 {object} ErrorResponse "Invalid query parameters"
-// @Failure 401 {object} ErrorResponse "Unauthorized"
-// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Failure 400 {object} types.ErrorResponse "Invalid query parameters"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /notifications [get]
 // @Security BearerAuth
 func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
@@ -103,11 +103,11 @@ func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
 // @Produce json
 // @Param notificationId path string true "Notification ID (UUID)"
 // @Success 204 "No Content"
-// @Failure 400 {object} ErrorResponse "Invalid Notification ID"
-// @Failure 401 {object} ErrorResponse "Unauthorized"
-// @Failure 403 {object} ErrorResponse "Forbidden (Notification does not belong to user)"
-// @Failure 404 {object} ErrorResponse "Notification Not Found"
-// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Failure 400 {object} types.ErrorResponse "Invalid Notification ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 403 {object} types.ErrorResponse "Forbidden (Notification does not belong to user)"
+// @Failure 404 {object} types.ErrorResponse "Notification Not Found"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /notifications/{notificationId}/read [patch]
 // @Security BearerAuth
 func (h *NotificationHandler) MarkNotificationAsRead(c *gin.Context) {
@@ -157,8 +157,8 @@ func (h *NotificationHandler) MarkNotificationAsRead(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} map[string]int64 "Returns the number of notifications marked as read"
-// @Failure 401 {object} ErrorResponse "Unauthorized"
-// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /notifications/read-all [patch]
 // @Security BearerAuth
 func (h *NotificationHandler) MarkAllNotificationsRead(c *gin.Context) {
@@ -192,11 +192,11 @@ func (h *NotificationHandler) MarkAllNotificationsRead(c *gin.Context) {
 // @Produce json
 // @Param notificationId path string true "Notification ID (UUID)"
 // @Success 204 "No Content"
-// @Failure 400 {object} ErrorResponse "Invalid Notification ID"
-// @Failure 401 {object} ErrorResponse "Unauthorized"
-// @Failure 403 {object} ErrorResponse "Forbidden (Notification does not belong to user)"
-// @Failure 404 {object} ErrorResponse "Notification Not Found"
-// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Failure 400 {object} types.ErrorResponse "Invalid Notification ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 403 {object} types.ErrorResponse "Forbidden (Notification does not belong to user)"
+// @Failure 404 {object} types.ErrorResponse "Notification Not Found"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /notifications/{notificationId} [delete]
 // @Security BearerAuth
 func (h *NotificationHandler) DeleteNotification(c *gin.Context) {

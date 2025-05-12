@@ -6,22 +6,22 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 // TripManagementService handles core trip operations
 type TripManagementService struct {
-	store          store.TripStore
+	store          istore.TripStore
 	eventPublisher types.EventPublisher
 	weatherSvc     types.WeatherServiceInterface
 }
 
 // NewTripManagementService creates a new trip management service
 func NewTripManagementService(
-	store store.TripStore,
+	store istore.TripStore,
 	eventPublisher types.EventPublisher,
 	weatherSvc types.WeatherServiceInterface,
 ) *TripManagementService {
@@ -267,8 +267,8 @@ func (s *TripManagementService) UpdateTripStatus(ctx context.Context, tripID, us
 		return apperrors.Wrap(err, apperrors.DatabaseError, "Failed to get trip for status update")
 	}
 
-	// Validate the status transition
-	if !isValidStatusTransition(trip.Status, newStatus) {
+	// Validate the status transition using the method on the type
+	if !trip.Status.IsValidTransition(newStatus) { // Updated call
 		log.Warnw("Invalid status transition attempt", "tripID", tripID, "currentStatus", trip.Status, "newStatus", newStatus)
 		return apperrors.ValidationFailed("invalid_status_transition", fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus))
 	}
@@ -301,11 +301,6 @@ func (s *TripManagementService) UpdateTripStatus(ctx context.Context, tripID, us
 	}
 
 	return nil
-}
-
-// isValidStatusTransition (Helper function - add actual transition logic here)
-func isValidStatusTransition(current, new types.TripStatus) bool {
-	return true
 }
 
 // GetTripWithMembers gets a trip with its members
@@ -406,7 +401,20 @@ func (s *TripManagementService) GetWeatherForTrip(ctx context.Context, tripID st
 		return nil, apperrors.ValidationFailed("incomplete_trip_data", "Trip is missing destination or dates required for weather forecast")
 	}
 
-	// TODO: Implement actual weather retrieval logic
-	// Example: return s.weatherSvc.GetCachedWeather(tripID) or fetch fresh
-	return nil, fmt.Errorf("weather retrieval not implemented yet")
+	// Call the weather service to get the data
+	if s.weatherSvc == nil {
+		// Handle case where weather service might not be configured
+		return nil, fmt.Errorf("weather service is not available") // Or return a specific AppError
+	}
+
+	weatherInfo, err := s.weatherSvc.GetWeather(ctx, tripID)
+	if err != nil {
+		// Handle errors from the weather service (e.g., API error, not found in cache)
+		// Consider wrapping the error or returning specific AppErrors based on the error type
+		logger.GetLogger().Errorw("Failed to get weather from weather service", "error", err, "tripID", tripID)
+		// Use ServerError for dependency failures
+		return nil, apperrors.Wrap(err, apperrors.ServerError, "failed to retrieve weather information")
+	}
+
+	return weatherInfo, nil
 }

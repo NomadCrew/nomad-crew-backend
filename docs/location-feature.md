@@ -25,58 +25,6 @@ The location sharing feature allows trip members to share their real-time locati
 
 - **Response**: The updated location object
 
-### Save Offline Location Updates
-
-- **Path**: `/v1/location/offline`
-- **Method**: POST
-- **Authentication**: Required
-- **Description**: Saves location updates that were captured while the device was offline
-- **Headers**:
-  - `X-Device-ID`: Optional device identifier to track which device sent the updates
-- **Request Body**:
-
-  ```json
-  {
-    "updates": [
-      {
-        "latitude": 37.7749,
-        "longitude": -122.4194,
-        "accuracy": 10.5,
-        "timestamp": 1625097600000
-      },
-      {
-        "latitude": 37.7750,
-        "longitude": -122.4195,
-        "accuracy": 8.3,
-        "timestamp": 1625097660000
-      }
-    ]
-  }
-  ```
-
-- **Response**:
-
-  ```json
-  {
-    "message": "Offline locations saved successfully",
-    "count": 2
-  }
-  ```
-
-### Process Offline Location Updates
-
-- **Path**: `/v1/location/process-offline`
-- **Method**: POST
-- **Authentication**: Required
-- **Description**: Manually triggers processing of offline location updates for the current user
-- **Response**:
-
-  ```json
-  {
-    "message": "Offline locations processed successfully"
-  }
-  ```
-
 ### Get Trip Member Locations
 
 - **Path**: `/v1/trips/{tripId}/locations`
@@ -115,17 +63,15 @@ The location feature is implemented with the following components:
    - `Location`: Represents a user's geographic location
    - `LocationUpdate`: Represents the payload for updating a location
    - `MemberLocation`: Extends Location with user information
-   - `OfflineLocationUpdate`: Represents a batch of location updates captured while offline
 
 3. **Services**:
-   - `LocationService`: Handles business logic for location operations
-   - `OfflineLocationService`: Handles queue-based offline location updates
+   - `LocationService` (or `ManagementService`): Handles business logic for location operations
    - Validates location data
    - Publishes location update events
 
 4. **Handlers**:
    - `LocationHandler`: Handles HTTP requests for location operations
-   - Includes endpoints for updating location, saving offline updates, and retrieving trip member locations
+   - Includes endpoints for updating location and retrieving trip member locations
 
 5. **Events**:
    - `EventTypeLocationUpdated`: Event type for location updates

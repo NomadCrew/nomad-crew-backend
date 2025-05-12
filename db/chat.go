@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
@@ -591,56 +590,42 @@ func (s *PostgresChatStore) RemoveChatGroupMember(ctx context.Context, groupID, 
 func (s *PostgresChatStore) ListChatGroupMembers(ctx context.Context, groupID string) ([]types.UserResponse, error) {
 	log := logger.GetLogger()
 
-	// Query assuming users table has relevant columns matching types.UserResponse
-	// (e.g., id, email, username, firstName, lastName, avatar_url/profilePicture)
 	query := `
-		SELECT u.id, u.email, u.user_metadata ->> 'username' as username, u.user_metadata ->> 'firstName' as first_name, u.user_metadata ->> 'lastName' as last_name, u.user_metadata ->> 'avatar_url' as avatar_url
-        FROM users u
-        JOIN chat_group_members cgm ON u.id = cgm.user_id
-        WHERE cgm.group_id = $1
-    `
+		SELECT user_id
+		FROM chat_group_members
+		WHERE group_id = $1
+	`
+
 	rows, err := s.db.Query(ctx, query, groupID)
 	if err != nil {
-		log.Errorw("Failed to list chat group members", "error", err, "groupID", groupID)
+		log.Errorw("Failed to query chat group members", "error", err)
 		return nil, apperrors.NewDatabaseError(err)
 	}
 	defer rows.Close()
 
-	members := make([]types.UserResponse, 0)
+	var members []types.UserResponse
 	for rows.Next() {
-		var member types.UserResponse
-		// Use pointers for potentially null metadata fields
-		var username, firstName, lastName, avatarURL *string
-		err := rows.Scan(
-			&member.ID,
-			&member.Email,
-			&username, // Scan into pointers
-			&firstName,
-			&lastName,
-			&avatarURL,
-		)
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			log.Errorw("Failed to scan user ID", "error", err)
+			return nil, apperrors.NewDatabaseError(err)
+		}
+
+		user, err := s.GetUserByID(ctx, userID)
 		if err != nil {
-			log.Errorw("Failed to scan chat group member", "error", err)
-			return nil, apperrors.Wrap(err, apperrors.DatabaseError, "failed to scan chat group member row")
+			log.Errorw("Failed to fetch user from Supabase", "userId", userID, "error", err)
+			continue // Skip this user but continue with others
 		}
-		// Assign values from pointers to the struct fields
-		if username != nil {
-			member.Username = *username
-		}
-		if firstName != nil {
-			member.FirstName = *firstName
-		}
-		if lastName != nil {
-			member.LastName = *lastName
-		}
-		if avatarURL != nil {
-			member.ProfilePicture = *avatarURL // Assuming field is ProfilePicture
-		}
-		members = append(members, member)
-	}
-	if err = rows.Err(); err != nil {
-		log.Errorw("Error after iterating chat group members", "error", err)
-		return nil, apperrors.Wrap(err, apperrors.DatabaseError, "error iterating chat group member rows")
+
+		members = append(members, types.UserResponse{
+			ID:          user.ID,
+			Email:       user.Email,
+			Username:    user.UserMetadata.Username,
+			FirstName:   user.UserMetadata.FirstName,
+			LastName:    user.UserMetadata.LastName,
+			AvatarURL:   user.UserMetadata.ProfilePicture,
+			DisplayName: user.UserMetadata.Username, // Use username as display name if no first/last name
+		})
 	}
 
 	return members, nil
@@ -742,23 +727,39 @@ func (s *PostgresChatStore) ListChatMessageReactions(ctx context.Context, messag
 
 // GetUserByID retrieves user details directly from the Supabase Go client using the admin method.
 // Returns the raw *supabase.User struct provided by the client library.
-func (s *PostgresChatStore) GetUserByID(ctx context.Context, userID string) (*supabase.User, error) {
+func (s *PostgresChatStore) GetUserByID(ctx context.Context, userID string) (*types.SupabaseUser, error) {
 	log := logger.GetLogger()
 
-	// Use the correct admin method from the Supabase client
-	user, err := s.supabase.Auth.AdminGetUserByID(ctx, userID)
+	// Use the Supabase admin API to get user details
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s/auth/v1/admin/users/%s", s.supabaseBaseURL, userID),
+		nil)
 	if err != nil {
-		// Attempt to interpret Supabase client error for NotFound case.
-		// Note: Error string checking is fragile and depends on the Supabase client library.
-		if strings.Contains(strings.ToLower(err.Error()), "user not found") { // More robust check
-			log.Warnw("Supabase user not found via client library", "userID", userID, "error", err)
-			return nil, apperrors.NotFound("User", userID)
-		}
-		log.Errorw("Failed to get user from Supabase client library", "error", err, "userID", userID)
-		// Wrap the original error for better context
-		return nil, fmt.Errorf("failed to get user from supabase admin api: %w", err)
+		log.Errorw("Failed to create request for Supabase user", "error", err)
+		return nil, apperrors.NewExternalServiceError(err)
 	}
 
-	// Return the user object directly from the client library
-	return user, nil
+	req.Header.Set("apikey", s.supabaseAPIKey)
+	req.Header.Set("Authorization", "Bearer "+s.supabaseAPIKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorw("Failed to fetch user from Supabase", "error", err)
+		return nil, apperrors.NewExternalServiceError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Errorw("Supabase returned non-200 status", "status", resp.StatusCode)
+		return nil, apperrors.NewExternalServiceError(fmt.Errorf("supabase returned status %d", resp.StatusCode))
+	}
+
+	var user types.SupabaseUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		log.Errorw("Failed to decode Supabase user response", "error", err)
+		return nil, apperrors.NewExternalServiceError(err)
+	}
+
+	return &user, nil
 }

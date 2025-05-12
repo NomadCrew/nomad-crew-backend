@@ -1,5 +1,16 @@
-// Package db provides implementations for data access interfaces defined in internal/store.
-// It interacts with the PostgreSQL database using pgxpool and potentially other external services like Supabase.
+// Package db provides database access functionality.
+//
+// DEPRECATED: This package and its contents are deprecated and will be removed in a future version.
+// All functionality has been migrated to the new store pattern in store/postgres/trip_store_pg.go.
+//
+// Migration Guide:
+// - Replace db.NewTripDB() with store/postgres.NewPgTripStore()
+// - Update imports to use internal_store.TripStore instead of db.TripDB
+// - All methods have equivalent implementations in the new store
+// - Transaction handling is now more explicit with BeginTx(), Commit(), and Rollback()
+// - Error handling has been standardized with custom error types
+//
+// This file will be removed in version 2.0.0.
 package db
 
 import (

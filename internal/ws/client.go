@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -10,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -316,4 +318,174 @@ func (c *Client) Close() error {
 	}
 
 	return nil
+}
+
+// HandleChatMessages subscribes to chat message events and forwards them to the client
+func (c *Client) HandleChatMessages(ctx context.Context, eventPublisher types.EventPublisher, tripID string) {
+	// Create a context that will cancel when either the client context or passed context is done
+	subscriptionCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Subscribe to all chat-related event types
+	eventChan, err := eventPublisher.Subscribe(
+		subscriptionCtx,
+		tripID,   // tripID - the channel to subscribe to
+		c.userID, // userID - identifier for this subscription
+		types.EventTypeChatMessageSent,
+		types.EventTypeChatMessageEdited,
+		types.EventTypeChatMessageDeleted,
+		types.EventTypeChatReactionAdded,
+		types.EventTypeChatReactionRemoved,
+		types.EventTypeChatReadReceiptUpdated,
+		types.EventTypeChatMemberAdded,
+		types.EventTypeChatMemberRemoved,
+		types.EventTypeChatTypingStatus,
+	)
+
+	if err != nil {
+		zap.L().Error("Failed to subscribe to chat events",
+			zap.String("userID", c.userID),
+			zap.String("tripID", tripID),
+			zap.Error(err))
+		return
+	}
+
+	zap.L().Debug("Subscribed to chat events",
+		zap.String("userID", c.userID),
+		zap.String("tripID", tripID))
+
+	// Process events and send to client
+	go func() {
+		defer func() {
+			// Unsubscribe from events when done
+			if err := eventPublisher.Unsubscribe(context.Background(), tripID, c.userID); err != nil {
+				zap.L().Warn("Failed to unsubscribe from chat events",
+					zap.String("userID", c.userID),
+					zap.String("tripID", tripID),
+					zap.Error(err))
+			}
+			zap.L().Debug("Unsubscribed from chat events",
+				zap.String("userID", c.userID),
+				zap.String("tripID", tripID))
+		}()
+
+		// Create a throttle for typing status events (send at most 1 per second)
+		typingThrottle := time.NewTicker(1 * time.Second)
+		defer typingThrottle.Stop()
+
+		// Keep track of most recent typing status to avoid spamming clients
+		var lastTypingEvent *types.Event
+		var sendTyping bool
+
+		for {
+			select {
+			case <-subscriptionCtx.Done():
+				return
+			case <-typingThrottle.C:
+				// If we have a typing event to send, send it now
+				if sendTyping && lastTypingEvent != nil {
+					sendTypingEvent(c, lastTypingEvent)
+					sendTyping = false
+					lastTypingEvent = nil
+				}
+			case event, ok := <-eventChan:
+				if !ok {
+					return
+				}
+
+				// Special handling for typing status events (throttle them)
+				if event.Type == types.EventTypeChatTypingStatus {
+					lastTypingEvent = &event
+					sendTyping = true
+					continue // Skip immediate send
+				}
+
+				// Create websocket message payload
+				wsMessage := map[string]interface{}{
+					"type":      string(event.Type),
+					"id":        event.ID,
+					"tripID":    event.TripID,
+					"userID":    event.UserID,
+					"timestamp": event.Timestamp.Format(time.RFC3339),
+				}
+
+				// For non-deletion events, include the payload
+				if event.Type != types.EventTypeChatMessageDeleted {
+					// Parse the event payload if it's JSON
+					var payloadData map[string]interface{}
+					if err := json.Unmarshal(event.Payload, &payloadData); err == nil {
+						// Payload was valid JSON, include all fields
+						for k, v := range payloadData {
+							// Don't override existing fields
+							if _, exists := wsMessage[k]; !exists {
+								wsMessage[k] = v
+							}
+						}
+					} else {
+						// Couldn't parse as JSON object, include as raw payload
+						wsMessage["payload"] = string(event.Payload)
+					}
+				}
+
+				// Convert event to JSON for sending
+				data, err := json.Marshal(wsMessage)
+				if err != nil {
+					zap.L().Error("Failed to marshal chat message event",
+						zap.String("userID", c.userID),
+						zap.String("eventType", string(event.Type)),
+						zap.Error(err))
+					continue
+				}
+
+				// Send to client
+				if err := c.SendMessage(data); err != nil {
+					zap.L().Error("Failed to send chat message to client",
+						zap.String("userID", c.userID),
+						zap.String("eventType", string(event.Type)),
+						zap.Error(err))
+				}
+			}
+		}
+	}()
+}
+
+// sendTypingEvent sends a typing status event to the client
+func sendTypingEvent(c *Client, event *types.Event) {
+	if event == nil {
+		return
+	}
+
+	// Create websocket message payload
+	wsMessage := map[string]interface{}{
+		"type":      string(event.Type),
+		"id":        event.ID,
+		"tripID":    event.TripID,
+		"userID":    event.UserID,
+		"timestamp": event.Timestamp.Format(time.RFC3339),
+	}
+
+	// Parse the typing event payload
+	var typingData map[string]interface{}
+	if err := json.Unmarshal(event.Payload, &typingData); err == nil {
+		// Include the isTyping field
+		if isTyping, ok := typingData["isTyping"]; ok {
+			wsMessage["isTyping"] = isTyping
+		}
+	}
+
+	// Convert event to JSON for sending
+	data, err := json.Marshal(wsMessage)
+	if err != nil {
+		zap.L().Error("Failed to marshal typing event",
+			zap.String("userID", c.userID),
+			zap.Error(err))
+		return
+	}
+
+	// Send to client
+	if err := c.SendMessage(data); err != nil {
+		zap.L().Error("Failed to send typing event to client",
+			zap.String("userID", c.userID),
+			zap.Error(err))
+	}
 }

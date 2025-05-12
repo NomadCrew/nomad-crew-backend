@@ -1,4 +1,9 @@
 ---
+description: 
+globs: *.go,*.yml
+alwaysApply: false
+---
+---
 description: Go Developer
 globs: 
 alwaysApply: true

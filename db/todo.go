@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/jackc/pgx/v4"
 )
@@ -24,31 +25,43 @@ func NewTodoDB(client *DatabaseClient) *TodoDB {
 
 // CreateTodo inserts a new todo item into the trip_todos table.
 // It sets the initial status to Incomplete and populates the ID and CreatedAt fields.
-func (tdb *TodoDB) CreateTodo(ctx context.Context, todo *types.Todo) error {
+func (tdb *TodoDB) CreateTodo(ctx context.Context, todo *types.Todo) (string, error) {
 	query := `
         INSERT INTO trip_todos (trip_id, text, created_by, status)
         VALUES ($1, $2, $3, $4)
         RETURNING id, created_at`
 
+	var todoID string
 	err := tdb.client.GetPool().QueryRow(
 		ctx, query,
 		todo.TripID,
 		todo.Text,
 		todo.CreatedBy,
 		types.TodoStatusIncomplete,
-	).Scan(&todo.ID, &todo.CreatedAt)
+	).Scan(&todoID, &todo.CreatedAt)
 
 	if err != nil {
-		return errors.NewDatabaseError(fmt.Errorf("failed to create todo: %w", err))
+		return "", errors.NewDatabaseError(fmt.Errorf("failed to create todo: %w", err))
 	}
 
-	return nil
+	// Set the ID on the todo object for consistency
+	todo.ID = todoID
+	todo.Status = types.TodoStatusIncomplete
+
+	return todoID, nil
 }
 
-// ListTodos retrieves a paginated list of non-deleted todos for a specific trip.
-// It returns the list of todos and the total count of non-deleted todos for that trip.
-// Todos are ordered by status (incomplete first) and then by creation date (newest first).
-func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string, limit int, offset int) ([]*types.Todo, int, error) {
+// ListTodos retrieves all non-deleted todos for a specific trip.
+// This method matches the interface defined in store.TodoStore.
+func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string) ([]*types.Todo, error) {
+	// Use the existing paginated method with no limits
+	todos, _, err := tdb.ListTodosWithPagination(ctx, tripID, 1000, 0)
+	return todos, err
+}
+
+// ListTodosWithPagination retrieves a paginated list of non-deleted todos for a specific trip.
+// This method is an extended version of ListTodos with pagination support.
+func (tdb *TodoDB) ListTodosWithPagination(ctx context.Context, tripID string, limit int, offset int) ([]*types.Todo, int, error) {
 	// Get total count of non-deleted todos for the trip.
 	var total int
 	countQuery := `
@@ -106,7 +119,7 @@ func (tdb *TodoDB) ListTodos(ctx context.Context, tripID string, limit int, offs
 
 // UpdateTodo updates the status and/or text of an existing todo item.
 // It dynamically builds the SQL query based on the fields provided in the update struct.
-func (tdb *TodoDB) UpdateTodo(ctx context.Context, id string, update *types.TodoUpdate) error {
+func (tdb *TodoDB) UpdateTodo(ctx context.Context, id string, update *types.TodoUpdate) (*types.Todo, error) {
 	// Start building the query and arguments.
 	query := "UPDATE trip_todos SET updated_at = CURRENT_TIMESTAMP"
 	var args []interface{}
@@ -127,26 +140,36 @@ func (tdb *TodoDB) UpdateTodo(ctx context.Context, id string, update *types.Todo
 		args = append(args, *update.Text)
 	}
 
-	// Add the WHERE clause and RETURNING id to check if the row was updated.
-	query += " WHERE id = $1 RETURNING id"
+	// Update WHERE clause to include RETURNING all fields
+	query += ` WHERE id = $1 
+	   RETURNING id, trip_id, text, status, created_by, created_at, updated_at`
 
-	var returnedID string
-	err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(&returnedID)
+	var todo types.Todo
+	err := tdb.client.GetPool().QueryRow(ctx, query, args...).Scan(
+		&todo.ID,
+		&todo.TripID,
+		&todo.Text,
+		&todo.Status,
+		&todo.CreatedBy,
+		&todo.CreatedAt,
+		&todo.UpdatedAt,
+	)
+
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			// The ID did not match any row, likely meaning it doesn't exist or was deleted.
-			return errors.NotFound("Todo", id)
+			return nil, errors.NotFound("Todo", id)
 		}
 		// Other potential database error during update.
-		return errors.NewDatabaseError(fmt.Errorf("failed to update todo %s: %w", id, err))
+		return nil, errors.NewDatabaseError(fmt.Errorf("failed to update todo %s: %w", id, err))
 	}
 
-	return nil
+	return &todo, nil
 }
 
 // DeleteTodo performs a soft delete on a todo item.
 // It removes the row from trip_todos and adds a corresponding record to the metadata table.
-func (tdb *TodoDB) DeleteTodo(ctx context.Context, id string, userID string) error {
+func (tdb *TodoDB) DeleteTodo(ctx context.Context, id string) error {
 	// Use a Common Table Expression (CTE) to delete the row and immediately insert
 	// the metadata record in a single atomic operation.
 	query := `
@@ -155,14 +178,14 @@ func (tdb *TodoDB) DeleteTodo(ctx context.Context, id string, userID string) err
             WHERE id = $1
             RETURNING id
         )
-        INSERT INTO metadata (table_name, record_id, deleted_by, deleted_at)
-        SELECT 'trip_todos', id, $2, NOW()
+        INSERT INTO metadata (table_name, record_id, deleted_at)
+        SELECT 'trip_todos', id, NOW()
         FROM deleted
         RETURNING record_id -- Return something to check if deletion occurred.
     `
 	var deletedID string
 	// Use QueryRow(...).Scan(...) to check if the CTE affected any rows.
-	err := tdb.client.GetPool().QueryRow(ctx, query, id, userID).Scan(&deletedID)
+	err := tdb.client.GetPool().QueryRow(ctx, query, id).Scan(&deletedID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			// No rows were returned by the CTE, meaning the todo didn't exist to be deleted.
@@ -243,4 +266,27 @@ func (tdb *TodoDB) GetTodo(ctx context.Context, id string) (*types.Todo, error) 
 	}
 
 	return &todo, nil
+}
+
+// BeginTx starts a new database transaction
+func (tdb *TodoDB) BeginTx(ctx context.Context) (store.Transaction, error) {
+	tx, err := tdb.client.GetPool().Begin(ctx)
+	if err != nil {
+		return nil, errors.NewDatabaseError(fmt.Errorf("failed to begin transaction: %w", err))
+	}
+
+	return &Transaction{tx: tx}, nil
+}
+
+// Transaction wraps a pgx.Tx to implement store.Transaction
+type Transaction struct {
+	tx pgx.Tx
+}
+
+func (t *Transaction) Commit() error {
+	return t.tx.Commit(context.Background())
+}
+
+func (t *Transaction) Rollback() error {
+	return t.tx.Rollback(context.Background())
 }
