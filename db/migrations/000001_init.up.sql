@@ -264,12 +264,6 @@ CREATE TRIGGER update_chat_messages_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Add missing trigger for chat_group_members
-CREATE TRIGGER update_chat_group_members_updated_at
-    BEFORE UPDATE ON chat_group_members
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
 -- Add indexes for better performance
 CREATE INDEX idx_trips_created_by ON trips(created_by);
 CREATE INDEX idx_expenses_user_id ON expenses(user_id);

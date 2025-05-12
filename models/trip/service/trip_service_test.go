@@ -271,13 +271,18 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.mockStore = new(MockTripStore)
 	suite.mockEventPublisher = new(MockEventPublisher)
 	suite.mockWeatherSvc = new(MockWeatherService)
-	suite.service = tripservice.NewTripManagementService(suite.mockStore, suite.mockEventPublisher, suite.mockWeatherSvc)
-	suite.ctx = context.Background()
-	suite.testUserID = uuid.NewString()
-	suite.testTripID = uuid.NewString()
 
-	// Use the typed context key
-	suite.ctx = context.WithValue(suite.ctx, testUserIDKey, suite.testUserID)
+	// Initialize the service with mocks
+	suite.service = tripservice.NewTripManagementService(
+		suite.mockStore,
+		suite.mockEventPublisher,
+		suite.mockWeatherSvc,
+	)
+
+	suite.testUserID = uuid.New().String()
+	suite.testTripID = uuid.New().String()
+	// Add user ID to context using the local key
+	suite.ctx = context.WithValue(context.Background(), testUserIDKey, suite.testUserID)
 }
 
 // TearDownTest runs after each test

@@ -19,6 +19,11 @@ func TestRedisPublisher_PublishAndSubscribe(t *testing.T) {
 
 	ctx := context.Background()
 	publisher := NewRedisPublisher(rdb)
+	defer func() {
+		if err := publisher.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during publisher shutdown: %v", err)
+		}
+	}()
 
 	tripID := "test-trip"
 	userID := "test-user"
@@ -67,6 +72,11 @@ func TestRedisPublisher_PublishBatch(t *testing.T) {
 
 	ctx := context.Background()
 	publisher := NewRedisPublisher(rdb)
+	defer func() {
+		if err := publisher.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during publisher shutdown: %v", err)
+		}
+	}()
 
 	tripID := "test-trip"
 	userID := "test-user"
@@ -137,6 +147,11 @@ func TestRedisPublisher_FilteredSubscription(t *testing.T) {
 
 	ctx := context.Background()
 	publisher := NewRedisPublisher(rdb)
+	defer func() {
+		if err := publisher.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during publisher shutdown: %v", err)
+		}
+	}()
 
 	tripID := "test-trip"
 	userID := "test-user"
@@ -205,6 +220,11 @@ func TestRedisPublisher_DuplicateSubscription(t *testing.T) {
 
 	ctx := context.Background()
 	publisher := NewRedisPublisher(rdb)
+	defer func() {
+		if err := publisher.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during publisher shutdown: %v", err)
+		}
+	}()
 
 	tripID := "test-trip"
 	userID := "test-user"
@@ -225,6 +245,11 @@ func TestRedisPublisher_UnsubscribeNonexistent(t *testing.T) {
 
 	ctx := context.Background()
 	publisher := NewRedisPublisher(rdb)
+	defer func() {
+		if err := publisher.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during publisher shutdown: %v", err)
+		}
+	}()
 
 	err := publisher.Unsubscribe(ctx, "nonexistent-trip", "nonexistent-user")
 	assert.Error(t, err)

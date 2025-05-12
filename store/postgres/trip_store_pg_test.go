@@ -82,6 +82,12 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		require.NoError(t, err)
 	}
 
+	// Run migrations
+	migrationSQL, err := os.ReadFile("../../db/migrations/000001_init.up.sql")
+	require.NoError(t, err, "Failed to read migration file")
+	_, err = pool.Exec(ctx, string(migrationSQL))
+	require.NoError(t, err, "Failed to apply migration")
+
 	return pool, func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("failed to terminate container: %s", err)

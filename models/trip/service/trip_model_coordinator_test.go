@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -204,12 +205,11 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 		ChatService:       suite.mockChatSvc,
 	}
 
-	suite.ctx = context.Background()
-	suite.testUserID = uuid.NewString()
-	suite.testTripID = uuid.NewString()
-
-	// Use the existing testUserIDKey which has the proper type
-	suite.ctx = context.WithValue(suite.ctx, testUserIDKey, suite.testUserID)
+	// Basic context and test IDs
+	suite.testUserID = uuid.New().String()
+	suite.testTripID = uuid.New().String()
+	// Add user ID to context
+	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {
