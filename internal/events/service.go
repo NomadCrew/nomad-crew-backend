@@ -114,21 +114,38 @@ func (s *Service) Unsubscribe(ctx context.Context, tripID string, userID string)
 
 // Shutdown gracefully shuts down the service
 func (s *Service) Shutdown(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// First, shutdown the publisher to stop processing new events/subscriptions
+	if err := s.publisher.Shutdown(ctx); err != nil {
+		s.log.Errorw("Error shutting down publisher", "error", err)
+		// Continue to unregister handlers even if publisher shutdown fails
+	}
 
-	// Clear all handlers
+	// Collect handler names to unregister
+	handlersToUnregister := make([]string, 0)
+	s.mu.RLock() // Use RLock initially just to read names
 	for name := range s.handlers {
-		if err := s.UnregisterHandler(name); err != nil {
+		handlersToUnregister = append(handlersToUnregister, name)
+	}
+	s.mu.RUnlock()
+
+	// Now unregister handlers (requires write lock, but done outside initial lock)
+	for _, name := range handlersToUnregister {
+		if unregErr := s.UnregisterHandler(name); unregErr != nil {
 			s.log.Errorw("Error unregistering handler during shutdown",
-				"error", err,
+				"error", unregErr,
 				"handler", name,
 			)
+			// Log the error but continue trying to unregister others
 		}
 	}
 
-	// Shutdown publisher
-	return s.publisher.Shutdown(ctx)
+	// Clear the map completely as a final step (under write lock)
+	s.mu.Lock()
+	s.handlers = make(map[string]types.EventHandler) // Clear the map
+	s.mu.Unlock()
+
+	s.log.Info("Event service shutdown complete")
+	return nil // Return nil as errors during unregistration are logged but not fatal to shutdown
 }
 
 // GetHandlerNames returns a list of registered handler names

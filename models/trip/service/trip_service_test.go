@@ -272,9 +272,9 @@ func (suite *TripServiceTestSuite) SetupTest() {
 		suite.mockEventPublisher,
 		suite.mockWeatherSvc,
 	)
-	suite.testUserID = uuid.New().String()
-	suite.testTripID = uuid.New().String()
-	// Use the actual UserIDKey from the middleware package
+	suite.testUserID = uuid.NewString()
+	suite.testTripID = uuid.NewString()
+	// Create context with UserID for tests that require authentication
 	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
 
 	// Reset mocks if needed for specific tests. Mocks should be independent across tests.

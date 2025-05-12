@@ -193,6 +193,7 @@ func (suite *ChatIntegrationTestSuite) SetupTest() {
 	require.NoError(t, err, "Failed to create test user")
 
 	// Create test trip
+	t.Logf("Attempting to create trip with ID: %s, UserID: %s", suite.testTripID, suite.testUserID)
 	_, err = suite.tripStore.CreateTrip(suite.ctx, types.Trip{
 		ID:          suite.testTripID,
 		Name:        "Chat Integration Test Trip",
@@ -202,15 +203,23 @@ func (suite *ChatIntegrationTestSuite) SetupTest() {
 		Status:      types.TripStatusPlanning,
 		Description: "Trip for testing chat",
 	})
+	if err != nil {
+		t.Logf("CreateTrip failed: %v", err) // Log error explicitly
+	}
 	require.NoError(t, err, "Failed to create test trip")
+	t.Logf("CreateTrip supposedly succeeded for ID: %s", suite.testTripID)
 
 	// Add user as trip member
+	t.Logf("Attempting to add member UserID: %s to TripID: %s", suite.testUserID, suite.testTripID)
 	err = suite.tripStore.AddMember(suite.ctx, &types.TripMembership{
 		TripID: suite.testTripID,
 		UserID: suite.testUserID,
 		Role:   types.MemberRoleOwner,
 		Status: types.MembershipStatusActive,
 	})
+	if err != nil {
+		t.Logf("AddMember failed: %v", err) // Log error explicitly
+	}
 	require.NoError(t, err, "Failed to add user to trip")
 
 	// Create a chat group for the test trip

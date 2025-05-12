@@ -213,19 +213,31 @@ func SetupInvitationTest(t *testing.T) {
 	}
 
 	// Execute migrations directly
-	migrationsPath := filepath.Join(projectRoot, "db", "migrations", "000001_init.up.sql")
-	migrationSQL, err := os.ReadFile(migrationsPath)
-	if err != nil {
-		logOutput.Fatalf("Failed to read migration file: %v", err)
+	migrationDir := filepath.Join(projectRoot, "db", "migrations")
+	migrationFiles, err := filepath.Glob(filepath.Join(migrationDir, "*.up.sql"))
+	if err != nil || len(migrationFiles) == 0 {
+		logOutput.Fatalf("Failed to find migration files in %s: %v", migrationDir, err)
 	}
 
-	// Execute the SQL migration script
-	_, err = testDBPool.Exec(context.Background(), string(migrationSQL))
-	if err != nil {
-		logOutput.Fatalf("Failed to apply migrations: %v", err)
+	// Sort files to ensure they run in order (important if names dictate order)
+	// sort.Strings(migrationFiles) // Assuming lexical order is correct (e.g., 001_..., 002_...)
+	// Note: Simple sort might not be robust for complex versioning. Consider a library if needed.
+
+	for _, migrationFile := range migrationFiles {
+		logOutput.Infof("Applying migration: %s", filepath.Base(migrationFile))
+		migrationSQL, err := os.ReadFile(migrationFile)
+		if err != nil {
+			logOutput.Fatalf("Failed to read migration file %s: %v", migrationFile, err)
+		}
+
+		// Execute the SQL migration script
+		_, err = testDBPool.Exec(context.Background(), string(migrationSQL))
+		if err != nil {
+			logOutput.Fatalf("Failed to apply migration %s: %v", filepath.Base(migrationFile), err)
+		}
 	}
 
-	logOutput.Info("Migrations applied successfully.")
+	logOutput.Info("All migrations applied successfully.")
 
 	logOutput.Info("Test database and migrations setup complete.")
 }
@@ -432,41 +444,58 @@ func createUserInDB(ctx context.Context, pool *pgxpool.Pool, email, supabaseID, 
 }
 
 func createTripInDB(ctx context.Context, pool *pgxpool.Pool, name, ownerID string) (*types.Trip, error) {
+	log.Printf("createTripInDB: Attempting to create trip '%s' for owner %s", name, ownerID)
 	tripID := uuid.NewString()
+	// Assuming db columns are destination_place_id, background_image_url
+	// Removed is_public as it's not in types.Trip
 	query := `
-		INSERT INTO trips (id, name, description, destination_address, start_date, end_date, created_by, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-		RETURNING id, name, description, destination_address, destination_place_id, destination_coordinates_lat, destination_coordinates_lng, start_date, end_date, created_by, status, created_at, updated_at, background_image_url
-	` // Matched columns to types.Trip and types.Destination
-	var trip types.Trip
-	desc := "Test trip description for " + name
-	destAddr := "Test Destination Address for " + name
-	// Assuming destination_place_id and coordinates can be null or have defaults handled by DB/Go zero values if not provided
-	startDate := time.Now().Add(24 * time.Hour)
-	endDate := time.Now().Add(48 * time.Hour)
-	status := types.TripStatusPlanning
+		INSERT INTO trips (id, name, created_by, start_date, end_date, status, description, destination_address)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, name, created_by, start_date, end_date, status, description, created_at, updated_at, 
+		          destination_address, destination_place_id, background_image_url
+	` // Added destination_address to INSERT and SELECT
 
-	// Need to scan into trip.Destination fields correctly or scan into separate vars and populate struct
+	now := time.Now()
+	trip := &types.Trip{}
+	var destAddress sql.NullString
 	var destPlaceID sql.NullString
-	var destLat, destLng sql.NullFloat64
+	var bgImageURL sql.NullString
 
-	err := pool.QueryRow(ctx, query, tripID, name, desc, destAddr, startDate, endDate, ownerID, status).Scan(
-		&trip.ID, &trip.Name, &trip.Description,
-		&trip.Destination.Address, &destPlaceID, &destLat, &destLng, // Scan into destination fields
-		&trip.StartDate, &trip.EndDate, &trip.CreatedBy, &trip.Status, &trip.CreatedAt, &trip.UpdatedAt,
-		&trip.BackgroundImageURL,
+	err := pool.QueryRow(ctx, query,
+		tripID,
+		name,
+		ownerID,
+		now,                           // start_date
+		now.Add(24*time.Hour),         // end_date
+		types.TripStatusPlanning,      // status
+		"Test trip created by helper", // description
+		"Test Destination Address",    // destination_address (example value)
+	).Scan(
+		&trip.ID,
+		&trip.Name,
+		&trip.CreatedBy,
+		&trip.StartDate,
+		&trip.EndDate,
+		&trip.Status,
+		&trip.Description,
+		&trip.CreatedAt,
+		&trip.UpdatedAt,
+		&destAddress, // scan into NullString
+		&destPlaceID, // scan into NullString
+		&bgImageURL,  // scan into NullString
 	)
+
 	if err != nil {
+		log.Printf("createTripInDB failed: %v", err) // Log the specific SQL error
 		return nil, fmt.Errorf("createTripInDB failed: %w", err)
 	}
+
+	trip.Destination.Address = destAddress.String
 	trip.Destination.PlaceID = destPlaceID.String
-	if destLat.Valid && destLng.Valid {
-		trip.Destination.Coordinates = &struct {
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
-		}{Lat: destLat.Float64, Lng: destLng.Float64}
-	}
-	return &trip, nil
+	trip.BackgroundImageURL = bgImageURL.String
+
+	log.Printf("createTripInDB: Successfully created trip ID %s", trip.ID)
+	return trip, nil
 }
 
 func createInvitationInDB(ctx context.Context, pool *pgxpool.Pool, tripID, inviterID string, inviteeID *string, inviteeEmail string, role types.MemberRole, status types.InvitationStatus, expiresAt time.Time, token *string) (*types.TripInvitation, error) {

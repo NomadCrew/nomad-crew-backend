@@ -49,7 +49,7 @@ func TestService_UnregisterHandler(t *testing.T) {
 	t.Run("unregister non-existent handler", func(t *testing.T) {
 		err := service.UnregisterHandler("test-handler")
 		require.Error(t, err)
-		assert.Equal(t, "handler not found with name test-handler", err.Error())
+		assert.Equal(t, "handler test-handler not found", err.Error())
 	})
 }
 
@@ -70,7 +70,7 @@ func TestService_PublishAndSubscribe(t *testing.T) {
 			Type:      types.EventTypeTripCreated,
 			TripID:    tripID,
 			UserID:    "test-user",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UTC(),
 			Version:   1,
 		},
 		Metadata: types.EventMetadata{
@@ -137,7 +137,7 @@ func TestService_PublishBatch(t *testing.T) {
 				Type:      types.EventTypeTripCreated,
 				TripID:    tripID,
 				UserID:    "test-user",
-				Timestamp: time.Now(),
+				Timestamp: time.Now().UTC(),
 				Version:   1,
 			},
 			Metadata: types.EventMetadata{
@@ -151,7 +151,7 @@ func TestService_PublishBatch(t *testing.T) {
 				Type:      types.EventTypeTripUpdated,
 				TripID:    tripID,
 				UserID:    "test-user",
-				Timestamp: time.Now(),
+				Timestamp: time.Now().UTC(),
 				Version:   1,
 			},
 			Metadata: types.EventMetadata{
@@ -273,7 +273,7 @@ func TestService_HandlerError(t *testing.T) {
 			Type:      types.EventTypeTripCreated,
 			TripID:    tripID,
 			UserID:    "test-user",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UTC(),
 			Version:   1,
 		},
 		Metadata: types.EventMetadata{

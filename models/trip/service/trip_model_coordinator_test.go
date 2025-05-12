@@ -254,14 +254,13 @@ func (suite *CoordinatorTestSuite) TestAddMember_Delegates() {
 
 func (suite *CoordinatorTestSuite) TestListMessages_Delegates() {
 	// Arrange
-	limit := 50
-	before := "some_cursor"
+	limit := 10
+	before := "cursor"
 	expectedMessages := []*types.ChatMessage{{ID: "msg1"}}
-	// Expect call on the *mock* service, including the userID extracted from context
+	// Expectation: Ensure error is nil
 	suite.mockChatSvc.On("ListMessages", suite.ctx, suite.testTripID, suite.testUserID, limit, before).Return(expectedMessages, nil).Once()
 
 	// Act
-	// Call the *coordinator* method
 	result, err := suite.coordinator.ListMessages(suite.ctx, suite.testTripID, limit, before)
 
 	// Assert
@@ -274,6 +273,7 @@ func (suite *CoordinatorTestSuite) TestListMessages_Delegates() {
 func (suite *CoordinatorTestSuite) TestUpdateTripStatus_Delegates() {
 	// Arrange
 	newStatus := types.TripStatusActive
+	// Expectation: Ensure error is nil
 	suite.mockTripSvc.On("UpdateTripStatus", suite.ctx, suite.testTripID, suite.testUserID, newStatus).Return(nil).Once()
 
 	// Act
@@ -286,7 +286,8 @@ func (suite *CoordinatorTestSuite) TestUpdateTripStatus_Delegates() {
 
 func (suite *CoordinatorTestSuite) TestUpdateLastReadMessage_Delegates() {
 	// Arrange
-	messageID := uuid.NewString()
+	messageID := "msg123"
+	// Expectation: Ensure error is nil
 	suite.mockChatSvc.On("UpdateLastReadMessage", suite.ctx, suite.testTripID, suite.testUserID, messageID).Return(nil).Once()
 
 	// Act
