@@ -14,6 +14,12 @@ import (
 	// Add other necessary imports like config, interfaces etc. as needed
 )
 
+// contextKey is used to avoid key collisions in context values
+type testContextKey string
+
+// Define constants for context keys
+const testUserIDKey testContextKey = "userID"
+
 // --- Mock Services --- //
 // Define mocks by embedding mock.Mock into structs with the same names
 // as the services they mock. This avoids needing separate interfaces just for testing.
@@ -190,6 +196,7 @@ type CoordinatorTestSuite struct {
 	testTripID    string
 }
 
+// SetupTest runs before each test in the suite
 func (suite *CoordinatorTestSuite) SetupTest() {
 	suite.mockTripSvc = new(MockTripManagementService)
 	suite.mockMemberSvc = new(MockTripMemberService)
@@ -207,8 +214,9 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 	// Basic context and test IDs
 	suite.testUserID = uuid.New().String()
 	suite.testTripID = uuid.New().String()
-	// Use the custom key type defined in the package (e.g., in trip_service_test.go)
-	suite.ctx = context.WithValue(context.Background(), userIDKey, suite.testUserID)
+
+	// Use typed context key to prevent collisions
+	suite.ctx = context.WithValue(context.Background(), testUserIDKey, suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {

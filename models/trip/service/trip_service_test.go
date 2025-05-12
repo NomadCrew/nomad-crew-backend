@@ -18,9 +18,10 @@ import (
 )
 
 // Define context key to avoid collisions
-type contextKey string
+type serviceTestContextKey string
 
-const userIDKey contextKey = "userID"
+// Create a typed key for user ID in context
+const serviceTestUserIDKey serviceTestContextKey = "userID"
 
 // MockTransaction implements store.Transaction
 type MockTransaction struct {
@@ -274,8 +275,9 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.service = tripservice.NewTripManagementService(suite.mockStore, suite.mockEventPublisher, suite.mockWeatherSvc)
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
-	// Use custom key type for context value
-	suite.ctx = context.WithValue(context.Background(), userIDKey, suite.testUserID)
+
+	// Use the typed context key instead of a string literal
+	suite.ctx = context.WithValue(context.Background(), serviceTestUserIDKey, suite.testUserID)
 
 	// Reset mocks if needed for specific tests. Mocks should be independent across tests.
 	// suite.mockStore.ExpectedCalls = nil // Clear expected calls

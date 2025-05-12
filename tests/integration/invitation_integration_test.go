@@ -211,14 +211,21 @@ func SetupInvitationTest(t *testing.T) {
 		}
 		projectRoot = parent
 	}
-	// migrationsPath := filepath.Join(projectRoot, "db/migrations")
 
-	// THIS LINE IS THE PROBLEM IF db.NewMigrationRunner is not defined
-	// migrationRunner := db.NewMigrationRunner(testDBPool, migrationsPath, logOutput.Desugar())
-	// if err := migrationRunner.Up(ctx); err != nil {
-	//     logOutput.Fatalf("Failed to apply migrations: %v", err)
-	// }
-	logOutput.Info("Migrations would be run here if db.NewMigrationRunner was defined and used.")
+	// Execute migrations directly
+	migrationsPath := filepath.Join(projectRoot, "db", "migrations", "000001_init.up.sql")
+	migrationSQL, err := os.ReadFile(migrationsPath)
+	if err != nil {
+		logOutput.Fatalf("Failed to read migration file: %v", err)
+	}
+
+	// Execute the SQL migration script
+	_, err = testDBPool.Exec(context.Background(), string(migrationSQL))
+	if err != nil {
+		logOutput.Fatalf("Failed to apply migrations: %v", err)
+	}
+
+	logOutput.Info("Migrations applied successfully.")
 
 	logOutput.Info("Test database and migrations setup complete.")
 }

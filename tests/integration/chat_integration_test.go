@@ -54,18 +54,29 @@ func setupPostgresContainer(ctx context.Context, t *testing.T) (*postgresContain
 		postgresContainer.WithUsername("testuser"),
 		postgresContainer.WithPassword("testpass"),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(1).
-				WithStartupTimeout(5*time.Minute),
+			wait.ForListeningPort("5432/tcp"),
 		),
 	)
 	require.NoError(t, err)
 
+	// Allow extra time for the container to fully initialize
+	time.Sleep(4 * time.Second)
+
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)
 
-	pool, err := pgxpool.Connect(ctx, connStr)
-	require.NoError(t, err)
+	// Retry logic for database connection
+	var pool *pgxpool.Pool
+	var connectErr error
+	for retries := 0; retries < 3; retries++ {
+		pool, connectErr = pgxpool.Connect(ctx, connStr)
+		if connectErr == nil {
+			break
+		}
+		t.Logf("Database connection attempt %d failed: %v, retrying...", retries+1, connectErr)
+		time.Sleep(time.Duration(retries+1) * time.Second)
+	}
+	require.NoError(t, connectErr, "Failed to connect to database after multiple attempts")
 
 	// Run migrations
 	migrationSQL, err := os.ReadFile("../../db/migrations/000001_init.up.sql")
@@ -74,6 +85,9 @@ func setupPostgresContainer(ctx context.Context, t *testing.T) (*postgresContain
 	require.NoError(t, err, "Failed to apply migration")
 
 	cleanup := func() {
+		if pool != nil {
+			pool.Close()
+		}
 		if err := pgContainer.Terminate(ctx); err != nil {
 			t.Logf("Failed to terminate postgres container: %v", err)
 		}
@@ -87,12 +101,13 @@ func setupRedisContainer(ctx context.Context, t *testing.T) (*redisTC.RedisConta
 	redisContainer, err := redisTC.Run(ctx,
 		"docker.io/redis:7",
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("* Ready to accept connections").
-				WithOccurrence(1).
-				WithStartupTimeout(1*time.Minute),
+			wait.ForListeningPort("6379/tcp"),
 		),
 	)
 	require.NoError(t, err)
+
+	// Allow extra time for the container to fully initialize
+	time.Sleep(2 * time.Second)
 
 	host, err := redisContainer.Host(ctx)
 	require.NoError(t, err)

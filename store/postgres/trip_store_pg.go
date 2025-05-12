@@ -398,6 +398,8 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 		args = append(args, "%"+criteria.Destination+"%")
 		argCount++
 	}
+
+	// Handle date range searches
 	if !criteria.StartDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", argCount))
 		args = append(args, criteria.StartDate)
@@ -406,7 +408,18 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 	if !criteria.EndDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.end_date <= $%d", argCount))
 		args = append(args, criteria.EndDate)
-		// argCount++ // Removed ineffectual assignment
+		argCount++
+	}
+
+	// Handle StartDateFrom and StartDateTo which are used in the tests
+	if !criteria.StartDateFrom.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", argCount))
+		args = append(args, criteria.StartDateFrom)
+		argCount++
+	}
+	if !criteria.StartDateTo.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", argCount))
+		args = append(args, criteria.StartDateTo)
 	}
 
 	// Combine base query with conditions.

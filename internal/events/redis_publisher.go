@@ -45,31 +45,33 @@ type metrics struct {
 var (
 	metricsInstance *metrics
 	metricsOnce     sync.Once
+	defaultRegistry = prometheus.DefaultRegisterer
 )
 
 // newMetrics initializes and registers Prometheus metrics - now using a singleton pattern
 func newMetrics() *metrics {
 	metricsOnce.Do(func() {
+		// Use a custom registry for metrics to avoid conflicts in tests
 		metricsInstance = &metrics{
-			publishLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+			publishLatency: promauto.With(defaultRegistry).NewHistogram(prometheus.HistogramOpts{
 				Name:    "event_publish_duration_seconds",
 				Help:    "Time taken to publish events",
 				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
 			}),
-			subscribeLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+			subscribeLatency: promauto.With(defaultRegistry).NewHistogram(prometheus.HistogramOpts{
 				Name:    "event_subscribe_duration_seconds",
 				Help:    "Time taken to establish subscriptions",
 				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
 			}),
-			errorCount: promauto.NewCounterVec(prometheus.CounterOpts{
+			errorCount: promauto.With(defaultRegistry).NewCounterVec(prometheus.CounterOpts{
 				Name: "event_errors_total",
 				Help: "Total number of event-related errors",
 			}, []string{"operation", "type"}),
-			eventCount: promauto.NewCounterVec(prometheus.CounterOpts{
+			eventCount: promauto.With(defaultRegistry).NewCounterVec(prometheus.CounterOpts{
 				Name: "events_total",
 				Help: "Total number of events by operation and type",
 			}, []string{"operation", "type"}),
-			activeSubscribers: promauto.NewGauge(prometheus.GaugeOpts{
+			activeSubscribers: promauto.With(defaultRegistry).NewGauge(prometheus.GaugeOpts{
 				Name: "event_active_subscribers",
 				Help: "Current number of active subscribers",
 			}),
@@ -80,6 +82,11 @@ func newMetrics() *metrics {
 
 // For testing purposes - reset metrics
 func resetMetricsForTesting() {
+	// Create a new registry for tests
+	reg := prometheus.NewRegistry()
+	defaultRegistry = reg
+
+	// Reset the singleton
 	metricsInstance = nil
 	metricsOnce = sync.Once{}
 }
