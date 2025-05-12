@@ -215,22 +215,22 @@ func (suite *ChatIntegrationTestSuite) SetupTest() {
 	require.NotNil(t, createdTrip, "Fetched created trip should not be nil")
 
 	suite.testTripID = createdTrip.ID // Update suite's trip ID to the actual created one from GetTrip
-	t.Logf("CreateTrip succeeded. Actual Trip ID from GetTrip: %s", suite.testTripID)
+	t.Logf("CreateTrip succeeded. Actual Trip ID from GetTrip: %s, UserID: %s", suite.testTripID, suite.testUserID)
 
-	// Add user as trip member using the actual trip ID
-	t.Logf("Attempting to add member UserID: %s to actual TripID: %s", suite.testUserID, suite.testTripID)
-	err = suite.tripStore.AddMember(suite.ctx, &types.TripMembership{
-		TripID: suite.testTripID, // Use the actualTripID returned by CreateTrip
-		UserID: suite.testUserID,
-		Role:   types.MemberRoleOwner,
-		Status: types.MembershipStatusActive,
-	})
-	if err != nil {
-		t.Logf("AddMember failed: %v", err) // Log error explicitly
+	// Verify the member was added by CreateTrip (optional check)
+	members, err := suite.tripStore.GetTripMembers(suite.ctx, suite.testTripID)
+	require.NoError(t, err, "Failed to get trip members after trip creation")
+	foundOwner := false
+	for _, member := range members {
+		if member.UserID == suite.testUserID && member.Role == types.MemberRoleOwner {
+			foundOwner = true
+			break
+		}
 	}
-	require.NoError(t, err, "Failed to add user to trip")
+	require.True(t, foundOwner, "Test user should be owner of the trip after CreateTrip")
 
 	// Create a chat group for the test trip
+	t.Logf("Attempting to create chat group for TripID: %s by UserID: %s", suite.testTripID, suite.testUserID)
 	group, err := suite.chatService.CreateGroup(suite.ctx, suite.testTripID, "Test Chat Group", suite.testUserID)
 	require.NoError(t, err, "Failed to create chat group")
 	require.NotNil(t, group, "Created group should not be nil")

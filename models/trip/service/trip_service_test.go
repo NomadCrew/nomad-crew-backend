@@ -8,7 +8,9 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store" // Import internal store for Transaction
-	"github.com/NomadCrew/nomad-crew-backend/middleware"     // Added import
+
+	// Added import
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
@@ -278,7 +280,7 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
 
-	// Add UserID to the context
+	// Add UserID to the context using the actual UserIDKey from the middleware package
 	suite.ctx = context.WithValue(suite.ctx, middleware.UserIDKey, suite.testUserID)
 
 	// Reset mocks if needed for specific tests. Mocks should be independent across tests.
