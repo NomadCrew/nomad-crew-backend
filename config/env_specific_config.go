@@ -123,9 +123,9 @@ func CreateConfigTemplateForEnvironment(env EnvType) error {
 	template := getConfigTemplate(env)
 
 	// Write to file
-	err := os.WriteFile(path, []byte(template), 0644)
+	err := os.WriteFile(path, []byte(template), 0600)
 	if err != nil {
-		return fmt.Errorf("failed to write config template: %w", err)
+		return fmt.Errorf("failed to write %s: %w", path, err)
 	}
 
 	return nil

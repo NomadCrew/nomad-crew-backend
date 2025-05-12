@@ -113,7 +113,9 @@ func (h *TripChatHandler) WSStreamEvents(c *gin.Context) {
 	conn := middleware.NewSafeConn(unsafeConn, nil, middleware.DefaultWSConfig())
 	if conn == nil {
 		log.Errorw("Failed to create SafeConn", "tripID", tripID, "userID", userID)
-		unsafeConn.Close()
+		if err := unsafeConn.Close(); err != nil {
+			log.Warnw("Error closing underlying WebSocket connection after SafeConn creation failure", "error", err, "tripID", tripID, "userID", userID)
+		}
 		return
 	}
 	defer conn.Close()

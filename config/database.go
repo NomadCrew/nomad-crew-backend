@@ -13,6 +13,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 // DBConfig holds database configuration.
@@ -97,7 +98,9 @@ func InitDB(config *DBConfig) (*sql.DB, error) {
 	err = db.Ping()
 	if err != nil {
 		// Close the connection pool if ping fails to prevent resource leak
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			zap.L().Warn("Error closing PostgreSQL pool after ping failure", zap.Error(closeErr))
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -132,7 +135,9 @@ func InitRedis(config *RedisConfig) (*redis.Client, error) {
 	_, err := client.Ping(ctx).Result()
 	if err != nil {
 		// Close the client if ping fails
-		client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			zap.L().Warn("Error closing Redis client after ping failure", zap.Error(closeErr))
+		}
 		return nil, fmt.Errorf("failed to ping Redis: %w", err)
 	}
 

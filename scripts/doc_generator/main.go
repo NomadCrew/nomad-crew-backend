@@ -63,6 +63,9 @@ func findHandlerFunctions(files []string) ([]Handler, error) {
 	swaggerRegex := regexp.MustCompile(`// @Router`)
 
 	for _, file := range files {
+		// Clean the path to prevent potential traversal issues
+		file = filepath.Clean(file)
+
 		// Read the file
 		content, err := os.ReadFile(file)
 		if err != nil {

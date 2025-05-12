@@ -176,7 +176,9 @@ func (h *WSHandler) HandleWebSocketConnection(c *gin.Context) {
 			} else {
 				log.Debug("Closing connection after handler completed",
 					zap.String("userID", userID.(string)))
-				safeConn.Close()
+				if err := safeConn.Close(); err != nil {
+					log.Warn("Error closing WebSocket connection after handler", zap.Error(err), zap.String("userID", userID.(string)))
+				}
 			}
 		}
 	}
@@ -201,7 +203,7 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 	// Get trip ID from request before upgrading connection
 	tripID := c.Param("tripID")
 	if tripID == "" {
-		log.Error("Missing tripID in chat WebSocket request")
+		log.Warn("HandleChatWebSocketConnection: Trip ID is missing")
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing trip ID"})
 		return
 	}
@@ -230,7 +232,9 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 	if !exists {
 		log.Error("Missing tripID in context after WebSocket upgrade")
 		h.sendErrorResponse(safeConn, "Server error: missing trip ID")
-		safeConn.Close()
+		if err := safeConn.Close(); err != nil {
+			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "missing tripID"))
+		}
 		return
 	}
 
@@ -238,7 +242,9 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 	if !ok {
 		log.Error("Invalid tripID type in context")
 		h.sendErrorResponse(safeConn, "Server error: invalid trip ID")
-		safeConn.Close()
+		if err := safeConn.Close(); err != nil {
+			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "invalid tripID format"))
+		}
 		return
 	}
 
@@ -252,22 +258,21 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 	// Verify user is a member of the trip
 	role, err := h.tripStore.GetUserRole(ctx, tripID, safeConn.UserID)
 	if err != nil {
-		log.Error("Failed to verify trip membership",
-			zap.String("userID", safeConn.UserID),
-			zap.String("tripID", tripID),
-			zap.Error(err))
-		h.sendErrorResponse(safeConn, "Not a member of this trip")
-		safeConn.Close()
+		log.Error("HandleChatWebSocketConnection: Error checking trip membership", zap.String("tripID", tripID), zap.String("userID", safeConn.UserID), zap.Error(err))
+		h.sendErrorResponse(safeConn, "Server error checking trip membership")
+		if err := safeConn.Close(); err != nil {
+			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "error checking membership"))
+		}
 		return
 	}
 
 	// Check if the user has a valid role (not NONE)
 	if role == types.MemberRoleNone {
-		log.Warn("User not a member of trip",
-			zap.String("userID", safeConn.UserID),
-			zap.String("tripID", tripID))
+		log.Warn("HandleChatWebSocketConnection: User not a member of the trip", zap.String("tripID", tripID), zap.String("userID", safeConn.UserID))
 		h.sendErrorResponse(safeConn, "Not a member of this trip")
-		safeConn.Close()
+		if err := safeConn.Close(); err != nil {
+			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "not a member"))
+		}
 		return
 	}
 
@@ -300,7 +305,9 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 			zap.String("userID", safeConn.UserID),
 			zap.String("tripID", tripID))
 		h.sendErrorResponse(safeConn, "Failed to initialize chat session")
-		safeConn.Close()
+		if err := safeConn.Close(); err != nil {
+			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "failed to init session"))
+		}
 		return
 	}
 
@@ -318,7 +325,9 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 
 		// Ensure connection is closed when done
 		if !middleware.ConnIsClosed(safeConn) {
-			safeConn.Close()
+			if err := safeConn.Close(); err != nil {
+				log.Warn("Error closing chat WebSocket connection from main handler loop", zap.Error(err), zap.String("userID", safeConn.UserID))
+			}
 		}
 
 		log.Info("Chat WebSocket handler completed",

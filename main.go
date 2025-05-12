@@ -235,6 +235,8 @@ func main() {
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)
 
+	log.Info("Router setup complete")
+
 	// Initialize WebSocket metrics (if still needed here, or move to where WS handler/manager is initialized)
 	wsMetrics := &middleware.WSMetrics{
 		ConnectionsActive: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -258,8 +260,12 @@ func main() {
 
 	// Start the server
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
-		Handler: r,
+		Addr:              fmt.Sprintf(":%s", cfg.Server.Port),
+		Handler:           r,
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 15 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Start server in a goroutine so it doesn't block shutdown handling
