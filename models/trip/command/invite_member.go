@@ -95,14 +95,31 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		"inviteeEmail", c.Invitation.InviteeEmail,
 		"tripId", c.Invitation.TripID)
 
+	// Get API host from config for fallback
+	apiHost := "https://nomadcrew.uk/api/v1"
+	if c.Ctx.Config != nil && c.Ctx.Config.FrontendURL != "" {
+		// Extract host from frontend URL
+		apiHost = strings.TrimSuffix(c.Ctx.Config.FrontendURL, "/") + "/api/v1"
+	}
+
+	// Add protocol if missing
+	if !strings.HasPrefix(apiHost, "http") {
+		apiHost = "https://" + apiHost
+	}
+
+	// Build web API URL
+	webAPIURL := fmt.Sprintf("%s/trips/invitations/accept/%s", apiHost, token)
+
 	// Send invitation email
 	emailData := types.EmailData{
 		To:      c.Invitation.InviteeEmail,
 		Subject: fmt.Sprintf("You're invited to join %s on NomadCrew", trip.Name),
 		TemplateData: map[string]interface{}{
-			"UserEmail":     c.Invitation.InviteeEmail,
-			"TripName":      trip.Name,
-			"AcceptanceURL": acceptanceURL,
+			"UserEmail":       c.Invitation.InviteeEmail,
+			"TripName":        trip.Name,
+			"AcceptanceURL":   webAPIURL,     // Use the web API URL for the main button
+			"AppDeepLink":     acceptanceURL, // App deep link for direct app access
+			"InvitationToken": token,
 		},
 	}
 

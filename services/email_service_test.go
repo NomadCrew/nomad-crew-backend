@@ -118,9 +118,10 @@ func TestSendInvitationEmail(t *testing.T) {
 				To:      "recipient@example.com",
 				Subject: "Test Invitation",
 				TemplateData: map[string]interface{}{
-					"UserEmail":     "user@example.com",
-					"TripName":      "Test Trip",
-					"AcceptanceURL": "http://example.com/accept",
+					"UserEmail":       "user@example.com",
+					"TripName":        "Test Trip",
+					"InvitationToken": "test-token",
+					"AppDeepLink":     "nomadcrew://invite/accept/test-token",
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -135,9 +136,9 @@ func TestSendInvitationEmail(t *testing.T) {
 				To:      "recipient@example.com",
 				Subject: "Test Invitation",
 				TemplateData: map[string]interface{}{
-					"UserEmail":     "user@example.com",
-					"TripName":      "Test Trip",
-					"AcceptanceURL": "http://example.com/accept",
+					"UserEmail":       "user@example.com",
+					"TripName":        "Test Trip",
+					"InvitationToken": "test-token",
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -153,7 +154,7 @@ func TestSendInvitationEmail(t *testing.T) {
 				Subject: "Test Invitation",
 				TemplateData: map[string]interface{}{
 					"InvalidKey": "This will cause template execution to fail",
-					// Missing required fields: UserEmail, TripName, AcceptanceURL
+					// Missing required fields: UserEmail, TripName, InvitationToken
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -169,7 +170,7 @@ func TestSendInvitationEmail(t *testing.T) {
 				TemplateData: map[string]interface{}{
 					"UserEmail": "user@example.com",
 					"TripName":  "Test Trip",
-					// Missing AcceptanceURL
+					// Missing InvitationToken
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -230,9 +231,9 @@ func TestEmailMetrics(t *testing.T) {
 		To:      "recipient@example.com",
 		Subject: "Test Invitation",
 		TemplateData: map[string]interface{}{
-			"UserEmail":     "user@example.com",
-			"TripName":      "Test Trip",
-			"AcceptanceURL": "http://example.com/accept",
+			"UserEmail":       "user@example.com",
+			"TripName":        "Test Trip",
+			"InvitationToken": "test-token",
 		},
 	}
 

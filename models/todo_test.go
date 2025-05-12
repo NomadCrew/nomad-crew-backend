@@ -1,4 +1,4 @@
-package models
+package models_test
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip"
+	"github.com/NomadCrew/nomad-crew-backend/models"
+	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -16,6 +17,9 @@ import (
 type MockTodoStore struct {
 	mock.Mock
 }
+
+// Verify that MockTodoStore implements store.TodoStore
+var _ store.TodoStore = (*MockTodoStore)(nil)
 
 func (m *MockTodoStore) CreateTodo(ctx context.Context, todo *types.Todo) error {
 	args := m.Called(ctx, todo)
@@ -48,17 +52,7 @@ func (m *MockTodoStore) GetTodo(ctx context.Context, id string) (*types.Todo, er
 	return args.Get(0).(*types.Todo), args.Error(1)
 }
 
-// TripModelAdapter adapts TripModelFacade to trip.TripModel for testing
-type TripModelAdapter struct {
-}
-
-func NewTripModelAdapter(facade *TripModelFacade) *trip.TripModel {
-	// This is a hack for testing purposes only - we're creating a mock adapter
-	// that will be used in tests but doesn't actually call the real implementation
-	return &trip.TripModel{}
-}
-
-// MockTripModel is a mock implementation of trip.TripModel for testing
+// MockTripModel is a mock implementation of models.TripModel for testing
 type MockTripModel struct {
 	mock.Mock
 }
@@ -72,7 +66,7 @@ func (m *MockTripModel) GetUserRole(ctx context.Context, tripID string, userID s
 func TestTodoModel_CreateTodo(t *testing.T) {
 	mockStore := new(MockTodoStore)
 	mockTripModel := new(MockTripModel)
-	model := NewTodoModel(mockStore, mockTripModel)
+	model := models.NewTodoModel(mockStore, mockTripModel)
 	ctx := context.Background()
 
 	validTodo := &types.Todo{
@@ -109,7 +103,7 @@ func TestTodoModel_CreateTodo(t *testing.T) {
 func TestTodoModel_ListTripTodos(t *testing.T) {
 	mockStore := new(MockTodoStore)
 	mockTripModel := new(MockTripModel)
-	model := NewTodoModel(mockStore, mockTripModel)
+	model := models.NewTodoModel(mockStore, mockTripModel)
 	ctx := context.Background()
 
 	tripID := "test-trip-id"
@@ -155,7 +149,7 @@ func TestTodoModel_ListTripTodos_Error(t *testing.T) {
 	t.Run("unauthorized access", func(t *testing.T) {
 		mockStore := new(MockTodoStore)
 		mockTripModel := new(MockTripModel)
-		model := NewTodoModel(mockStore, mockTripModel)
+		model := models.NewTodoModel(mockStore, mockTripModel)
 		ctx := context.Background()
 
 		tripID := "test-trip-id"
@@ -175,7 +169,7 @@ func TestTodoModel_ListTripTodos_Error(t *testing.T) {
 	t.Run("database error", func(t *testing.T) {
 		mockStore := new(MockTodoStore)
 		mockTripModel := new(MockTripModel)
-		model := NewTodoModel(mockStore, mockTripModel)
+		model := models.NewTodoModel(mockStore, mockTripModel)
 		ctx := context.Background()
 
 		tripID := "test-trip-id"

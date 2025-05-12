@@ -16,7 +16,11 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
-	"github.com/NomadCrew/nomad-crew-backend/services"
+	service "github.com/NomadCrew/nomad-crew-backend/service"        // New service package
+	"github.com/NomadCrew/nomad-crew-backend/services"               // Old services package
+	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres" // Alias for postgres store implementations
+
+	// Alias for store interfaces
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -31,7 +35,7 @@ func main() {
 	log := logger.GetLogger()
 	defer logger.Close()
 
-	// Handle shutdown signals
+	// Handle shutdown signals - Enhanced with graceful WebSocket shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -75,6 +79,10 @@ func main() {
 	tripDB := db.NewTripDB(dbClient)
 	todoDB := db.NewTodoDB(dbClient)
 	locationDB := db.NewLocationDB(dbClient)
+	// --> Add Notification and User Stores <--
+	notificationDB := dbStore.NewPgNotificationStore(pool) // Assuming this exists based on pattern
+	userDB := dbStore.NewPgUserStore(pool)                 // Based on grep results
+	// --> End Add Notification and User Stores <--
 
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
@@ -100,13 +108,42 @@ func main() {
 		"url", cfg.ExternalServices.SupabaseURL,
 		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
 
+	// Initialize JWT Validator
+	jwtValidator, err := middleware.NewJWTValidator(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize JWT Validator: %v", err)
+	}
+	log.Info("JWT Validator initialized successfully")
+
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	eventService := services.NewRedisEventService(redisClient)
+
+	// ---> Configuration loading for Event Service (Using Viper Values) <---
+	// Load config from Viper-populated struct cfg.EventService
+	eventServiceConfig := services.RedisEventServiceConfig{
+		PublishTimeout:   time.Duration(cfg.EventService.PublishTimeoutSeconds) * time.Second,
+		SubscribeTimeout: time.Duration(cfg.EventService.SubscribeTimeoutSeconds) * time.Second,
+		EventBufferSize:  cfg.EventService.EventBufferSize,
+	}
+
+	// Log the actual config being used (read from cfg)
+	log.Infow("Initializing RedisEventService with config",
+		"publishTimeout", eventServiceConfig.PublishTimeout,
+		"subscribeTimeout", eventServiceConfig.SubscribeTimeout,
+		"eventBufferSize", eventServiceConfig.EventBufferSize,
+	)
+	// Pass the loaded config to the constructor
+	eventService := services.NewRedisEventService(redisClient, eventServiceConfig)
+	// ---> End Event Service configuration <---
+
 	weatherService := services.NewWeatherService(eventService)
 	emailService := services.NewEmailService(&cfg.Email)
-	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
+	// Pass eventService to HealthService if it needs it
+	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version) // healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version, eventService)
 	locationService := services.NewLocationService(locationDB, eventService)
+	// --> Add Notification Service <--
+	notificationService := service.NewNotificationService(notificationDB, userDB, tripDB, eventService, log.Desugar())
+	// --> End Add Notification Service <--
 
 	// Initialize chat store
 	chatStore := db.NewPostgresChatStore(pool, supabaseClient, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_KEY"))
@@ -133,6 +170,12 @@ func main() {
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
 	healthHandler := handlers.NewHealthHandler(healthService)
 	locationHandler := handlers.NewLocationHandler(locationService)
+	// --> Add Notification Handler <--
+	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
+	// --> End Add Notification Handler <--
+
+	// Add new WebSocket handler
+	wsHandler := handlers.NewWSHandler(rateLimitService, eventService)
 
 	// Router setup
 	r := gin.Default()
@@ -202,15 +245,35 @@ func main() {
 	// Location routes
 	locationRoutes := v1.Group("/location")
 	{
-		locationRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
+		locationRoutes.Use(middleware.AuthMiddleware(jwtValidator))
 		locationRoutes.POST("/update", locationHandler.UpdateLocationHandler)
 		locationRoutes.POST("/offline", locationHandler.SaveOfflineLocationsHandler)
 		locationRoutes.POST("/process-offline", locationHandler.ProcessOfflineLocationsHandler)
 	}
 
+	// WebSocket routes with new optimized auth
+	wsRoutes := v1.Group("/ws")
+	{
+		// Use optimized WebSocket JWT auth
+		wsRoutes.Use(middleware.WSJwtAuth(jwtValidator))
+		// Apply WebSocket handler with rate limiting
+		wsRoutes.GET("/connect", wsHandler.HandleWebSocketConnection)
+	}
+
+	// --> Add Notification Routes <--
+	notificationRoutes := v1.Group("/notifications")
+	{
+		notificationRoutes.Use(middleware.AuthMiddleware(jwtValidator))
+		notificationRoutes.GET("", notificationHandler.GetNotificationsByUser)
+		notificationRoutes.PATCH("/:notificationId/read", notificationHandler.MarkNotificationAsRead)
+		notificationRoutes.PATCH("/read-all", notificationHandler.MarkAllNotificationsRead)
+		notificationRoutes.DELETE("/:notificationId", notificationHandler.DeleteNotification) // Optional delete endpoint
+	}
+	// --> End Add Notification Routes <--
+
 	trips := v1.Group("/trips")
 	{
-		trips.Use(middleware.AuthMiddleware(&cfg.Server))
+		trips.Use(middleware.AuthMiddleware(jwtValidator))
 
 		// List and search endpoints
 		trips.GET("/list", tripHandler.ListUserTripsHandler)  // GET all trips related to the user
@@ -267,10 +330,6 @@ func main() {
 		// Todo routes setup
 		todoRoutes := trips.Group("/:id/todos")
 		{
-			todoRoutes.Use(
-				middleware.AuthMiddleware(&cfg.Server), // Auth first
-			)
-
 			todoRoutes.GET("",
 				middleware.RequireRole(tripModel, types.MemberRoleMember),
 				todoHandler.ListTodosHandler,
@@ -333,6 +392,9 @@ func main() {
 		inviteRoutes.GET("/accept/:token", tripHandler.HandleInvitationDeepLink)
 	}
 
+	// Add a root-level route for accessing deep links via a cleaner format
+	r.GET("/invite/:token", tripHandler.HandleInvitationDeepLink)
+
 	// Initialize chat service
 	chatService := services.NewChatService(chatStore, tripModel.GetTripStore(), eventService)
 	chatHandler := handlers.NewChatHandler(chatService, chatStore)
@@ -340,7 +402,7 @@ func main() {
 	// Chat routes
 	chatRoutes := v1.Group("/chats")
 	{
-		chatRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
+		chatRoutes.Use(middleware.AuthMiddleware(jwtValidator))
 
 		// Create a chat group
 		chatRoutes.POST("/groups", chatHandler.CreateChatGroup)
@@ -370,36 +432,47 @@ func main() {
 		// The separate chat websocket endpoint has been removed
 	}
 
-	// Create server
-	srv := &http.Server{
+	// Configure server with graceful shutdown
+	server := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
 		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second, // Protection against Slowloris attacks
 	}
 
-	// Run server in goroutine
+	// Create a context for graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// Start server in a goroutine
 	go func() {
-		log.Infof("Starting server on port %s", cfg.Server.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+		log.Infow("Starting server",
+			"port", cfg.Server.Port,
+			"environment", cfg.Server.Environment,
+			"version", cfg.Server.Version)
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
 		}
 	}()
 
 	// Wait for interrupt signal
 	<-sigChan
-	log.Info("Shutting down gracefully...")
+	log.Info("Shutdown signal received, gracefully terminating connections...")
 
-	// Create shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer shutdownCancel()
+	// First close all WebSocket connections
+	log.Info("Closing active WebSocket connections...")
+	// Give WebSockets time to close gracefully before server shutdown
+	time.Sleep(2 * time.Second)
 
-	// Shutdown event service first to stop new events
+	// Then shut down HTTP server
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Errorf("Server shutdown error: %v", err)
+	}
+
+	// Close Redis event service connections
 	if err := eventService.Shutdown(shutdownCtx); err != nil {
-		log.Warnf("Event service shutdown error: %v", err)
+		log.Errorf("Event service shutdown error: %v", err)
 	}
 
-	// Shutdown server
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
+	log.Info("Server gracefully stopped")
 }

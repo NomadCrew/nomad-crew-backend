@@ -70,12 +70,23 @@ type EmailConfig struct {
 	ResendAPIKey string `mapstructure:"RESEND_API_KEY" yaml:"resend_api_key"`
 }
 
+// +++ Add EventService specific configuration +++
+type EventServiceConfig struct {
+	// Timeout for publishing a single event to Redis (in seconds)
+	PublishTimeoutSeconds int `mapstructure:"PUBLISH_TIMEOUT_SECONDS" yaml:"publish_timeout_seconds"`
+	// Timeout for establishing a subscription connection via Redis (in seconds)
+	SubscribeTimeoutSeconds int `mapstructure:"SUBSCRIBE_TIMEOUT_SECONDS" yaml:"subscribe_timeout_seconds"`
+	// Buffer size for the channel delivering events to a single subscriber
+	EventBufferSize int `mapstructure:"EVENT_BUFFER_SIZE" yaml:"event_buffer_size"`
+}
+
 type Config struct {
-	Server           ServerConfig     `mapstructure:"SERVER" yaml:"server"`
-	Database         DatabaseConfig   `mapstructure:"DATABASE" yaml:"database"`
-	Redis            RedisConfig      `mapstructure:"REDIS" yaml:"redis"`
-	Email            EmailConfig      `mapstructure:"EMAIL" yaml:"email"`
-	ExternalServices ExternalServices `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
+	Server           ServerConfig       `mapstructure:"SERVER" yaml:"server"`
+	Database         DatabaseConfig     `mapstructure:"DATABASE" yaml:"database"`
+	Redis            RedisConfig        `mapstructure:"REDIS" yaml:"redis"`
+	Email            EmailConfig        `mapstructure:"EMAIL" yaml:"email"`
+	ExternalServices ExternalServices   `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
+	EventService     EventServiceConfig `mapstructure:"EVENT_SERVICE" yaml:"event_service"` // +++ Add EventService config field +++
 }
 
 func (c *Config) IsDevelopment() bool {
@@ -109,6 +120,10 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("REDIS.POOL_SIZE", 3)   // Conservative for free tier
 	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
 	v.SetDefault("LOG_LEVEL", "info")
+	// +++ Set EventService defaults +++
+	v.SetDefault("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", 5)
+	v.SetDefault("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", 10)
+	v.SetDefault("EVENT_SERVICE.EVENT_BUFFER_SIZE", 100)
 
 	// Configure Viper to read from environment variables
 	v.AutomaticEnv()
@@ -191,6 +206,17 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
 	}
 
+	// +++ Bind EventService environment variables +++
+	if err := v.BindEnv("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", "EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS"); err != nil {
+		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS: %w", err)
+	}
+	if err := v.BindEnv("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", "EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS"); err != nil {
+		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS: %w", err)
+	}
+	if err := v.BindEnv("EVENT_SERVICE.EVENT_BUFFER_SIZE", "EVENT_SERVICE_EVENT_BUFFER_SIZE"); err != nil {
+		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.EVENT_BUFFER_SIZE: %w", err)
+	}
+
 	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
 	log.Infow("RESEND_API_KEY check",
 		"present", resendAPIKey != "",
@@ -209,6 +235,10 @@ func LoadConfig() (*Config, error) {
 		"server_port", v.GetString("SERVER.PORT"),
 		"db_host", v.GetString("DATABASE.HOST"),
 		"allowed_origins", v.GetString("SERVER.ALLOWED_ORIGINS"),
+		// +++ Log EventService config +++
+		"event_service_publish_timeout", v.GetInt("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS"),
+		"event_service_subscribe_timeout", v.GetInt("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS"),
+		"event_service_buffer_size", v.GetInt("EVENT_SERVICE.EVENT_BUFFER_SIZE"),
 	)
 
 	// Unmarshal configuration
@@ -238,6 +268,17 @@ func LoadConfig() (*Config, error) {
 
 	if cfg.Email.FromAddress == "" {
 		return nil, fmt.Errorf("FROM_ADDRESS is required")
+	}
+
+	// +++ Validate EventService config +++
+	if cfg.EventService.PublishTimeoutSeconds <= 0 {
+		return nil, fmt.Errorf("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS must be positive")
+	}
+	if cfg.EventService.SubscribeTimeoutSeconds <= 0 {
+		return nil, fmt.Errorf("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS must be positive")
+	}
+	if cfg.EventService.EventBufferSize <= 0 {
+		return nil, fmt.Errorf("EVENT_SERVICE.EVENT_BUFFER_SIZE must be positive")
 	}
 
 	return &cfg, nil
@@ -299,7 +340,12 @@ func validateConfig(cfg *Config) error {
 		"environment", cfg.Server.Environment,
 		"database_host", cfg.Database.Host,
 		"database_name", cfg.Database.Name,
-		"redis_address", cfg.Redis.Address)
+		"redis_address", cfg.Redis.Address,
+		// +++ Log validated EventService config +++
+		"event_service_publish_timeout", cfg.EventService.PublishTimeoutSeconds,
+		"event_service_subscribe_timeout", cfg.EventService.SubscribeTimeoutSeconds,
+		"event_service_buffer_size", cfg.EventService.EventBufferSize,
+	)
 
 	return nil
 }

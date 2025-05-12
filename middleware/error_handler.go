@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
@@ -14,7 +15,8 @@ import (
 type ErrorResponse struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
-	Detail  string `json:"detail,omitempty"`
+	Details string `json:"details,omitempty"`
+	Code    string `json:"code,omitempty"` // For HTTP status code as string
 }
 
 func ErrorHandler() gin.HandlerFunc {
@@ -82,10 +84,17 @@ func ErrorHandler() gin.HandlerFunc {
 				}
 
 				// Create the response
-				response := ErrorResponse{
-					Type:    string(appError.Type),
-					Message: appError.Message,
-					Detail:  appError.Detail,
+				response := map[string]interface{}{
+					"type":    string(appError.Type),
+					"message": appError.Message,
+					"code":    strconv.Itoa(appError.HTTPStatus),
+				}
+
+				// Only include details for validation and not-found errors or in debug mode
+				if appError.Detail != "" && (gin.IsDebugging() ||
+					appError.Type == errors.ValidationError ||
+					appError.Type == errors.NotFoundError) {
+					response["details"] = appError.Detail
 				}
 
 				// For auth errors (particularly token expiration), preserve any additional fields
@@ -105,6 +114,43 @@ func ErrorHandler() gin.HandlerFunc {
 				return
 			}
 
+			// Handle Gin binding errors - which come as public errors
+			if c.Errors.Last().Type == gin.ErrorTypeBind {
+				log.Warnw("Request binding error",
+					"error", err,
+					"path", c.Request.URL.Path,
+					"method", c.Request.Method)
+
+				response := map[string]interface{}{
+					"type":    string(errors.ValidationError),
+					"message": "Failed to bind request",
+					"code":    "400",
+				}
+
+				// Include details in debug mode
+				if gin.IsDebugging() {
+					response["details"] = err.Error()
+				}
+
+				c.JSON(400, response)
+				return
+			}
+
+			// Handle Gin public errors
+			if c.Errors.Last().Type == gin.ErrorTypePublic {
+				log.Warnw("Public error",
+					"error", err,
+					"path", c.Request.URL.Path,
+					"method", c.Request.Method)
+
+				c.JSON(400, map[string]interface{}{
+					"type":    string(errors.ValidationError),
+					"message": err.Error(),
+					"code":    "400",
+				})
+				return
+			}
+
 			// Handle unknown errors
 			log.Errorw("Unexpected error",
 				"error", err,
@@ -115,11 +161,18 @@ func ErrorHandler() gin.HandlerFunc {
 				"stack_trace", string(stackTrace),
 			)
 
-			c.JSON(500, ErrorResponse{
-				Type:    string(errors.ServerError),
-				Message: "Internal server error",
-				Detail:  "An unexpected error occurred",
-			})
+			response := map[string]interface{}{
+				"type":    string(errors.ServerError),
+				"message": "Internal Server Error",
+				"code":    "500",
+			}
+
+			// In debug mode, include error details
+			if gin.IsDebugging() {
+				response["details"] = err.Error()
+			}
+
+			c.JSON(500, response)
 		}
 	}
 }

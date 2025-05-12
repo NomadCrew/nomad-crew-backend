@@ -16,23 +16,49 @@ import (
 	"go.uber.org/zap"
 )
 
-// RedisEventService implements the EventPublisher interface using Redis Pub/Sub.
-type RedisEventService struct {
-	redisClient   *redis.Client
-	log           *zap.SugaredLogger
-	metrics       *EventMetrics // New: for monitoring
-	handlers      map[types.EventType][]types.EventHandler
-	mu            sync.RWMutex
-	subscriptions map[string]subscription // Key: tripID:userID
+// Configuration for RedisEventService
+type RedisEventServiceConfig struct {
+	PublishTimeout   time.Duration
+	SubscribeTimeout time.Duration // Timeout for initial subscription setup
+	EventBufferSize  int           // Buffer size for the client channel
 }
 
-var _ types.EventPublisher = (*RedisEventService)(nil) // Add interface assertion
+// Default configuration values
+func DefaultRedisEventServiceConfig() RedisEventServiceConfig {
+	return RedisEventServiceConfig{
+		PublishTimeout:   5 * time.Second,
+		SubscribeTimeout: 10 * time.Second,
+		EventBufferSize:  100, // Sensible default, adjust based on load
+	}
+}
+
+// RedisEventService implements the EventPublisher interface using Redis Pub/Sub.
+type RedisEventService struct {
+	redisClient *redis.Client
+	log         *zap.SugaredLogger
+	metrics     *EventMetrics
+	config      RedisEventServiceConfig // New: Service configuration
+	mu          sync.RWMutex
+	// Key: subscriptionKey (e.g., "tripID:userID")
+	// Value: Manages the underlying Redis subscription and cancellation
+	subscriptions map[string]subscription
+}
+
+// Ensure RedisEventService adheres to the interfaces
+var _ types.EventPublisher = (*RedisEventService)(nil)
+
+// var _ types.HealthChecker = (*RedisEventService)(nil) // Removed check for undefined: types.HealthChecker
 
 type EventMetrics struct {
-	publishLatency   prometheus.Histogram
-	subscribeLatency prometheus.Histogram
-	errorCount       prometheus.Counter
-	eventCount       *prometheus.CounterVec
+	publishLatency           prometheus.Histogram
+	subscribeLatency         prometheus.Histogram
+	publishErrorCount        prometheus.Counter
+	subscribeErrorCount      prometheus.Counter     // Errors during initial subscribe setup
+	processMessageErrorCount prometheus.Counter     // Errors during message processing (unmarshal etc.)
+	droppedEventCount        prometheus.Counter     // Events dropped due to full client buffer
+	publishedEventCount      *prometheus.CounterVec // Count of successfully published events by type
+	receivedEventCount       *prometheus.CounterVec // Count of successfully received events by type (in processSubscription)
+	activeSubscriptions      prometheus.Gauge
 }
 
 type subscription struct {
@@ -45,76 +71,120 @@ func initEventMetrics() *EventMetrics {
 	return &EventMetrics{
 		publishLatency: promauto.NewHistogram(prometheus.HistogramOpts{
 			Name:    "nomadcrew_event_publish_duration_seconds",
-			Help:    "Time taken to publish events",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+			Help:    "Time taken to publish events to Redis",
+			Buckets: prometheus.DefBuckets, // Using default buckets
 		}),
 		subscribeLatency: promauto.NewHistogram(prometheus.HistogramOpts{
 			Name:    "nomadcrew_event_subscribe_duration_seconds",
-			Help:    "Time taken to establish subscriptions",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
+			Help:    "Time taken to establish a client subscription via Redis",
+			Buckets: prometheus.DefBuckets,
 		}),
-		errorCount: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "nomadcrew_event_errors_total",
-			Help: "Total number of event processing errors",
+		publishErrorCount: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "nomadcrew_event_publish_errors_total",
+			Help: "Total number of errors during event publishing to Redis",
 		}),
-		eventCount: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "nomadcrew_events_processed_total",
-			Help: "Total number of events processed",
+		subscribeErrorCount: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "nomadcrew_event_subscribe_errors_total",
+			Help: "Total number of errors during client subscription setup",
+		}),
+		processMessageErrorCount: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "nomadcrew_event_process_message_errors_total",
+			Help: "Total number of errors while processing received messages (e.g., unmarshal)",
+		}),
+		droppedEventCount: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "nomadcrew_event_dropped_total",
+			Help: "Total number of events dropped because the client channel was full",
+		}),
+		publishedEventCount: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "nomadcrew_events_published_total",
+			Help: "Total number of events successfully published to Redis",
 		}, []string{"event_type"}),
+		receivedEventCount: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "nomadcrew_events_received_total",
+			Help: "Total number of events successfully received from Redis and passed filters",
+		}, []string{"event_type"}),
+		activeSubscriptions: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "nomadcrew_event_active_subscriptions",
+			Help: "Current number of active client subscriptions",
+		}),
 	}
 }
 
 // NewRedisEventService returns a new instance of RedisEventService.
-func NewRedisEventService(redisClient *redis.Client) *RedisEventService {
+func NewRedisEventService(redisClient *redis.Client, cfg ...RedisEventServiceConfig) *RedisEventService {
+	config := DefaultRedisEventServiceConfig()
+	if len(cfg) > 0 {
+		config = cfg[0] // Allow overriding defaults
+	}
+
 	return &RedisEventService{
 		redisClient:   redisClient,
-		log:           logger.GetLogger(),
+		log:           logger.GetLogger().Named("RedisEventService"), // Add name for clarity
 		metrics:       initEventMetrics(),
-		handlers:      make(map[types.EventType][]types.EventHandler),
+		config:        config,
 		subscriptions: make(map[string]subscription),
 	}
 }
 
-// Publish serializes the event and publishes it on a Redis channel.
-// The channel is named "trip:{tripID}".
+// Publish serializes the event and publishes it on a Redis channel specific to the trip.
 func (r *RedisEventService) Publish(ctx context.Context, tripID string, event types.Event) error {
 	startTime := time.Now()
 	defer func() {
+		// Observe latency regardless of success/failure
 		r.metrics.publishLatency.Observe(time.Since(startTime).Seconds())
 	}()
 
-	// Validate event
+	// Validate event structure
 	if err := event.Validate(); err != nil {
-		r.metrics.errorCount.Inc()
+		r.metrics.publishErrorCount.Inc()
+		// It's often better to log validation errors here than return them,
+		// unless the caller needs to know specifically about validation failure.
+		// Returning an error might halt processes unnecessarily if the event source doesn't handle it.
+		r.log.Errorw("Invalid event structure during publish",
+			"error", err,
+			"tripID", tripID,
+			"eventType", event.Type,
+			"eventID", event.ID, // Log event ID if available
+		)
+		// Decide whether to return the error or just log it.
+		// Returning it makes the publisher aware, logging makes it fire-and-forget.
+		// Let's return it for now, assuming callers might want to know.
 		return fmt.Errorf("invalid event: %w", err)
 	}
 
-	// Set default values if missing
+	// Set default values if missing (ID should usually be set by originator)
 	if event.ID == "" {
 		event.ID = uuid.New().String()
+		r.log.Warnw("Event published without ID, generated one", "eventType", event.Type, "tripID", tripID)
 	}
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
 	if event.Version == 0 {
-		event.Version = 1
+		event.Version = 1 // Default version
 	}
 
 	// Format the Redis channel name
-	channel := fmt.Sprintf("trip:%s", tripID)
+	channel := r.tripChannelName(tripID)
 
-	// Marshal the event (once for all clients)
+	// Marshal the event
 	data, err := json.Marshal(event)
 	if err != nil {
-		r.metrics.errorCount.Inc()
+		r.metrics.publishErrorCount.Inc()
+		r.log.Errorw("Failed to marshal event for publish",
+			"error", err,
+			"tripID", tripID,
+			"eventType", event.Type,
+			"eventID", event.ID,
+		)
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
-	// Update metrics
-	r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
+	// Use context with configured timeout for the publish operation
+	publishCtx, cancel := context.WithTimeout(ctx, r.config.PublishTimeout)
+	defer cancel()
 
-	// Publish to Redis
-	r.log.Debugw("Publishing event",
+	r.log.Debugw("Publishing event to Redis",
 		"channel", channel,
 		"eventType", event.Type,
 		"eventID", event.ID,
@@ -122,91 +192,110 @@ func (r *RedisEventService) Publish(ctx context.Context, tripID string, event ty
 		"payloadSize", len(data),
 	)
 
-	// Use context timeout to prevent blocking indefinitely
-	publishCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
+	// Publish to Redis
 	if err := r.redisClient.Publish(publishCtx, channel, data).Err(); err != nil {
-		r.metrics.errorCount.Inc()
+		r.metrics.publishErrorCount.Inc()
+		r.log.Errorw("Failed to publish event to Redis",
+			"error", err,
+			"channel", channel,
+			"eventType", event.Type,
+			"eventID", event.ID,
+		)
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
-	// Process handlers
-	r.mu.RLock()
-	handlers := r.handlers[event.Type]
-	r.mu.RUnlock()
+	// Increment success metric
+	r.metrics.publishedEventCount.WithLabelValues(string(event.Type)).Inc()
 
-	for _, handler := range handlers {
-		handler := handler // Create a new variable for the goroutine
-		go func() {
-			// Create a separate context with timeout for handler execution
-			handlerCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := handler.HandleEvent(handlerCtx, event); err != nil {
-				r.log.Errorw("Event handler failed",
-					"error", err,
-					"eventType", event.Type,
-					"eventID", event.ID,
-					"handler", fmt.Sprintf("%T", handler),
-				)
-			}
-		}()
-	}
+	// Removed internal handler dispatch logic
 
 	return nil
 }
 
-// Subscribe method with improved error handling and cleanup
+// Subscribe creates a Redis Pub/Sub subscription for a given user and trip,
+// returning a channel that emits filtered events.
 func (r *RedisEventService) Subscribe(ctx context.Context, tripID string, userID string, filters ...types.EventType) (<-chan types.Event, error) {
 	startTime := time.Now()
-	defer func() {
-		r.metrics.subscribeLatency.Observe(time.Since(startTime).Seconds())
-	}()
+	subscriptionKey := r.subscriptionKey(tripID, userID)
 
-	// Check for existing subscription and clean it up
-	subscriptionKey := fmt.Sprintf("%s:%s", tripID, userID)
-	r.mu.Lock()
+	r.mu.Lock() // Lock early to manage concurrent subscribes for the same user
+
+	// Check if already subscribed
 	if _, exists := r.subscriptions[subscriptionKey]; exists {
 		r.mu.Unlock()
-		// Close existing subscription first
-		if err := r.Unsubscribe(ctx, tripID, userID); err != nil {
-			r.log.Warnw("Failed to clean up existing subscription",
-				"error", err,
-				"tripID", tripID,
-				"userID", userID)
+		r.log.Warnw("User already subscribed, closing previous subscription", "tripID", tripID, "userID", userID)
+		// Attempt to close the old one cleanly before creating a new one.
+		// Pass a short timeout context for the unsubscribe operation.
+		unsubscribeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := r.Unsubscribe(unsubscribeCtx, tripID, userID); err != nil {
+			// Log error but proceed with new subscription attempt
+			r.log.Errorw("Error closing previous subscription", "error", err, "tripID", tripID, "userID", userID)
 		}
+		// Need to re-acquire lock for the new subscription attempt
 		r.mu.Lock()
 	}
-	r.mu.Unlock()
 
-	// Create new subscription with Redis
-	channelName := fmt.Sprintf("trip:%s", tripID)
-	pubsub := r.redisClient.Subscribe(ctx, channelName)
+	channelName := r.tripChannelName(tripID)
+	eventChan := make(chan types.Event, r.config.EventBufferSize)
 
-	// Create buffered channel for events with appropriate size
-	eventChan := make(chan types.Event, 100)
+	// Use context with timeout for setting up the subscription
+	subCtx, subCancel := context.WithTimeout(ctx, r.config.SubscribeTimeout)
+	defer subCancel() // Cancel timeout context if setup fails early
 
-	// Create subscription context with cancelation
-	subCtx, cancel := context.WithCancel(context.Background())
+	pubsub := r.redisClient.Subscribe(subCtx, channelName)
 
-	// Store subscription for management
-	r.mu.Lock()
-	r.subscriptions[subscriptionKey] = subscription{
-		pubsub:    pubsub,
-		cancelCtx: cancel,
+	// Wait for confirmation that subscription is active
+	_, err := pubsub.Receive(subCtx)
+	if err != nil {
+		r.mu.Unlock()
+		r.metrics.subscribeErrorCount.Inc()
+		close(eventChan) // Close channel on failure
+		// Ensure pubsub is closed if partially opened
+		_ = pubsub.Close()
+		r.log.Errorw("Failed to subscribe to Redis channel",
+			"error", err,
+			"channel", channelName,
+			"tripID", tripID,
+			"userID", userID)
+		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
-	r.mu.Unlock()
 
-	// Start goroutine to process messages
-	go r.processSubscription(subCtx, pubsub, eventChan, tripID, userID, subscriptionKey, filters)
+	// Subscription successful, store it and start processing goroutine
+	// Create a separate context for the lifetime of the processing goroutine
+	processCtx, processCancel := context.WithCancel(context.Background()) // Use background context
+
+	sub := subscription{
+		pubsub:    pubsub,
+		cancelCtx: processCancel,
+	}
+	r.subscriptions[subscriptionKey] = sub
+	r.metrics.activeSubscriptions.Inc() // Increment active subscription gauge
+	r.mu.Unlock()                       // Unlock *after* modifying the map
+
+	// Start the goroutine to process messages
+	go r.processSubscription(processCtx, pubsub, eventChan, tripID, userID, subscriptionKey, filters)
+
+	r.metrics.subscribeLatency.Observe(time.Since(startTime).Seconds())
+	r.log.Infow("User subscribed to events", "tripID", tripID, "userID", userID, "filters", filters)
 
 	return eventChan, nil
 }
 
-// Helper method to process subscription messages
+// Helper method to generate consistent channel names
+func (r *RedisEventService) tripChannelName(tripID string) string {
+	return fmt.Sprintf("trip-events:%s", tripID)
+}
+
+// Helper method to generate consistent subscription map keys
+func (r *RedisEventService) subscriptionKey(tripID, userID string) string {
+	return fmt.Sprintf("%s:%s", tripID, userID)
+}
+
+// processSubscription runs in a goroutine, receiving messages from Redis
+// and forwarding them to the client's channel.
 func (r *RedisEventService) processSubscription(
-	ctx context.Context,
+	ctx context.Context, // This context is controlled by Subscribe/Unsubscribe lifecycle
 	pubsub *redis.PubSub,
 	eventChan chan types.Event,
 	tripID string,
@@ -215,60 +304,50 @@ func (r *RedisEventService) processSubscription(
 	filters []types.EventType,
 ) {
 	defer func() {
-		// Clean up on exit
+		// Cleanup: Close channel, remove from map, decrement gauge
 		close(eventChan)
 
 		r.mu.Lock()
-		delete(r.subscriptions, subscriptionKey)
+		// Check if the subscription still exists (might have been removed by Unsubscribe)
+		if _, exists := r.subscriptions[subscriptionKey]; exists {
+			delete(r.subscriptions, subscriptionKey)
+			r.metrics.activeSubscriptions.Dec() // Decrement active subscription gauge
+		}
 		r.mu.Unlock()
 
-		// Check if pubsub is still active before closing
-		if pubsub != nil {
-			select {
-			case <-pubsub.Channel():
-				// Channel is already closed, no need to close again
-			default:
-				if err := pubsub.Close(); err != nil {
-					if err.Error() != "redis: client is closed" {
-						r.log.Warnw("Error closing Redis pubsub", "error", err)
-					}
-				}
+		// Close the Redis PubSub connection
+		if err := pubsub.Close(); err != nil {
+			// Avoid logging error if Redis client itself is already closed
+			if err.Error() != "redis: client is closed" {
+				r.log.Warnw("Error closing Redis pubsub during cleanup", "error", err, "subscriptionKey", subscriptionKey)
 			}
 		}
+		r.log.Debugw("Stopped processing subscription", "subscriptionKey", subscriptionKey)
 	}()
 
-	// Verify pubsub connection is healthy
-	if err := pubsub.Ping(ctx); err != nil {
-		r.log.Errorw("Redis pubsub connection unhealthy",
-			"error", err,
-			"tripID", tripID,
-			"userID", userID)
-		return
-	}
-
+	// Get the message channel from pubsub
 	ch := pubsub.Channel()
 
 	for {
 		select {
 		case msg, ok := <-ch:
 			if !ok {
-				r.log.Infow("Redis pubsub channel closed",
-					"tripID", tripID,
-					"userID", userID)
-				return
+				r.log.Infow("Redis pubsub channel closed", "subscriptionKey", subscriptionKey)
+				return // Exit goroutine if channel is closed
 			}
 
-			// Parse and process message
 			var event types.Event
 			if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
-				r.log.Errorw("Failed to unmarshal event",
+				r.metrics.processMessageErrorCount.Inc()
+				r.log.Errorw("Failed to unmarshal event from Redis",
 					"error", err,
-					"payload", msg.Payload)
-				r.metrics.errorCount.Inc()
-				continue
+					"payload", msg.Payload, // Be careful logging payloads in production (PII/size)
+					"subscriptionKey", subscriptionKey)
+				// Consider adding logic for poison messages here if needed
+				continue // Skip this message
 			}
 
-			// Apply filters if any
+			// Apply filters if any are provided
 			if len(filters) > 0 {
 				matched := false
 				for _, filter := range filters {
@@ -278,147 +357,209 @@ func (r *RedisEventService) processSubscription(
 					}
 				}
 				if !matched {
-					continue
+					continue // Skip event if it doesn't match filters
 				}
 			}
 
-			// Send event to client with non-blocking operation
+			// Send event to client channel (non-blocking)
 			select {
 			case eventChan <- event:
-				r.metrics.eventCount.WithLabelValues(string(event.Type)).Inc()
+				r.metrics.receivedEventCount.WithLabelValues(string(event.Type)).Inc()
 			default:
+				// Client channel is full, drop the event
+				r.metrics.droppedEventCount.Inc()
 				r.log.Warnw("Event channel full, dropping event",
 					"eventType", event.Type,
 					"eventID", event.ID,
-					"tripID", tripID,
-					"userID", userID)
+					"subscriptionKey", subscriptionKey)
 			}
 
 		case <-ctx.Done():
-			r.log.Infow("Subscription context canceled",
-				"tripID", tripID,
-				"userID", userID)
-			return
+			// Context was canceled (likely by Unsubscribe or Shutdown)
+			r.log.Infow("Subscription context canceled, stopping processor", "subscriptionKey", subscriptionKey)
+			return // Exit goroutine
 		}
 	}
 }
 
-func (r *RedisEventService) RegisterHandler(eventType types.EventType, handler types.EventHandler) {
+// Unsubscribe removes a user's subscription.
+func (r *RedisEventService) Unsubscribe(ctx context.Context, tripID string, userID string) error {
+	subscriptionKey := r.subscriptionKey(tripID, userID)
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.handlers[eventType] = append(r.handlers[eventType], handler)
-	r.log.Infow("Registered event handler",
-		"eventType", eventType,
-		"handler", fmt.Sprintf("%T", handler),
-	)
-}
-
-func (r *RedisEventService) RegisterHandlers(handler types.EventHandler) {
-	for _, eventType := range handler.SupportedEvents() {
-		r.RegisterHandler(eventType, handler)
+	sub, exists := r.subscriptions[subscriptionKey]
+	if !exists {
+		r.mu.Unlock()
+		r.log.Debugw("Unsubscribe called for non-existent subscription", "subscriptionKey", subscriptionKey)
+		return nil // Already unsubscribed or never existed
 	}
+
+	// Remove from map *before* canceling context and closing pubsub
+	// This prevents new messages potentially being processed after unsubscribe starts
+	delete(r.subscriptions, subscriptionKey)
+	r.metrics.activeSubscriptions.Dec() // Decrement gauge immediately
+	r.mu.Unlock()
+
+	// Cancel the context for the processSubscription goroutine
+	sub.cancelCtx()
+
+	// Closing the pubsub object also signals the underlying Redis connection to stop listening.
+	// The processSubscription goroutine's defer function will also attempt to close,
+	// but closing twice is generally safe with go-redis.
+	if err := sub.pubsub.Close(); err != nil {
+		if err.Error() != "redis: client is closed" {
+			r.log.Errorw("Failed to close Redis subscription during Unsubscribe",
+				"error", err,
+				"subscriptionKey", subscriptionKey)
+			// Return error, but the subscription state is already cleaned up locally
+			return fmt.Errorf("failed to close redis pubsub: %w", err)
+		}
+	}
+
+	r.log.Infow("Successfully unsubscribed", "subscriptionKey", subscriptionKey)
+	return nil
 }
 
-// Batch publish implementation
+// Batch publishing remains largely the same, simplified as no handlers to call
 func (r *RedisEventService) PublishBatch(ctx context.Context, tripID string, events []types.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
 
 	pipe := r.redisClient.Pipeline()
-	channel := fmt.Sprintf("trip:%s", tripID)
+	channel := r.tripChannelName(tripID)
+	processedCount := 0
 
-	for _, event := range events {
+	for i, event := range events {
+		// Validate and set defaults
 		if err := event.Validate(); err != nil {
-			r.metrics.errorCount.Inc()
-			return fmt.Errorf("invalid event in batch: %w", err)
+			r.metrics.publishErrorCount.Inc()
+			r.log.Errorw("Invalid event in batch", "error", err, "index", i, "tripID", tripID)
+			// Decide whether to fail the whole batch or skip the event
+			// Failing whole batch for now:
+			return fmt.Errorf("invalid event at index %d: %w", i, err)
+		}
+		if event.ID == "" {
+			event.ID = uuid.NewString()
+		}
+		if event.Timestamp.IsZero() {
+			event.Timestamp = time.Now()
+		}
+		if event.Version == 0 {
+			event.Version = 1
 		}
 
 		data, err := json.Marshal(event)
 		if err != nil {
-			r.metrics.errorCount.Inc()
-			return fmt.Errorf("failed to marshal event in batch: %w", err)
+			r.metrics.publishErrorCount.Inc()
+			r.log.Errorw("Failed to marshal event in batch", "error", err, "index", i, "tripID", tripID)
+			return fmt.Errorf("failed to marshal event at index %d: %w", i, err)
 		}
 
-		pipe.Publish(ctx, channel, data)
+		pipe.Publish(ctx, channel, data) // Use the pipeline context
+		processedCount++
+		r.metrics.publishedEventCount.WithLabelValues(string(event.Type)).Inc()
 	}
 
-	_, err := pipe.Exec(ctx)
+	// Execute the pipeline
+	publishCtx, cancel := context.WithTimeout(ctx, r.config.PublishTimeout) // Apply timeout to batch exec
+	defer cancel()
+	_, err := pipe.Exec(publishCtx)
 	if err != nil {
-		r.metrics.errorCount.Inc()
+		r.metrics.publishErrorCount.Inc()
+		r.log.Errorw("Failed to execute Redis pipeline for batch publish", "error", err, "tripID", tripID)
+		// Decrement metrics for events that were added but failed execution? Or keep as published attempt?
+		// Keeping as published attempt for now.
 		return fmt.Errorf("failed to publish batch: %w", err)
 	}
 
-	r.metrics.eventCount.WithLabelValues("batch").Add(float64(len(events)))
+	r.log.Debugw("Successfully published batch", "tripID", tripID, "count", processedCount)
+	// Note: Batch metrics are now handled per-event type above.
+	// r.metrics.eventCount.WithLabelValues("batch").Add(float64(processedCount)) // Old batch metric removed
 	return nil
 }
 
-// Add helper method for graceful shutdown
+// Shutdown gracefully closes all active subscriptions.
 func (r *RedisEventService) Shutdown(ctx context.Context) error {
-	r.log.Info("Shutting down event service")
+	r.log.Info("Shutting down Redis Event Service...")
 
-	// Close all active subscriptions
 	r.mu.Lock()
-	for key, sub := range r.subscriptions {
-		r.log.Debugw("Closing subscription during shutdown", "key", key)
-		sub.cancelCtx()
-		if err := sub.pubsub.Close(); err != nil {
-			r.log.Warnw("Error closing subscription", "key", key, "error", err)
+	// Create a slice of keys to avoid iteration issues while modifying the map
+	keys := make([]string, 0, len(r.subscriptions))
+	for k := range r.subscriptions {
+		keys = append(keys, k)
+	}
+	r.mu.Unlock() // Unlock before calling Unsubscribe which locks again
+
+	var wg sync.WaitGroup
+	for _, key := range keys {
+		wg.Add(1)
+		go func(k string) {
+			defer wg.Done()
+			// Extract tripID and userID if needed for Unsubscribe (or modify Unsubscribe)
+			// Simplified: Assuming key format is "tripID:userID"
+			parts := splitSubscriptionKey(k)
+			if len(parts) != 2 {
+				r.log.Errorw("Invalid subscription key format during shutdown", "key", k)
+				return
+			}
+			tripID, userID := parts[0], parts[1]
+
+			// Create a context with timeout for each unsubscribe during shutdown
+			shutdownUnsubCtx, cancel := context.WithTimeout(ctx, 5*time.Second) // Use shutdown context with timeout
+			defer cancel()
+
+			if err := r.Unsubscribe(shutdownUnsubCtx, tripID, userID); err != nil {
+				r.log.Warnw("Error unsubscribing during shutdown", "error", err, "key", k)
+			}
+		}(key)
+	}
+
+	// Wait for all unsubscribe operations to complete
+	wg.Wait()
+
+	// Final check on subscription map (should be empty)
+	r.mu.RLock()
+	remaining := len(r.subscriptions)
+	r.mu.RUnlock()
+	if remaining > 0 {
+		r.log.Warnf("%d subscriptions remained after shutdown attempt", remaining)
+	}
+
+	r.log.Info("Redis Event Service shutdown complete.")
+	return nil
+}
+
+// Helper to split key, basic implementation
+func splitSubscriptionKey(key string) []string {
+	// A more robust implementation might be needed if keys can contain ':'
+	parts := make([]string, 0, 2)
+	lastColon := -1
+	for i := len(key) - 1; i >= 0; i-- {
+		if key[i] == ':' {
+			lastColon = i
+			break
 		}
 	}
-	r.subscriptions = make(map[string]subscription)
-	r.mu.Unlock()
-
-	return nil
+	if lastColon != -1 && lastColon < len(key)-1 {
+		parts = append(parts, key[:lastColon])
+		parts = append(parts, key[lastColon+1:])
+	} else {
+		// Handle cases where format might be wrong or key doesn't contain ':'
+		// For now, returning empty or single part might indicate an issue upstream
+		parts = append(parts, key)
+	}
+	if len(parts) == 2 {
+		return parts
+	}
+	return []string{} // Indicate failure clearly
 }
 
-// Add health check method
+// HealthCheck pings the Redis server.
 func (r *RedisEventService) HealthCheck(ctx context.Context) error {
 	if err := r.redisClient.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("event service unhealthy: %w", err)
+		r.metrics.publishErrorCount.Inc() // Or a dedicated health check error metric
+		return fmt.Errorf("Redis Event Service unhealthy: Redis ping failed: %w", err)
 	}
-	return nil
-}
-
-func (r *RedisEventService) Unsubscribe(ctx context.Context, tripID string, userID string) error {
-	key := fmt.Sprintf("%s:%s", tripID, userID)
-
-	r.mu.Lock()
-	sub, exists := r.subscriptions[key]
-	if !exists {
-		r.mu.Unlock()
-		return nil // Already unsubscribed
-	}
-
-	// Remove from map immediately to prevent concurrent access
-	delete(r.subscriptions, key)
-	r.mu.Unlock()
-
-	// Cancel the context to stop the processing goroutine
-	sub.cancelCtx()
-
-	// Check if pubsub is still active before closing
-	if sub.pubsub != nil {
-		select {
-		case <-sub.pubsub.Channel():
-			// Channel is already closed, no need to close again
-		default:
-			if err := sub.pubsub.Close(); err != nil {
-				if err.Error() != "redis: client is closed" {
-					r.log.Errorw("Failed to close Redis subscription",
-						"error", err,
-						"tripID", tripID,
-						"userID", userID)
-					return fmt.Errorf("failed to unsubscribe: %w", err)
-				}
-			}
-		}
-	}
-
-	r.log.Debugw("Successfully unsubscribed",
-		"tripID", tripID,
-		"userID", userID)
-
 	return nil
 }
