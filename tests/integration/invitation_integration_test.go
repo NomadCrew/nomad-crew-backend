@@ -101,7 +101,10 @@ func SetupInvitationTest(t *testing.T) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:14-alpine",
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForLog("database system is ready to accept connections").WithStartupTimeout(120 * time.Second),
+		WaitingFor: wait.ForAll(
+			wait.ForLog("database system is ready to accept connections"),
+			wait.ForListeningPort("5432/tcp"),
+		),
 		Env: map[string]string{
 			"POSTGRES_DB":       "test_nomadcrew",
 			"POSTGRES_USER":     "testuser",

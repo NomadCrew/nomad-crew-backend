@@ -81,6 +81,7 @@ func newMetrics() *metrics {
 // For testing purposes - reset metrics
 func resetMetricsForTesting() {
 	metricsInstance = nil
+	metricsOnce = sync.Once{}
 }
 
 // RedisPublisher implements types.EventPublisher using Redis Pub/Sub
@@ -91,6 +92,7 @@ type RedisPublisher struct {
 	config  Config
 	mu      sync.RWMutex
 	subs    map[string]*subscription
+	wg      sync.WaitGroup
 }
 
 type subscription struct {
@@ -184,6 +186,7 @@ func (p *RedisPublisher) Subscribe(ctx context.Context, tripID string, userID st
 	events := make(chan types.Event, p.config.EventBufferSize)
 
 	// Start processing messages in a goroutine
+	p.wg.Add(1)
 	go p.processMessages(subCtx, pubsub, events, filters, subKey)
 
 	return events, nil
@@ -191,6 +194,7 @@ func (p *RedisPublisher) Subscribe(ctx context.Context, tripID string, userID st
 
 // processMessages handles incoming Redis messages
 func (p *RedisPublisher) processMessages(ctx context.Context, pubsub *redis.PubSub, events chan<- types.Event, filters []types.EventType, subKey string) {
+	defer p.wg.Done()
 	defer func() {
 		close(events)
 		p.metrics.activeSubscribers.Dec()
@@ -251,14 +255,22 @@ func (p *RedisPublisher) Unsubscribe(ctx context.Context, tripID string, userID 
 		return fmt.Errorf("no subscription found for trip %s and user %s", tripID, userID)
 	}
 
-	// Cancel the context and close the pubsub
+	// Cancel the context to signal processMessages to stop
 	sub.cancelCtx()
+
+	// Note: processMessages will call pubsub.Close() upon context cancellation and exit
+	// We might not need to call it explicitly here if processMessages handles it robustly
+	// However, closing it here too ensures it's closed if processMessages hasn't reached that point yet.
 	if err := sub.pubsub.Close(); err != nil {
-		p.log.Errorw("Error closing pubsub", "error", err, "subKey", subKey)
+		p.log.Errorw("Error closing pubsub during unsubscribe", "error", err, "subKey", subKey)
 	}
 
 	delete(p.subs, subKey)
 	p.mu.Unlock()
+
+	// It's better to wait for the goroutine to actually finish if we rely on it.
+	// However, Unsubscribe is usually fire-and-forget for the caller.
+	// For Shutdown, waiting is critical.
 
 	return nil
 }
@@ -316,15 +328,23 @@ func (p *RedisPublisher) PublishBatch(ctx context.Context, tripID string, events
 // Shutdown gracefully shuts down the publisher
 func (p *RedisPublisher) Shutdown(ctx context.Context) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	localSubs := make(map[string]*subscription, len(p.subs))
+	for k, v := range p.subs {
+		localSubs[k] = v
+	}
+	p.subs = make(map[string]*subscription)
+	p.mu.Unlock()
 
-	for subKey, sub := range p.subs {
+	p.log.Infow("Shutting down RedisPublisher, cancelling subscriptions...", "count", len(localSubs))
+
+	for subKey, sub := range localSubs {
+		p.log.Debugw("Cancelling context for subscription", "subKey", subKey)
 		sub.cancelCtx()
-		if err := sub.pubsub.Close(); err != nil {
-			p.log.Errorw("Error closing subscription during shutdown", "error", err, "subKey", subKey)
-		}
 	}
 
-	p.subs = make(map[string]*subscription)
+	p.log.Infow("Waiting for subscription goroutines to finish...")
+	p.wg.Wait()
+	p.log.Infow("All subscription goroutines finished. RedisPublisher shutdown complete.")
+
 	return nil
 }

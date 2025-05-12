@@ -150,6 +150,7 @@ func TestPgTripStore_Integration(t *testing.T) {
 		cleanup()
 	}()
 
+	// Test sub-suites
 	t.Run("Create and Get Trip", func(t *testing.T) {
 		trip := types.Trip{
 			Name:        "Test Trip",
@@ -346,17 +347,17 @@ func TestPgTripStore_Integration(t *testing.T) {
 
 		// Test search by date range
 		criteria = types.TripSearchCriteria{
-			StartDateFrom: time.Now().Add(20 * 24 * time.Hour),
-			StartDateTo:   time.Now().Add(40 * 24 * time.Hour),
+			StartDate: time.Now().Add(20 * 24 * time.Hour),
+			EndDate:   time.Now().Add(40 * 24 * time.Hour),
 		}
 		results, err = tripStore.SearchTrips(ctx, criteria)
 		require.NoError(t, err)
-		require.Len(t, results, 1)
+		require.Len(t, results, 1, "Expected 1 trip within 20-40 days")
 		require.Equal(t, "Paris Adventure", results[0].Name)
 
 		// Test search by date range (no results)
 		criteria = types.TripSearchCriteria{
-			StartDateFrom: time.Now().Add(150 * 24 * time.Hour),
+			StartDate: time.Now().Add(150 * 24 * time.Hour),
 		}
 		results, err = tripStore.SearchTrips(ctx, criteria)
 		require.NoError(t, err)

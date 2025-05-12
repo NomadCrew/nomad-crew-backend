@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -208,8 +207,8 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 	// Basic context and test IDs
 	suite.testUserID = uuid.New().String()
 	suite.testTripID = uuid.New().String()
-	// Add user ID to context
-	suite.ctx = context.WithValue(context.Background(), middleware.UserIDKey, suite.testUserID)
+	// Use the custom key type defined in the package (e.g., in trip_service_test.go)
+	suite.ctx = context.WithValue(context.Background(), userIDKey, suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {

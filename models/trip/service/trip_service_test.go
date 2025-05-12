@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// Define context key locally to avoid import cycles
-const testUserIDKey = contextKey("userID")
-
+// Define context key to avoid collisions
 type contextKey string
+
+const userIDKey contextKey = "userID"
 
 // MockTransaction implements store.Transaction
 type MockTransaction struct {
@@ -271,18 +271,14 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.mockStore = new(MockTripStore)
 	suite.mockEventPublisher = new(MockEventPublisher)
 	suite.mockWeatherSvc = new(MockWeatherService)
+	suite.service = tripservice.NewTripManagementService(suite.mockStore, suite.mockEventPublisher, suite.mockWeatherSvc)
+	suite.testUserID = uuid.NewString()
+	suite.testTripID = uuid.NewString()
+	// Use custom key type for context value
+	suite.ctx = context.WithValue(context.Background(), userIDKey, suite.testUserID)
 
-	// Initialize the service with mocks
-	suite.service = tripservice.NewTripManagementService(
-		suite.mockStore,
-		suite.mockEventPublisher,
-		suite.mockWeatherSvc,
-	)
-
-	suite.testUserID = uuid.New().String()
-	suite.testTripID = uuid.New().String()
-	// Add user ID to context using the local key
-	suite.ctx = context.WithValue(context.Background(), testUserIDKey, suite.testUserID)
+	// Reset mocks if needed for specific tests. Mocks should be independent across tests.
+	// suite.mockStore.ExpectedCalls = nil // Clear expected calls
 }
 
 // TearDownTest runs after each test
