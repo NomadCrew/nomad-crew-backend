@@ -527,14 +527,14 @@ func (s *ChatStore) GetUserByID(ctx context.Context, userID string) (*types.User
 	var (
 		id          string
 		email       string
-		name        string
+		dbName      string // renamed to dbName to clarify it's from the DB
 		rawMetaData []byte
 		createdAt   time.Time
 		updatedAt   time.Time
 	)
 
 	row := s.queryRow(ctx, query, userID)
-	err := row.Scan(&id, &email, &name, &rawMetaData, &createdAt, &updatedAt)
+	err := row.Scan(&id, &email, &dbName, &rawMetaData, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -543,9 +543,9 @@ func (s *ChatStore) GetUserByID(ctx context.Context, userID string) (*types.User
 	}
 
 	user := &types.User{
-		ID:              id,
-		Email:           email,
-		Name:            name,
+		ID:    id,
+		Email: email,
+		// Name field is removed as it doesn't exist in the User struct
 		RawUserMetaData: rawMetaData,
 		CreatedAt:       createdAt,
 		UpdatedAt:       updatedAt,
@@ -560,7 +560,21 @@ func (s *ChatStore) GetUserByID(ctx context.Context, userID string) (*types.User
 				user.Username = username
 			}
 			// Extract other fields as needed
+			if firstName, ok := metadata["firstName"].(string); ok {
+				user.FirstName = firstName
+			}
+			if lastName, ok := metadata["lastName"].(string); ok {
+				user.LastName = lastName
+			}
+			if avatarURL, ok := metadata["avatar_url"].(string); ok {
+				user.ProfilePictureURL = avatarURL
+			}
 		}
+	}
+
+	// If no username was found in metadata, use the name from the database
+	if user.Username == "" && dbName != "" {
+		user.Username = dbName
 	}
 
 	return user, nil

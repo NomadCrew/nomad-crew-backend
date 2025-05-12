@@ -208,9 +208,8 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
 
-	// Use the correct key for user authentication
-	// This matches what GetUserIDFromContext checks for
-	suite.ctx = context.WithValue(suite.ctx, "userID", suite.testUserID)
+	// Use the existing testUserIDKey which has the proper type
+	suite.ctx = context.WithValue(suite.ctx, testUserIDKey, suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {
