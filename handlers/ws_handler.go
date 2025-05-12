@@ -146,7 +146,9 @@ func (h *WSHandler) HandleWebSocketConnection(c *gin.Context) {
 		log.Error("Failed to create safe WebSocket connection",
 			zap.String("userID", userID.(string)),
 			zap.String("ip", c.ClientIP()))
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Warn("Error closing underlying WebSocket connection after SafeConn creation failure", zap.Error(err), zap.String("userID", userID.(string)))
+		}
 		return
 	}
 
