@@ -20,14 +20,14 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/db" // For SetupTestDB or ApplyMigrations
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
-	istore "github.com/NomadCrew/nomad-crew-backend/internal/store" // Added import alias
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
+	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
+	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
 	user_service "github.com/NomadCrew/nomad-crew-backend/models/user/service" // Added import
 	approuter "github.com/NomadCrew/nomad-crew-backend/router"                 // For mock email service
-	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -226,8 +226,7 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 	tripStore := postgres.NewPgTripStore(testDBPool)
 	// UserStore initialization needs to be correct based on internal/store vs store/postgres
 	// For now, assume NewPgUserStore returns a type compatible with internal/store.UserStore if signatures match
-	var userStore istore.UserStore // Explicitly type userStore
-	userStore = postgres.NewPgUserStore(testDBPool, testCFG.ExternalServices.SupabaseURL, "test-supabase-service-key")
+	userStore := internalPgStore.NewUserStore(testDBPool, testCFG.ExternalServices.SupabaseURL, "test-supabase-service-key")
 
 	// Corrected ChatStore instantiation, assuming nil for supabase client in tests is acceptable or mocked appropriately.
 	// The actual Supabase client used in main.go is from "github.com/supabase-community/supabase-go"
@@ -296,11 +295,13 @@ func generateTestUserToken(t *testing.T, userID string, secretKey string) string
 }
 
 // Helper function to generate an invitation token
+/*
 func generateTestInvitationToken(t *testing.T, invitationID string, tripID string, inviteeEmail string, secretKey string) string {
 	token, err := auth.GenerateInvitationToken(invitationID, tripID, inviteeEmail, secretKey, time.Hour)
 	require.NoError(t, err, "Failed to generate test invitation token")
 	return token
 }
+*/
 
 // TestDeclineInvitation_Success_InviteeIDKnown tests declining an invitation successfully
 // when the invitation has a known InviteeID and the authenticated user is that invitee.

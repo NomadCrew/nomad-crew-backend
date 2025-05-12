@@ -119,7 +119,7 @@ type UserStore interface {
 	GetSupabaseUser(ctx context.Context, userID string) (*types.SupabaseUser, error)
 
 	// ConvertToUserResponse converts a user to UserResponse type
-	ConvertToUserResponse(user *types.User) types.UserResponse
+	ConvertToUserResponse(user *types.User) (types.UserResponse, error)
 
 	// GetUserProfile retrieves a user profile for API responses
 	GetUserProfile(ctx context.Context, userID string) (*types.UserProfile, error)

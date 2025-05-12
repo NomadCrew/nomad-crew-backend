@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -490,72 +489,6 @@ func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string
 	}
 
 	return messages, total, nil
-}
-
-// fetchUserFromSupabase retrieves user details directly from Supabase Auth API.
-// This is likely less efficient than joining with a local users table if available and kept in sync.
-// TODO: Handle rate limiting, caching, more robust error handling.
-func (s *PostgresChatStore) fetchUserFromSupabase(userID string) (*types.UserResponse, error) {
-	log := logger.GetLogger()
-	// Note: This uses the admin API. Ensure the supabaseAPIKey is the service_role key.
-	url := fmt.Sprintf("%s/auth/v1/admin/users/%s", s.supabaseBaseURL, userID)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Errorw("Failed to create Supabase user request", "error", err, "userID", userID)
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+s.supabaseAPIKey)
-	req.Header.Set("apikey", s.supabaseAPIKey) // Service key required for admin endpoint
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Errorw("Failed to execute Supabase user request", "error", err, "userID", userID)
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Errorw("Supabase user request failed", "statusCode", resp.StatusCode, "userID", userID)
-		bodyBytes, _ := io.ReadAll(resp.Body) // Attempt to read error body
-		log.Debugw("Supabase error response body", "body", string(bodyBytes))
-		if resp.StatusCode == http.StatusNotFound {
-			return nil, apperrors.NotFound("User", userID)
-		}
-		return nil, fmt.Errorf("supabase request failed with status %d", resp.StatusCode)
-	}
-
-	// Supabase admin user response structure (simplified)
-	var supabaseUser struct {
-		ID          string                 `json:"id"`
-		Aud         string                 `json:"aud"`
-		Role        string                 `json:"role"`
-		Email       string                 `json:"email"`
-		UserAppData map[string]interface{} `json:"user_metadata"`
-		CreatedAt   time.Time              `json:"created_at"`
-		UpdatedAt   time.Time              `json:"updated_at"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&supabaseUser); err != nil {
-		log.Errorw("Failed to decode Supabase user response", "error", err, "userID", userID)
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Extract relevant fields from user_metadata
-	username := ""
-	if name, ok := supabaseUser.UserAppData["username"].(string); ok {
-		username = name
-	}
-	// Removed avatarURL extraction/assignment as types.UserResponse likely lacks the field
-
-	// Assuming types.UserResponse has ID and Username fields
-	userResponse := &types.UserResponse{
-		ID:       supabaseUser.ID,
-		Username: username, // Assumes Username exists
-		// Email: supabaseUser.Email, // Map other fields if needed in UserResponse
-	}
-
-	return userResponse, nil
 }
 
 // AddChatGroupMember adds a user to a chat group using an INSERT ... ON CONFLICT DO NOTHING query.

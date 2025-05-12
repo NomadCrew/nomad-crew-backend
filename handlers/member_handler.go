@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
-	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,14 +15,14 @@ import (
 // MemberHandler handles HTTP requests related to trip members.
 type MemberHandler struct {
 	tripModel    interfaces.TripModelInterface
-	userStore    store.UserStore
+	userStore    istore.UserStore
 	eventService types.EventPublisher
 }
 
 // NewMemberHandler creates a new MemberHandler with the given dependencies.
 func NewMemberHandler(
 	tripModel interfaces.TripModelInterface,
-	userStore store.UserStore,
+	userStore istore.UserStore,
 	eventService types.EventPublisher,
 ) *MemberHandler {
 	return &MemberHandler{
@@ -200,7 +200,7 @@ func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {
 			continue
 		}
 
-		profile, err := h.userStore.GetUserByID(c.Request.Context(), userUUID)
+		profile, err := h.userStore.GetUserByID(c.Request.Context(), userUUID.String())
 		if err != nil {
 			log.Errorw("Failed to get user profile for member", "userID", member.UserID, "error", err, "tripID", tripID)
 			membersResponse = append(membersResponse, TripMemberResponse{
@@ -213,7 +213,7 @@ func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {
 		membersResponse = append(membersResponse, TripMemberResponse{
 			Membership: member,
 			User: types.UserResponse{
-				ID:          profile.ID.String(),
+				ID:          profile.ID,
 				Username:    profile.Username,
 				Email:       profile.Email,
 				FirstName:   profile.FirstName,

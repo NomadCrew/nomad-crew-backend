@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
-	"github.com/NomadCrew/nomad-crew-backend/errors"
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/service"
@@ -111,12 +110,14 @@ func (tm *TripModel) GetTripStore() appstore.TripStore {
 	return tm.store
 }
 
+/*
 func (tm *TripModel) tripNotFound(tripID string) error {
 	return &errors.AppError{
 		Type:    errors.TripNotFoundError,
 		Message: "Trip not found",
 	}
 }
+*/
 
 func (tm *TripModel) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
 	return tm.coordinator.CreateInvitation(ctx, invitation)

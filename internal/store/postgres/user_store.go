@@ -716,20 +716,10 @@ func (s *UserStore) exec(ctx context.Context, query string, args ...interface{})
 }
 
 // ConvertToUserResponse converts a User model to UserResponse for API responses
-func (s *UserStore) ConvertToUserResponse(user *types.User) types.UserResponse {
+func (s *UserStore) ConvertToUserResponse(user *types.User) (types.UserResponse, error) {
 	if user == nil {
-		return types.UserResponse{}
+		return types.UserResponse{}, fmt.Errorf("user is nil")
 	}
-
-	displayName := user.Username
-	if user.FirstName != "" && user.LastName != "" {
-		displayName = user.FirstName + " " + user.LastName
-	} else if user.FirstName != "" {
-		displayName = user.FirstName
-	} else if user.LastName != "" {
-		displayName = user.LastName
-	}
-
 	return types.UserResponse{
 		ID:          user.ID,
 		Email:       user.Email,
@@ -737,6 +727,6 @@ func (s *UserStore) ConvertToUserResponse(user *types.User) types.UserResponse {
 		FirstName:   user.FirstName,
 		LastName:    user.LastName,
 		AvatarURL:   user.ProfilePictureURL,
-		DisplayName: displayName,
-	}
+		DisplayName: user.GetDisplayName(),
+	}, nil
 }

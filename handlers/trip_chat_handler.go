@@ -9,10 +9,10 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
-	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,8 +37,8 @@ var upgrader = websocket.Upgrader{
 type TripChatHandler struct {
 	tripModel    interfaces.TripModelInterface
 	eventService types.EventPublisher
-	chatStore    store.ChatStore
-	userStore    store.UserStore
+	chatStore    istore.ChatStore
+	userStore    istore.UserStore
 	serverConfig *config.ServerConfig
 }
 
@@ -46,8 +46,8 @@ type TripChatHandler struct {
 func NewTripChatHandler(
 	tripModel interfaces.TripModelInterface,
 	eventService types.EventPublisher,
-	chatStore store.ChatStore,
-	userStore store.UserStore,
+	chatStore istore.ChatStore,
+	userStore istore.UserStore,
 	serverConfig *config.ServerConfig,
 ) *TripChatHandler {
 	return &TripChatHandler{
@@ -123,10 +123,16 @@ func (h *TripChatHandler) WSStreamEvents(c *gin.Context) {
 	eventChan, err := h.eventService.Subscribe(c.Request.Context(), tripID, userID)
 	if err != nil {
 		log.Errorw("Failed to subscribe to trip events", "error", err, "tripID", tripID, "userID", userID)
-		conn.WriteJSON(types.WebSocketMessage{Type: "error", Payload: "Failed to subscribe to events"})
+		if writeErr := conn.WriteJSON(types.WebSocketMessage{Type: "error", Payload: "Failed to subscribe to events"}); writeErr != nil {
+			log.Errorw("Failed to send subscription error to WebSocket", "writeError", writeErr, "tripID", tripID, "userID", userID)
+		}
 		return
 	}
-	defer h.eventService.Unsubscribe(c.Request.Context(), tripID, userID)
+	defer func() {
+		if unsubErr := h.eventService.Unsubscribe(c.Request.Context(), tripID, userID); unsubErr != nil {
+			log.Warnw("Failed to unsubscribe from trip events", "error", unsubErr, "tripID", tripID, "userID", userID)
+		}
+	}()
 
 	go func() {
 		for {
@@ -142,7 +148,9 @@ func (h *TripChatHandler) WSStreamEvents(c *gin.Context) {
 
 			if err := h.HandleChatMessage(c.Request.Context(), conn, message, userID, tripID); err != nil {
 				log.Errorw("Failed to handle incoming chat message", "error", err, "tripID", tripID, "userID", userID)
-				conn.WriteJSON(types.WebSocketMessage{Type: "error", Payload: gin.H{"message": "Failed to process message", "detail": err.Error()}})
+				if writeErr := conn.WriteJSON(types.WebSocketMessage{Type: "error", Payload: gin.H{"message": "Failed to process message", "detail": err.Error()}}); writeErr != nil {
+					log.Errorw("Failed to send chat message processing error to WebSocket", "writeError", writeErr, "tripID", tripID, "userID", userID)
+				}
 			}
 		}
 	}()
@@ -152,7 +160,9 @@ func (h *TripChatHandler) WSStreamEvents(c *gin.Context) {
 		case event, ok := <-eventChan:
 			if !ok {
 				log.Infow("Event channel closed for WebSocket", "tripID", tripID, "userID", userID)
-				conn.WriteJSON(types.WebSocketMessage{Type: "system", Payload: "Event stream closed"})
+				if writeErr := conn.WriteJSON(types.WebSocketMessage{Type: "system", Payload: "Event stream closed"}); writeErr != nil {
+					log.Errorw("Failed to send event stream closed message to WebSocket", "writeError", writeErr, "tripID", tripID, "userID", userID)
+				}
 				return
 			}
 			if err := conn.WriteJSON(event); err != nil {
@@ -181,14 +191,14 @@ func (h *TripChatHandler) HandleChatMessage(ctx context.Context, conn *middlewar
 		return apperrors.New("INTERNAL", "Invalid user ID format", err.Error())
 	}
 
-	senderProfile, err := h.userStore.GetUserByID(ctx, senderUUID)
+	senderProfile, err := h.userStore.GetUserByID(ctx, senderUUID.String())
 	if err != nil {
 		log.Errorw("Failed to get sender profile", "userID", userIDStr, "error", err)
 		return err
 	}
 
 	senderInfo := &types.MessageSender{
-		ID:        senderProfile.ID.String(),
+		ID:        senderProfile.ID,
 		Name:      senderProfile.Username,
 		AvatarURL: senderProfile.ProfilePictureURL,
 	}
@@ -255,7 +265,7 @@ func (h *TripChatHandler) HandleChatMessage(ctx context.Context, conn *middlewar
 			TripID:   tripID,
 			IsTyping: typingPayload.IsTyping,
 			User: types.UserResponse{
-				ID:          senderProfile.ID.String(),
+				ID:          senderProfile.ID,
 				Username:    senderProfile.Username,
 				FirstName:   senderProfile.FirstName,
 				LastName:    senderProfile.LastName,

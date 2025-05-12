@@ -276,8 +276,8 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
 
-	// Use the exact string key expected by GetUserIDFromContext
-	suite.ctx = context.WithValue(suite.ctx, "userID", suite.testUserID)
+	// Use the typed context key
+	suite.ctx = context.WithValue(suite.ctx, testUserIDKey, suite.testUserID)
 }
 
 // TearDownTest runs after each test

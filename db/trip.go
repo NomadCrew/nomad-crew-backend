@@ -17,8 +17,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/jackc/pgx/v4"
@@ -352,7 +350,6 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 	if !criteria.EndDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.end_date <= $%d", argCount))
 		args = append(args, criteria.EndDate)
-		argCount++
 	}
 
 	// Combine base query with conditions.
@@ -769,22 +766,6 @@ func (tdb *TripDB) Rollback() error {
 	// This method likely needs context or a transaction reference to be meaningful.
 	logger.GetLogger().Warn("TripDB.Rollback called, but it has no effect.")
 	return fmt.Errorf("TripDB.Rollback is not implemented")
-}
-
-// getCallerInfo returns a string representation of the caller's file and line number.
-// Useful for debugging purposes.
-func getCallerInfo() string {
-	// skip = 1 to get the caller of getCallerInfo
-	pc, file, line, ok := runtime.Caller(1)
-	if !ok {
-		return "unknown:0"
-	}
-	fn := runtime.FuncForPC(pc)
-	if fn == nil {
-		return fmt.Sprintf("%s:%d", filepath.Base(file), line)
-	}
-	// Return function name along with file and line
-	return fmt.Sprintf("%s - %s:%d", filepath.Base(fn.Name()), filepath.Base(file), line)
 }
 
 // GetTripByID retrieves a single trip by ID.

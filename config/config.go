@@ -330,29 +330,6 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
-// validateConnectionString parses and validates a database connection string.
-// Note: This function is currently unused but kept for potential future use.
-func validateConnectionString(connStr string) error {
-	config, err := url.Parse(connStr)
-	if err != nil {
-		return fmt.Errorf("invalid database connection string format: %w", err)
-	}
-	if config.Scheme != "postgres" && config.Scheme != "postgresql" {
-		return fmt.Errorf("invalid database scheme: %s", config.Scheme)
-	}
-	if config.Host == "" {
-		return fmt.Errorf("database host is required in connection string")
-	}
-	if config.User == nil || config.User.Username() == "" {
-		return fmt.Errorf("database user is required in connection string")
-	}
-	// Password presence check is often done separately or handled by the driver
-	if config.Path == "" || config.Path == "/" {
-		return fmt.Errorf("database name is required in connection string path")
-	}
-	return nil
-}
-
 // validateExternalServices checks the configuration for external services.
 func validateExternalServices(services *ExternalServices) error {
 	if services.GeoapifyKey == "" {

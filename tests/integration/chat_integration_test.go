@@ -7,8 +7,6 @@ import (
 	"time"
 
 	chatservice "github.com/NomadCrew/nomad-crew-backend/internal/service"
-	"github.com/NomadCrew/nomad-crew-backend/internal/store"
-	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -17,15 +15,15 @@ import (
 // ChatIntegrationTestSuite tests chat functionality end-to-end
 type ChatIntegrationTestSuite struct {
 	suite.Suite
-	ctx            context.Context
-	chatStore      store.ChatStore
-	tripStore      store.TripStore
-	eventPublisher types.EventPublisher
-	chatService    chatservice.ChatService
-	tripService    tripservice.TripMemberServiceInterface
-	testTripID     string
-	testUserID     string
-	testChatGroup  string
+	ctx context.Context
+	// chatStore      store.ChatStore // Unused
+	// tripStore      store.TripStore // Unused
+	// eventPublisher types.EventPublisher // Unused
+	chatService chatservice.ChatService
+	// tripService    tripservice.TripMemberServiceInterface // Unused
+	testTripID string
+	testUserID string
+	// testChatGroup  string // Unused
 }
 
 // SetupSuite prepares the test suite once before all tests
@@ -125,15 +123,6 @@ func (suite *ChatIntegrationTestSuite) TestChatReactions() {
 	// reactions, err = suite.chatService.ListReactions(suite.ctx, msgID)
 	// assert.NoError(suite.T(), err)
 	// assert.NotContains(suite.T(), extractReactions(reactions), reaction)
-}
-
-// Helper function to extract reaction emoji from reaction objects
-func extractReactions(reactions []types.ChatMessageReaction) []string {
-	result := make([]string, len(reactions))
-	for i, r := range reactions {
-		result[i] = r.Reaction
-	}
-	return result
 }
 
 // TestWebSocketIntegration tests real-time event broadcasting

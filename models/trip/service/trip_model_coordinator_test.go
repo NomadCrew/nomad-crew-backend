@@ -198,17 +198,17 @@ func (suite *CoordinatorTestSuite) SetupTest() {
 
 	// Manually construct the coordinator, assigning mocks to interface fields.
 	suite.coordinator = &tripservice.TripModelCoordinator{
-		TripService:       suite.mockTripSvc, // Direct assignment works now
+		TripService:       suite.mockTripSvc,
 		MemberService:     suite.mockMemberSvc,
 		InvitationService: suite.mockInviteSvc,
 		ChatService:       suite.mockChatSvc,
-		// store, chatStore, config, cmdCtx can be nil or mocked if needed
 	}
 
 	suite.ctx = context.Background()
 	suite.testUserID = uuid.NewString()
 	suite.testTripID = uuid.NewString()
-	suite.ctx = context.WithValue(suite.ctx, "userID", suite.testUserID)
+	// Use the existing testUserIDKey from the same package (defined in trip_service_test.go)
+	suite.ctx = context.WithValue(suite.ctx, testUserIDKey, suite.testUserID)
 }
 
 func TestCoordinatorTestSuite(t *testing.T) {

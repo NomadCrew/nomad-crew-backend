@@ -382,7 +382,9 @@ func (s *TripManagementService) triggerWeatherUpdate(ctx context.Context, trip *
 	log := logger.GetLogger()
 	if s.weatherSvc != nil {
 		log.Infow("Triggering weather service update", "tripID", trip.ID)
-		s.weatherSvc.TriggerImmediateUpdate(ctx, trip.ID, trip.Destination)
+		if err := s.weatherSvc.TriggerImmediateUpdate(ctx, trip.ID, trip.Destination); err != nil {
+			log.Errorw("Failed to trigger immediate weather update", "error", err, "tripID", trip.ID)
+		}
 	} else {
 		log.Warnw("Weather service not available, cannot trigger update", "tripID", trip.ID)
 	}

@@ -343,17 +343,14 @@ func (s *ChatStore) AddChatGroupMember(ctx context.Context, groupID, userID stri
 func (s *ChatStore) RemoveChatGroupMember(ctx context.Context, groupID, userID string) error {
 	query := `DELETE FROM chat_group_members WHERE group_id = $1 AND user_id = $2`
 
-	cmdTag, err := s.exec(ctx, query, groupID, userID)
+	_, err := s.exec(ctx, query, groupID, userID)
 	if err != nil {
 		return fmt.Errorf("error removing chat group member: %w", err)
 	}
 
-	// If RowsAffected is 0, the member wasn't in the group, which is acceptable.
-	// We don't return ErrNotFound here to make the operation idempotent.
-	if cmdTag.RowsAffected() == 0 {
-		// Optionally log a warning if needed
-		// fmt.Printf("Warning: Attempted to remove non-existent member (User: %s, Group: %s)\n", userID, groupID)
-	}
+	// If RowsAffected was 0, the member wasn't in the group, which is acceptable for idempotency.
+	// cmdTag is not used, so assigned to blank identifier.
+	// Optionally log a warning if needed (would require checking RowsAffected from cmdTag if it were used).
 
 	return nil
 }
@@ -468,16 +465,14 @@ func (s *ChatStore) AddReaction(ctx context.Context, messageID, userID, reaction
 func (s *ChatStore) RemoveReaction(ctx context.Context, messageID, userID, reaction string) error {
 	query := `DELETE FROM chat_message_reactions WHERE message_id = $1 AND user_id = $2 AND reaction = $3`
 
-	cmdTag, err := s.exec(ctx, query, messageID, userID, reaction)
+	_, err := s.exec(ctx, query, messageID, userID, reaction)
 	if err != nil {
 		return fmt.Errorf("error removing reaction: %w", err)
 	}
 
-	// If RowsAffected is 0, the reaction didn't exist, which is acceptable (idempotent).
-	if cmdTag.RowsAffected() == 0 {
-		// Optionally log a warning
-		// fmt.Printf("Warning: Attempted to remove non-existent reaction (Msg: %s, User: %s, Reaction: %s)\n", messageID, userID, reaction)
-	}
+	// If RowsAffected was 0, the reaction didn't exist, which is acceptable for idempotency.
+	// cmdTag is not used, so assigned to blank identifier.
+	// Optionally log a warning if needed (would require checking RowsAffected from cmdTag if it were used).
 
 	return nil
 }

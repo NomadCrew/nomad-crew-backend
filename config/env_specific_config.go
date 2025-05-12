@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/viper"
 )
 
 // Environment represents a deployment environment
@@ -67,17 +69,28 @@ func getConfigPath(env EnvType) (string, error) {
 	return path, nil
 }
 
-// LoadConfigFromFile loads configuration from a specific file
+// LoadConfigFromFile loads configuration from a specific file using Viper.
 func LoadConfigFromFile(path string) (*Config, error) {
-	// Load using existing mechanism
-	// This assumes you have a function like LoadConfigFromFile
-	// Adjust based on your actual implementation
-	config, err := LoadConfigFromFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config from %s: %w", path, err)
+	v := viper.New()
+	v.SetConfigFile(path)
+
+	// Attempt to read the config file.
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
 	}
 
-	return config, nil
+	var cfg Config
+	// Unmarshal the config into the Config struct.
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config from %s: %w", path, err)
+	}
+
+	// Validate the loaded configuration.
+	if err := validateConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("config validation failed for %s: %w", path, err)
+	}
+
+	return &cfg, nil
 }
 
 // Create template environment-specific config files

@@ -406,7 +406,7 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 	if !criteria.EndDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.end_date <= $%d", argCount))
 		args = append(args, criteria.EndDate)
-		argCount++
+		// argCount++ // Removed ineffectual assignment
 	}
 
 	// Combine base query with conditions.

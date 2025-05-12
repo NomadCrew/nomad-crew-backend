@@ -7,10 +7,10 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/command"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
-	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -336,12 +336,12 @@ func (h *InvitationHandler) GetInvitationDetails(c *gin.Context) {
 
 	var inviterResponse types.UserResponse
 	if inviterUUID, pErr := uuid.Parse(invitation.InviterID); pErr == nil {
-		inviter, iErr := h.userStore.GetUserByID(c.Request.Context(), inviterUUID)
+		inviter, iErr := h.userStore.GetUserByID(c.Request.Context(), inviterUUID.String())
 		if iErr != nil {
 			log.Errorw("Failed to get inviter details for invitation", "inviterID", invitation.InviterID, "invitationID", invitation.ID, "error", iErr)
 		} else if inviter != nil {
 			inviterResponse = types.UserResponse{
-				ID:          inviter.ID.String(),
+				ID:          inviter.ID,
 				Username:    inviter.Username,
 				Email:       inviter.Email,
 				FirstName:   inviter.FirstName,

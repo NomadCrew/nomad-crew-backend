@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
+/*
 type mockLocationStore struct {
 	mock.Mock
 }
@@ -67,19 +68,6 @@ func (m *mockLocationStore) GetUserRole(ctx context.Context, tripID string, user
 	return args.Get(0).(types.MemberRole), args.Error(1)
 }
 
-/*
-// TODO: Offline location functionality was removed.
-func (m *mockLocationStore) SaveOfflineLocations(ctx context.Context, userID, tripID string, updates []types.LocationUpdate, deviceID string) error {
-	args := m.Called(ctx, userID, tripID, updates, deviceID)
-	return args.Error(0)
-}
-
-func (m *mockLocationStore) ProcessOfflineLocations(ctx context.Context, userID, tripID string) error {
-	args := m.Called(ctx, userID, tripID)
-	return args.Error(0)
-}
-*/
-
 func (m *mockLocationStore) BeginTx(ctx context.Context) (store.Transaction, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
@@ -87,6 +75,7 @@ func (m *mockLocationStore) BeginTx(ctx context.Context) (store.Transaction, err
 	}
 	return args.Get(0).(store.Transaction), args.Error(1)
 }
+*/
 
 // mockLocationServiceInterface is a mock interface that matches what our mock implementation provides
 type mockLocationServiceInterface interface {
@@ -215,7 +204,8 @@ func TestUpdateLocation(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response types.Location
-	json.Unmarshal(w.Body.Bytes(), &response)
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response body")
 	assert.Equal(t, expectedLocation.ID, response.ID)
 	assert.Equal(t, expectedLocation.Latitude, response.Latitude)
 	assert.Equal(t, expectedLocation.Longitude, response.Longitude)
@@ -253,7 +243,8 @@ func TestGetTripMemberLocations(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string][]types.MemberLocation
-	json.Unmarshal(w.Body.Bytes(), &response)
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response body")
 	assert.Len(t, response["locations"], 1)
 	assert.Equal(t, expectedLocations[0].ID, response["locations"][0].ID)
 	assert.Equal(t, expectedLocations[0].UserName, response["locations"][0].UserName)

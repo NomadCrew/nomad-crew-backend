@@ -26,11 +26,11 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 			var appErr *apperrors.AppError
 			if stderrors.As(err, &appErr) && appErr.GetHTTPStatus() == http.StatusBadRequest {
 				log.Infow("Bad request during token extraction", "error", err, "path", requestPath)
-				c.Error(err) // Pass the original bad request error
+				_ = c.Error(err) // Pass the original bad request error
 			} else {
 				// Handle other extraction errors (like token_missing) as Unauthorized
 				log.Warnw("Authentication failed: Token extraction error", "error", err, "path", requestPath)
-				c.Error(apperrors.Unauthorized("token_missing", "Authorization required"))
+				_ = c.Error(apperrors.Unauthorized("token_missing", "Authorization required"))
 			}
 
 			// Set appropriate HTTP status and response in context
@@ -53,11 +53,13 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 			var errorDetails = err.Error()
 
 			if stderrors.Is(err, auth.ErrTokenExpired) {
-				c.Error(apperrors.Unauthorized("token_expired", "Token has expired"))
+				_ = c.Error(apperrors.Unauthorized("token_expired", "Token has expired"))
 			} else if stderrors.Is(err, auth.ErrTokenInvalid) {
-				c.Error(apperrors.Unauthorized("token_invalid", "Invalid token provided"))
+				if err := c.Error(apperrors.AuthenticationFailed("invalid_token")); err != nil {
+					log.Errorw("Failed to set error in context", "error", err)
+				}
 			} else {
-				c.Error(apperrors.Unauthorized("auth_failed", "Authentication failed")) // Generic fallback
+				_ = c.Error(apperrors.Unauthorized("auth_failed", "Authentication failed")) // Generic fallback
 			}
 
 			// Set appropriate HTTP status and response in context
@@ -74,7 +76,9 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 		// Step 3: Set UserID in Context
 		if userID == "" {
 			log.Errorw("Authentication failed: Valid token resulted in empty UserID", "path", requestPath)
-			c.Error(apperrors.InternalServerError("internal_error"))
+			if err := c.Error(apperrors.InternalServerError("internal_error")); err != nil {
+				log.Errorw("Failed to set error in context", "error", err)
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"code":    http.StatusInternalServerError,
 				"message": "Internal server error",

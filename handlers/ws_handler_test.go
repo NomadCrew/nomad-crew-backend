@@ -238,23 +238,27 @@ func (h *MockWSHandler) EnforceWSRateLimit(userID string, actionType string, lim
 }
 
 // TestHandleChatMessageMock is a test version of handleChatMessage that works with our mock
-func (h *MockWSHandler) TestHandleChatMessageMock(ctx context.Context, conn *MockSafeConn, payload json.RawMessage) {
+func (h *MockWSHandler) TestHandleChatMessageMock(t *testing.T, ctx context.Context, conn *MockSafeConn, payload json.RawMessage) {
 	// Simplified test version that works with our mocks
 	var msgData map[string]interface{}
 	if err := json.Unmarshal(payload, &msgData); err != nil {
-		conn.WriteJSON(map[string]interface{}{
+		if err := conn.WriteJSON(map[string]interface{}{
 			"status": "error",
 			"error":  "Invalid message format",
-		})
+		}); err != nil {
+			t.Errorf("Failed to write JSON to WebSocket: %v", err)
+		}
 		return
 	}
 
 	// Apply rate limiting
 	if err := h.EnforceWSRateLimit(conn.UserID, "chat.message", 10); err != nil {
-		conn.WriteJSON(map[string]interface{}{
+		if err := conn.WriteJSON(map[string]interface{}{
 			"status": "error",
 			"error":  "Rate limit exceeded",
-		})
+		}); err != nil {
+			t.Errorf("Failed to write JSON to WebSocket: %v", err)
+		}
 		return
 	}
 
@@ -267,17 +271,19 @@ func (h *MockWSHandler) TestHandleChatMessageMock(ctx context.Context, conn *Moc
 			Timestamp: time.Now(),
 		},
 	}
-	h.eventService.Publish(ctx, conn.TripID, event)
+	_ = h.eventService.Publish(ctx, conn.TripID, event)
 
 	// Send success response
-	conn.WriteJSON(map[string]interface{}{
+	if err := conn.WriteJSON(map[string]interface{}{
 		"status": "success",
 		"type":   "chat.message",
-	})
+	}); err != nil {
+		t.Errorf("Failed to write JSON to WebSocket: %v", err)
+	}
 }
 
 // TestHandleChatReactionMock is a test version of handleChatReaction that works with our mock
-func (h *MockWSHandler) TestHandleChatReactionMock(ctx context.Context, conn *MockSafeConn, payload json.RawMessage) {
+func (h *MockWSHandler) TestHandleChatReactionMock(t *testing.T, ctx context.Context, conn *MockSafeConn, payload json.RawMessage) {
 	// Create and publish event
 	event := types.Event{
 		BaseEvent: types.BaseEvent{
@@ -287,17 +293,19 @@ func (h *MockWSHandler) TestHandleChatReactionMock(ctx context.Context, conn *Mo
 			Timestamp: time.Now(),
 		},
 	}
-	h.eventService.Publish(ctx, conn.TripID, event)
+	_ = h.eventService.Publish(ctx, conn.TripID, event)
 
 	// Send success response
-	conn.WriteJSON(map[string]interface{}{
+	if err := conn.WriteJSON(map[string]interface{}{
 		"status": "success",
 		"type":   "chat.reaction",
-	})
+	}); err != nil {
+		t.Errorf("Failed to write JSON to WebSocket: %v", err)
+	}
 }
 
 // TestHandleReadReceiptMock is a test version of handleReadReceipt that works with our mock
-func (h *MockWSHandler) TestHandleReadReceiptMock(ctx context.Context, conn *MockSafeConn, payload json.RawMessage) {
+func (h *MockWSHandler) TestHandleReadReceiptMock(t *testing.T, ctx context.Context, conn *MockSafeConn, payload json.RawMessage) {
 	// Create and publish event
 	event := types.Event{
 		BaseEvent: types.BaseEvent{
@@ -307,13 +315,15 @@ func (h *MockWSHandler) TestHandleReadReceiptMock(ctx context.Context, conn *Moc
 			Timestamp: time.Now(),
 		},
 	}
-	h.eventService.Publish(ctx, conn.TripID, event)
+	_ = h.eventService.Publish(ctx, conn.TripID, event)
 
 	// Send success response
-	conn.WriteJSON(map[string]interface{}{
+	if err := conn.WriteJSON(map[string]interface{}{
 		"status": "success",
 		"type":   "chat.read_receipt",
-	})
+	}); err != nil {
+		t.Errorf("Failed to write JSON to WebSocket: %v", err)
+	}
 }
 
 // TestHandleTypingStatusMock is a test version of handleTypingStatus that works with our mock
@@ -327,7 +337,7 @@ func (h *MockWSHandler) TestHandleTypingStatusMock(ctx context.Context, conn *Mo
 			Timestamp: time.Now(),
 		},
 	}
-	h.eventService.Publish(ctx, conn.TripID, event)
+	_ = h.eventService.Publish(ctx, conn.TripID, event)
 }
 
 func TestHandleChatMessage(t *testing.T) {
@@ -413,7 +423,7 @@ func TestHandleChatMessage(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Call the test handler method instead of the real one
-			handler.TestHandleChatMessageMock(context.Background(), mockConn, payloadBytes)
+			handler.TestHandleChatMessageMock(t, context.Background(), mockConn, payloadBytes)
 
 			// Verify results
 			tc.assertResults(t)
@@ -482,7 +492,7 @@ func TestHandleChatReaction(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Call the test handler
-			handler.TestHandleChatReactionMock(context.Background(), mockConn, payloadBytes)
+			handler.TestHandleChatReactionMock(t, context.Background(), mockConn, payloadBytes)
 
 			// Verify results
 			tc.assertResults(t)
@@ -549,7 +559,7 @@ func TestHandleReadReceipt(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Call the test handler
-			handler.TestHandleReadReceiptMock(context.Background(), mockConn, payloadBytes)
+			handler.TestHandleReadReceiptMock(t, context.Background(), mockConn, payloadBytes)
 
 			// Verify results
 			tc.assertResults(t)

@@ -1,15 +1,6 @@
 package main
 
-import (
-	"flag"
-	"fmt"
-	"os"
-
-	"github.com/NomadCrew/nomad-crew-backend/config"
-	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
-	"github.com/NomadCrew/nomad-crew-backend/logger"
-)
-
+/*
 func verifyAuthConfig() {
 	// Define command line flags
 	environment := flag.String("env", "dev", "Environment to verify (dev, staging, production)")
@@ -67,3 +58,4 @@ func verifyAuthConfig() {
 
 	fmt.Println("✅ Auth configuration verification completed successfully")
 }
+*/
