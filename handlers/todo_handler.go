@@ -33,7 +33,21 @@ func NewTodoHandler(model *models.TodoModel, eventService types.EventPublisher, 
 	}
 }
 
-// CreateTodoHandler
+// CreateTodoHandler godoc
+// @Summary Create a new todo item for a trip
+// @Description Creates a new todo item associated with the specified trip.
+// @Tags todos
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param request body docs.TodoCreateRequest true "Todo details"
+// @Success 201 {object} docs.TodoResponse "Successfully created todo item"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input data or missing Trip ID"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to create todos for this trip"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/todos [post]
+// @Security BearerAuth
 // Uses the trip ID from the parent route to create todos with correct association.
 func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
@@ -85,7 +99,23 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, todo)
 }
 
-// UpdateTodoHandler
+// UpdateTodoHandler godoc
+// @Summary Update an existing todo item
+// @Description Updates the text and/or status of an existing todo item.
+// @Tags todos
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param todoID path string true "Todo ID to update"
+// @Param request body docs.TodoUpdateRequest true "Fields to update"
+// @Success 200 {object} docs.TodoResponse "Successfully updated todo item"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input data or IDs"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this todo"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Todo item not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/todos/{todoID} [put]
+// @Security BearerAuth
 // Extracts trip ID from the parent route and todo ID from c.Param("todoID").
 func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
@@ -121,7 +151,22 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, todo)
 }
 
-// DeleteTodoHandler
+// DeleteTodoHandler godoc
+// @Summary Delete a todo item
+// @Description Deletes a specific todo item.
+// @Tags todos
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param todoID path string true "Todo ID to delete"
+// @Success 200 {object} docs.StatusResponse "Todo item deleted successfully"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid IDs"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to delete this todo"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Todo item not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/todos/{todoID} [delete]
+// @Security BearerAuth
 // Uses trip ID from c.Param("id") and todo ID from c.Param("todoID").
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
@@ -150,6 +195,7 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 }
 
 // getPaginationParams extracts and validates pagination parameters from the request
+// This is an internal helper and does not need Swagger annotations.
 func getPaginationParams(c *gin.Context, defaultLimit, defaultOffset int) PaginationParams {
 	limit, err := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(defaultLimit)))
 	if err != nil || limit <= 0 {
@@ -167,6 +213,22 @@ func getPaginationParams(c *gin.Context, defaultLimit, defaultOffset int) Pagina
 	}
 }
 
+// ListTodosHandler godoc
+// @Summary List todo items for a trip
+// @Description Retrieves a list of todo items associated with the specified trip, with pagination.
+// @Tags todos
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param limit query int false "Number of items to return (default 100)"
+// @Param offset query int false "Offset for pagination (default 0)"
+// @Success 200 {array} docs.TodoResponse "List of todo items"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid Trip ID or pagination parameters"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view todos for this trip"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/todos [get]
+// @Security BearerAuth
 // ListTodosHandler retrieves todos for a given trip.
 func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	log := logger.GetLogger()
@@ -193,7 +255,22 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, todos)
 }
 
-// GetTodoHandler
+// GetTodoHandler godoc
+// @Summary Get a specific todo item
+// @Description Retrieves details for a specific todo item.
+// @Tags todos
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param todoID path string true "Todo ID to retrieve"
+// @Success 200 {object} docs.TodoResponse "Details of the todo item"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid IDs"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view this todo"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Todo item not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/todos/{todoID} [get]
+// @Security BearerAuth
 // Uses todo ID from the URL parameter.
 func (h *TodoHandler) GetTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()

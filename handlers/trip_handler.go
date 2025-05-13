@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
+	"github.com/NomadCrew/nomad-crew-backend/docs"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
@@ -60,8 +61,8 @@ type CreateTripRequest struct {
 // @Tags trips
 // @Accept json
 // @Produce json
-// @Param request body docs.TripResponse true "Trip information"
-// @Success 201 {object} docs.TripResponse "Created trip information"
+// @Param request body docs.CreateTripRequest true "Trip creation details"
+// @Success 201 {object} docs.TripResponse "Successfully created trip details"
 // @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input data"
 // @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 500 {object} docs.ErrorResponse "Internal server error"
@@ -117,6 +118,22 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, trip)
 }
 
+// UpdateTripHandler godoc
+// @Summary Update trip details
+// @Description Updates specified fields of an existing trip. All fields in the request body are optional.
+// @Tags trips
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param request body docs.TripUpdateRequest true "Fields to update"
+// @Success 200 {object} docs.TripResponse "Successfully updated trip details"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or update data"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id} [put]
+// @Security BearerAuth
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
@@ -140,6 +157,22 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, updatedTrip)
 }
 
+// UpdateTripStatusHandler godoc
+// @Summary Update trip status
+// @Description Updates the status of a specific trip (e.g., PLANNING, ACTIVE, COMPLETED, CANCELLED).
+// @Tags trips
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param request body docs.UpdateTripStatusRequest true "New status for the trip"
+// @Success 200 {object} docs.TripStatusUpdateResponse "Successfully updated trip status"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or status value"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this trip's status, or invalid status transition"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/status [patch]
+// @Security BearerAuth
 // UpdateTripStatusHandler updates trip status using the facade
 func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	log := logger.GetLogger()
@@ -222,6 +255,21 @@ func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, trips)
 }
 
+// DeleteTripHandler godoc
+// @Summary Delete a trip
+// @Description Deletes a specific trip by its ID.
+// @Tags trips
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Success 204 "Successfully deleted"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID format"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to delete this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id} [delete]
+// @Security BearerAuth
 func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
 
@@ -234,6 +282,19 @@ func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// SearchTripsHandler godoc
+// @Summary Search for trips
+// @Description Searches for trips based on specified criteria in the request body. All criteria are optional.
+// @Tags trips
+// @Accept json
+// @Produce json
+// @Param request body docs.TripSearchRequest true "Search criteria"
+// @Success 200 {array} docs.TripResponse "A list of trips matching the criteria"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid search criteria"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/search [post]
+// @Security BearerAuth
 func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -254,6 +315,21 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, trips)
 }
 
+// GetTripWithMembersHandler godoc
+// @Summary Get trip with members
+// @Description Retrieves a trip's details along with its list of members.
+// @Tags trips
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Success 200 {object} docs.TripWithMembersResponse "Trip details including members"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/details [get]
+// @Security BearerAuth
 func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
@@ -267,60 +343,116 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, tripWithMembers)
 }
 
+// TriggerWeatherUpdateHandler godoc
+// @Summary Trigger weather update for a trip
+// @Description Manually triggers a weather data update for the specified trip if conditions are met (e.g., trip is active or planning).
+// @Tags trips
+// @Tags weather
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Success 200 {object} docs.StatusResponse "Weather update triggered successfully or already up-to-date"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or conditions not met for update (e.g. trip completed)"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to trigger weather updates for this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/weather/trigger-update [post]
+// @Security BearerAuth
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.UserIDKey)))
+	// Fetch trip details to get destination and ensure user has access
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
-		log.Errorw("Failed to get trip details for weather update trigger", "tripID", tripID, "error", err)
-		h.handleModelError(c, err)
+		h.handleModelError(c, err) // Handles 404 if trip not found, 403 if not member, etc.
 		return
 	}
 
 	if h.weatherService == nil {
-		log.Errorw("Weather service not configured in handler", "tripID", tripID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Weather service unavailable"})
+		log.Error("Weather service is not initialized in TripHandler")
+		appErr := apperrors.New(apperrors.ServerError, "Weather service unavailable", "Service not configured")
+		h.handleModelError(c, appErr)
 		return
 	}
 
-	log.Infow("Triggering immediate weather update", "tripID", tripID, "destination", trip.Destination.Address)
+	// Call the weather service to trigger an update
 	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination); err != nil {
-		log.Errorw("Failed to trigger immediate weather update", "tripID", tripID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger weather update"})
+		// Check if the error is a validation error (e.g., trip not active)
+		if appErr, ok := err.(*apperrors.AppError); ok && appErr.HTTPStatus == http.StatusBadRequest {
+			h.handleModelError(c, appErr)
+		} else {
+			log.Errorw("Failed to trigger weather update", "tripID", tripID, "error", err)
+			internalErr := apperrors.New(apperrors.ServerError, "Failed to trigger weather update", err.Error())
+			h.handleModelError(c, internalErr)
+		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Weather update triggered"})
+	c.JSON(http.StatusOK, docs.StatusResponse{Message: "Weather update successfully triggered"})
 }
 
-// UploadTripImage handles uploading an image for a specific trip.
+// UploadTripImage godoc
+// @Summary Upload a trip image
+// @Description Uploads an image for a specific trip.
+// @Tags trips
+// @Tags images
+// @Accept multipart/form-data
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param image formData file true "Image file to upload"
+// @Success 201 {object} docs.ImageUploadResponse "Image uploaded successfully"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - No file, invalid file type/size, or invalid trip ID"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to upload images for this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error - Upload failed"
+// @Router /trips/{id}/images [post]
+// @Security BearerAuth
 func (h *TripHandler) UploadTripImage(c *gin.Context) {
-	log := logger.GetLogger()
-
-	log.Info("Image upload is temporarily disabled")
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"message": "Image upload functionality is temporarily disabled",
-	})
+	// Implementation needed
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented"})
 }
 
-// ListTripImages retrieves a list of images associated with a trip.
+// ListTripImages godoc
+// @Summary List trip images
+// @Description Retrieves a list of images associated with a specific trip.
+// @Tags trips
+// @Tags images
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Success 200 {array} docs.ImageResponse "List of trip images"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view images for this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/images [get]
+// @Security BearerAuth
 func (h *TripHandler) ListTripImages(c *gin.Context) {
-	log := logger.GetLogger()
-
-	log.Info("Image listing is temporarily disabled")
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"message": "Image listing functionality is temporarily disabled",
-		"images":  []interface{}{},
-	})
+	// Implementation needed
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented"})
 }
 
-// DeleteTripImage handles deleting an image associated with a trip.
+// DeleteTripImage godoc
+// @Summary Delete a trip image
+// @Description Deletes a specific image associated with a trip.
+// @Tags trips
+// @Tags images
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param imageId path string true "Image ID to delete"
+// @Success 204 "Image deleted successfully"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to delete this image"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip or image not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /trips/{id}/images/{imageId} [delete]
+// @Security BearerAuth
 func (h *TripHandler) DeleteTripImage(c *gin.Context) {
-	log := logger.GetLogger()
-
-	log.Info("Image deletion is temporarily disabled")
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"message": "Image deletion functionality is temporarily disabled",
-	})
+	// Implementation needed
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented"})
 }
