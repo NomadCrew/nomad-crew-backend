@@ -62,19 +62,19 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 		// WebSocket Route
 		v1.GET("/ws", deps.WSHandler.HandleWebSocketConnection)
 
-		// Invitation specific routes (typically non-trip-nested for token-based actions)
-		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink)     // For deep links from emails
-		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)      // To get details using a token
-		v1.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)   // To accept an invitation using a token
-		v1.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler) // Route for declining invitations
+		// Public Invitation routes (actions that don't require user to be logged in *yet*)
+		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink) // For deep links from emails
+		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)  // To get details using a token (public potentially)
 
 		// --- Authenticated Routes ---
 		authMiddleware := middleware.AuthMiddleware(deps.JWTValidator)
 		authRoutes := v1.Group("")
 		authRoutes.Use(authMiddleware)
 		{
-			// WebSocket for Chat (requires authentication)
-			// v1.GET("/trips/:tripID/ws", deps.WSHandler.HandleChatWebSocketConnection) // Moved to tripChatRoutes
+			// Authenticated Invitation Actions
+			// These require the user (invitee) to be logged in
+			authRoutes.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)
+			authRoutes.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler)
 
 			// Trip Routes
 			tripRoutes := authRoutes.Group("/trips")
