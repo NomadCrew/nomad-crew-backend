@@ -50,6 +50,14 @@ func NewMockTripService(tripID, userID string) *MockTripService {
 }
 
 func (m *MockTripService) IsTripMember(ctx context.Context, tripID, userID string) (bool, error) {
+	// Debug log to check context
+	if ctxUserID, ok := ctx.Value(middleware.UserIDKey).(string); ok && ctxUserID != "" {
+		fmt.Printf("MockTripService.IsTripMember: Found userID in context: %s (param userID: %s)\n",
+			ctxUserID, userID)
+	} else {
+		fmt.Printf("MockTripService.IsTripMember: No userID in context! (param userID: %s)\n", userID)
+	}
+
 	return m.tripMembers[tripID+":"+userID], nil
 }
 
@@ -192,8 +200,24 @@ func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
 	// Set the user ID using the standard key defined in middleware package
 	// This matches what the real middleware uses
 	authTestMiddleware := func(c *gin.Context) {
+		// First check if the userID was passed in the request context
+		userID := ""
+		if ctxUserID, ok := c.Request.Context().Value(middleware.UserIDKey).(string); ok && ctxUserID != "" {
+			userID = ctxUserID
+			fmt.Printf("Test middleware found userID in Request.Context(): %s\n", userID)
+		} else {
+			userID = suite.testUserID
+			fmt.Printf("Test middleware using default suite.testUserID: %s\n", userID)
+		}
+
 		// Set the key that middleware.AuthMiddleware sets
-		c.Set(string(middleware.UserIDKey), suite.testUserID)
+		c.Set(string(middleware.UserIDKey), userID)
+
+		// Set directly in request context too
+		newCtx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+		c.Request = c.Request.WithContext(newCtx)
+
+		fmt.Printf("Auth middleware set userID '%s' in Gin context and Request context\n", userID)
 		c.Next()
 	}
 
@@ -241,7 +265,15 @@ func (suite *ChatIntegrationTestSuite) makeAuthenticatedRequest(method, path str
 	req.Header.Set("Authorization", "Bearer "+suite.jwtToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	return suite.httpClient.Do(req)
+	// Add debug context for integration tests to track context flow
+	debugCtx := context.WithValue(req.Context(), middleware.UserIDKey, suite.testUserID)
+	reqWithDebugCtx := req.WithContext(debugCtx)
+
+	// Log for debugging
+	fmt.Printf("Integration test making %s request to %s with userID: %s in context\n",
+		method, path, debugCtx.Value(middleware.UserIDKey))
+
+	return suite.httpClient.Do(reqWithDebugCtx)
 }
 
 // SetupSuite prepares the test suite once before all tests

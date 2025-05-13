@@ -132,8 +132,12 @@ func (s *ChatServiceImpl) CreateChatMessage(ctx context.Context, message types.C
 	// Verify the user making the request is part of the trip
 	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
+		fmt.Printf("CreateChatMessage: No userID in context! (message.UserID: %s)\n", message.UserID)
 		return "", errors.New("unauthorized: missing user ID in context")
 	}
+
+	fmt.Printf("CreateChatMessage: Found userID in context: %s (message.UserID: %s)\n",
+		userID, message.UserID)
 
 	// Create the message
 	id, err := s.chatStore.CreateChatMessage(ctx, message)
@@ -141,11 +145,15 @@ func (s *ChatServiceImpl) CreateChatMessage(ctx context.Context, message types.C
 		return "", fmt.Errorf("error creating chat message: %w", err)
 	}
 
+	fmt.Printf("CreateChatMessage: Generated message ID: %s\n", id)
+
 	// Get the full message with ID and timestamps
 	createdMessage, err := s.chatStore.GetChatMessageByID(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("error retrieving created message: %w", err)
 	}
+
+	fmt.Printf("CreateChatMessage: Retrieved created message with ID: %s\n", createdMessage.ID)
 
 	// Get user details for the event
 	var user *types.UserResponse
@@ -169,7 +177,9 @@ func (s *ChatServiceImpl) CreateChatMessage(ctx context.Context, message types.C
 	}
 
 	// Publish message create event
-	s.publishChatEvent(ctx, group.TripID, "message_created", *createdMessage, user)
+	// Use explicit context to ensure user ID is in context
+	eventCtx := context.WithValue(ctx, middleware.UserIDKey, message.UserID)
+	s.publishChatEvent(eventCtx, group.TripID, "message_created", *createdMessage, user)
 
 	return id, nil
 }
@@ -474,6 +484,14 @@ func (s *ChatServiceImpl) ListMembers(ctx context.Context, groupID, requestingUs
 }
 
 func (s *ChatServiceImpl) PostMessage(ctx context.Context, groupID, userID, content string) (*types.ChatMessageWithUser, error) {
+	// Debug context
+	if ctxUserID, ok := ctx.Value(middleware.UserIDKey).(string); ok && ctxUserID != "" {
+		fmt.Printf("PostMessage: Found userID in context: %s (param userID: %s)\n",
+			ctxUserID, userID)
+	} else {
+		fmt.Printf("PostMessage: No userID in context! (param userID: %s)\n", userID)
+	}
+
 	// Verify the user is a member of the trip that owns this group
 	group, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
@@ -531,8 +549,13 @@ func (s *ChatServiceImpl) PostMessage(ctx context.Context, groupID, userID, cont
 		User:    userInfo,
 	}
 
+	// Ensure context has userID before publishing event
+	// Use explicit context to ensure user ID is in context
+	eventCtx := context.WithValue(ctx, middleware.UserIDKey, userID)
+	fmt.Printf("PostMessage: Using explicit eventCtx with userID: %s for publishing\n", userID)
+
 	// Publish message event
-	s.publishChatEvent(ctx, group.TripID, "message_created", *createdMessage, &userInfo)
+	s.publishChatEvent(eventCtx, group.TripID, "message_created", *createdMessage, &userInfo)
 
 	return result, nil
 }
@@ -889,6 +912,7 @@ func (s *ChatServiceImpl) UpdateLastRead(ctx context.Context, groupID, userID, m
 // publishChatEvent publishes a chat-related event
 func (s *ChatServiceImpl) publishChatEvent(ctx context.Context, tripID, eventType string, data interface{}, user *types.UserResponse) {
 	if s.eventService == nil {
+		fmt.Printf("publishChatEvent: eventService is nil! Cannot publish event\n")
 		return
 	}
 
@@ -896,9 +920,14 @@ func (s *ChatServiceImpl) publishChatEvent(ctx context.Context, tripID, eventTyp
 	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
 		// Log but don't fail
+		fmt.Printf("publishChatEvent: userID not found in context. Type of value: %T\n",
+			ctx.Value(middleware.UserIDKey))
 		s.log.Warnw("Failed to get user ID from context for event publishing", "eventType", eventType)
 		return
 	}
+
+	fmt.Printf("publishChatEvent: Successfully retrieved userID from context: %s for event: %s\n",
+		userID, eventType)
 
 	// Convert data to JSON for payload
 	eventData := map[string]interface{}{
