@@ -404,6 +404,7 @@ func (s *UserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string)
 	}
 
 	// Convert to our user model
+	now := time.Now() // Helper for pointer
 	user := &types.User{
 		SupabaseID:        supabaseID,
 		Email:             supabaseUser.Email,
@@ -411,7 +412,7 @@ func (s *UserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string)
 		FirstName:         supabaseUser.UserMetadata.FirstName,
 		LastName:          supabaseUser.UserMetadata.LastName,
 		ProfilePictureURL: supabaseUser.UserMetadata.ProfilePicture,
-		LastSeenAt:        time.Now(),
+		LastSeenAt:        &now, // Corrected: assign address of time.Now()
 		IsOnline:          true,
 	}
 

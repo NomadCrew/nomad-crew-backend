@@ -213,7 +213,8 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 		user.Username = generateUsernameFromEmail(user.Email)
 	}
 
-	user.LastSeenAt = time.Now()
+	now := time.Now()      // Helper variable for pointer
+	user.LastSeenAt = &now // Assign address of time.Now()
 	user.IsOnline = true
 
 	// Convert *models.User to *types.User for the store call
@@ -236,7 +237,7 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 		RawUserMetaData:   user.RawUserMetaData,
 		CreatedAt:         user.CreatedAt, // Timestamps might be set by DB or store
 		UpdatedAt:         user.UpdatedAt,
-		LastSeenAt:        user.LastSeenAt,
+		LastSeenAt:        user.LastSeenAt, // This should now be correct (*time.Time to *time.Time)
 		IsOnline:          user.IsOnline,
 		Preferences:       preferencesMap,
 	}
@@ -284,6 +285,8 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, updates mode
 		log.Infow("No changes to update for user, fetching current user", "userID", userIDStr)
 		return s.GetUserByID(ctx, id)
 	}
+
+	updatesMap["updated_at"] = time.Now()
 
 	updatedTypesUser, err := s.userStore.UpdateUser(ctx, userIDStr, updatesMap)
 	if err != nil {
@@ -509,6 +512,11 @@ func (s *UserService) GetUserProfile(ctx context.Context, id uuid.UUID) (*types.
 		LastName:    user.LastName,
 		AvatarURL:   user.ProfilePictureURL,
 		DisplayName: user.GetDisplayName(),
+		IsOnline:    user.IsOnline,
+	}
+
+	if user.LastSeenAt != nil {
+		profile.LastSeenAt = *user.LastSeenAt
 	}
 
 	return profile, nil

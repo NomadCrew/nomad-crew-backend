@@ -9,19 +9,19 @@ import (
 // User represents a user within the application's domain model,
 // potentially distinct from external representations like SupabaseUser.
 type User struct {
-	ID                uuid.UUID `json:"id" db:"id"`
-	SupabaseID        string    `json:"supabaseId" db:"supabase_id"`
-	Username          string    `json:"username" db:"username"`
-	FirstName         string    `json:"firstName,omitempty" db:"first_name"`
-	LastName          string    `json:"lastName,omitempty" db:"last_name"`
-	Email             string    `json:"email" db:"email"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
-	ProfilePictureURL string    `json:"profilePictureUrl,omitempty" db:"profile_picture_url"`
-	RawUserMetaData   []byte    `json:"-" db:"raw_user_meta_data"`
-	LastSeenAt        time.Time `json:"lastSeenAt,omitempty" db:"last_seen_at"`
-	IsOnline          bool      `json:"isOnline,omitempty" db:"is_online"`
-	Preferences       []byte    `json:"-" db:"preferences"` // JSON data for user preferences
+	ID                uuid.UUID  `json:"id" db:"id"`
+	SupabaseID        string     `json:"supabaseId" db:"supabase_id"`
+	Username          string     `json:"username" db:"username"`
+	FirstName         string     `json:"firstName,omitempty" db:"first_name"`
+	LastName          string     `json:"lastName,omitempty" db:"last_name"`
+	Email             string     `json:"email" db:"email"`
+	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
+	ProfilePictureURL string     `json:"profilePictureUrl,omitempty" db:"profile_picture_url"`
+	RawUserMetaData   []byte     `json:"-" db:"raw_user_meta_data"`
+	LastSeenAt        *time.Time `json:"lastSeenAt,omitempty" db:"last_seen_at"`
+	IsOnline          bool       `json:"isOnline,omitempty" db:"is_online"`
+	Preferences       []byte     `json:"-" db:"preferences"` // JSON data for user preferences
 }
 
 // GetFullName returns the user's full name if available, otherwise username.
