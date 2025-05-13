@@ -155,8 +155,9 @@ func SetupInvitationTest(t *testing.T) {
 			SSLMode:  "disable",
 		},
 		ExternalServices: config.ExternalServices{ // Corrected struct name
-			SupabaseURL:     "http://localhost:54321",
-			SupabaseAnonKey: "test-supabase-anon-key",
+			SupabaseURL:       "http://localhost:54321",
+			SupabaseAnonKey:   "test-supabase-anon-key",
+			SupabaseJWTSecret: testCFG.Server.JwtSecretKey, // Use the same secret for HS256 validation
 		},
 		Email: config.EmailConfig{
 			FromAddress: "test@example.com",
