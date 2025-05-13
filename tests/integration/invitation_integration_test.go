@@ -155,9 +155,8 @@ func SetupInvitationTest(t *testing.T) {
 			SSLMode:  "disable",
 		},
 		ExternalServices: config.ExternalServices{ // Corrected struct name
-			SupabaseURL:       "http://localhost:54321",
-			SupabaseAnonKey:   "test-supabase-anon-key",
-			SupabaseJWTSecret: testCFG.Server.JwtSecretKey, // Use the same secret for HS256 validation
+			SupabaseURL:     "http://localhost:54321",
+			SupabaseAnonKey: "test-supabase-anon-key",
 		},
 		Email: config.EmailConfig{
 			FromAddress: "test@example.com",
@@ -169,6 +168,8 @@ func SetupInvitationTest(t *testing.T) {
 			EventBufferSize:         10,
 		},
 	}
+	// Assign the JWT secret AFTER testCFG is initialized
+	testCFG.ExternalServices.SupabaseJWTSecret = testCFG.Server.JwtSecretKey
 
 	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=%s",
 		testCFG.Database.User, testCFG.Database.Password,
