@@ -140,9 +140,13 @@ jobs:
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: ${{ env.SERVICE_NAME }}
+          service: ${{ env.SERVICE_NAME }}-pr-${{ env.PR_NUMBER }}
           region: ${{ env.REGION }}
           image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          flags: |
+            --cpu=1
+            --memory=512Mi
+            --max-instances=10
           env_vars: |
             SERVER_ENVIRONMENT=staging
             ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
@@ -173,7 +177,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const url = "https://preview.nomadcrew.uk";
+            const url = "${{ steps.deploy.outputs.url }}";
             
             try {
               github.rest.issues.createComment({

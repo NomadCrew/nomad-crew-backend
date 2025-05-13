@@ -1,0 +1,3057 @@
+basePath: /v1
+definitions:
+  docs.AddMemberRequest:
+    description: Request body for adding a member to a trip.
+    properties:
+      role:
+        description: Role to assign to the new member (e.g., MEMBER, ADMIN, OWNER)
+        example: MEMBER
+        type: string
+      userId:
+        description: User ID of the member to add
+        example: user-uuid-abc
+        type: string
+    required:
+    - role
+    - userId
+    type: object
+  docs.ChatLastReadRequest:
+    description: Request to update the last read message ID for the user in a trip's
+      chat.
+    properties:
+      lastReadMessageId:
+        example: message-uuid-xyz
+        type: string
+    required:
+    - lastReadMessageId
+    type: object
+  docs.ChatMessageReactionResponse:
+    description: Detailed information about a chat message reaction.
+    properties:
+      createdAt:
+        example: "2023-10-27T10:00:00Z"
+        type: string
+      id:
+        example: reaction-uuid-123
+        type: string
+      messageId:
+        example: message-uuid-456
+        type: string
+      reaction:
+        description: The emoji character(s)
+        example: "\U0001F44D"
+        type: string
+      userId:
+        example: user-uuid-789
+        type: string
+    type: object
+  docs.ChatMessageUpdateRequest:
+    description: Request body for updating a chat message.
+    properties:
+      content:
+        example: Updated message content here.
+        type: string
+    required:
+    - content
+    type: object
+  docs.Coordinates:
+    description: Geographic coordinates
+    properties:
+      lat:
+        description: Latitude
+        example: 48.8566
+        type: number
+      lng:
+        description: Longitude
+        example: 2.3522
+        type: number
+    type: object
+  docs.CreateTripRequest:
+    description: Trip creation information
+    properties:
+      description:
+        description: Trip description
+        example: A relaxing trip to the beach
+        type: string
+      destination:
+        allOf:
+        - $ref: '#/definitions/docs.DestinationInfo'
+        description: Trip destination information
+      endDate:
+        description: Trip end date
+        example: "2024-07-10T00:00:00Z"
+        type: string
+      name:
+        description: The trip name
+        example: Summer Vacation
+        type: string
+      startDate:
+        description: Trip start date
+        example: "2024-07-01T00:00:00Z"
+        type: string
+      status:
+        description: |-
+          Trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)
+          Defaults to PLANNING if not provided.
+        example: PLANNING
+        type: string
+    required:
+    - destination
+    - endDate
+    - name
+    - startDate
+    type: object
+  docs.DestinationInfo:
+    description: Destination information
+    properties:
+      address:
+        description: Destination address
+        example: Paris, France
+        type: string
+      coordinates:
+        allOf:
+        - $ref: '#/definitions/docs.Coordinates'
+        description: Coordinates information
+      placeId:
+        description: Google Maps place ID
+        example: ChIJD7fiBh9u5kcRYJSMaMOCCwQ
+        type: string
+    type: object
+  docs.ErrorResponse:
+    description: Error information
+    properties:
+      code:
+        description: Error code
+        example: VALIDATION_ERROR
+        type: string
+      error:
+        description: Detailed error information
+        example: Field 'name' is required
+        type: string
+      message:
+        description: Error message
+        example: Invalid request parameters
+        type: string
+    type: object
+  docs.ImageResponse:
+    description: Image details
+    properties:
+      id:
+        example: image-uuid-123
+        type: string
+      uploadedAt:
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      url:
+        example: https://example.com/image.jpg
+        type: string
+    type: object
+  docs.ImageUploadResponse:
+    description: Response after successful image upload
+    properties:
+      id:
+        example: image-uuid-123
+        type: string
+      url:
+        example: https://example.com/image.jpg
+        type: string
+    type: object
+  docs.MemberLocationListResponse:
+    description: A list of locations for trip members.
+    properties:
+      locations:
+        items:
+          $ref: '#/definitions/types.MemberLocation'
+        type: array
+    type: object
+  docs.NotificationResponse:
+    description: Notification information
+    properties:
+      createdAt:
+        description: When the notification was created
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      id:
+        description: The notification ID
+        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: string
+      message:
+        description: The notification message
+        example: You've been invited to join a trip to Paris
+        type: string
+      metadata:
+        description: Additional data related to the notification (if any)
+        items:
+          type: integer
+        type: array
+      read:
+        description: Whether the notification has been read
+        example: false
+        type: boolean
+      title:
+        description: The notification title
+        example: New Trip Invitation
+        type: string
+      type:
+        description: The notification type
+        example: TRIP_INVITATION
+        type: string
+      userId:
+        description: The user ID this notification belongs to
+        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: string
+    type: object
+  docs.StatusResponse:
+    description: Generic status message response
+    properties:
+      message:
+        example: Operation successful
+        type: string
+    type: object
+  docs.TodoCreateRequest:
+    description: Request body for creating a new todo. TripID is taken from the path.
+    properties:
+      text:
+        example: Buy groceries
+        type: string
+    required:
+    - text
+    type: object
+  docs.TodoResponse:
+    description: Detailed information about a todo item.
+    properties:
+      createdAt:
+        example: "2023-10-26T10:00:00Z"
+        type: string
+      createdBy:
+        example: user-uuid-789
+        type: string
+      id:
+        example: todo-uuid-123
+        type: string
+      status:
+        description: Status of the todo item (e.g., COMPLETE, INCOMPLETE)
+        example: INCOMPLETE
+        type: string
+      text:
+        example: Buy groceries
+        type: string
+      tripId:
+        example: trip-uuid-456
+        type: string
+      updatedAt:
+        example: "2023-10-26T10:05:00Z"
+        type: string
+    type: object
+  docs.TodoUpdateRequest:
+    description: Fields for updating a todo. All fields are optional.
+    properties:
+      status:
+        description: New status for the todo item (e.g., COMPLETE, INCOMPLETE)
+        example: COMPLETE
+        type: string
+      text:
+        description: New text for the todo item
+        example: Buy milk and eggs
+        type: string
+    type: object
+  docs.TripMemberDetailResponse:
+    description: Detailed information about a trip member, including their membership
+      details and user profile.
+    properties:
+      membership:
+        allOf:
+        - $ref: '#/definitions/docs.TripMemberResponse'
+        description: Reusing existing docs.TripMemberResponse for membership details
+      user:
+        allOf:
+        - $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse'
+        description: Assuming types.UserResponse is suitable for direct use here
+    type: object
+  docs.TripMemberResponse:
+    description: Detailed information about a trip member
+    properties:
+      createdAt:
+        example: "2023-01-01T10:00:00Z"
+        type: string
+      id:
+        example: membership-uuid-123
+        type: string
+      role:
+        description: Role of the member in the trip (e.g., OWNER, MEMBER, ADMIN)
+        example: MEMBER
+        type: string
+      status:
+        description: Status of the membership (e.g., ACTIVE, INACTIVE, INVITED)
+        example: ACTIVE
+        type: string
+      tripId:
+        example: trip-uuid-456
+        type: string
+      updatedAt:
+        example: "2023-01-01T11:00:00Z"
+        type: string
+      userId:
+        example: user-uuid-789
+        type: string
+    type: object
+  docs.TripResponse:
+    description: Trip information
+    properties:
+      backgroundImageUrl:
+        description: URL to trip background image
+        example: https://example.com/images/paris.jpg
+        type: string
+      createdAt:
+        description: Trip creation time
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      createdBy:
+        description: ID of user who created the trip
+        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: string
+      description:
+        description: Trip description
+        example: A wonderful week in Paris
+        type: string
+      destination:
+        allOf:
+        - $ref: '#/definitions/docs.DestinationInfo'
+        description: Trip destination information
+      endDate:
+        description: Trip end date
+        example: "2023-06-07T00:00:00Z"
+        type: string
+      id:
+        description: The trip ID
+        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: string
+      name:
+        description: The trip name
+        example: Trip to Paris
+        type: string
+      startDate:
+        description: Trip start date
+        example: "2023-06-01T00:00:00Z"
+        type: string
+      status:
+        description: Trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)
+        example: PLANNING
+        type: string
+      updatedAt:
+        description: Trip last update time
+        example: "2023-01-02T00:00:00Z"
+        type: string
+    type: object
+  docs.TripSearchRequest:
+    description: Criteria for searching trips. All fields are optional.
+    properties:
+      destination:
+        description: 'Optional: Filter by destination (e.g., address, place name)'
+        example: Paris
+        type: string
+      endDate:
+        description: 'Optional: Filter by exact end date'
+        example: "2024-08-10T00:00:00Z"
+        type: string
+      limit:
+        description: 'Optional: Limit number of results'
+        example: 20
+        type: integer
+      offset:
+        description: 'Optional: Offset for pagination'
+        example: 0
+        type: integer
+      startDate:
+        description: 'Optional: Filter by exact start date'
+        example: "2024-08-01T00:00:00Z"
+        type: string
+      startDateFrom:
+        description: 'Optional: Filter by start date range (from this date)'
+        example: "2024-08-01T00:00:00Z"
+        type: string
+      startDateTo:
+        description: 'Optional: Filter by start date range (to this date)'
+        example: "2024-08-31T00:00:00Z"
+        type: string
+      userId:
+        description: 'Optional: User ID to filter trips by (admin capability or specific
+          use cases)'
+        example: user-uuid-123
+        type: string
+    type: object
+  docs.TripStatusUpdateResponse:
+    description: Response after updating trip status
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/docs.TripResponse'
+        description: Trip details might be omitted if refetch fails
+      message:
+        example: Trip status updated successfully
+        type: string
+    type: object
+  docs.TripUpdateRequest:
+    description: Updatable trip fields. All fields are optional.
+    properties:
+      description:
+        description: New trip description
+        example: An even more relaxing trip
+        type: string
+      destination:
+        allOf:
+        - $ref: '#/definitions/docs.DestinationInfo'
+        description: New trip destination information
+      endDate:
+        description: New trip end date
+        example: "2024-07-11T00:00:00Z"
+        type: string
+      name:
+        description: The new trip name
+        example: Updated Summer Vacation
+        type: string
+      startDate:
+        description: New trip start date
+        example: "2024-07-02T00:00:00Z"
+        type: string
+      status:
+        description: New trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)
+        example: PLANNING
+        type: string
+    type: object
+  docs.TripWithMembersResponse:
+    description: Detailed trip information along with a list of its members
+    properties:
+      members:
+        items:
+          $ref: '#/definitions/docs.TripMemberResponse'
+        type: array
+      trip:
+        $ref: '#/definitions/docs.TripResponse'
+    type: object
+  docs.UpdateMemberRoleRequest:
+    description: Request body for updating a trip member's role.
+    properties:
+      role:
+        description: New role for the member (e.g., MEMBER, ADMIN, OWNER)
+        example: ADMIN
+        type: string
+    required:
+    - role
+    type: object
+  docs.UpdateTripStatusRequest:
+    description: Request body for updating trip status
+    properties:
+      status:
+        description: The new trip status (e.g., PLANNING, ACTIVE, COMPLETED, CANCELLED)
+        example: ACTIVE
+        type: string
+    required:
+    - status
+    type: object
+  docs.UserListResponse:
+    description: A paginated list of user profiles.
+    properties:
+      limit:
+        example: 20
+        type: integer
+      offset:
+        example: 0
+        type: integer
+      total:
+        example: 100
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/types.UserProfile'
+        type: array
+    type: object
+  docs.UserPreferencesRequest:
+    additionalProperties: true
+    description: A map of preference keys to their values.
+    type: object
+  docs.UserUpdateRequest:
+    description: Fields for updating a user profile. All fields are optional.
+    properties:
+      firstName:
+        example: Jonathan
+        type: string
+      lastName:
+        example: Doer
+        type: string
+      profilePictureUrl:
+        example: https://example.com/new_avatar.png
+        type: string
+      username:
+        example: new.john.doe
+        type: string
+    type: object
+  github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse:
+    properties:
+      code:
+        type: string
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+  github_com_NomadCrew_nomad-crew-backend_types.UserResponse:
+    properties:
+      avatarUrl:
+        description: Changed from ProfilePicture to match Supabase
+        type: string
+      displayName:
+        description: Added for UI display purposes
+        type: string
+      email:
+        type: string
+      firstName:
+        type: string
+      id:
+        type: string
+      lastName:
+        type: string
+      username:
+        type: string
+    type: object
+  handlers.AcceptInvitationRequest:
+    properties:
+      token:
+        type: string
+    required:
+    - token
+    type: object
+  handlers.ChatLastReadRequest:
+    properties:
+      lastReadMessageId:
+        type: string
+    required:
+    - lastReadMessageId
+    type: object
+  handlers.DeclineInvitationRequest:
+    properties:
+      token:
+        type: string
+    required:
+    - token
+    type: object
+  handlers.InviteMemberRequest:
+    properties:
+      email:
+        type: string
+      role:
+        $ref: '#/definitions/types.MemberRole'
+    required:
+    - email
+    - role
+    type: object
+  sql.NullString:
+    properties:
+      string:
+        type: string
+      valid:
+        description: Valid is true if String is not NULL
+        type: boolean
+    type: object
+  types.ChatMessage:
+    properties:
+      content:
+        type: string
+      contentType:
+        description: 'Added: e.g., "text", "image_url", "system"'
+        type: string
+      createdAt:
+        type: string
+      groupId:
+        description: Specific group within the trip, if applicable
+        type: string
+      id:
+        type: string
+      isDeleted:
+        type: boolean
+      isEdited:
+        type: boolean
+      reactions:
+        description: Added
+        items:
+          $ref: '#/definitions/types.ChatMessageReaction'
+        type: array
+      sender:
+        allOf:
+        - $ref: '#/definitions/types.MessageSender'
+        description: Added for sender details
+      tripId:
+        description: Often the primary key for partitioning/lookup
+        type: string
+      updatedAt:
+        type: string
+      userId:
+        type: string
+    type: object
+  types.ChatMessageCreateRequest:
+    properties:
+      content:
+        type: string
+      tripId:
+        type: string
+    type: object
+  types.ChatMessagePaginatedResponse:
+    properties:
+      limit:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/types.ChatMessageWithUser'
+        type: array
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  types.ChatMessageReaction:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      messageId:
+        type: string
+      reaction:
+        description: The emoji character(s)
+        type: string
+      userId:
+        type: string
+    type: object
+  types.ChatMessageReactionRequest:
+    properties:
+      reaction:
+        type: string
+    type: object
+  types.ChatMessageWithUser:
+    properties:
+      message:
+        $ref: '#/definitions/types.ChatMessage'
+      user:
+        $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse'
+    type: object
+  types.HealthCheck:
+    properties:
+      components:
+        additionalProperties:
+          $ref: '#/definitions/types.HealthComponent'
+        type: object
+      status:
+        $ref: '#/definitions/types.HealthStatus'
+      timestamp:
+        type: string
+      uptime:
+        type: string
+      version:
+        type: string
+    type: object
+  types.HealthComponent:
+    properties:
+      details:
+        type: string
+      status:
+        $ref: '#/definitions/types.HealthStatus'
+    type: object
+  types.HealthStatus:
+    enum:
+    - UP
+    - DOWN
+    - DEGRADED
+    type: string
+    x-enum-varnames:
+    - HealthStatusUp
+    - HealthStatusDown
+    - HealthStatusDegraded
+  types.InvitationDetailsResponse:
+    properties:
+      createdAt:
+        type: string
+      email:
+        description: Represents InviteeEmail
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      inviter:
+        allOf:
+        - $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse'
+        description: Assumes UserResponse is defined
+      role:
+        $ref: '#/definitions/types.MemberRole'
+      status:
+        $ref: '#/definitions/types.InvitationStatus'
+      trip:
+        allOf:
+        - $ref: '#/definitions/types.TripBasicInfo'
+        description: Assumes TripBasicInfo will be defined
+      tripId:
+        type: string
+    type: object
+  types.InvitationStatus:
+    enum:
+    - PENDING
+    - ACCEPTED
+    - DECLINED
+    type: string
+    x-enum-varnames:
+    - InvitationStatusPending
+    - InvitationStatusAccepted
+    - InvitationStatusDeclined
+  types.Location:
+    properties:
+      accuracy:
+        type: number
+      createdAt:
+        type: string
+      id:
+        type: string
+      latitude:
+        type: number
+      longitude:
+        type: number
+      timestamp:
+        type: string
+      tripId:
+        type: string
+      updatedAt:
+        type: string
+      userId:
+        type: string
+    type: object
+  types.LocationUpdate:
+    properties:
+      accuracy:
+        type: number
+      latitude:
+        type: number
+      longitude:
+        type: number
+      timestamp:
+        description: Unix timestamp in milliseconds
+        type: integer
+    required:
+    - accuracy
+    - latitude
+    - longitude
+    - timestamp
+    type: object
+  types.MemberLocation:
+    properties:
+      accuracy:
+        type: number
+      createdAt:
+        type: string
+      id:
+        type: string
+      latitude:
+        type: number
+      longitude:
+        type: number
+      timestamp:
+        type: string
+      tripId:
+        type: string
+      updatedAt:
+        type: string
+      userId:
+        type: string
+      userName:
+        type: string
+      userRole:
+        type: string
+    type: object
+  types.MemberRole:
+    enum:
+    - NONE
+    - OWNER
+    - MEMBER
+    - ADMIN
+    type: string
+    x-enum-varnames:
+    - MemberRoleNone
+    - MemberRoleOwner
+    - MemberRoleMember
+    - MemberRoleAdmin
+  types.MembershipStatus:
+    enum:
+    - ACTIVE
+    - INACTIVE
+    - INVITED
+    type: string
+    x-enum-varnames:
+    - MembershipStatusActive
+    - MembershipStatusInactive
+    - MembershipStatusInvited
+  types.MessageSender:
+    properties:
+      avatarUrl:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  types.TripBasicInfo:
+    properties:
+      description:
+        type: string
+      endDate:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      startDate:
+        type: string
+    type: object
+  types.TripInvitation:
+    properties:
+      createdAt:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      inviteeEmail:
+        type: string
+      inviteeId:
+        description: Optional, may be nil if user not in system yet
+        type: string
+      inviterId:
+        type: string
+      role:
+        $ref: '#/definitions/types.MemberRole'
+      status:
+        $ref: '#/definitions/types.InvitationStatus'
+      token:
+        allOf:
+        - $ref: '#/definitions/sql.NullString'
+        description: Changed to sql.NullString
+      tripId:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  types.TripMembership:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      role:
+        $ref: '#/definitions/types.MemberRole'
+      status:
+        $ref: '#/definitions/types.MembershipStatus'
+      tripId:
+        type: string
+      updatedAt:
+        type: string
+      userId:
+        type: string
+    type: object
+  types.UserProfile:
+    properties:
+      avatarUrl:
+        type: string
+      displayName:
+        type: string
+      email:
+        type: string
+      firstName:
+        type: string
+      id:
+        type: string
+      isOnline:
+        type: boolean
+      lastName:
+        type: string
+      lastSeenAt:
+        type: string
+      username:
+        type: string
+    type: object
+host: api.nomadcrew.uk
+info:
+  contact:
+    email: support@nomadcrew.uk
+    name: NomadCrew Team
+    url: https://nomadcrew.uk
+  description: NomadCrew RESTful API with authentication and WebSocket support
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: NomadCrew Backend API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      description: Provides detailed health information about all service dependencies
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detailed health information
+          schema:
+            $ref: '#/definitions/types.HealthCheck'
+      summary: Detailed health check
+      tags:
+      - health
+  /health/liveness:
+    get:
+      description: Simple endpoint that returns 200 OK if the service is running
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is alive
+      summary: Kubernetes liveness probe
+      tags:
+      - health
+  /health/readiness:
+    get:
+      description: Checks if the service is ready to accept requests (DB and Redis
+        connections working)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is ready
+          schema:
+            $ref: '#/definitions/types.HealthCheck'
+        "503":
+          description: Service is not ready
+          schema:
+            $ref: '#/definitions/types.HealthCheck'
+      summary: Kubernetes readiness probe
+      tags:
+      - health
+  /invitations/accept:
+    post:
+      consumes:
+      - application/json
+      description: Allows a user to accept an invitation to join a trip using a token.
+      parameters:
+      - description: Invitation token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AcceptInvitationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully joined trip
+          schema:
+            $ref: '#/definitions/types.TripMembership'
+        "400":
+          description: Bad request - Invalid or expired token
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User ID in token does not match logged-in user
+            (if applicable)
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Invitation not found or already processed
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: [] # User must be logged in to accept
+      summary: Accept a trip invitation
+      tags:
+      - trips-invitations
+  /invitations/decline:
+    post:
+      consumes:
+      - application/json
+      description: Allows a user to decline an invitation to join a trip using a token.
+      parameters:
+      - description: Invitation token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.DeclineInvitationRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully declined invitation
+        "400":
+          description: Bad request - Invalid or expired token
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not authenticated or token mismatch
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Invitation not found or already processed
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: [] # Optional: User must be logged in to accept
+      summary: Decline a trip invitation
+      tags:
+      - trips-invitations
+  /invitations/details:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves details about an invitation, such as the trip name and
+        inviter, using the invitation token. Useful for UIs before acceptance.
+      parameters:
+      - description: Invitation Token
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Details of the invitation
+          schema:
+            $ref: '#/definitions/types.InvitationDetailsResponse'
+        "400":
+          description: Bad request - Missing or invalid token
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Invitation not found or token invalid
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      summary: Get details of a specific invitation using a token
+      tags:
+      - trips-invitations
+  /invitations/join:
+    get:
+      consumes:
+      - application/json
+      description: Validates an invitation token from a deep link and redirects the
+        user or provides invitation details.
+      parameters:
+      - description: Invitation token
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: Redirects to frontend with token or error
+        "400":
+          description: Bad request - Invalid or expired token
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Invitation not found
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      summary: Handle a deep link for a trip invitation
+      tags:
+      - trips-invitations
+  /locations:
+    put:
+      consumes:
+      - application/json
+      description: Updates the current user's location
+      parameters:
+      - description: Location update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.LocationUpdate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated location
+          schema:
+            $ref: '#/definitions/types.Location'
+        "400":
+          description: Bad request - Invalid location data
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user location
+      tags:
+      - location
+  /notifications:
+    get:
+      description: Retrieves notifications for the authenticated user with pagination
+        and filtering
+      parameters:
+      - description: Number of notifications to return (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      - description: Filter by status ('read' or 'unread')
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/docs.NotificationResponse'
+            type: array
+        "400":
+          description: Invalid query parameters
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user notifications
+      tags:
+      - notifications
+  /notifications/{notificationId}:
+    delete:
+      description: Deletes a specific notification for the authenticated user
+      parameters:
+      - description: Notification ID (UUID)
+        in: path
+        name: notificationId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Invalid Notification ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden (Notification does not belong to user)
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Notification Not Found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a notification
+      tags:
+      - notifications
+  /notifications/{notificationId}/read:
+    patch:
+      consumes:
+      - application/json
+      description: Marks a specific notification as read for the authenticated user
+      parameters:
+      - description: Notification ID (UUID)
+        in: path
+        name: notificationId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Invalid Notification ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden (Notification does not belong to user)
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Notification Not Found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark a notification as read
+      tags:
+      - notifications
+  /notifications/read-all:
+    patch:
+      consumes:
+      - application/json
+      description: Marks all unread notifications as read for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Returns the number of notifications marked as read
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark all notifications as read
+      tags:
+      - notifications
+  /trips:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all trips that the current user is a member of
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of user's trips
+          schema:
+            items:
+              $ref: '#/definitions/docs.TripResponse'
+            type: array
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List user trips
+      tags:
+      - trips
+    post:
+      consumes:
+      - application/json
+      description: Creates a new trip with the given details
+      parameters:
+      - description: Trip creation details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.CreateTripRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created trip details
+          schema:
+            $ref: '#/definitions/docs.TripResponse'
+        "400":
+          description: Bad request - Invalid input data
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new trip
+      tags:
+      - trips
+  /trips/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a specific trip by its ID.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully deleted
+        "400":
+          description: Bad request - Invalid trip ID format
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to delete this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a trip
+      tags:
+      - trips
+    get:
+      consumes:
+      - application/json
+      description: Retrieves detailed information about a specific trip
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Trip details
+          schema:
+            $ref: '#/definitions/docs.TripResponse'
+        "400":
+          description: Bad request - Invalid trip ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not a member of this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get trip details
+      tags:
+      - trips
+    put:
+      consumes:
+      - application/json
+      description: Updates specified fields of an existing trip. All fields in the
+        request body are optional.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.TripUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated trip details
+          schema:
+            $ref: '#/definitions/docs.TripResponse'
+        "400":
+          description: Bad request - Invalid trip ID or update data
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to update this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update trip details
+      tags:
+      - trips
+  /trips/{id}/chat/last-read:
+    put:
+      consumes:
+      - application/json
+      description: Updates the last read message timestamp for the current user in
+        the trip's chat.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Last read message ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.ChatLastReadRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully updated last read timestamp
+        "400":
+          description: Bad request - Invalid input
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Message or chat group not found
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update last read message
+      tags:
+      - chat
+  /trips/{id}/chat/members:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of members in the trip's primary chat group.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of chat members
+          schema:
+            items:
+              $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse'
+            type: array
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Chat group not found for the trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List chat members
+      tags:
+      - chat
+  /trips/{id}/chat/messages:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves messages for a trip's chat with pagination
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Number of messages to return (default 50)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of chat messages with pagination info
+          schema:
+            $ref: '#/definitions/types.ChatMessagePaginatedResponse'
+        "400":
+          description: Bad request - Invalid trip ID or query parameters
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List chat messages
+      tags:
+      - chat
+    post:
+      consumes:
+      - application/json
+      description: Sends a new message in a trip's chat
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.ChatMessageCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created message details
+          schema:
+            $ref: '#/definitions/types.ChatMessage'
+        "400":
+          description: Bad request - Invalid trip ID or message content
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Send chat message
+      tags:
+      - chat
+  /trips/{id}/chat/messages/{messageId}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a message from a trip's chat
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID
+        in: path
+        name: messageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success response with message
+          schema:
+            $ref: '#/definitions/docs.StatusResponse'
+        "400":
+          description: Bad request - Invalid trip ID or message ID
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete chat message
+      tags:
+      - chat
+    put:
+      consumes:
+      - application/json
+      description: Updates the content of an existing message in a trip's chat. User
+        must be the author.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID to update
+        in: path
+        name: messageId
+        required: true
+        type: string
+      - description: New message content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.ChatMessageUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated message details
+          schema:
+            $ref: '#/definitions/types.ChatMessage'
+        "400":
+          description: Bad request - Invalid input or message ID
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip or not the message
+            author
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Message not found
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update chat message
+      tags:
+      - chat
+  /trips/{id}/chat/messages/{messageId}/reactions:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all reactions for a specific message in a trip's chat.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID
+        in: path
+        name: messageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of reactions for the message
+          schema:
+            items:
+              $ref: '#/definitions/docs.ChatMessageReactionResponse'
+            type: array
+        "400":
+          description: Bad request - Invalid trip ID or message ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Message not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "501":
+          description: Not implemented - This feature is not yet available
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List reactions for a message
+      tags:
+      - chat
+    post:
+      consumes:
+      - application/json
+      description: Adds a reaction to a message in a trip's chat
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID
+        in: path
+        name: messageId
+        required: true
+        type: string
+      - description: Reaction details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.ChatMessageReactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success response with message
+          schema:
+            $ref: '#/definitions/docs.StatusResponse'
+        "400":
+          description: Bad request - Invalid trip ID, message ID, or reaction
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add reaction to message
+      tags:
+      - chat
+  /trips/{id}/chat/messages/{messageId}/reactions/{reactionType}:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a reaction from a message in a trip's chat
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID
+        in: path
+        name: messageId
+        required: true
+        type: string
+      - description: Reaction type
+        in: path
+        name: reactionType
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success response with message
+          schema:
+            $ref: '#/definitions/docs.StatusResponse'
+        "400":
+          description: Bad request - Invalid trip ID, message ID, or reaction type
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove reaction from message
+      tags:
+      - chat
+  /trips/{id}/details:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a trip's details along with its list of members.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Trip details including members
+          schema:
+            $ref: '#/definitions/docs.TripWithMembersResponse'
+        "400":
+          description: Bad request - Invalid trip ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to view this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get trip with members
+      tags:
+      - trips
+  /trips/{id}/images:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of images associated with a specific trip.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of trip images
+          schema:
+            items:
+              $ref: '#/definitions/docs.ImageResponse'
+            type: array
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to view images for this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List trip images
+      tags:
+      - trips
+      - images
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads an image for a specific trip.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Image file to upload
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Image uploaded successfully
+          schema:
+            $ref: '#/definitions/docs.ImageUploadResponse'
+        "400":
+          description: Bad request - No file, invalid file type/size, or invalid trip
+            ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to upload images for this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error - Upload failed
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload a trip image
+      tags:
+      - trips
+      - images
+  /trips/{id}/images/{imageId}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a specific image associated with a trip.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Image ID to delete
+        in: path
+        name: imageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Image deleted successfully
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to delete this image
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip or image not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a trip image
+      tags:
+      - trips
+      - images
+  /trips/{id}/locations:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the current locations of all members in a trip
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of member locations
+          schema:
+            $ref: '#/definitions/docs.MemberLocationListResponse'
+        "400":
+          description: Bad request - Invalid or missing trip ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get trip member locations
+      tags:
+      - location
+  /trips/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Updates the status of a specific trip (e.g., PLANNING, ACTIVE,
+        COMPLETED, CANCELLED).
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status for the trip
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.UpdateTripStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated trip status
+          schema:
+            $ref: '#/definitions/docs.TripStatusUpdateResponse'
+        "400":
+          description: Bad request - Invalid trip ID or status value
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to update this trip's status,
+            or invalid status transition
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update trip status
+      tags:
+      - trips
+  /trips/{id}/todos:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of todo items associated with the specified trip,
+        with pagination.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Number of items to return (default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of todo items
+          schema:
+            items:
+              $ref: '#/definitions/docs.TodoResponse'
+            type: array
+        "400":
+          description: Bad request - Invalid Trip ID or pagination parameters
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to view todos for this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List todo items for a trip
+      tags:
+      - todos
+    post:
+      consumes:
+      - application/json
+      description: Creates a new todo item associated with the specified trip.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Todo details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.TodoCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created todo item
+          schema:
+            $ref: '#/definitions/docs.TodoResponse'
+        "400":
+          description: Bad request - Invalid input data or missing Trip ID
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to create todos for this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new todo item for a trip
+      tags:
+      - todos
+  /trips/{id}/todos/{todoID}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a specific todo item.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Todo ID to delete
+        in: path
+        name: todoID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Todo item deleted successfully
+          schema:
+            $ref: '#/definitions/docs.StatusResponse'
+        "400":
+          description: Bad request - Invalid IDs
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to delete this todo
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Todo item not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a todo item
+      tags:
+      - todos
+    get:
+      consumes:
+      - application/json
+      description: Retrieves details for a specific todo item.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Todo ID to retrieve
+        in: path
+        name: todoID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Details of the todo item
+          schema:
+            $ref: '#/definitions/docs.TodoResponse'
+        "400":
+          description: Bad request - Invalid IDs
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to view this todo
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Todo item not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a specific todo item
+      tags:
+      - todos
+    put:
+      consumes:
+      - application/json
+      description: Updates the text and/or status of an existing todo item.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Todo ID to update
+        in: path
+        name: todoID
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.TodoUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated todo item
+          schema:
+            $ref: '#/definitions/docs.TodoResponse'
+        "400":
+          description: Bad request - Invalid input data or IDs
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to update this todo
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Todo item not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an existing todo item
+      tags:
+      - todos
+  /trips/{id}/weather/trigger-update:
+    post:
+      consumes:
+      - application/json
+      description: Manually triggers a weather data update for the specified trip
+        if conditions are met (e.g., trip is active or planning).
+      parameters:
+      - description: Trip ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Weather update triggered successfully or already up-to-date
+          schema:
+            $ref: '#/definitions/docs.StatusResponse'
+        "400":
+          description: Bad request - Invalid trip ID or conditions not met for update
+            (e.g. trip completed)
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to trigger weather updates
+            for this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Trigger weather update for a trip
+      tags:
+      - trips
+      - weather
+  /trips/{tripID}/ws:
+    get:
+      consumes:
+      - application/json
+      description: Upgrades HTTP connection to WebSocket for real-time trip chat
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "101":
+          description: Switching Protocols to WebSocket
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "429":
+          description: Too Many Requests - Rate limit exceeded
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Establish trip chat WebSocket connection
+      tags:
+      - websocket
+      - chat
+  /trips/{tripId}/chat/read:
+    post:
+      consumes:
+      - application/json
+      description: Updates the timestamp of the last message read by the user in a
+        specific trip's chat.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      - description: Last read message ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ChatLastReadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated last read timestamp
+          schema:
+            $ref: '#/definitions/docs.StatusResponse'
+        "400":
+          description: Bad request - Invalid input
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Trip or Message not found
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user's last read message in a trip
+      tags:
+      - trips-chat
+  /trips/{tripId}/invitations:
+    post:
+      consumes:
+      - application/json
+      description: Invites a user by email to join a specific trip with a given role.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      - description: Invitation details (email, role)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.InviteMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created invitation
+          schema:
+            $ref: '#/definitions/types.TripInvitation'
+        "400":
+          description: Bad request - Invalid input or user already member/invited
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User does not have permission to invite
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Invite a user to a trip
+      tags:
+      - trips-invitations
+  /trips/{tripId}/members:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of all members for a specific trip, including
+        their profile information.
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of trip members with profile information
+          schema:
+            items:
+              $ref: '#/definitions/docs.TripMemberDetailResponse'
+            type: array
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User is not a member of this trip
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get all members of a trip
+      tags:
+      - trips-members
+    post:
+      consumes:
+      - application/json
+      description: Adds a user as a member to a specific trip with a given role
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      - description: Member details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.AddMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully added member
+          schema:
+            $ref: '#/definitions/docs.TripMemberResponse'
+        "400":
+          description: Bad request - Invalid input or user already member
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User does not have permission to add members
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip or User not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a member to a trip
+      tags:
+      - trips-members
+  /trips/{tripId}/members/{userId}:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a user from a specific trip
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      - description: User ID of the member to remove
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully removed member
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User does not have permission to remove members
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip or User not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a member from a trip
+      tags:
+      - trips-members
+  /trips/{tripId}/members/{userId}/role:
+    put:
+      consumes:
+      - application/json
+      description: Updates the role of an existing member in a specific trip
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      - description: User ID of the member to update
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: New role
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.UpdateMemberRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated member's role
+          schema:
+            $ref: '#/definitions/docs.TripMemberResponse'
+        "400":
+          description: Bad request - Invalid input
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User does not have permission to update roles
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - Trip, User, or Membership not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a trip member's role
+      tags:
+      - trips-members
+  /trips/{tripId}/ws/events:
+    get:
+      description: Establishes a WebSocket connection to stream real-time events for
+        a trip (chat, updates, etc.).
+      parameters:
+      - description: Trip ID
+        in: path
+        name: tripId
+        required: true
+        type: string
+      responses:
+        "101":
+          description: Switching Protocols
+        "400":
+          description: Bad request - Invalid trip ID or user not authorized
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "403":
+          description: Forbidden - User not a member of this trip
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "500":
+          description: Internal server error - Failed to upgrade connection
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: WebSocket stream for trip events
+      tags:
+      - trips-chat websocket
+  /trips/search:
+    post:
+      consumes:
+      - application/json
+      description: Searches for trips based on specified criteria in the request body.
+        All criteria are optional.
+      parameters:
+      - description: Search criteria
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.TripSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: A list of trips matching the criteria
+          schema:
+            items:
+              $ref: '#/definitions/docs.TripResponse'
+            type: array
+        "400":
+          description: Bad request - Invalid search criteria
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Search for trips
+      tags:
+      - trips
+  /users:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of users
+      parameters:
+      - description: Pagination offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      - description: Pagination limit (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of users with pagination info
+          schema:
+            $ref: '#/definitions/docs.UserListResponse'
+        "400":
+          description: Bad request - Invalid pagination parameters
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - user
+  /users/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a user profile by user ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User profile
+          schema:
+            $ref: '#/definitions/types.UserProfile'
+        "400":
+          description: Bad request - Invalid user ID format
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - User not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user by ID
+      tags:
+      - user
+    put:
+      consumes:
+      - application/json
+      description: Updates fields for a specified user. Only admin or the user themselves
+        can perform this action.
+      parameters:
+      - description: User ID to update
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.UserUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated user profile
+          schema:
+            $ref: '#/definitions/types.UserProfile'
+        "400":
+          description: Bad request - Invalid user ID or request body
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to update this profile
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - User not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - user
+  /users/{id}/preferences:
+    put:
+      consumes:
+      - application/json
+      description: Updates the preferences for a specified user. Only admin or the
+        user themselves can perform this action.
+      parameters:
+      - description: User ID whose preferences to update
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User preferences map
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/docs.UserPreferencesRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Preferences updated successfully
+        "400":
+          description: Bad request - Invalid user ID or preferences format
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "403":
+          description: Forbidden - User not authorized to update these preferences
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "404":
+          description: Not found - User not found
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user preferences
+      tags:
+      - user
+  /users/me:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the profile of the currently authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User profile
+          schema:
+            $ref: '#/definitions/types.UserProfile'
+        "401":
+          description: Unauthorized - No authenticated user
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/docs.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user profile
+      tags:
+      - user
+  /ws:
+    get:
+      consumes:
+      - application/json
+      description: Upgrades HTTP connection to WebSocket for real-time communication
+      produces:
+      - application/json
+      responses:
+        "101":
+          description: Switching Protocols to WebSocket
+        "401":
+          description: Unauthorized - User not logged in
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+        "429":
+          description: Too Many Requests - Rate limit exceeded
+          schema:
+            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Establish WebSocket connection
+      tags:
+      - websocket
+securityDefinitions:
+  BearerAuth:
+    description: JWT token for authentication
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

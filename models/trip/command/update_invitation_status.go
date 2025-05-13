@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
@@ -42,9 +43,34 @@ func (c *UpdateInvitationStatusCommand) Execute(ctx context.Context) (*interface
 		return nil, err
 	}
 
-	// Verify user is the invitee
-	if invitation.InviteeEmail != c.UserID {
-		return nil, errors.Forbidden("update_forbidden", "user cannot update this invitation")
+	actorIsInvitee := false
+	if invitation.InviteeID != nil && *invitation.InviteeID != "" {
+		if *invitation.InviteeID == c.UserID { // c.UserID is from BaseCommand, the authenticated user
+			actorIsInvitee = true
+		}
+	} else {
+		// InviteeID is not set, compare actor's email with InviteeEmail.
+		if c.Ctx.UserStore == nil {
+			logger.GetLogger().Error("UpdateInvitationStatusCommand: UserStore not available in command context for email comparison.")
+			return nil, errors.InternalServerError("UserStore not available in command context")
+		}
+		// Assuming c.UserID in BaseCommand is the Supabase Auth ID (string)
+		// and UserStore.GetUserBySupabaseID or GetUserByID expects this string.
+		// Let's use GetUserByID, assuming it can handle the string ID from BaseCommand.
+		currentUser, userErr := c.Ctx.UserStore.GetUserByID(ctx, c.UserID)
+		if userErr != nil {
+			logger.GetLogger().Errorw("UpdateInvitationStatusCommand: Failed to fetch current user details for permission check.", "userID", c.UserID, "error", userErr)
+			return nil, errors.Wrap(userErr, "fetch_user_failed", "failed to fetch current user details for permission check")
+		}
+		if currentUser != nil && currentUser.Email == invitation.InviteeEmail {
+			actorIsInvitee = true
+		} else if currentUser == nil {
+			logger.GetLogger().Warnw("UpdateInvitationStatusCommand: Current user not found by ID for email comparison.", "userID", c.UserID)
+		}
+	}
+
+	if !actorIsInvitee {
+		return nil, errors.Forbidden("update_forbidden", "User cannot update this invitation. Actor is not the invitee.")
 	}
 
 	if err := c.Ctx.Store.UpdateInvitationStatus(ctx, c.InvitationID, c.NewStatus); err != nil {

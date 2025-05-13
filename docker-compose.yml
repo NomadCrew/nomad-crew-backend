@@ -9,8 +9,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migrations/init.sql:/docker-entrypoint-initdb.d/1_init.sql
-      - ./db/migrations/chat.sql:/docker-entrypoint-initdb.d/2_chat.sql
+      - ./db/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/1_init.sql
+      - ./db/migrations/000002_chat.up.sql:/docker-entrypoint-initdb.d/2_chat.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nomadcrew"]
       interval: 5s
@@ -51,7 +51,7 @@ services:
         EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
         EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NomadCrew}
         FRONTEND_URL: ${FRONTEND_URL:-https://nomadcrew.uk}
-        ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+        ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://10.0.2.2:8080,http://localhost:19006,http://10.0.2.2:19006,exp://10.0.2.2:8081}
     ports:
       - "8080:8080"
     environment:
@@ -71,7 +71,7 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-development}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://10.0.2.2:8080,http://localhost:19006,http://10.0.2.2:19006,exp://10.0.2.2:8081}
       RESEND_API_KEY: ${RESEND_API_KEY:-re_development_fake_key_123456789012345678901234567890123456789012345}
       GEOAPIFY_KEY: ${GEOAPIFY_KEY}
       SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
@@ -79,6 +79,9 @@ services:
       EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NomadCrew}
       FRONTEND_URL: ${FRONTEND_URL:-https://nomadcrew.uk}
+      EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS: ${EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS:-5}
+      EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS: ${EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS:-10}
+      EVENT_SERVICE_EVENT_BUFFER_SIZE: ${EVENT_SERVICE_EVENT_BUFFER_SIZE:-100}
     depends_on:
       postgres:
         condition: service_healthy

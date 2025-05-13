@@ -11,12 +11,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/internal/ws"
 	"github.com/gin-gonic/gin"
 
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+)
+
+// Context keys
+const (
+	WebSocketConnectionKey = "wsConnection"
+	UserProfileKey         = "userProfile"
 )
 
 var (
@@ -66,6 +73,26 @@ type SafeConn struct {
 	TripID       string
 	bufferStatus int32
 	config       WSConfig
+}
+
+// ReadChannel returns the read channel for receiving WebSocket messages
+func (sc *SafeConn) ReadChannel() <-chan []byte {
+	if sc == nil {
+		log := logger.GetLogger()
+		log.Error("ReadChannel called on nil SafeConn")
+		return nil
+	}
+	return sc.readBuffer
+}
+
+// DoneChannel returns a channel that is closed when the connection is closed
+func (sc *SafeConn) DoneChannel() <-chan struct{} {
+	if sc == nil {
+		log := logger.GetLogger()
+		log.Error("DoneChannel called on nil SafeConn")
+		return nil
+	}
+	return sc.done
 }
 
 func DefaultWSConfig() WSConfig {
@@ -405,114 +432,152 @@ func (sc *SafeConn) writePump() {
 	}
 }
 
-// Single Close implementation
-func (sc *SafeConn) Close() error {
+// isConnectionValid checks if the connection is still valid and can be used
+func (sc *SafeConn) isConnectionValid() bool {
 	log := logger.GetLogger()
 
-	// Lock the mutex to prevent concurrent access
+	// Basic checks
+	if sc == nil {
+		log.Errorw("isConnectionValid called on nil SafeConn")
+		return false
+	}
+
+	if atomic.LoadInt32(&sc.closed) == 1 {
+		log.Debugw("Connection already marked as closed", "userID", sc.UserID, "tripID", sc.TripID)
+		return false
+	}
+
+	if sc.Conn == nil {
+		log.Errorw("Connection is nil", "userID", sc.UserID, "tripID", sc.TripID)
+		atomic.StoreInt32(&sc.closed, 1) // Mark as closed to avoid further use
+		return false
+	}
+
+	// Try sending a ping frame to check connection status
+	// This is more reliable than just checking state variables
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
-	// Only close once - use atomic operation for thread safety
-	if !atomic.CompareAndSwapInt32(&sc.closed, 0, 1) {
-		log.Debugw("Close called on already closed connection",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
-		return nil
+	// Use shorter timeout than normal for connection check
+	pingTimeout := sc.config.WriteWait
+	if pingTimeout == 0 {
+		pingTimeout = 5 * time.Second
 	}
 
-	log.Debugw("Closing WebSocket connection",
-		"userID", sc.UserID,
-		"tripID", sc.TripID)
-
-	// Track active connections
-	atomic.AddInt64(&activeConnectionCount, -1)
-
-	// Create local copies of channels to avoid race conditions
-	doneChannel := sc.done
-	writeBufferChannel := sc.writeBuffer
-	readBufferChannel := sc.readBuffer
-
-	// Signal done to stop goroutines
-	if doneChannel != nil {
-		close(doneChannel)
-		// Nullify the channel after closing to prevent double close
-		sc.done = nil
-	} else {
-		log.Warnw("Close called on connection with nil done channel",
+	err := sc.Conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(pingTimeout))
+	if err != nil {
+		log.Warnw("Connection validity check failed (ping error)",
+			"error", err,
 			"userID", sc.UserID,
-			"tripID", sc.TripID)
-	}
+			"tripID", sc.TripID,
+			"isClosed", atomic.LoadInt32(&sc.closed) == 1)
 
-	// Update metrics
-	if sc.metrics != nil {
-		if sc.metrics.ConnectionsActive != nil {
-			sc.metrics.ConnectionsActive.Dec()
-		}
-	} else {
-		log.Warnw("Close called on connection with nil metrics",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
-	}
-
-	// Close the actual connection
-	var err error
-	if sc.Conn != nil {
-		// Store a local copy of the connection before nullifying
-		conn := sc.Conn
-		// Nullify the connection before closing to prevent further use
-		sc.Conn = nil
-
-		// Close the connection after nullifying to prevent race conditions
-		err = conn.Close()
-
-		if err != nil {
-			log.Warnw("Error closing underlying WebSocket connection",
+		// Try to identify the specific error type for better logging
+		if websocket.IsUnexpectedCloseError(err) {
+			log.Warnw("Unexpected close error during validity check",
+				"error", err,
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
+		} else if isNetworkError(err) {
+			log.Warnw("Network error during validity check",
+				"error", err,
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
+		} else if isTimeoutError(err) {
+			log.Warnw("Timeout error during validity check",
 				"error", err,
 				"userID", sc.UserID,
 				"tripID", sc.TripID)
 		}
-	} else {
-		log.Warnw("Close called on connection with nil Conn",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
-	}
 
-	// Drain buffers to prevent goroutine leaks
-	// Use non-blocking operations to avoid deadlocks
-	if writeBufferChannel != nil {
-		// Drain the channel in a non-blocking way
-		select {
-		case <-writeBufferChannel:
-		default:
+		// If not already marked closed, clean up
+		if atomic.LoadInt32(&sc.closed) == 0 {
+			// Don't use Close() here as it could recursively call this method
+			atomic.StoreInt32(&sc.closed, 1)
+
+			// Close the underlying connection without using our Close method
+			closeErr := sc.Conn.Close()
+			if closeErr != nil {
+				log.Warnw("Error closing invalid connection",
+					"error", closeErr,
+					"userID", sc.UserID,
+					"tripID", sc.TripID)
+			}
+
+			// Signal close to other goroutines
+			close(sc.done)
 		}
-		// Nullify the channel after draining
-		sc.writeBuffer = nil
-	} else {
-		log.Warnw("Close called on connection with nil writeBuffer",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
+
+		return false
 	}
 
-	if readBufferChannel != nil {
-		// Drain the channel in a non-blocking way
-		select {
-		case <-readBufferChannel:
-		default:
+	return true
+}
+
+// Close safely closes the WebSocket connection and cleans up resources
+func (sc *SafeConn) Close() error {
+	log := logger.GetLogger()
+
+	if sc == nil {
+		log.Errorw("Close called on nil SafeConn")
+		return fmt.Errorf("nil SafeConn")
+	}
+
+	// Use CAS operation to ensure we only close once
+	if !atomic.CompareAndSwapInt32(&sc.closed, 0, 1) {
+		// Already closed, just log and return
+		log.Debugw("Connection already closed", "userID", sc.UserID, "tripID", sc.TripID)
+		return nil
+	}
+
+	log.Infow("Closing WebSocket connection", "userID", sc.UserID, "tripID", sc.TripID)
+
+	// Update metrics
+	if sc.metrics != nil {
+		sc.metrics.connectionCount.Dec()
+		atomic.AddInt64(&activeConnectionCount, -1)
+	}
+
+	// Lock to prevent concurrent operations on connection
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	// Close the done channel to signal goroutines to exit
+	// Use a defer and recover in case the channel is already closed
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warnw("Recovered while closing done channel",
+				"recover", r,
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
 		}
-		// Nullify the channel after draining
-		sc.readBuffer = nil
-	} else {
-		log.Warnw("Close called on connection with nil readBuffer",
-			"userID", sc.UserID,
-			"tripID", sc.TripID)
+	}()
+
+	// Close the underlying connection with a graceful close frame
+	var closeErr error
+	if sc.Conn != nil {
+		// Send close message with normal closure code
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "connection closed")
+		// Use a short timeout for the close message
+		deadline := time.Now().Add(1 * time.Second)
+
+		// Only try to write a close frame if the connection appears valid
+		writeErr := sc.Conn.WriteControl(websocket.CloseMessage, closeMsg, deadline)
+		if writeErr != nil {
+			log.Warnw("Failed to send close frame",
+				"error", writeErr,
+				"userID", sc.UserID,
+				"tripID", sc.TripID)
+		}
+
+		// Close the underlying connection
+		closeErr = sc.Conn.Close()
 	}
 
-	log.Debugw("WebSocket connection closed successfully",
-		"userID", sc.UserID,
-		"tripID", sc.TripID)
+	// Close the done channel to signal all goroutines
+	close(sc.done)
 
-	return err
+	return closeErr
 }
 
 func (sc *SafeConn) readPump() {
@@ -1016,10 +1081,18 @@ func WSMiddleware(config WSConfig, metrics *WSMetrics) gin.HandlerFunc {
 				"clientIP", clientIP,
 				"userAgent", userAgent)
 
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "User authentication required for WebSocket connections",
-			})
-			return
+			// Check if this is a WebSocket upgrade request
+			if strings.ToLower(c.GetHeader("Connection")) == "upgrade" &&
+				strings.ToLower(c.GetHeader("Upgrade")) == "websocket" {
+				// For WebSocket upgrade requests, we'll continue and let the auth middleware handle it
+				log.Debugw("Continuing WebSocket connection without user ID for auth middleware to handle",
+					"path", c.Request.URL.Path)
+			} else {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "User authentication required for WebSocket connections",
+				})
+				return
+			}
 		}
 
 		// Upgrade the connection
@@ -1246,27 +1319,6 @@ func secureRandomFloat() float64 {
 	return float64(binary.LittleEndian.Uint64(buf[:])) / float64(1<<64)
 }
 
-// isConnectionValid checks if the SafeConn and its underlying connection are valid
-func (sc *SafeConn) isConnectionValid() bool {
-	if sc == nil {
-		return false
-	}
-
-	if atomic.LoadInt32(&sc.closed) == 1 {
-		return false
-	}
-
-	if sc.Conn == nil {
-		return false
-	}
-
-	if sc.readBuffer == nil || sc.writeBuffer == nil || sc.done == nil {
-		return false
-	}
-
-	return true
-}
-
 // SendMessage sends a message through the websocket connection with proper error handling
 func (sc *SafeConn) SendMessage(message []byte) error {
 	log := logger.GetLogger()
@@ -1285,4 +1337,15 @@ func (sc *SafeConn) SendMessage(message []byte) error {
 			"messageSize", len(message))
 		return fmt.Errorf("write buffer full")
 	}
+}
+
+// GetWSClient returns a ws.Client for a given SafeConn
+func GetWSClient(sc *SafeConn) *ws.Client {
+	if sc == nil || sc.Conn == nil {
+		return nil
+	}
+
+	// Create a new ws.Client with the connection from SafeConn
+	// Using a 32 buffer size for outgoing messages
+	return ws.NewClient(sc.Conn, sc.UserID, 32)
 }

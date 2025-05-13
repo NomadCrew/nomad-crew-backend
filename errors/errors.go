@@ -3,90 +3,104 @@ package errors
 import (
 	"fmt"
 	"net/http"
-
-	"github.com/NomadCrew/nomad-crew-backend/logger"
 )
 
-type ErrorType string
-
+// Error types
 const (
-	ValidationError                  ErrorType = "VALIDATION_ERROR"
-	NotFoundError                    ErrorType = "NOT_FOUND"
-	AuthError                        ErrorType = "AUTHENTICATION_ERROR"
-	DatabaseError                    ErrorType = "DATABASE_ERROR"
-	ServerError                      ErrorType = "SERVER_ERROR"
-	ForbiddenError                   ErrorType = "FORBIDDEN"
-	TripNotFoundError                ErrorType = "TRIP_NOT_FOUND"
-	TripAccessError                  ErrorType = "TRIP_ACCESS_DENIED"
-	InvalidStatusTransitionError     ErrorType = "INVALID_STATUS_TRANSITION"
-	ErrorTypeTripNotFound                      = "trip_not_found"
-	ErrorTypeTripAccessDenied                  = "trip_access_denied"
-	ErrorTypeValidation                        = "validation_failed"
-	ErrorTypeInvalidStatusTransition           = "invalid_status_transition"
-	ErrorTypeConflict                          = "CONFLICT"
+	NotFoundError      = "NOT_FOUND"
+	ValidationError    = "VALIDATION"
+	DatabaseError      = "DATABASE"
+	AuthError          = "AUTHENTICATION"
+	AuthorizationError = "AUTHORIZATION"
+	ServerError        = "SERVER"
+	ExternalAPIError   = "EXTERNAL_API"
+	TripNotFoundError  = "TRIP_NOT_FOUND"
 )
 
-// AppError represents a structured application error
+// AppError is a structured error type for the application
 type AppError struct {
-	Type       ErrorType `json:"type"`
-	Code       string    `json:"code"`
-	Message    string    `json:"message"`
-	Detail     string    `json:"detail,omitempty"`
-	HTTPStatus int       `json:"-"`
-	Raw        error     `json:"-"`
+	Type       string
+	Message    string
+	Details    string
+	Detail     string // Alias for Details to maintain compatibility
+	Raw        error  // Original error if this is a wrapper
+	HTTPStatus int    // HTTP status code to return
 }
 
+// Error implements the error interface
 func (e *AppError) Error() string {
 	if e.Detail != "" {
-		return fmt.Sprintf("%s: %s (%s)", e.Type, e.Message, e.Detail)
+		return fmt.Sprintf("%s_ERROR: %s (%s)", e.Type, e.Message, e.Detail)
 	}
-	return fmt.Sprintf("%s: %s", e.Type, e.Message)
+	return fmt.Sprintf("%s_ERROR: %s", e.Type, e.Message)
 }
 
-// New creates a new AppError
-func New(errType ErrorType, message string, detail string) *AppError {
-	httpStatus := getHTTPStatus(errType)
+// getHTTPStatus returns the appropriate HTTP status code for the error type
+func getHTTPStatus(errType string) int {
+	switch errType {
+	case NotFoundError:
+		return http.StatusNotFound
+	case ValidationError:
+		return http.StatusBadRequest
+	case AuthError:
+		return http.StatusUnauthorized
+	case DatabaseError:
+		return http.StatusInternalServerError
+	case AuthorizationError:
+		return http.StatusForbidden
+	case TripNotFoundError:
+		return http.StatusNotFound
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// New creates a new AppError with the given type, message, and detail
+func New(errType string, message string, detail string) *AppError {
 	return &AppError{
 		Type:       errType,
 		Message:    message,
+		Details:    detail,
 		Detail:     detail,
-		HTTPStatus: httpStatus,
-	}
-}
-
-// Wrap wraps a raw error with AppError context
-func Wrap(err error, errType ErrorType, message string) *AppError {
-	if err == nil {
-		return nil
-	}
-	return &AppError{
-		Type:       errType,
-		Message:    message,
-		Detail:     err.Error(),
 		HTTPStatus: getHTTPStatus(errType),
-		Raw:        err,
 	}
 }
 
-// Helper functions for common errors
-func NotFound(entity string, id interface{}) *AppError {
+// NotFound creates a new not found error
+func NotFound(resource string, id interface{}) *AppError {
 	return &AppError{
 		Type:       NotFoundError,
-		Message:    fmt.Sprintf("%s not found", entity),
+		Message:    fmt.Sprintf("%s not found", resource),
+		Details:    fmt.Sprintf("ID: %v", id),
 		Detail:     fmt.Sprintf("ID: %v", id),
 		HTTPStatus: http.StatusNotFound,
 	}
 }
 
+// ValidationFailed creates a new validation error
 func ValidationFailed(message string, details string) *AppError {
 	return &AppError{
 		Type:       ValidationError,
 		Message:    message,
+		Details:    details,
 		Detail:     details,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
+// NewDatabaseError creates a new database error
+func NewDatabaseError(err error) *AppError {
+	return &AppError{
+		Type:       DatabaseError,
+		Message:    "Database operation failed",
+		Details:    err.Error(),
+		Detail:     err.Error(),
+		Raw:        err,
+		HTTPStatus: http.StatusInternalServerError,
+	}
+}
+
+// AuthenticationFailed creates a new authentication error
 func AuthenticationFailed(message string) *AppError {
 	return &AppError{
 		Type:       AuthError,
@@ -95,20 +109,18 @@ func AuthenticationFailed(message string) *AppError {
 	}
 }
 
-func NewDatabaseError(err error) *AppError {
-	// Only log if not in test mode
-	if !logger.IsTest {
-		logger.GetLogger().Errorw("Database error", "error", err)
-	}
+// AuthorizationFailed creates a new authorization error
+func AuthorizationFailed(code string, message string) *AppError {
 	return &AppError{
-		Type:       DatabaseError,
-		Message:    "Database operation failed",
-		Detail:     "Please try again later",
-		HTTPStatus: 500,
-		Raw:        err,
+		Type:       AuthorizationError,
+		Message:    message,
+		Details:    code,
+		Detail:     code,
+		HTTPStatus: http.StatusForbidden,
 	}
 }
 
+// InternalServerError creates a new server error
 func InternalServerError(message string) *AppError {
 	return &AppError{
 		Type:       ServerError,
@@ -117,88 +129,79 @@ func InternalServerError(message string) *AppError {
 	}
 }
 
-func Forbidden(message string, details string) *AppError {
+// Wrap wraps an existing error with additional context
+func Wrap(err error, errType string, message string) *AppError {
 	return &AppError{
-		Type:       ForbiddenError,
+		Type:       errType,
 		Message:    message,
-		Detail:     details,
+		Details:    err.Error(),
+		Detail:     err.Error(),
+		Raw:        err,
+		HTTPStatus: getHTTPStatus(errType),
+	}
+}
+
+// Forbidden creates a new authorization error for forbidden resources
+func Forbidden(code string, message string) *AppError {
+	return &AppError{
+		Type:       AuthorizationError,
+		Message:    message,
+		Details:    code,
+		Detail:     code,
 		HTTPStatus: http.StatusForbidden,
 	}
 }
 
-func TripNotFound(id string) *AppError {
+// GetHTTPStatus returns the HTTP status code to use
+func (e *AppError) GetHTTPStatus() int {
+	return e.HTTPStatus
+}
+
+func NewError(errType string, code string, message string, status int) error {
 	return &AppError{
-		Type:       TripNotFoundError,
-		Message:    "Trip not found",
-		Detail:     fmt.Sprintf("Trip ID: %s", id),
-		HTTPStatus: http.StatusNotFound,
+		Type:    errType,
+		Message: message,
+		Details: code,
 	}
 }
 
-func TripAccessDenied(userID, tripID string) *AppError {
+// NewExternalServiceError creates a new error for external service failures
+func NewExternalServiceError(err error) *AppError {
+	if err == nil {
+		return nil
+	}
 	return &AppError{
-		Type:       TripAccessError,
-		Message:    "Access to trip denied",
-		Detail:     fmt.Sprintf("User %s cannot access trip %s", userID, tripID),
-		HTTPStatus: http.StatusForbidden,
+		Type:    ExternalAPIError,
+		Message: "External service error",
+		Details: err.Error(),
 	}
 }
 
-func InvalidStatusTransition(current, new string) *AppError {
+// InvalidStatusTransition creates a new validation error for invalid status transitions
+func InvalidStatusTransition(currentStatus string, newStatus string) *AppError {
 	return &AppError{
-		Type:       InvalidStatusTransitionError,
-		Message:    "Invalid status transition",
-		Detail:     fmt.Sprintf("Cannot transition from %s to %s", current, new),
-		HTTPStatus: http.StatusBadRequest,
+		Type:    ValidationError,
+		Message: "Invalid status transition",
+		Details: fmt.Sprintf("Cannot transition from %s to %s", currentStatus, newStatus),
 	}
 }
 
-func NewConflictError(message string, detail string) *AppError {
+// NewConflictError creates an error for conflict situations like duplicate resources
+func NewConflictError(code string, message string) *AppError {
 	return &AppError{
-		Type:       ErrorTypeConflict,
+		Type:       "CONFLICT",
 		Message:    message,
-		Detail:     detail,
+		Details:    code,
+		Detail:     code,
 		HTTPStatus: http.StatusConflict,
 	}
 }
 
-func Unauthorized(code, message string) error {
-	return NewError(
-		"unauthorized",
-		code,
-		message,
-		http.StatusUnauthorized,
-	)
-}
-
-func getHTTPStatus(errType ErrorType) int {
-	switch errType {
-	case ValidationError:
-		return http.StatusBadRequest
-	case NotFoundError:
-		return http.StatusNotFound
-	case AuthError:
-		return http.StatusUnauthorized
-	case DatabaseError:
-		return http.StatusInternalServerError
-	case ForbiddenError:
-		return http.StatusForbidden
-	case TripNotFoundError:
-		return http.StatusNotFound
-	case TripAccessError:
-		return http.StatusForbidden
-	case InvalidStatusTransitionError:
-		return http.StatusBadRequest
-	default:
-		return http.StatusInternalServerError
-	}
-}
-
-func NewError(errType ErrorType, code string, message string, status int) error {
+// Unauthorized creates a new authentication error
+func Unauthorized(code string, message string) *AppError {
 	return &AppError{
-		Type:       errType,
-		Code:       code,
-		Message:    message,
-		HTTPStatus: status,
+		Type:    AuthError,
+		Message: message,
+		Details: code,
 	}
 }

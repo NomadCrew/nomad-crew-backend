@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/google/uuid"
 )
 
 type EventEmitter struct {
@@ -19,23 +18,22 @@ func NewEventEmitter(eventBus types.EventPublisher) *EventEmitter {
 }
 
 func (e *EventEmitter) EmitTripEvent(ctx context.Context, tripID string, eventType types.EventType, payload interface{}, userID string) error {
-	data, err := json.Marshal(payload)
+	var payloadMap map[string]interface{}
+	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event payload: %w", err)
 	}
+	if err := json.Unmarshal(payloadJSON, &payloadMap); err != nil {
+		return fmt.Errorf("failed to unmarshal event payload to map: %w", err)
+	}
 
-	return e.eventBus.Publish(ctx, tripID, types.Event{
-		BaseEvent: types.BaseEvent{
-			ID:        uuid.New().String(),
-			Type:      eventType,
-			TripID:    tripID,
-			UserID:    userID,
-			Timestamp: time.Now(),
-			Version:   1,
-		},
-		Metadata: types.EventMetadata{
-			Source: "trip_model",
-		},
-		Payload: data,
-	})
+	return events.PublishEventWithContext(
+		e.eventBus,
+		ctx,
+		string(eventType),
+		tripID,
+		userID,
+		payloadMap,
+		"trip_model (via EventEmitter)",
+	)
 }

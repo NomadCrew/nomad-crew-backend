@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -38,8 +39,9 @@ func (c *InviteMemberCommand) Validate(ctx context.Context) error {
 	}
 
 	// Expiration validation
-	if c.Invitation.ExpiresAt.IsZero() {
-		c.Invitation.ExpiresAt = time.Now().Add(7 * 24 * time.Hour) // Default 7 days
+	if c.Invitation.ExpiresAt == nil {
+		expiresAt := time.Now().Add(7 * 24 * time.Hour) // Default 7 days
+		c.Invitation.ExpiresAt = &expiresAt
 	} else if c.Invitation.ExpiresAt.Before(time.Now()) {
 		return errors.ValidationFailed("invalid_expiration", "Expiration time cannot be in the past")
 	}
@@ -80,26 +82,46 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 	if err != nil {
 		return nil, err
 	}
-	c.Invitation.Token = token
+	c.Invitation.Token = sql.NullString{String: token, Valid: token != ""}
 
 	if err := c.Ctx.Store.CreateInvitation(ctx, c.Invitation); err != nil {
 		return nil, err
 	}
 
-	// Build acceptance URL
-	acceptanceURL := fmt.Sprintf("%s/invite/accept/%s",
-		c.Ctx.Config.FrontendURL,
-		token,
-	)
+	// Build acceptance URL - use the new format
+	acceptanceURL := fmt.Sprintf("nomadcrew://invite/accept/%s", token)
+
+	log := logger.GetLogger()
+	log.Infow("Generated invitation acceptance URL",
+		"url", acceptanceURL,
+		"inviteeEmail", c.Invitation.InviteeEmail,
+		"tripId", c.Invitation.TripID)
+
+	// Get API host from config for fallback
+	apiHost := "https://nomadcrew.uk/api/v1"
+	if c.Ctx.Config != nil && c.Ctx.Config.FrontendURL != "" {
+		// Extract host from frontend URL
+		apiHost = strings.TrimSuffix(c.Ctx.Config.FrontendURL, "/") + "/api/v1"
+	}
+
+	// Add protocol if missing
+	if !strings.HasPrefix(apiHost, "http") {
+		apiHost = "https://" + apiHost
+	}
+
+	// Build web API URL
+	webAPIURL := fmt.Sprintf("%s/trips/invitations/accept/%s", apiHost, token)
 
 	// Send invitation email
 	emailData := types.EmailData{
 		To:      c.Invitation.InviteeEmail,
 		Subject: fmt.Sprintf("You're invited to join %s on NomadCrew", trip.Name),
 		TemplateData: map[string]interface{}{
-			"UserEmail":     c.Invitation.InviteeEmail,
-			"TripName":      trip.Name,
-			"AcceptanceURL": acceptanceURL,
+			"UserEmail":       c.Invitation.InviteeEmail,
+			"TripName":        trip.Name,
+			"AcceptanceURL":   webAPIURL,     // Use the web API URL for the main button
+			"AppDeepLink":     acceptanceURL, // App deep link for direct app access
+			"InvitationToken": token,
 		},
 	}
 
@@ -117,7 +139,7 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		EventID:       uuid.NewString(),
 		InvitationID:  c.Invitation.ID,
 		InviteeEmail:  c.Invitation.InviteeEmail,
-		ExpiresAt:     c.Invitation.ExpiresAt,
+		ExpiresAt:     *c.Invitation.ExpiresAt,
 		AcceptanceURL: acceptanceURL,
 	})
 
@@ -149,7 +171,7 @@ func (c *InviteMemberCommand) generateInvitationJWT() (string, error) {
 		TripID:       c.Invitation.TripID,
 		InviteeEmail: c.Invitation.InviteeEmail,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(c.Invitation.ExpiresAt),
+			ExpiresAt: jwt.NewNumericDate(*c.Invitation.ExpiresAt),
 		},
 	}
 

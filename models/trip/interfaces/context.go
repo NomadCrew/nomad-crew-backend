@@ -11,6 +11,7 @@ import (
 
 type CommandContext struct {
 	Store          store.TripStore
+	UserStore      store.UserStore
 	EventBus       types.EventPublisher
 	WeatherSvc     types.WeatherServiceInterface
 	SupabaseClient *supabase.Client

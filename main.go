@@ -1,45 +1,84 @@
+// Package main is the entry point for the NomadCrew backend application.
+// It initializes configurations, database connections, services, handlers,
+// sets up the HTTP router, starts the server, and handles graceful shutdown.
+//
+// @title           NomadCrew Backend API
+// @version         1.0.0
+// @description     NomadCrew RESTful API with authentication and WebSocket support
+//
+// @contact.name    NomadCrew Team
+// @contact.url     https://nomadcrew.uk
+// @contact.email   support@nomadcrew.uk
+//
+// @license.name    MIT
+// @license.url     https://opensource.org/licenses/MIT
+//
+// @host            api.nomadcrew.uk
+// @BasePath        /v1
+//
+// @securityDefinitions.apikey    BearerAuth
+// @in                            header
+// @name                          Authorization
+// @description                   JWT token for authentication
 package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"fmt"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
+	"github.com/NomadCrew/nomad-crew-backend/internal/events"
+	internalService "github.com/NomadCrew/nomad-crew-backend/internal/service"
+	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
+	locationSvc "github.com/NomadCrew/nomad-crew-backend/models/location/service"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
-	"github.com/NomadCrew/nomad-crew-backend/services"
-	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/gin-gonic/gin"
+	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
+	userSvc "github.com/NomadCrew/nomad-crew-backend/models/user/service"
+	weatherSvc "github.com/NomadCrew/nomad-crew-backend/models/weather/service"
+	"github.com/NomadCrew/nomad-crew-backend/router"
+	"github.com/NomadCrew/nomad-crew-backend/service"
+	services "github.com/NomadCrew/nomad-crew-backend/services"
+	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
+
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	"github.com/supabase-community/supabase-go"
 )
 
+// main initializes and runs the NomadCrew backend application.
+// It sets up logging, configuration, database connections (PostgreSQL, Redis),
+// Supabase client, JWT validation, various application services and handlers,
+// configures the Gin router, starts the HTTP server, and manages graceful shutdown
+// upon receiving SIGINT or SIGTERM signals.
 func main() {
 	// Initialize logger
 	logger.InitLogger()
 	log := logger.GetLogger()
 	defer logger.Close()
 
-	// Handle shutdown signals
+	// Handle shutdown signals - Enhanced with graceful WebSocket shutdown
+	shutdownCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigChan
-		log.Info("Shutting down gracefully...")
+		log.Info("Received shutdown signal. Initiating graceful shutdown...")
+		cancel() // Trigger context cancellation
 	}()
-
 
 	configEnv := os.Getenv("SERVER_ENVIRONMENT")
 	if configEnv == "" {
@@ -48,17 +87,9 @@ func main() {
 	configFilePath := fmt.Sprintf("config/config.%s.yaml", configEnv)
 
 	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
-		log.Infow("Config file not found, generating from environment variables", 
-			"path", configFilePath, 
+		log.Infow("Config file not found, generating from environment variables",
+			"path", configFilePath,
 			"environment", configEnv)
-		
-		// Log available environment variables for debugging
-		log.Infow("Environment variables for debugging",
-			"RESEND_API_KEY_set", os.Getenv("RESEND_API_KEY") != "",
-			"RESEND_API_KEY_length", len(os.Getenv("RESEND_API_KEY")),
-			"JWT_SECRET_KEY_set", os.Getenv("JWT_SECRET_KEY") != "",
-			"REDIS_PASSWORD_set", os.Getenv("REDIS_PASSWORD") != "",
-			"DB_PASSWORD_set", os.Getenv("DB_PASSWORD") != "")
 	}
 
 	// Load configuration and DB connection
@@ -81,9 +112,14 @@ func main() {
 
 	// Initialize database dependencies with concrete implementation
 	dbClient := db.NewDatabaseClient(pool)
-	tripDB := db.NewTripDB(dbClient)
-	todoDB := db.NewTodoDB(dbClient)
+	tripStore := dbStore.NewPgTripStore(pool)
+	todoStore := db.NewTodoDB(dbClient)
 	locationDB := db.NewLocationDB(dbClient)
+	notificationDB := dbStore.NewPgNotificationStore(pool)
+
+	// Get Supabase service key from environment variable
+	supabaseServiceKey := os.Getenv("SUPABASE_SERVICE_KEY")
+	userDB := internalPgStore.NewUserStore(pool, cfg.ExternalServices.SupabaseURL, supabaseServiceKey)
 
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
@@ -97,8 +133,8 @@ func main() {
 
 	// Initialize Supabase client
 	supabaseClient, err := supabase.NewClient(
-		cfg.ExternalServices.SupabaseAnonKey,
 		cfg.ExternalServices.SupabaseURL,
+		cfg.ExternalServices.SupabaseAnonKey,
 		nil,
 	)
 	if err != nil {
@@ -109,56 +145,99 @@ func main() {
 		"url", cfg.ExternalServices.SupabaseURL,
 		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
 
+	// Initialize JWT Validator
+	jwtValidator, err := middleware.NewJWTValidator(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize JWT Validator: %v", err)
+	}
+	log.Info("JWT Validator initialized successfully")
+
 	// Initialize services
 	rateLimitService := services.NewRateLimitService(redisClient)
-	eventService := services.NewRedisEventService(redisClient)
-	weatherService := services.NewWeatherService(eventService)
+
+	// Create event service config based on application configuration
+	eventServiceConfig := events.Config{
+		PublishTimeout:   time.Duration(cfg.EventService.PublishTimeoutSeconds) * time.Second,
+		SubscribeTimeout: time.Duration(cfg.EventService.SubscribeTimeoutSeconds) * time.Second,
+		EventBufferSize:  cfg.EventService.EventBufferSize,
+	}
+
+	// Initialize the event service from the internal/events package
+	eventService := events.NewService(redisClient, eventServiceConfig)
+
+	weatherService := weatherSvc.NewWeatherService(eventService)
 	emailService := services.NewEmailService(&cfg.Email)
 	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
-	locationService := services.NewLocationService(locationDB, eventService)
 
-	// Initialize chat store
-	chatStore := db.NewPostgresChatStore(pool, supabaseClient, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_KEY"))
+	// Initialize notification service with correct dependencies
+	notificationService := service.NewNotificationService(notificationDB, userDB, tripStore, eventService, log.Desugar())
 
-	// Initialize offline location service (after locationService)
-	offlineLocationService := services.NewOfflineLocationService(redisClient, locationService)
-	locationService.SetOfflineService(offlineLocationService)
+	// Initialize refactored location service
+	locationManagementService := locationSvc.NewManagementService(
+		locationDB,
+		eventService,
+	)
 
-	// Connect WebSocket metrics to health service
-	healthService.SetActiveConnectionsGetter(middleware.GetActiveConnectionCount)
+	// Initialize Chat Store and Service
+	chatStore := internalPgStore.NewChatStore(pool)
 
-	// Handlers
+	// Use the internal service package's ChatService implementation
+	chatService := internalService.NewChatService(chatStore, tripStore, eventService)
+
+	tripMemberService := trip_service.NewTripMemberService(tripStore, eventService)
+	chatHandler := handlers.NewChatHandler(
+		chatService,
+		tripMemberService,
+		eventService,
+		log.Desugar(),
+	)
+
+	// Initialize trip model with new store
 	tripModel := trip.NewTripModel(
-		tripDB,
+		tripStore,
+		chatStore,
+		userDB,
 		eventService,
 		weatherService,
 		supabaseClient,
 		&cfg.Server,
 		emailService,
-		chatStore,
 	)
-	todoModel := models.NewTodoModel(todoDB, tripModel)
-	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient)
-	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
+	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
+
+	// Initialize Handlers
+	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService)
+	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
-	locationHandler := handlers.NewLocationHandler(locationService)
+	locationHandler := handlers.NewLocationHandler(locationManagementService, log.Desugar())
+	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
+	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
 
-	// Router setup
-	r := gin.Default()
-	r.Use(middleware.ErrorHandler())
+	// Initialize User Service and Handler
+	userService := userSvc.NewUserService(userDB)
+	userHandler := handlers.NewUserHandler(userService)
 
-	// WebSocket configuration
-	wsConfig := middleware.WSConfig{
-		PongWait:        60 * time.Second,
-		PingPeriod:      30 * time.Second,
-		WriteWait:       10 * time.Second,
-		MaxMessageSize:  1024,
-		ReauthInterval:  5 * time.Minute,
-		BufferHighWater: 256,
-		BufferLowWater:  64,
+	// Prepare Router Dependencies
+	routerDeps := router.Dependencies{
+		Config:              cfg,
+		JWTValidator:        jwtValidator,
+		TripHandler:         tripHandler,
+		TodoHandler:         todoHandler,
+		HealthHandler:       healthHandler,
+		LocationHandler:     locationHandler,
+		NotificationHandler: notificationHandler,
+		WSHandler:           wsHandler,
+		ChatHandler:         chatHandler,
+		UserHandler:         userHandler,
+		Logger:              log,
 	}
 
-	// Initialize WebSocket metrics
+	// Setup Router using the new package
+	r := router.SetupRouter(routerDeps)
+
+	log.Info("Router setup complete")
+
+	// Initialize WebSocket metrics (if still needed here, or move to where WS handler/manager is initialized)
 	wsMetrics := &middleware.WSMetrics{
 		ConnectionsActive: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "websocket_active_connections",
@@ -166,236 +245,48 @@ func main() {
 		}),
 		MessagesReceived: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "websocket_messages_received_total",
-			Help: "Total received WebSocket messages",
+			Help: "Total number of WebSocket messages received.",
 		}),
 		MessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "websocket_messages_sent_total",
-			Help: "Total sent WebSocket messages",
+			Help: "Total number of WebSocket messages sent.",
 		}),
 		ErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "websocket_errors_total",
-			Help: "Total WebSocket errors by type",
-		}, []string{"type"}),
+			Help: "Total number of WebSocket errors.",
+		}, []string{"trip_id", "type"}),
 	}
+	prometheus.MustRegister(wsMetrics.ConnectionsActive, wsMetrics.MessagesReceived, wsMetrics.MessagesSent, wsMetrics.ErrorsTotal)
 
-	// Register metrics with Prometheus
-	prometheus.MustRegister(
-		wsMetrics.ConnectionsActive,
-		wsMetrics.MessagesReceived,
-		wsMetrics.MessagesSent,
-		wsMetrics.ErrorsTotal,
-	)
-
-	// Register health routes
-	r.GET("/health", healthHandler.DetailedHealth)
-	r.GET("/health/liveness", healthHandler.LivenessCheck)
-	r.GET("/health/readiness", healthHandler.ReadinessCheck)
-
-	// Versioned routes (e.g., /v1)
-	v1 := r.Group("/v1")
-
-	// Location routes
-	locationRoutes := v1.Group("/location")
-	{
-		locationRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
-		locationRoutes.POST("/update", locationHandler.UpdateLocationHandler)
-		locationRoutes.POST("/offline", locationHandler.SaveOfflineLocationsHandler)
-		locationRoutes.POST("/process-offline", locationHandler.ProcessOfflineLocationsHandler)
-	}
-
-	trips := v1.Group("/trips")
-	{
-		trips.Use(middleware.AuthMiddleware(&cfg.Server))
-
-		// List and search endpoints
-		trips.GET("/list", tripHandler.ListUserTripsHandler)  // GET all trips related to the user
-		trips.POST("/search", tripHandler.SearchTripsHandler) // POST /v1/trips/search with request body
-
-		// Core trip management
-		trips.POST("", tripHandler.CreateTripHandler)       // Create trip
-		trips.GET("/:id", tripHandler.GetTripHandler)       // Get trip by ID
-		trips.PUT("/:id", tripHandler.UpdateTripHandler)    // Update trip
-		trips.DELETE("/:id", tripHandler.DeleteTripHandler) // Delete trip
-		trips.PATCH("/:id/status", tripHandler.UpdateTripStatusHandler)
-
-		// Event streaming endpoints:
-		// New WebSocket endpoint:
-		trips.GET("/:id/ws",
-			middleware.AuthMiddleware(&cfg.Server),
-			middleware.WSRateLimiter(
-				rateLimitService.GetRedisClient(),
-				5,              // Max connections per user
-				30*time.Second, // Window duration
-			),
-			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			middleware.WSMiddleware(wsConfig, wsMetrics),
-			tripHandler.WSStreamEvents,
-		)
-
-		// Member management routes
-		memberRoutes := trips.Group("/:id/members")
-		{
-			// Add members (owner only)
-			memberRoutes.POST("",
-				middleware.RequireRole(tripModel, types.MemberRoleOwner),
-				tripHandler.AddMemberHandler,
-			)
-
-			// Update member role (owner only)
-			memberRoutes.PUT("/:userId/role",
-				middleware.RequireRole(tripModel, types.MemberRoleOwner),
-				tripHandler.UpdateMemberRoleHandler,
-			)
-
-			// Remove member (owner or self)
-			memberRoutes.DELETE("/:userId", tripHandler.RemoveMemberHandler)
-
-			// Get trip members (any member)
-			memberRoutes.GET("",
-				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				tripHandler.GetTripMembersHandler,
-			)
-		}
-
-		trips.PATCH("/:id/trigger-weather-update", tripHandler.TriggerWeatherUpdateHandler)
-		trips.POST("/:id/invitations", tripHandler.InviteMemberHandler)
-
-		// Todo routes setup
-		todoRoutes := trips.Group("/:id/todos")
-		{
-			todoRoutes.Use(
-				middleware.AuthMiddleware(&cfg.Server), // Auth first
-			)
-
-			todoRoutes.GET("",
-				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				todoHandler.ListTodosHandler,
-			)
-			todoRoutes.POST("",
-				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				todoHandler.CreateTodoHandler,
-			)
-			// Support both PUT and POST for updates to accommodate frontend
-			todoRoutes.POST("/:todoID",
-				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				todoHandler.UpdateTodoHandler,
-			)
-			todoRoutes.PUT("/:todoID",
-				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				todoHandler.UpdateTodoHandler,
-			)
-			todoRoutes.DELETE("/:todoID",
-				middleware.RequireRole(tripModel, types.MemberRoleMember),
-				todoHandler.DeleteTodoHandler,
-			)
-		}
-
-		// Location routes for trips
-		trips.GET("/:id/locations",
-			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			locationHandler.GetTripMemberLocationsHandler,
-		)
-
-		// Chat routes for trips
-		trips.GET("/:id/messages",
-			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			tripHandler.ListTripMessages,
-		)
-		trips.POST("/:id/messages/read",
-			middleware.RequireRole(tripModel, types.MemberRoleMember),
-			tripHandler.UpdateLastReadMessage,
-		)
-	}
-
-	// Create auth handler
-	authHandler := handlers.NewAuthHandler(supabaseClient, cfg)
-
-	// Auth routes that don't require authentication
-	authRoutes := v1.Group("/auth")
-	// Don't add AuthMiddleware here - these routes are for unauthenticated users
-	{
-		authRoutes.POST("/refresh", authHandler.RefreshTokenHandler)
-	}
-
-	// Invitation acceptance routes - don't require authentication initially
-	// as the JWT token itself contains the necessary validation information
-	inviteRoutes := v1.Group("/trips/invitations")
-	{
-		// POST endpoint for API calls from the app
-		inviteRoutes.POST("/accept", tripHandler.AcceptInvitationHandler)
-
-		// GET endpoint for handling direct URL access and deep links
-		// This will redirect to the app with the token as a parameter
-		inviteRoutes.GET("/accept/:token", tripHandler.HandleInvitationDeepLink)
-	}
-
-	// Initialize chat service
-	chatService := services.NewChatService(chatStore, tripModel.GetTripStore(), eventService)
-	chatHandler := handlers.NewChatHandler(chatService, chatStore)
-
-	// Chat routes
-	chatRoutes := v1.Group("/chats")
-	{
-		chatRoutes.Use(middleware.AuthMiddleware(&cfg.Server))
-
-		// Create a chat group
-		chatRoutes.POST("/groups", chatHandler.CreateChatGroup)
-
-		// Get chat groups for a user
-		chatRoutes.GET("/groups", chatHandler.ListChatGroups)
-
-		// Get a chat group
-		chatRoutes.GET("/groups/:groupID", chatHandler.GetChatGroup)
-
-		// Update a chat group
-		chatRoutes.PUT("/groups/:groupID", chatHandler.UpdateChatGroup)
-
-		// Delete a chat group
-		chatRoutes.DELETE("/groups/:groupID", chatHandler.DeleteChatGroup)
-
-		// Get messages for a chat group
-		chatRoutes.GET("/groups/:groupID/messages", chatHandler.ListChatMessages)
-
-		// Get members of a chat group
-		chatRoutes.GET("/groups/:groupID/members", chatHandler.ListChatGroupMembers)
-
-		// Update last read message
-		chatRoutes.PUT("/groups/:groupID/read", chatHandler.UpdateLastReadMessage)
-
-		// Note: WebSocket connection for chat is now handled through the trip websocket
-		// The separate chat websocket endpoint has been removed
-	}
-
-	// Create server
+	// Start the server
 	srv := &http.Server{
-		Addr:              ":" + cfg.Server.Port,
+		Addr:              fmt.Sprintf(":%s", cfg.Server.Port),
 		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 15 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
-	// Run server in goroutine
+	// Start server in a goroutine so it doesn't block shutdown handling
 	go func() {
-		log.Infof("Starting server on port %s", cfg.Server.Port)
+		log.Infow("Starting server", "port", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
-	// Wait for interrupt signal
-	<-sigChan
-	log.Info("Shutting down gracefully...")
+	// Wait for shutdown signal and then gracefully shut down
+	<-shutdownCtx.Done()
+	log.Info("Shutting down server...")
 
-	// Create shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer shutdownCancel()
+	// Create a deadline to wait for current operations to complete
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	// Shutdown event service first to stop new events
-	if err := eventService.Shutdown(shutdownCtx); err != nil {
-		log.Warnf("Event service shutdown error: %v", err)
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalw("Server forced to shutdown", "error", err)
 	}
 
-	// Shutdown server
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
+	log.Info("Server has been gracefully shut down")
 }

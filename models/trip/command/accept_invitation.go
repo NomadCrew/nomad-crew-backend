@@ -29,9 +29,10 @@ func (c *AcceptInvitationCommand) Execute(ctx context.Context) (*interfaces.Comm
 		return nil, errors.NotFound("invitation_not_found", "Invitation not found")
 	}
 
-	if invitation.Status != types.InvitationStatusPending || time.Now().After(invitation.ExpiresAt) {
-		return nil, errors.NewConflictError(
-			"Invitation is no longer valid",
+	if invitation.Status != types.InvitationStatusPending ||
+		(invitation.ExpiresAt != nil && time.Now().After(*invitation.ExpiresAt)) {
+		return nil, errors.ValidationFailed(
+			"invitation_invalid",
 			"Invitation has either been used or expired",
 		)
 	}

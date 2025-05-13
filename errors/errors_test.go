@@ -12,7 +12,7 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, ValidationError, err.Type)
 	assert.Equal(t, "invalid input", err.Message)
 	assert.Equal(t, "field required", err.Detail)
-	assert.Equal(t, 400, err.HTTPStatus)
+	assert.Equal(t, 400, err.GetHTTPStatus())
 }
 
 func TestWrap(t *testing.T) {
@@ -22,7 +22,7 @@ func TestWrap(t *testing.T) {
 	assert.Equal(t, DatabaseError, wrappedErr.Type)
 	assert.Equal(t, "database operation failed", wrappedErr.Message)
 	assert.Equal(t, originalErr.Error(), wrappedErr.Detail)
-	assert.Equal(t, 500, wrappedErr.HTTPStatus)
+	assert.Equal(t, 500, wrappedErr.GetHTTPStatus())
 	assert.Equal(t, originalErr, wrappedErr.Raw)
 }
 
@@ -31,7 +31,7 @@ func TestNotFound(t *testing.T) {
 	assert.Equal(t, NotFoundError, err.Type)
 	assert.Equal(t, "User not found", err.Message)
 	assert.Equal(t, "ID: 123", err.Detail)
-	assert.Equal(t, 404, err.HTTPStatus)
+	assert.Equal(t, 404, err.GetHTTPStatus())
 }
 
 func TestValidationFailed(t *testing.T) {
@@ -39,14 +39,14 @@ func TestValidationFailed(t *testing.T) {
 	assert.Equal(t, ValidationError, err.Type)
 	assert.Equal(t, "Invalid email", err.Message)
 	assert.Equal(t, "format not correct", err.Detail)
-	assert.Equal(t, 400, err.HTTPStatus)
+	assert.Equal(t, 400, err.GetHTTPStatus())
 }
 
 func TestAuthenticationFailed(t *testing.T) {
 	err := AuthenticationFailed("Invalid credentials")
 	assert.Equal(t, AuthError, err.Type)
 	assert.Equal(t, "Invalid credentials", err.Message)
-	assert.Equal(t, 401, err.HTTPStatus)
+	assert.Equal(t, 401, err.GetHTTPStatus())
 }
 
 func TestNewDatabaseError(t *testing.T) {
@@ -55,7 +55,7 @@ func TestNewDatabaseError(t *testing.T) {
 	assert.Equal(t, DatabaseError, err.Type)
 	assert.Equal(t, "Database operation failed", err.Message)
 	assert.Equal(t, originalErr.Error(), err.Detail)
-	assert.Equal(t, 500, err.HTTPStatus)
+	assert.Equal(t, 500, err.GetHTTPStatus())
 	assert.Equal(t, originalErr, err.Raw)
 }
 

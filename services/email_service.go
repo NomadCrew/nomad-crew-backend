@@ -11,7 +11,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/resend/resend-go/v2"
 )
 
@@ -28,24 +27,32 @@ type EmailService struct {
 }
 
 func NewEmailService(cfg *config.EmailConfig) *EmailService {
+	return NewEmailServiceWithRegistry(cfg, prometheus.DefaultRegisterer)
+}
+
+func NewEmailServiceWithRegistry(cfg *config.EmailConfig, reg prometheus.Registerer) *EmailService {
 	logger.GetLogger().Infow("Initializing email service",
 		"from", cfg.FromAddress, "apikey", cfg.ResendAPIKey)
 	client := resend.NewClient(cfg.ResendAPIKey)
 	metrics := &EmailMetrics{
-		sendLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+		sendLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "nomadcrew_email_send_duration_seconds",
 			Help:    "Time taken to send emails",
 			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 10},
 		}),
-		errorCount: promauto.NewCounter(prometheus.CounterOpts{
+		errorCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "nomadcrew_email_errors_total",
 			Help: "Total number of email sending errors",
 		}),
-		sentCount: promauto.NewCounter(prometheus.CounterOpts{
+		sentCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "nomadcrew_emails_sent_total",
 			Help: "Total number of emails sent",
 		}),
 	}
+
+	reg.MustRegister(metrics.sendLatency)
+	reg.MustRegister(metrics.errorCount)
+	reg.MustRegister(metrics.sentCount)
 
 	return &EmailService{
 		config:  cfg,
@@ -60,6 +67,17 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	defer func() {
 		s.metrics.sendLatency.Observe(time.Since(startTime).Seconds())
 	}()
+
+	// Validate required template data
+	requiredFields := []string{"UserEmail", "TripName", "InvitationToken"}
+	for _, field := range requiredFields {
+		if _, ok := data.TemplateData[field]; !ok {
+			s.metrics.errorCount.Inc()
+			err := fmt.Errorf("missing required template field: %s", field)
+			log.Errorw("Invalid template data", "error", err)
+			return err
+		}
+	}
 
 	// Parse and execute template
 	tmpl, err := template.New("invitation").Parse(invitationEmailTemplate)
@@ -151,11 +169,27 @@ const invitationEmailTemplate = `<!DOCTYPE html>
         .button:hover {
             background-color: #E05A10;
         }
+        .app-link {
+            display: inline-block;
+            margin-top: 20px;
+            background-color: #13B86D;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            text-decoration: none;
+            color: #ffffff;
+            border-radius: 8px;
+        }
         .link {
             margin-top: 20px;
             font-size: 14px;
             color: #777777;
             word-break: break-all;
+        }
+        .note {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #777777;
         }
     </style>
 </head>
@@ -164,14 +198,21 @@ const invitationEmailTemplate = `<!DOCTYPE html>
         <h1>You're Invited to Join a Trip!</h1>
         <p>Hi {{.UserEmail}}!</p>
         <p>You've been invited to join the trip "{{.TripName}}". Click below to accept:</p>
+        
+        <!-- Mobile app deep link button -->
         <p>
-            <a href="{{.AcceptanceURL}}" class="button">
-                Accept Invitation
+            <a href="{{if .AppDeepLink}}{{.AppDeepLink}}{{else}}nomadcrew://invite/accept/{{.InvitationToken}}{{end}}" class="button">
+                Open in App
             </a>
         </p>
+        
+        <p class="note">
+            The button above will open directly in the NomadCrew app if you have it installed on your mobile device.
+        </p>
+        
         <p class="link">
-            Or copy this link:<br/>
-            {{.AcceptanceURL}}
+            If you're having trouble with the link, you can copy and paste this in your browser:<br>
+            <code>nomadcrew://invite/accept/{{.InvitationToken}}</code>
         </p>
     </div>
 </body>

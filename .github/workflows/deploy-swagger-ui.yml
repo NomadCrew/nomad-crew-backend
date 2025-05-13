@@ -1,0 +1,91 @@
+name: Deploy Swagger UI to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # Adjust if your default branch is different
+    paths:
+      - 'docs/swagger.yaml' # Only run if swagger.yaml changes
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Create Swagger UI index.html and prepare site directory
+        run: |
+          mkdir -p _site
+          cat <<'EOL' > _site/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <title>NomadCrew API Documentation</title>
+              <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@latest/swagger-ui.css" >
+              <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@latest/favicon-32x32.png" sizes="32x32" />
+              <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@latest/favicon-16x16.png" sizes="16x16" />
+              <style>
+                  html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+                  *, *:before, *:after { box-sizing: inherit; }
+                  body { margin:0; background: #fafafa; }
+              </style>
+          </head>
+          <body>
+              <div id="swagger-ui"></div>
+              <script src="https://unpkg.com/swagger-ui-dist@latest/swagger-ui-bundle.js" charset="UTF-8"> </script>
+              <script src="https://unpkg.com/swagger-ui-dist@latest/swagger-ui-standalone-preset.js" charset="UTF-8"> </script>
+              <script>
+              window.onload = function() {
+                  // Begin Swagger UI call region
+                  const ui = SwaggerUIBundle({
+                      url: "./swagger.yaml", // Points to the swagger.yaml copied into the _site directory
+                      dom_id: '#swagger-ui',
+                      deepLinking: true,
+                      presets: [
+                          SwaggerUIBundle.presets.apis,
+                          SwaggerUIStandalonePreset
+                      ],
+                      plugins: [
+                          SwaggerUIBundle.plugins.DownloadUrl
+                      ],
+                      layout: "StandaloneLayout"
+                  });
+                  // End Swagger UI call region
+                  window.ui = ui;
+              };
+              </script>
+          </body>
+          </html>
+          EOL
+      - name: Copy swagger.yaml to deployment folder
+        run: cp docs/swagger.yaml _site/swagger.yaml
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4 

@@ -1,3 +1,5 @@
+// Package db provides implementations for data access interfaces defined in internal/store.
+// It interacts with the PostgreSQL database using pgxpool and potentially other external services like Supabase.
 package db
 
 import (
@@ -5,25 +7,33 @@ import (
 	"fmt"
 	"time"
 
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/store" // Added import for store package
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 )
 
-// LocationDB handles database operations for locations
+// LocationDB provides database operations related to user and trip locations.
+// It interacts with the database via a DatabaseClient.
 type LocationDB struct {
 	client *DatabaseClient
 }
 
-// NewLocationDB creates a new LocationDB instance
+// NewLocationDB creates a new instance of LocationDB.
 func NewLocationDB(client *DatabaseClient) *LocationDB {
 	return &LocationDB{
 		client: client,
 	}
 }
 
-// UpdateLocation stores a user's location in the database
+// Ensure LocationDB implements the store.LocationStore interface.
+var _ store.LocationStore = (*LocationDB)(nil)
+
+// UpdateLocation saves a new location record for a user.
+// It first verifies the user is part of an active trip.
+// Returns the newly created Location object or an error.
 func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update types.LocationUpdate) (*types.Location, error) {
 	log := logger.GetLogger()
 
@@ -48,11 +58,13 @@ func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			log.Warnw("User is not a member of any active trips", "userID", userID)
-			return nil, fmt.Errorf("user is not a member of any active trips")
+			log.Warnw("User is not a member of any active trips, cannot update location", "userID", userID)
+			// Return a specific application error instead of fmt.Errorf
+			return nil, apperrors.ValidationFailed("no_active_trip", "User is not currently a member of any active trip.")
 		}
 		log.Errorw("Failed to check user trip membership", "userID", userID, "error", err)
-		return nil, fmt.Errorf("failed to check user trip membership: %w", err)
+		// Return a database error
+		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to check user trip membership: %w", err))
 	}
 
 	// Insert the location into the database
@@ -81,7 +93,8 @@ func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update
 
 	if err != nil {
 		log.Errorw("Failed to insert location", "userID", userID, "error", err)
-		return nil, fmt.Errorf("failed to insert location: %w", err)
+		// Return a database error
+		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to insert location: %w", err))
 	}
 
 	// Return the created location
@@ -100,38 +113,44 @@ func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update
 	return location, nil
 }
 
-// GetTripMemberLocations retrieves the latest locations for all members of a trip
+// GetTripMemberLocations retrieves the most recent location (within the last 24 hours)
+// for each active member of the specified trip.
+// It joins with user and membership tables to include user display name and role.
 func (ldb *LocationDB) GetTripMemberLocations(ctx context.Context, tripID string) ([]types.MemberLocation, error) {
 	log := logger.GetLogger()
 
-	// Query to get the latest location for each member of the trip
+	// Use a Common Table Expression (CTE) to find the latest location for each user,
+	// then join with user details and filter by timestamp.
 	rows, err := ldb.client.GetPool().Query(ctx, `
 		WITH latest_locations AS (
-			SELECT DISTINCT ON (user_id) 
-				l.id, l.trip_id, l.user_id, l.latitude, l.longitude, l.accuracy, 
+			SELECT DISTINCT ON (user_id)
+				l.id, l.trip_id, l.user_id, l.latitude, l.longitude, l.accuracy,
 				l.created_at as timestamp, l.created_at, l.updated_at,
 				u.display_name as user_name, tm.role as user_role
 			FROM locations l
 			JOIN trip_memberships tm ON l.user_id = tm.user_id AND l.trip_id = tm.trip_id
-			LEFT JOIN users u ON l.user_id = u.id
+			LEFT JOIN users u ON l.user_id = u.id -- Use LEFT JOIN if user might not exist in users table
 			WHERE l.trip_id = $1
 			AND tm.status = 'ACTIVE'
 			ORDER BY l.user_id, l.created_at DESC
 		)
-		SELECT * FROM latest_locations
-		WHERE created_at > NOW() - INTERVAL '24 hours'
+		SELECT id, trip_id, user_id, latitude, longitude, accuracy,
+		       timestamp, created_at, updated_at, user_name, user_role
+		FROM latest_locations
+		WHERE timestamp > NOW() - INTERVAL '24 hours' -- Filter for recent locations
 	`, tripID)
 
 	if err != nil {
 		log.Errorw("Failed to query trip member locations", "tripID", tripID, "error", err)
-		return nil, fmt.Errorf("failed to query trip member locations: %w", err)
+		// Return database error
+		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to query trip member locations: %w", err))
 	}
 	defer rows.Close()
 
 	var locations []types.MemberLocation
 	for rows.Next() {
 		var loc types.MemberLocation
-		var userName, userRole string
+		var userName, userRole *string // Use pointers for nullable fields from JOINs
 
 		err := rows.Scan(
 			&loc.ID, &loc.TripID, &loc.UserID, &loc.Latitude, &loc.Longitude, &loc.Accuracy,
@@ -139,19 +158,55 @@ func (ldb *LocationDB) GetTripMemberLocations(ctx context.Context, tripID string
 		)
 
 		if err != nil {
-			log.Errorw("Failed to scan location row", "error", err)
-			continue
+			log.Errorw("Failed to scan member location row", "error", err)
+			// Decide whether to skip this row or return an error for the whole query
+			continue // Skipping problematic row for now
 		}
 
-		loc.UserName = userName
-		loc.UserRole = userRole
+		// Assign values from pointers, handling potential NULLs
+		if userName != nil {
+			loc.UserName = *userName
+		}
+		if userRole != nil {
+			loc.UserRole = *userRole
+		}
 		locations = append(locations, loc)
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Errorw("Error iterating location rows", "error", err)
-		return nil, fmt.Errorf("error iterating location rows: %w", err)
+		log.Errorw("Error iterating member location rows", "error", err)
+		// Return database error
+		return nil, apperrors.NewDatabaseError(fmt.Errorf("error iterating member location rows: %w", err))
 	}
 
 	return locations, nil
+}
+
+// GetUserRole retrieves the role of a user within a specific trip.
+// This method might be intended to satisfy an interface like store.LocationStore.
+func (ldb *LocationDB) GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error) {
+	log := logger.GetLogger()
+	var role string
+	err := ldb.client.GetPool().QueryRow(ctx,
+		"SELECT role FROM trip_memberships WHERE trip_id = $1 AND user_id = $2 AND status = 'ACTIVE'",
+		tripID, userID).Scan(&role)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// User is not an active member of this trip.
+			return "", apperrors.NotFound("membership", fmt.Sprintf("active user %s in trip %s", userID, tripID))
+		}
+		log.Errorw("Failed to get user role from database", "tripID", tripID, "userID", userID, "error", err)
+		return "", apperrors.NewDatabaseError(err)
+	}
+
+	// Validate the retrieved role.
+	memberRole := types.MemberRole(role)
+	if !memberRole.IsValid() {
+		log.Errorw("Invalid role found in database for active member", "role", role, "tripID", tripID, "userID", userID)
+		// Return an internal server error as the data state is unexpected.
+		return "", apperrors.InternalServerError(fmt.Sprintf("Invalid role '%s' found for user %s in trip %s", role, userID, tripID))
+	}
+
+	return memberRole, nil
 }
