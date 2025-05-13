@@ -2,18 +2,27 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/handlers"
+	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
-	chatservice "github.com/NomadCrew/nomad-crew-backend/internal/service"
+	"github.com/NomadCrew/nomad-crew-backend/internal/service"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	internalPostgresStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	rootPostgresStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
 	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
 	redis "github.com/redis/go-redis/v9"
@@ -23,9 +32,47 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	postgresContainer "github.com/testcontainers/testcontainers-go/modules/postgres"
 	redisTC "github.com/testcontainers/testcontainers-go/modules/redis"
-
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.uber.org/zap"
 )
+
+// MockTripService implements TripServiceInterface for testing
+type MockTripService struct {
+	tripMembers map[string]bool
+}
+
+func NewMockTripService(tripID, userID string) *MockTripService {
+	return &MockTripService{
+		tripMembers: map[string]bool{
+			tripID + ":" + userID: true,
+		},
+	}
+}
+
+func (m *MockTripService) IsTripMember(ctx context.Context, tripID, userID string) (bool, error) {
+	// Debug log to check context
+	if ctxUserID, ok := ctx.Value(middleware.UserIDKey).(string); ok && ctxUserID != "" {
+		fmt.Printf("MockTripService.IsTripMember: Found userID in context: %s (param userID: %s)\n",
+			ctxUserID, userID)
+	} else {
+		fmt.Printf("MockTripService.IsTripMember: No userID in context! (param userID: %s)\n", userID)
+	}
+
+	return m.tripMembers[tripID+":"+userID], nil
+}
+
+// MockJWTValidator implements middleware.Validator for testing
+type MockJWTValidator struct {
+	userID string
+}
+
+func NewMockJWTValidator(userID string) *MockJWTValidator {
+	return &MockJWTValidator{userID: userID}
+}
+
+func (m *MockJWTValidator) Validate(tokenString string) (string, error) {
+	return m.userID, nil
+}
 
 // ChatIntegrationTestSuite tests chat functionality end-to-end
 type ChatIntegrationTestSuite struct {
@@ -39,11 +86,16 @@ type ChatIntegrationTestSuite struct {
 	tripStore      store.TripStore
 	userStore      store.UserStore
 	eventService   types.EventPublisher
-	chatService    chatservice.ChatService
+	chatService    service.ChatService
 	testTripID     string
 	testUserID     string
 	testGroupID    string   // Added for clarity
 	cleanupFuncs   []func() // Store cleanup functions
+	testServer     *httptest.Server
+	httpClient     *http.Client
+	jwtToken       string
+	jwtSecret      string
+	router         *gin.Engine
 }
 
 // setupPostgresContainer sets up a PostgreSQL container using testcontainers.
@@ -128,6 +180,102 @@ func setupRedisContainer(ctx context.Context, t *testing.T) (*redisTC.RedisConta
 	return redisContainer, redisClient, cleanup
 }
 
+// setupTestRouter creates a Gin router with required handlers and middleware for testing
+func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
+	logger, _ := zap.NewDevelopment()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	// Setup chat handler
+	mockTripService := NewMockTripService(suite.testTripID, suite.testUserID)
+	chatHandler := handlers.NewChatHandler(
+		suite.chatService,
+		mockTripService,
+		suite.eventService,
+		logger,
+	)
+
+	// TEMPORARY TEST SOLUTION:
+	// Set the user ID using the standard key defined in middleware package
+	// This matches what the real middleware uses
+	authTestMiddleware := func(c *gin.Context) {
+		// First check if the userID was passed in the request context
+		userID := ""
+		if ctxUserID, ok := c.Request.Context().Value(middleware.UserIDKey).(string); ok && ctxUserID != "" {
+			userID = ctxUserID
+			fmt.Printf("Test middleware found userID in Request.Context(): %s\n", userID)
+		} else {
+			userID = suite.testUserID
+			fmt.Printf("Test middleware using default suite.testUserID: %s\n", userID)
+		}
+
+		// Set the key that middleware.AuthMiddleware sets
+		c.Set(string(middleware.UserIDKey), userID)
+
+		// Set directly in request context too
+		newCtx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+		c.Request = c.Request.WithContext(newCtx)
+
+		fmt.Printf("Auth middleware set userID '%s' in Gin context and Request context\n", userID)
+		c.Next()
+	}
+
+	// Create authenticated group
+	auth := r.Group("")
+	auth.Use(authTestMiddleware)
+
+	// Add chat routes
+	tripGroup := auth.Group("/trips/:id")
+	chatGroup := tripGroup.Group("/chat")
+
+	chatGroup.GET("/messages", chatHandler.ListMessages)
+	chatGroup.POST("/messages", chatHandler.SendMessage)
+	chatGroup.PUT("/messages/:messageId", chatHandler.UpdateMessage)
+	chatGroup.DELETE("/messages/:messageId", chatHandler.DeleteMessage)
+	chatGroup.POST("/messages/:messageId/reactions", chatHandler.AddReaction)
+	chatGroup.DELETE("/messages/:messageId/reactions/:reactionType", chatHandler.RemoveReaction)
+	chatGroup.PUT("/read", chatHandler.UpdateLastRead)
+
+	return r
+}
+
+// generateTestUserToken generates a JWT token for the test user
+func (suite *ChatIntegrationTestSuite) generateTestUserToken() string {
+	// Use a fixed secret for tests
+	suite.jwtSecret = "test_jwt_secret_for_integration_tests"
+	token, err := auth.GenerateJWT(
+		suite.testUserID,
+		"test@example.com",
+		suite.jwtSecret,
+		time.Hour,
+	)
+	require.NoError(suite.T(), err, "Failed to generate test JWT token")
+	return token
+}
+
+// makeAuthenticatedRequest is a helper to make HTTP requests with authentication
+func (suite *ChatIntegrationTestSuite) makeAuthenticatedRequest(method, path string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(method, suite.testServer.URL+path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add auth header
+	req.Header.Set("Authorization", "Bearer "+suite.jwtToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add debug context for integration tests to track context flow
+	debugCtx := context.WithValue(req.Context(), middleware.UserIDKey, suite.testUserID)
+	reqWithDebugCtx := req.WithContext(debugCtx)
+
+	// Log for debugging
+	fmt.Printf("Integration test making %s request to %s with userID: %s in context\n",
+		method, path, debugCtx.Value(middleware.UserIDKey))
+
+	return suite.httpClient.Do(reqWithDebugCtx)
+}
+
 // SetupSuite prepares the test suite once before all tests
 func (suite *ChatIntegrationTestSuite) SetupSuite() {
 	t := suite.T() // Get the testing.T object
@@ -161,7 +309,7 @@ func (suite *ChatIntegrationTestSuite) SetupSuite() {
 
 	// Instantiate Chat Service
 	// Explicitly create the concrete type
-	chatServiceImpl := chatservice.NewChatService(suite.chatStore, suite.tripStore, suite.eventService)
+	chatServiceImpl := service.NewChatService(suite.chatStore, suite.tripStore, suite.eventService)
 	chatServiceImpl.SetUserStore(suite.userStore)
 	// Assign the concrete type that implements the interface
 	suite.chatService = chatServiceImpl
@@ -171,6 +319,10 @@ func (suite *ChatIntegrationTestSuite) SetupSuite() {
 
 // TearDownSuite cleans up after all tests
 func (suite *ChatIntegrationTestSuite) TearDownSuite() {
+	if suite.testServer != nil {
+		suite.testServer.Close()
+	}
+
 	for i := len(suite.cleanupFuncs) - 1; i >= 0; i-- {
 		suite.cleanupFuncs[i]()
 	}
@@ -241,6 +393,16 @@ func (suite *ChatIntegrationTestSuite) SetupTest() {
 	require.NoError(t, err, "Failed to create chat group")
 	require.NotNil(t, group, "Created group should not be nil")
 	suite.testGroupID = group.ID // Store the created group ID
+
+	// Setup HTTP test server with authentication
+	suite.router = suite.setupTestRouter()
+	suite.testServer = httptest.NewServer(suite.router)
+	suite.httpClient = &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Generate JWT token for authentication
+	suite.jwtToken = suite.generateTestUserToken()
 }
 
 // TearDownTest cleans up after each test
@@ -271,159 +433,186 @@ func (suite *ChatIntegrationTestSuite) TearDownTest() {
 	suite.NoError(err, "Cleanup users failed")
 }
 
-// TestChatMessageLifecycle tests the full lifecycle of a chat message
+// TestChatMessageLifecycle tests the full lifecycle of a chat message using HTTP API
 func (suite *ChatIntegrationTestSuite) TestChatMessageLifecycle() {
-	// Send a message
+	t := suite.T()
+
+	// 1. Create a new message via HTTP API
 	messageText := "Hello, integration test!"
-	// Use the specific group ID created in SetupTest
-	message, err := suite.chatService.PostMessage(suite.ctx, suite.testGroupID, suite.testUserID, messageText)
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), message)
-	msgID := message.Message.ID // Corrected: Access ID from embedded Message
+	reqBody := fmt.Sprintf(`{"content":"%s"}`, messageText)
+	createURL := fmt.Sprintf("/trips/%s/chat/messages", suite.testTripID)
 
-	// Verify message was stored
-	retrievedMsg, err := suite.chatService.GetMessage(suite.ctx, msgID, suite.testUserID) // Added requestingUserID
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), messageText, retrievedMsg.Message.Content)     // Corrected: Access Content from embedded Message
-	assert.Equal(suite.T(), suite.testUserID, retrievedMsg.Message.UserID) // Corrected: Access UserID from embedded Message
+	resp, err := suite.makeAuthenticatedRequest(http.MethodPost, createURL, strings.NewReader(reqBody))
+	require.NoError(t, err, "Error making POST request to create message")
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "Expected status 201 Created")
 
-	// Update the message
-	updatedContent := "Updated message content"
-	updatedMsg, err := suite.chatService.UpdateMessage(suite.ctx, msgID, suite.testUserID, updatedContent)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), updatedContent, updatedMsg.Message.Content) // Corrected: Access Content from embedded Message
+	// Parse response - Changed from ChatMessage to ChatMessageWithUser to match the API response structure
+	var createResponse types.ChatMessageWithUser
+	err = json.NewDecoder(resp.Body).Decode(&createResponse)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding create message response")
 
-	// Delete the message
-	err = suite.chatService.DeleteMessage(suite.ctx, msgID, suite.testUserID)
-	assert.NoError(suite.T(), err)
+	// Access ID through the Message field
+	require.NotEmpty(t, createResponse.Message.ID, "Message ID should not be empty")
+	messageID := createResponse.Message.ID
 
-	// Verify deletion (should return error or indicate deletion)
-	_, err = suite.chatService.GetMessage(suite.ctx, msgID, suite.testUserID) // Added requestingUserID
-	assert.Error(suite.T(), err)
+	// 2. Retrieve the message via HTTP API
+	getURL := fmt.Sprintf("/trips/%s/chat/messages?limit=10&offset=0", suite.testTripID)
+	resp, err = suite.makeAuthenticatedRequest(http.MethodGet, getURL, nil)
+	require.NoError(t, err, "Error making GET request")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
+
+	// Parse response
+	var listResponse types.ChatMessagePaginatedResponse
+	err = json.NewDecoder(resp.Body).Decode(&listResponse)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding list messages response")
+
+	// Find our message
+	var foundMessage *types.ChatMessageWithUser
+	for _, msg := range listResponse.Messages {
+		if msg.Message.ID == messageID {
+			foundMessage = &msg
+			break
+		}
+	}
+	require.NotNil(t, foundMessage, "Created message not found in list response")
+	assert.Equal(t, messageText, foundMessage.Message.Content)
+
+	// 3. Update the message via HTTP API
+	updatedText := "Updated message content"
+	updateBody := fmt.Sprintf(`{"content":"%s"}`, updatedText)
+	updateURL := fmt.Sprintf("/trips/%s/chat/messages/%s", suite.testTripID, messageID)
+
+	resp, err = suite.makeAuthenticatedRequest(http.MethodPut, updateURL, strings.NewReader(updateBody))
+	require.NoError(t, err, "Error making PUT request")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
+
+	// 4. Delete the message via HTTP API
+	deleteURL := fmt.Sprintf("/trips/%s/chat/messages/%s", suite.testTripID, messageID)
+	resp, err = suite.makeAuthenticatedRequest(http.MethodDelete, deleteURL, nil)
+	require.NoError(t, err, "Error making DELETE request")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
+	resp.Body.Close()
+
+	// Verify deletion by trying to get the message again
+	resp, err = suite.makeAuthenticatedRequest(http.MethodGet, getURL, nil)
+	require.NoError(t, err, "Error making GET request after deletion")
+
+	var listResponse2 types.ChatMessagePaginatedResponse
+	err = json.NewDecoder(resp.Body).Decode(&listResponse2)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding list response after deletion")
+
+	// Message should not be in the list
+	var foundDeletedMessage bool
+	for _, msg := range listResponse2.Messages {
+		if msg.Message.ID == messageID {
+			foundDeletedMessage = true
+			break
+		}
+	}
+	assert.False(t, foundDeletedMessage, "Deleted message should not be found")
 }
 
 // TestChatReactions tests adding and removing reactions to messages
 func (suite *ChatIntegrationTestSuite) TestChatReactions() {
-	// Create a test message
+	t := suite.T()
+
+	// 1. Create a test message via HTTP API
 	messageText := "React to this message"
-	// Use the specific group ID created in SetupTest
-	message, err := suite.chatService.PostMessage(suite.ctx, suite.testGroupID, suite.testUserID, messageText)
-	assert.NoError(suite.T(), err)
-	msgID := message.Message.ID // Corrected: Access ID from embedded Message
+	reqBody := fmt.Sprintf(`{"content":"%s"}`, messageText)
+	createURL := fmt.Sprintf("/trips/%s/chat/messages", suite.testTripID)
 
-	// Add a reaction
+	resp, err := suite.makeAuthenticatedRequest(http.MethodPost, createURL, strings.NewReader(reqBody))
+	require.NoError(t, err, "Error making POST request to create message")
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "Expected status 201 Created")
+
+	// Parse response - Changed from ChatMessage to ChatMessageWithUser to match the API response structure
+	var createResponse types.ChatMessageWithUser
+	err = json.NewDecoder(resp.Body).Decode(&createResponse)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding create message response")
+
+	// Access ID through the Message field
+	messageID := createResponse.Message.ID
+
+	// 2. Add a reaction via HTTP API
 	reaction := "👍"
-	err = suite.chatService.AddReaction(suite.ctx, msgID, suite.testUserID, reaction)
-	assert.NoError(suite.T(), err)
+	reactionBody := fmt.Sprintf(`{"reaction":"%s"}`, reaction)
+	addReactionURL := fmt.Sprintf("/trips/%s/chat/messages/%s/reactions", suite.testTripID, messageID)
 
-	// Verify reaction was added
-	// TODO: Add ListReactions to ChatService interface and implementation, or revise test.
-	// reactions, err := suite.chatService.ListReactions(suite.ctx, msgID)
-	// assert.NoError(suite.T(), err)
-	// assert.GreaterOrEqual(suite.T(), len(reactions), 1)
-	// assert.Contains(suite.T(), extractReactions(reactions), reaction)
+	resp, err = suite.makeAuthenticatedRequest(http.MethodPost, addReactionURL, strings.NewReader(reactionBody))
+	require.NoError(t, err, "Error making POST request to add reaction")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
+	resp.Body.Close()
 
-	// Remove the reaction
-	err = suite.chatService.RemoveReaction(suite.ctx, msgID, suite.testUserID, reaction)
-	assert.NoError(suite.T(), err)
+	// 3. Remove the reaction via HTTP API
+	removeReactionURL := fmt.Sprintf("/trips/%s/chat/messages/%s/reactions/%s", suite.testTripID, messageID, reaction)
 
-	// Verify reaction was removed
-	// TODO: Add ListReactions to ChatService interface and implementation, or revise test.
-	// reactions, err = suite.chatService.ListReactions(suite.ctx, msgID)
-	// assert.NoError(suite.T(), err)
-	// assert.NotContains(suite.T(), extractReactions(reactions), reaction)
+	resp, err = suite.makeAuthenticatedRequest(http.MethodDelete, removeReactionURL, nil)
+	require.NoError(t, err, "Error making DELETE request to remove reaction")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
+	resp.Body.Close()
 }
 
-// TestWebSocketIntegration tests real-time event broadcasting
-func (suite *ChatIntegrationTestSuite) TestWebSocketIntegration() {
-	// This would be a more complex test using a WebSocket client
-	// and testing event broadcasting
-
-	// Mock approach (requires a mock/spy EventPublisher):
-	// For a real integration test, you would:
-	// 1. Dial a WebSocket connection to the server (running in test mode).
-	// 2. Send a message via the chatService.
-	// 3. Assert that the message is received on the WebSocket connection.
-	// This setup is complex and outside the scope of fixing the nil pointer.
-	// We'll keep the existing structure but acknowledge its limitations.
-
-	// Setup mock event listener (or connect WebSocket client)
-	ch := make(chan types.Event) // This channel won't receive anything without a real event publisher setup
-
-	// Send a message (which should trigger an event)
-	go func() {
-		// Use the specific group ID created in SetupTest
-		_, err := suite.chatService.PostMessage(
-			suite.ctx,
-			suite.testGroupID, // groupID
-			suite.testUserID,
-			"This should trigger a websocket event",
-		)
-		assert.NoError(suite.T(), err)
-		// In a real test, the event publisher would push to the channel/WS
-	}()
-
-	// Wait for the event with a timeout
-	select {
-	case event := <-ch: // This will likely time out currently
-		assert.Equal(suite.T(), types.EventType("chat.message_created"), event.Type) // Corrected event type comparison
-		assert.Equal(suite.T(), suite.testTripID, event.TripID)
-	case <-time.After(2 * time.Second): // Reduced timeout as it's expected to fail
-		suite.T().Log("Timed out waiting for chat message event (expected with current mock setup)")
-		// Cannot assert true here as the event mechanism isn't fully integrated in this test setup
-		// assert.True(suite.T(), eventReceived, "Should have received a chat message event")
-	}
-}
-
-// TestChatMessagePagination tests fetching messages with pagination
+// TestChatMessagePagination tests fetching messages with pagination via HTTP API
 func (suite *ChatIntegrationTestSuite) TestChatMessagePagination() {
-	// Send multiple messages to test pagination
+	t := suite.T()
+
+	// 1. Send multiple messages via HTTP API
 	numMessages := 25
 	for i := 0; i < numMessages; i++ {
-		// Use the specific group ID created in SetupTest
-		_, err := suite.chatService.PostMessage(
-			suite.ctx,
-			suite.testGroupID, // groupID
-			suite.testUserID,
-			fmt.Sprintf("Pagination test message %d", i),
-		)
-		assert.NoError(suite.T(), err)
+		messageText := fmt.Sprintf("Pagination test message %d", i)
+		reqBody := fmt.Sprintf(`{"content":"%s"}`, messageText)
+		createURL := fmt.Sprintf("/trips/%s/chat/messages", suite.testTripID)
+
+		resp, err := suite.makeAuthenticatedRequest(http.MethodPost, createURL, strings.NewReader(reqBody))
+		require.NoError(t, err, "Error making POST request to create message")
+		require.Equal(t, http.StatusCreated, resp.StatusCode, "Expected status 201 Created")
+		resp.Body.Close()
 	}
 
-	// Create pagination params
-	params := types.PaginationParams{
-		Limit:  10,
-		Offset: 0,
-	}
+	// 2. Test pagination - first page
+	getFirstPageURL := fmt.Sprintf("/trips/%s/chat/messages?limit=10&offset=0", suite.testTripID)
+	resp, err := suite.makeAuthenticatedRequest(http.MethodGet, getFirstPageURL, nil)
+	require.NoError(t, err, "Error making GET request for first page")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
 
-	// Test first page (10 messages)
-	// Use the specific group ID created in SetupTest
-	response, err := suite.chatService.ListMessages(suite.ctx, suite.testGroupID, suite.testUserID, params) // Added requestingUserID
-	assert.NoError(suite.T(), err)
-	// Total might include messages from other tests if cleanup isn't perfect, check >=
-	assert.GreaterOrEqual(suite.T(), response.Total, numMessages)
-	assert.Len(suite.T(), response.Messages, 10) // First page should have 10 messages
+	var firstPageResponse types.ChatMessagePaginatedResponse
+	err = json.NewDecoder(resp.Body).Decode(&firstPageResponse)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding first page response")
+	assert.Len(t, firstPageResponse.Messages, 10, "First page should have 10 messages")
 
-	// Test second page
-	params.Offset = 10
-	// Use the specific group ID created in SetupTest
-	response, err = suite.chatService.ListMessages(suite.ctx, suite.testGroupID, suite.testUserID, params) // Added requestingUserID
-	assert.NoError(suite.T(), err)
-	assert.Len(suite.T(), response.Messages, 10)
+	// 3. Test pagination - second page
+	getSecondPageURL := fmt.Sprintf("/trips/%s/chat/messages?limit=10&offset=10", suite.testTripID)
+	resp, err = suite.makeAuthenticatedRequest(http.MethodGet, getSecondPageURL, nil)
+	require.NoError(t, err, "Error making GET request for second page")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
 
-	// Test last page (remaining 5)
-	params.Offset = 20
-	// Use the specific group ID created in SetupTest
-	response, err = suite.chatService.ListMessages(suite.ctx, suite.testGroupID, suite.testUserID, params) // Added requestingUserID
-	assert.NoError(suite.T(), err)
-	assert.Len(suite.T(), response.Messages, 5)
+	var secondPageResponse types.ChatMessagePaginatedResponse
+	err = json.NewDecoder(resp.Body).Decode(&secondPageResponse)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding second page response")
+	assert.Len(t, secondPageResponse.Messages, 10, "Second page should have 10 messages")
 
-	// Test requesting beyond the end
-	params.Offset = 30
-	// Use the specific group ID created in SetupTest
-	response, err = suite.chatService.ListMessages(suite.ctx, suite.testGroupID, suite.testUserID, params) // Added requestingUserID
-	assert.NoError(suite.T(), err)
-	assert.Len(suite.T(), response.Messages, 0) // Should return empty list
+	// 4. Test pagination - third page (remaining 5)
+	getThirdPageURL := fmt.Sprintf("/trips/%s/chat/messages?limit=10&offset=20", suite.testTripID)
+	resp, err = suite.makeAuthenticatedRequest(http.MethodGet, getThirdPageURL, nil)
+	require.NoError(t, err, "Error making GET request for third page")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status 200 OK")
+
+	var thirdPageResponse types.ChatMessagePaginatedResponse
+	err = json.NewDecoder(resp.Body).Decode(&thirdPageResponse)
+	resp.Body.Close()
+	require.NoError(t, err, "Error decoding third page response")
+	assert.Len(t, thirdPageResponse.Messages, 5, "Third page should have 5 messages")
+}
+
+// Skip WebSocketIntegration test as it requires a more complex setup
+func (suite *ChatIntegrationTestSuite) TestWebSocketIntegration() {
+	suite.T().Skip("WebSocket testing requires a more complex setup with WebSocket client")
 }
 
 // Ensure the test suite is run

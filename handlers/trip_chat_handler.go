@@ -95,7 +95,7 @@ func getIntQueryParam(c *gin.Context, key string, defaultValue int) (int, error)
 func (h *TripChatHandler) WSStreamEvents(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("tripId")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	_, err := h.tripModel.GetUserRole(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -324,7 +324,7 @@ func (h *TripChatHandler) HandleChatMessage(ctx context.Context, conn *middlewar
 // @Security BearerAuth
 func (h *TripChatHandler) ListTripMessages(c *gin.Context) {
 	tripID := c.Param("tripId")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	groupID := tripID
 
 	_, err := h.tripModel.GetUserRole(c.Request.Context(), tripID, userID)
@@ -381,7 +381,7 @@ type ChatLastReadRequest types.ChatLastReadRequest
 func (h *TripChatHandler) UpdateLastReadMessage(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("tripId")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	groupID := tripID // Assuming trip-wide chat where tripID is the groupID
 
 	var req types.ChatLastReadRequest

@@ -7,6 +7,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
@@ -77,7 +78,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		return
 	}
 
-	req.CreatedBy = c.GetString("user_id")
+	req.CreatedBy = c.GetString(string(middleware.UserIDKey))
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &req)
 	if err != nil {
@@ -105,7 +106,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -119,7 +120,7 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	var update types.TripUpdate
 	if err := c.ShouldBindJSON(&update); err != nil {
@@ -162,7 +163,7 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 		return
 	}
 
-	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString("user_id"))
+	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.UserIDKey)))
 	if err != nil {
 		log.Errorw("Failed to fetch updated trip after status change", "tripID", tripID, "error", err)
 		c.JSON(http.StatusOK, gin.H{"message": "Trip status updated successfully"})
@@ -210,7 +211,7 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 // @Router /trips [get]
 // @Security BearerAuth
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userID)
 	if err != nil {
@@ -255,7 +256,7 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 
 func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	tripWithMembers, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -270,7 +271,7 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 
-	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString("user_id"))
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.UserIDKey)))
 	if err != nil {
 		log.Errorw("Failed to get trip details for weather update trigger", "tripID", tripID, "error", err)
 		h.handleModelError(c, err)
