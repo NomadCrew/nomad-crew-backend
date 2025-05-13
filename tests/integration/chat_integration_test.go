@@ -446,13 +446,15 @@ func (suite *ChatIntegrationTestSuite) TestChatMessageLifecycle() {
 	require.NoError(t, err, "Error making POST request to create message")
 	require.Equal(t, http.StatusCreated, resp.StatusCode, "Expected status 201 Created")
 
-	// Parse response
-	var createResponse types.ChatMessage
+	// Parse response - Changed from ChatMessage to ChatMessageWithUser to match the API response structure
+	var createResponse types.ChatMessageWithUser
 	err = json.NewDecoder(resp.Body).Decode(&createResponse)
 	resp.Body.Close()
 	require.NoError(t, err, "Error decoding create message response")
-	require.NotEmpty(t, createResponse.ID, "Message ID should not be empty")
-	messageID := createResponse.ID
+
+	// Access ID through the Message field
+	require.NotEmpty(t, createResponse.Message.ID, "Message ID should not be empty")
+	messageID := createResponse.Message.ID
 
 	// 2. Retrieve the message via HTTP API
 	getURL := fmt.Sprintf("/trips/%s/chat/messages?limit=10&offset=0", suite.testTripID)
@@ -526,17 +528,18 @@ func (suite *ChatIntegrationTestSuite) TestChatReactions() {
 	require.NoError(t, err, "Error making POST request to create message")
 	require.Equal(t, http.StatusCreated, resp.StatusCode, "Expected status 201 Created")
 
-	// Parse response
-	var createResponse types.ChatMessage
+	// Parse response - Changed from ChatMessage to ChatMessageWithUser to match the API response structure
+	var createResponse types.ChatMessageWithUser
 	err = json.NewDecoder(resp.Body).Decode(&createResponse)
 	resp.Body.Close()
 	require.NoError(t, err, "Error decoding create message response")
 
-	messageID := createResponse.ID
+	// Access ID through the Message field
+	messageID := createResponse.Message.ID
 
 	// 2. Add a reaction via HTTP API
 	reaction := "👍"
-	reactionBody := fmt.Sprintf(`{"reaction_type":"%s"}`, reaction)
+	reactionBody := fmt.Sprintf(`{"reaction":"%s"}`, reaction)
 	addReactionURL := fmt.Sprintf("/trips/%s/chat/messages/%s/reactions", suite.testTripID, messageID)
 
 	resp, err = suite.makeAuthenticatedRequest(http.MethodPost, addReactionURL, strings.NewReader(reactionBody))
