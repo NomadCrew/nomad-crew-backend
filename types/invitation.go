@@ -1,6 +1,7 @@
 package types
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -27,7 +28,7 @@ type TripInvitation struct {
 	CreatedAt    time.Time        `json:"createdAt"`
 	UpdatedAt    time.Time        `json:"updatedAt"`
 	ExpiresAt    *time.Time       `json:"expiresAt,omitempty"`
-	Token        string           `json:"token,omitempty"` // JWT token used for invitation link
+	Token        sql.NullString   `json:"token,omitempty"` // Changed to sql.NullString
 }
 
 // InvitationClaims represents the data stored in a JWT for invitation links

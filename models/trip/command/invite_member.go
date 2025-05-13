@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -81,7 +82,7 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 	if err != nil {
 		return nil, err
 	}
-	c.Invitation.Token = token
+	c.Invitation.Token = sql.NullString{String: token, Valid: token != ""}
 
 	if err := c.Ctx.Store.CreateInvitation(ctx, c.Invitation); err != nil {
 		return nil, err

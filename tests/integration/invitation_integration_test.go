@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,6 +33,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool" // Correct Supabase import
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/supabase-community/supabase-go"
@@ -502,38 +504,34 @@ func createTripInDB(ctx context.Context, pool *pgxpool.Pool, name, ownerID strin
 
 func createInvitationInDB(ctx context.Context, pool *pgxpool.Pool, tripID, inviterID string, inviteeID *string, inviteeEmail string, role types.MemberRole, status types.InvitationStatus, expiresAt time.Time, token *string) (*types.TripInvitation, error) {
 	invID := uuid.NewString()
-	// Removed invitee_id from INSERT columns and VALUES placeholders
 	query := `
 		INSERT INTO trip_invitations (id, trip_id, inviter_id, invitee_email, role, status, expires_at, token, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
 		RETURNING id, trip_id, inviter_id, invitee_email, role, status, created_at, updated_at, expires_at, token
-	` // Removed invitee_id from RETURNING as well, as it's not inserted
+	`
 	var inv types.TripInvitation
-	// Removed inviteeID from the list of arguments passed to QueryRow
+	// Scan directly into inv.Token which is now sql.NullString
 	err := pool.QueryRow(ctx, query, invID, tripID, inviterID, inviteeEmail, role, status, expiresAt, token).Scan(
-		&inv.ID, &inv.TripID, &inv.InviterID, &inv.InviteeEmail, &inv.Role, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt, &inv.ExpiresAt, &inv.Token,
-		// Removed scanning for inv.InviteeID
+		&inv.ID, &inv.TripID, &inv.InviterID, &inv.InviteeEmail, &inv.Role, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt, &inv.ExpiresAt, &inv.Token, // Scan directly into sql.NullString
 	)
 	if err != nil {
 		return nil, fmt.Errorf("createInvitationInDB failed for email %s: %w", inviteeEmail, err)
 	}
-	// inv.InviteeID will be nil/zero value by default, which is correct as per the schema
 	return &inv, nil
 }
 
 func getInvitationFromDB(ctx context.Context, pool *pgxpool.Pool, invitationID string) (*types.TripInvitation, error) {
-	// Also remove invitee_id from this query as the column doesn't exist
 	query := `
 		SELECT id, trip_id, inviter_id, invitee_email, role, status, created_at, updated_at, expires_at, token
 		FROM trip_invitations WHERE id = $1
-	` // Removed invitee_id
+	`
 	var inv types.TripInvitation
+	// Scan directly into inv.Token which is now sql.NullString
 	err := pool.QueryRow(ctx, query, invitationID).Scan(
-		&inv.ID, &inv.TripID, &inv.InviterID, &inv.InviteeEmail, &inv.Role, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt, &inv.ExpiresAt, &inv.Token,
-		// Removed scanning for inv.InviteeID
+		&inv.ID, &inv.TripID, &inv.InviterID, &inv.InviteeEmail, &inv.Role, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt, &inv.ExpiresAt, &inv.Token, // Scan directly into sql.NullString
 	)
 	if err != nil {
-		if err.Error() == "no rows in result set" { // pgx specific error check
+		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx v4/v5
 			return nil, nil // Not found is not an error for a getter in tests sometimes
 		}
 		return nil, fmt.Errorf("getInvitationFromDB failed: %w", err)
