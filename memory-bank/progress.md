@@ -2,6 +2,9 @@
 
 ## 🚀 Project Status: Release Preparation Phase
 
+## 🎯 Current Goal
+Achieve a fully stable and reliable backend with comprehensive test coverage. Resolve all critical test failures and warnings.
+
 ## ✅ What Works
 - Memory Bank initialization
 - Project structure setup
@@ -95,6 +98,38 @@
     - Fixed `trip_service_test.go` by correcting method implementations in MockWeatherService
     - Successfully ran all unit tests except those requiring Docker containers or integration environments
     - **Successfully built the entire project with `go build` without any compilation errors**
+- All integration tests in `TestChatIntegrationSuite` are passing their core assertions.
+- `TestDeclineInvitation_Success_InviteeIDKnown` in `invitation_integration_test.go` is passing.
+- Database schema issues related to nullable `LastSeenAt` fields (`types.User`, `models.User`) have been resolved.
+- Authentication context propagation for `UserID` in invitation decline flow is working.
+- Foreign key constraint errors in chat setup (user and trip creation) are resolved.
+- Nil pointer dereferences in invitation test setup are fixed.
+- JWT secret key configuration for HS256 validation in invitation tests is corrected.
+
+## 🚧 What's In Progress
+- Investigating and planning to resolve warnings: `Failed to get user ID from context for event publishing` in `TestChatIntegrationSuite`.
+
+## 📝 What's Left / To Do
+- **High Priority**:
+    - Refactor `TestChatIntegrationSuite` to use an HTTP test server and include JWT authentication in test requests to ensure `UserID` is available in the context for event publishing (as detailed in `activeContext.md -> Next Steps`).
+- **Medium Priority**:
+    - Investigate and address Redis PubSub EOF errors during test container shutdowns.
+    - Address `SUPABASE_JWT_SECRET not set` warning in `TestNewJWTValidator` (ensure test config is robust).
+- **Low Priority / Future**:
+    - Implement skipped tests:
+        - `TestMigrations` (db/dbutils) - Requires `DB_TEST=true`.
+        - `TestChatService/TestCreateGroup_Success` (internal/service) - Not implemented.
+        - `TestTripServiceTestSuite/TestExample_Placeholder` (models/trip/service) - Placeholder.
+        - `TestChatWebSocketHandling` (tests) - Marked for manual run.
+        - `TestTripIntegration` (tests/integration) - Not implemented.
+
+## 🪵 Design Decisions Log
+- `types.User.LastSeenAt` and `models.User.LastSeenAt` changed to `*time.Time` to handle nullable database values.
+- `invitation_handler.go` updated to use `string(middleware.UserIDKey)` for retrieving UserID from context.
+- Router configuration in `router/router.go` for invitation accept/decline routes moved to an authenticated group.
+- `chat_integration_test.go` setup modified to ensure correct `testUserID` propagation and added a small delay for DB commit visibility.
+- `types/invitation.go` changed `TripInvitation.Token` to `sql.NullString` and updated related test helpers.
+- `models/trip/command/invite_member.go` updated to assign token to `sql.NullString` field correctly.
 
 ## 📋 What's Left for MVP Release
 - **Finalize Integration Test Fixes**

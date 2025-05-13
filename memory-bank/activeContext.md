@@ -151,45 +151,30 @@
     - Fixed `trip_service_test.go` by correcting the return type of the `TriggerImmediateUpdate` method
     - Successfully ran all unit tests except those requiring Docker containers or integration environments
     - Successfully built the entire project with `go build` without any compilation errors
+- **Resolved all previously failing integration tests for `TestChatIntegrationSuite` and `TestDeclineInvitation_Success_InviteeIDKnown`.
+- Fixed database foreign key constraint violations in chat tests.
+- Corrected JWT secret key usage for invitation tests.
+- Addressed nil pointer dereference in invitation test setup.
+- Resolved database scanning errors (`cannot assign NULL to *time.Time`) by:
+    - Changing `types.User.LastSeenAt` to `*time.Time`.
+    - Changing `models.User.LastSeenAt` to `*time.Time`.
+    - Updating `internal/store/postgres/user_store.go` and `models/user/service/user_service.go` to correctly handle pointer assignments and dereferencing for `LastSeenAt`.
+- All Go tests are now passing.
 
 ## 🧠 Next Steps
-
-### Priority 0: Finalize Integration Test Fixes
-1. **Integration Tests for Docker-Dependent Components:**
-   - Create platform-specific skipping for tests requiring Docker in integration test packages
-   - Update TestMain functions in integration tests to properly handle environment detection
-   - Add clear documentation on how to run integration tests in CI environment
-
-2. **Main Program Initialize Function:**
-   - Review service initializations in main.go to ensure proper interface usage
-   - Verify that router setup correctly references all handlers
-
-### Priority 1: Improve Test Coverage for Core Features
-- **Integration Tests for Location Feature:**
-  - Write integration tests for the LocationDB with PostgreSQL
-  - Test LocationManagementService with both success and error paths
-  - Create end-to-end tests for location API endpoints
-
-- **Chat Feature Tests:**
-  - Verify WebSocket connection establishment
-  - Test message delivery through the chat service
-  - Ensure proper event publishing for real-time updates
-
-- **Trip Management Tests:**
-  - Test trip creation, update, and deletion flows
-  - Verify member management functionality
-  - Test invitation system thoroughly
-
-### Priority 2: Pre-Release Verification
-- Run full test suite against staging environment
-- Verify authentication flow end-to-end
-- Test WebSocket connections in deployed environment
-- Verify proper error logging in production
-
-### Priority 3: Complete Documentation
-- Finish adding Swagger annotations to remaining handlers
-- Create comprehensive API documentation
-- Update README with final release information
+Refactor `TestChatIntegrationSuite` in `tests/integration/chat_integration_test.go` to resolve "Failed to get user ID from context for event publishing" warnings:
+1.  **Setup HTTP Test Server**:
+    *   In `SetupSuite` or `SetupTest`, configure a `gin.Engine` router with chat handlers, user handlers, and all necessary middleware (including `AuthMiddleware`).
+    *   Run this engine on an `httptest.Server`.
+2.  **Use HTTP Client**:
+    *   Modify the test suite to use an `http.Client` to make requests to the `httptest.Server` for chat operations (e.g., creating messages, adding reactions) instead of calling service methods directly.
+3.  **Implement Authentication in Tests**:
+    *   In `SetupTest`, after creating `suite.testUserID`, generate a JWT token for this user. This might involve creating or reusing a helper function like `generateTestUserToken` that uses `internal/auth.GenerateJWT`.
+    *   Include this JWT token in an `Authorization: Bearer <token>` header for all relevant HTTP requests made by the chat test cases.
+4.  **Verify Context Propagation**:
+    *   Confirm that the `AuthMiddleware` correctly populates the `gin.Context` with `UserIDKey`.
+    *   Ensure chat handlers correctly pass this context to the chat service.
+    *   Confirm that `ChatServiceImpl` can then retrieve the `UserID` from the context for event publishing.
 
 ## ❗ Active Decisions / Context
 - Project is a Go backend using Gin framework
@@ -203,6 +188,9 @@
 - Core functionality (chat, location tracking, trip management) is working and tested.
 - Real-time features (WebSockets, chat, location updates) are critical for MVP.
 - Authentication and data security cannot be compromised.
+- The primary goal for the next steps is to ensure the `TestChatIntegrationSuite` accurately simulates real API calls, including the authentication flow. This will validate that the `UserID` is correctly propagated to the service layer for event publishing, thereby addressing the `WARN ChatService service/chat_service.go:898 Failed to get user ID from context for event publishing` warnings.
+- Although all tests are passing, these warnings indicate a gap in test coverage for the authenticated event publishing flow in chat.
+- Other minor warnings (Redis EOF, SUPABASE_JWT_SECRET not set in one test) are noted but are lower priority than the chat event context issue.
 
 ## 📊 Location Feature Structure
 
