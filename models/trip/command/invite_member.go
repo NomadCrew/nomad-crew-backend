@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -38,8 +39,9 @@ func (c *InviteMemberCommand) Validate(ctx context.Context) error {
 	}
 
 	// Expiration validation
-	if c.Invitation.ExpiresAt.IsZero() {
-		c.Invitation.ExpiresAt = time.Now().Add(7 * 24 * time.Hour) // Default 7 days
+	if c.Invitation.ExpiresAt == nil {
+		expiresAt := time.Now().Add(7 * 24 * time.Hour) // Default 7 days
+		c.Invitation.ExpiresAt = &expiresAt
 	} else if c.Invitation.ExpiresAt.Before(time.Now()) {
 		return errors.ValidationFailed("invalid_expiration", "Expiration time cannot be in the past")
 	}
@@ -80,7 +82,7 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 	if err != nil {
 		return nil, err
 	}
-	c.Invitation.Token = token
+	c.Invitation.Token = sql.NullString{String: token, Valid: token != ""}
 
 	if err := c.Ctx.Store.CreateInvitation(ctx, c.Invitation); err != nil {
 		return nil, err
@@ -137,7 +139,7 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		EventID:       uuid.NewString(),
 		InvitationID:  c.Invitation.ID,
 		InviteeEmail:  c.Invitation.InviteeEmail,
-		ExpiresAt:     c.Invitation.ExpiresAt,
+		ExpiresAt:     *c.Invitation.ExpiresAt,
 		AcceptanceURL: acceptanceURL,
 	})
 
@@ -169,7 +171,7 @@ func (c *InviteMemberCommand) generateInvitationJWT() (string, error) {
 		TripID:       c.Invitation.TripID,
 		InviteeEmail: c.Invitation.InviteeEmail,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(c.Invitation.ExpiresAt),
+			ExpiresAt: jwt.NewNumericDate(*c.Invitation.ExpiresAt),
 		},
 	}
 

@@ -86,9 +86,50 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*tripinterfaces.Comman
 		return nil, err
 	}
 
-	// Emit event using the emitter (which also publishes a copy)
+	// Emit event using the emitter
 	emitter := shared.NewEventEmitter(c.Ctx.EventBus)
-	eventErr := emitter.EmitTripEvent(ctx, c.TripID, types.EventTypeTripUpdated, updatedTrip, c.UserID)
+
+	// Generate event ID for tracking
+	eventID := uuid.NewString()
+
+	// Create and publish the event through the emitter
+	event := types.Event{
+		BaseEvent: types.BaseEvent{
+			ID:        eventID,
+			Type:      types.EventTypeTripUpdated,
+			TripID:    c.TripID,
+			UserID:    c.UserID,
+			Timestamp: time.Now().UTC(), // Ensure UTC for consistency
+			Version:   1,
+		},
+		Metadata: types.EventMetadata{
+			Source: "trip-command",
+		},
+	}
+
+	// Convert trip to map to ensure proper timestamp handling
+	var payloadMap map[string]interface{}
+	payloadJSON, err := json.Marshal(updatedTrip)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Errorw("Failed to rollback transaction after JSON marshal error", "error", rollbackErr, "originalError", err)
+		}
+		return nil, errors.NewError(errors.ServerError, "event_payload_marshal_failed", "Failed to marshal trip data", http.StatusInternalServerError)
+	}
+
+	if err := json.Unmarshal(payloadJSON, &payloadMap); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Errorw("Failed to rollback transaction after JSON unmarshal error", "error", rollbackErr, "originalError", err)
+		}
+		return nil, errors.NewError(errors.ServerError, "event_payload_unmarshal_failed", "Failed to process trip data", http.StatusInternalServerError)
+	}
+
+	// Set the payload from the map to ensure proper serialization
+	eventPayload, _ := json.Marshal(payloadMap)
+	event.Payload = eventPayload
+
+	// Use the emitter to publish the event
+	eventErr := emitter.EmitTripEvent(ctx, c.TripID, types.EventTypeTripUpdated, payloadMap, c.UserID)
 	if eventErr != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			log.Errorw("Failed to rollback transaction after event error", "error", rollbackErr, "originalError", eventErr)
@@ -100,21 +141,9 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*tripinterfaces.Comman
 		return nil, errors.NewDatabaseError(err)
 	}
 
-	payload, _ := json.Marshal(updatedTrip)
-
 	return &tripinterfaces.CommandResult{
 		Success: true,
 		Data:    updatedTrip,
-		Events: []types.Event{{
-			BaseEvent: types.BaseEvent{
-				ID:        uuid.NewString(),
-				Type:      types.EventTypeTripUpdated,
-				TripID:    c.TripID,
-				UserID:    c.UserID,
-				Timestamp: time.Now(),
-				Version:   1,
-			},
-			Payload: payload,
-		}},
+		Events:  []types.Event{event},
 	}, nil
 }

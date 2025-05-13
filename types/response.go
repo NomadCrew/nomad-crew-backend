@@ -15,6 +15,12 @@ type ErrorResponse struct {
 	Code    string `json:"code"`
 }
 
+// PaginationParams defines common pagination query parameters
+type PaginationParams struct {
+	Limit  int `form:"limit" binding:"omitempty,gte=0"`
+	Offset int `form:"offset" binding:"omitempty,gte=0"`
+}
+
 type ListTodosParams struct {
 	Limit  int `form:"limit,default=20"`
 	Offset int `form:"offset,default=0"`

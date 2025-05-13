@@ -7,6 +7,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// RateLimiterInterface defines the contract for rate limiting operations.
+type RateLimiterInterface interface {
+	CheckLimit(ctx context.Context, key string, limit int, duration time.Duration) (bool, time.Duration, error)
+}
+
+// RateLimitService provides rate limiting functionality using Redis.
+// It implements the RateLimiterInterface.
 type RateLimitService struct {
 	redis     *redis.Client
 	keyPrefix string

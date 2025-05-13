@@ -1,0 +1,478 @@
+classDiagram
+    %% External Services
+    subgraph External_Services ["External Services"]
+        Supabase["Supabase"]
+        Geoapify_API["Geoapify <<unused>>"]
+        Pexels_API["Pexels <<unused>>"]
+        Resend_API["Resend.com"]
+        Prometheus["Prometheus"]
+        PostgreSQL_DB["<b>PostgreSQL</b><br/>Neon / pgxpool"]
+        Redis_DB["<b>Redis</b><br/>Upstash / go-redis"]
+    end
+
+    %% NomadCrew Backend Application
+    subgraph NomadCrew_Backend_Application ["NomadCrew Backend Application"]
+        direction TB
+
+        class Main["main.go"] {
+            +main()
+            %% Initializes components, router, server, shutdown.
+        }
+
+        %% Config Package
+        subgraph Config_Package ["Config"]
+            class Config["config.Config"] {
+                +LoadConfig()
+                +ConfigureNeonPostgresPool()
+                +ConfigureUpstashRedisOptions()
+                +TestRedisConnection()
+            }
+        end
+        Main --> Config
+
+        %% Logger Package
+        subgraph Logger_Package ["Logger"]
+            class Logger["logger.ZapLogger"]
+        end
+        Main --> Logger
+        %% Logger dependencies from other packages added below
+
+        %% Database Package (Stores)
+        subgraph Stores ["Database (store)"]
+            class store_TripStore["store.TripStore"] {
+                +CreateTrip(context.Context, types.Trip) (string, error)
+                +GetTrip(context.Context, string) (*types.Trip, error)
+                +UpdateTrip(context.Context, string, types.TripUpdate) (*types.Trip, error)
+                +DeleteTrip(context.Context, string) error
+                +ListUserTrips(context.Context, string) ([]*types.Trip, error)
+                +SearchTrips(context.Context, types.TripSearchCriteria) ([]*types.Trip, error)
+                +AddMember(context.Context, *types.TripMembership) error
+                +UpdateMemberRole(context.Context, string, string, types.MemberRole) error
+                +RemoveMember(context.Context, string, string) error
+                +GetTripMembers(context.Context, string) ([]*types.TripMembership, error)
+                +GetUserRole(context.Context, string, string) (types.MemberRole, error)
+                +LookupUserByEmail(context.Context, string) (*types.SupabaseUser, error)
+                +CreateInvitation(context.Context, *types.TripInvitation) error
+                +GetInvitation(context.Context, string) (*types.TripInvitation, error)
+                +GetInvitationsByTripID(context.Context, string) ([]*types.TripInvitation, error)
+                +UpdateInvitationStatus(context.Context, string, types.InvitationStatus) error
+                +BeginTx(context.Context) (store.Transaction, error)
+            }
+            class store_UserStore["store.UserStore"] { <<interface>> }
+            class store_NotificationStore["store.NotificationStore"] { <<interface>> }
+
+            class dbStore_PgTripStore["dbStore.PgTripStore"] {
+                +Pool: *pgxpool.Pool
+                +CreateTrip(...)
+                +GetTrip(...)
+                +UpdateTrip(...)
+                +DeleteTrip(...)
+                +ListUserTrips(...)
+                +SearchTrips(...)
+                +AddMember(...)
+                +UpdateMemberRole(...)
+                +RemoveMember(...)
+                +GetTripMembers(...)
+                +GetUserRole(...)
+                +LookupUserByEmail(...)
+                +CreateInvitation(...)
+                +GetInvitation(...)
+                +GetInvitationsByTripID(...)
+                +UpdateInvitationStatus(...)
+                +BeginTx(...)
+            }
+            class db_TodoDB["db.TodoDB"] {
+                +db: *DatabaseClient
+                +ListTodos(...)
+                +CreateTodo(...)
+                +GetTodoByID(...)
+                +UpdateTodo(...)
+                +DeleteTodo(...)
+            }
+            class db_LocationDB["db.LocationDB"] {
+                +db: *DatabaseClient
+                +SaveLocation(...)
+                +GetLatestLocations(...)
+            }
+            class dbStore_PgNotificationStore["dbStore.PgNotificationStore"] {
+               +Pool: *pgxpool.Pool
+               +CreateNotification(...)
+               +GetNotificationsByUser(...)
+               +MarkAsRead(...)
+               +MarkAllAsRead(...)
+               +DeleteNotification(...)
+            }
+            class dbStore_PgUserStore["dbStore.PgUserStore"] {
+               +Pool: *pgxpool.Pool
+               +GetUserByID(...)
+               +GetUsersByIDs(...)
+            }
+            class db_PostgresChatStore["db.PostgresChatStore"] {
+               +Pool: *pgxpool.Pool
+               +SupabaseClient: *supabase.Client
+               +CreateChatGroup(...)
+               +ListChatGroups(...)
+               +GetChatGroup(...)
+               +UpdateChatGroup(...)
+               +DeleteChatGroup(...)
+               +ListChatMessages(...)
+               +ListChatGroupMembers(...)
+               +UpdateLastRead(...)
+               +SaveMessage(...)
+            }
+            %% Store implementations
+            store_TripStore <|.. dbStore_PgTripStore
+            store_NotificationStore <|.. dbStore_PgNotificationStore
+            store_UserStore <|.. dbStore_PgUserStore
+        end
+        Main --> PostgreSQL_DB
+        Main -.-> dbStore_PgTripStore %% initializes
+        Main -.-> db_TodoDB  %% initializes
+        Main -.-> db_LocationDB  %% initializes
+        Main -.-> dbStore_PgNotificationStore %% initializes
+        Main -.-> dbStore_PgUserStore %% initializes
+        Main -.-> db_PostgresChatStore %% initializes
+
+        dbStore_PgTripStore --> PostgreSQL_DB
+        db_TodoDB --> PostgreSQL_DB
+        db_LocationDB --> PostgreSQL_DB
+        dbStore_PgNotificationStore --> PostgreSQL_DB
+        dbStore_PgUserStore --> PostgreSQL_DB
+        db_PostgresChatStore --> PostgreSQL_DB
+        db_PostgresChatStore --> Supabase
+        Stores -.-> Logger %% store package uses Logger
+
+        %% Services Package
+        subgraph Services ["Services (services, service)"]
+            class services_EventService["services.EventService"] {
+                <<interface>>
+                +Publish(event)
+                +Subscribe(channel, handler)
+                +Shutdown()
+            }
+            class services_RedisEventService["services.RedisEventService"] {
+                +RedisClient: *redis.Client
+                +Config: RedisEventServiceConfig
+            }
+            class services_RateLimitService["services.RateLimitService"] {
+                +RedisClient: *redis.Client
+                +GetRedisClient() *redis.Client
+            }
+            class services_WeatherService["services.WeatherService"] {
+                +EventService: EventService
+                +GetWeatherForLocation(...)
+            }
+            class services_EmailService["services.EmailService"] {
+                +Config: *config.EmailConfig
+                +SendInvitationEmail(...)
+            }
+            class services_HealthService["services.HealthService"] {
+                +Pool: *pgxpool.Pool
+                +RedisClient: *redis.Client
+                +Version: string
+                +SetActiveConnectionsGetter(...)
+                +CheckDB()
+                +CheckRedis()
+            }
+            class services_LocationService["services.LocationService"] {
+                +LocationDB: *db.LocationDB
+                +EventService: EventService
+                +OfflineService: *OfflineLocationService
+                +ProcessLocationUpdate(...)
+                +SaveOfflineLocations(...)
+                +ProcessOfflineQueue(...)
+                +GetTripMemberLocations(...)
+                +SetOfflineService(...)
+            }
+            class services_OfflineLocationService["services.OfflineLocationService"] {
+                +RedisClient: *redis.Client
+                +LocationService: *LocationService
+                +AddToQueue(...)
+                +GetQueue(...)
+            }
+            class service_NotificationService["service.NotificationService"] {
+                +NotificationStore: store.NotificationStore
+                +UserStore: store.UserStore
+                +TripStore: store.TripStore
+                +EventService: services.EventService
+                +Logger: *zap.Logger
+                +CreateNotificationForEvent(...)
+                +GetNotifications(...)
+                +MarkRead(...)
+                +MarkAllRead(...)
+                +DeleteNotification(...)
+            }
+            class services_ChatService["services.ChatService"] {
+                +ChatStore: *db.PostgresChatStore
+                +TripStore: store.TripStore
+                +EventService: services.EventService
+                +HandleIncomingMessage(...)
+            }
+            %% Service Implementations & Dependencies
+            services_EventService <|.. services_RedisEventService
+        end
+        Main -.-> services_RateLimitService %% initializes
+        Main -.-> services_RedisEventService %% initializes
+        Main -.-> services_WeatherService %% initializes
+        Main -.-> services_EmailService %% initializes
+        Main -.-> services_HealthService %% initializes
+        Main -.-> services_LocationService %% initializes
+        Main -.-> services_OfflineLocationService %% initializes
+        Main -.-> service_NotificationService %% initializes
+        Main -.-> services_ChatService %% initializes
+
+        services_RedisEventService --> Redis_DB
+        services_RateLimitService --> Redis_DB
+        services_WeatherService --> services_EventService
+        services_EmailService --> Resend_API
+        services_HealthService --> PostgreSQL_DB
+        services_HealthService --> Redis_DB
+        services_LocationService --> db_LocationDB
+        services_LocationService --> services_EventService
+        services_LocationService --> services_OfflineLocationService
+        services_OfflineLocationService --> Redis_DB
+        services_OfflineLocationService --> services_LocationService
+        service_NotificationService --> store_NotificationStore
+        service_NotificationService --> store_UserStore
+        service_NotificationService --> store_TripStore
+        service_NotificationService --> services_EventService
+        services_ChatService --> db_PostgresChatStore
+        services_ChatService --> store_TripStore
+        services_ChatService --> services_EventService
+        Services -.-> Logger %% services package uses Logger
+
+        %% Models Package
+        subgraph Models ["Models (models, models/trip)"]
+            class models_TripMembershipChecker["models.TripMembershipChecker"] {
+                <<interface>>
+                +CheckUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error)
+                +GetTripStore() store.TripStore
+            }
+            class trip_TripModel["trip.TripModel"] {
+               +TripStore: store.TripStore
+               +EventService: services.EventService
+               +WeatherService: *services.WeatherService
+               +Supabase: *supabase.Client
+               +Config: *config.ServerConfig
+               +EmailService: *services.EmailService
+               +ChatStore: *db.PostgresChatStore
+               +CreateTrip(...)
+               +GetTrip(...)
+               +UpdateTrip(...)
+               +DeleteTrip(...)
+               +ListUserTrips(...)
+               +SearchTrips(...)
+               +UpdateTripStatus(...)
+               +AddMember(...)
+               +UpdateMemberRole(...)
+               +RemoveMember(...)
+               +GetTripMembers(...)
+               +TriggerWeatherUpdate(...)
+               +CreateInvitation(...)
+               +AcceptInvitation(...)
+               +CheckUserRole(...)
+               +ListMessages(...)
+               +UpdateLastReadMessage(...)
+               +GetTripStore() store.TripStore
+            }
+            class models_TodoModel["models.TodoModel"] {
+               +TodoDB: *db.TodoDB
+               +TripChecker: models.TripMembershipChecker
+               +CreateTodo(...)
+               +ListTodos(...)
+               +GetTodo(...)
+               +UpdateTodo(...)
+               +DeleteTodo(...)
+            }
+            %% Model Implementations & Dependencies
+             models_TripMembershipChecker <|.. trip_TripModel
+        end
+        Main -.-> trip_TripModel %% initializes
+        Main -.-> models_TodoModel %% initializes
+
+        trip_TripModel --> store_TripStore
+        trip_TripModel --> services_EventService
+        trip_TripModel --> services_WeatherService
+        trip_TripModel --> Supabase
+        trip_TripModel --> services_EmailService
+        trip_TripModel --> db_PostgresChatStore
+        models_TodoModel --> db_TodoDB
+        models_TodoModel --> models_TripMembershipChecker
+
+        %% Handlers Package
+        subgraph Handlers ["Handlers"]
+            class handlers_TripHandler["handlers.TripHandler"] {
+                +tripModel: *trip.TripModel
+                +eventService: services.EventService
+                +supabaseClient: *supabase.Client
+                +ListUserTripsHandler(...)
+                +SearchTripsHandler(...)
+                +CreateTripHandler(...)
+                +GetTripHandler(...)
+                +UpdateTripHandler(...)
+                +DeleteTripHandler(...)
+                +UpdateTripStatusHandler(...)
+                +WSStreamEvents(...)
+                +AddMemberHandler(...)
+                +UpdateMemberRoleHandler(...)
+                +RemoveMemberHandler(...)
+                +GetTripMembersHandler(...)
+                +TriggerWeatherUpdateHandler(...)
+                +InviteMemberHandler(...)
+                +AcceptInvitationHandler(...)
+                +HandleInvitationDeepLink(...)
+                +ListTripMessages(...)
+                +UpdateLastReadMessage(...)
+            }
+            class handlers_TodoHandler["handlers.TodoHandler"] {
+                +todoModel: *models.TodoModel
+                +eventService: services.EventService
+                +ListTodosHandler(...)
+                +CreateTodoHandler(...)
+                +UpdateTodoHandler(...)
+                +DeleteTodoHandler(...)
+            }
+            class handlers_HealthHandler["handlers.HealthHandler"] {
+                +healthService: *services.HealthService
+                +DetailedHealth(...)
+                +LivenessCheck(...)
+                +ReadinessCheck(...)
+            }
+            class handlers_LocationHandler["handlers.LocationHandler"] {
+                +locationService: *services.LocationService
+                +UpdateLocationHandler(...)
+                +SaveOfflineLocationsHandler(...)
+                +ProcessOfflineLocationsHandler(...)
+                +GetTripMemberLocationsHandler(...)
+            }
+            class handlers_NotificationHandler["handlers.NotificationHandler"] {
+                +notificationService: *service.NotificationService
+                +logger: *zap.Logger
+                +GetNotificationsByUser(...)
+                +MarkNotificationAsRead(...)
+                +MarkAllNotificationsRead(...)
+                +DeleteNotification(...)
+            }
+            class handlers_WSHandler["handlers.WSHandler"] {
+                 +rateLimiter: *services.RateLimitService
+                 +eventService: services.EventService
+                 +HandleWebSocketConnection(...)
+            }
+            class handlers_AuthHandler["handlers.AuthHandler"] {
+                 +supabaseClient: *supabase.Client
+                 +cfg: *config.Config
+                 +RefreshTokenHandler(...)
+            }
+            class handlers_ChatHandler["handlers.ChatHandler"] {
+                 +chatService: *services.ChatService
+                 +chatStore: *db.PostgresChatStore
+                 +CreateChatGroup(...)
+                 +ListChatGroups(...)
+                 +GetChatGroup(...)
+                 +UpdateChatGroup(...)
+                 +DeleteChatGroup(...)
+                 +ListChatMessages(...)
+                 +ListChatGroupMembers(...)
+                 +UpdateLastReadMessage(...)
+            }
+        end
+        Main -.-> handlers_TripHandler %% initializes
+        Main -.-> handlers_TodoHandler %% initializes
+        Main -.-> handlers_HealthHandler %% initializes
+        Main -.-> handlers_LocationHandler %% initializes
+        Main -.-> handlers_NotificationHandler %% initializes
+        Main -.-> handlers_WSHandler %% initializes
+        Main -.-> handlers_AuthHandler %% initializes
+        Main -.-> handlers_ChatHandler %% initializes
+
+        handlers_TripHandler --> trip_TripModel
+        handlers_TripHandler --> services_EventService
+        handlers_TripHandler --> Supabase
+        handlers_TodoHandler --> models_TodoModel
+        handlers_TodoHandler --> services_EventService
+        handlers_HealthHandler --> services_HealthService
+        handlers_LocationHandler --> services_LocationService
+        handlers_NotificationHandler --> service_NotificationService
+        handlers_WSHandler --> services_RateLimitService
+        handlers_WSHandler --> services_EventService
+        handlers_AuthHandler --> Supabase
+        handlers_AuthHandler --> Config
+        handlers_ChatHandler --> services_ChatService
+        handlers_ChatHandler --> db_PostgresChatStore
+        Handlers -.-> Logger %% handlers package uses Logger
+
+        %% Middleware Package
+        subgraph Middleware ["Middleware"]
+            class middleware_JWTValidator["middleware.JWTValidator"] { +ValidateToken(...) }
+            class middleware_WSMetrics["middleware.WSMetrics"] {
+               +ConnectionsActive: Gauge
+               +MessagesReceived: Counter
+               +MessagesSent: Counter
+               +ErrorsTotal: CounterVec
+            }
+            class middleware_WSConfig["middleware.WSConfig"] { +PongWait, +PingPeriod ... }
+        end
+        Main -.-> middleware_JWTValidator %% initializes
+        Main -.-> middleware_WSMetrics %% initializes
+        Main -.-> middleware_WSConfig %% initializes
+
+        %% Router --> Middleware (Link added below with Router definition)
+        Middleware --> middleware_JWTValidator
+        Middleware --> services_RateLimitService
+        Middleware --> models_TripMembershipChecker
+        Middleware --> middleware_WSMetrics
+        Middleware --> Prometheus %% Registers Metrics
+        Middleware -.-> Logger %% middleware package uses Logger
+
+        %% Router Package
+        subgraph Router_Gin ["Router (Gin)"]
+             class Router["<b>Gin Engine</b><br/>Defines routes (/, /v1, /debug)<br/>Applies middleware<br/>Connects routes to handlers"]
+        end
+        Main --> Router
+        Router --> Handlers %% Link to subgraph Handlers
+        Router --> Middleware %% Link to subgraph Middleware
+
+    end %% End NomadCrew_Backend_Application subgraph
+
+    %% Actor & Other Links
+    actor User
+    User --> Router %% HTTP Requests
+    Router --> User %% HTTP Responses
+    User -->> Router %% WebSocket Connect (could use -->)
+
+    Main --> Redis_DB %% Test Connection
+    Main --> Supabase %% Initialize Client
+    Config --> Logger
+
+    %% Styling (Optional)
+    classDef default fill:#f8f8f8,stroke:#333,stroke-width:1px;
+    classDef interface fill:#e8f8ff,stroke:#33a,stroke-width:1px;
+    class store_TripStore,store_UserStore,store_NotificationStore,services_EventService,models_TripMembershipChecker interface;
+
+    class postgres_PgTripStore["store/postgres.PgTripStore"] {
+        +CreateTrip(context.Context, types.Trip) (string, error)
+        +GetTrip(context.Context, string) (*types.Trip, error)
+        +UpdateTrip(context.Context, string, types.TripUpdate) (*types.Trip, error)
+        +DeleteTrip(context.Context, string) error
+        +ListUserTrips(context.Context, string) ([]*types.Trip, error)
+        +SearchTrips(context.Context, types.TripSearchCriteria) ([]*types.Trip, error)
+        +AddMember(context.Context, *types.TripMembership) error
+        +UpdateMemberRole(context.Context, string, string, types.MemberRole) error
+        +RemoveMember(context.Context, string, string) error
+        +GetTripMembers(context.Context, string) ([]*types.TripMembership, error)
+        +GetUserRole(context.Context, string, string) (types.MemberRole, error)
+        +LookupUserByEmail(context.Context, string) (*types.SupabaseUser, error)
+        +CreateInvitation(context.Context, *types.TripInvitation) error
+        +GetInvitation(context.Context, string) (*types.TripInvitation, error)
+        +GetInvitationsByTripID(context.Context, string) ([]*types.TripInvitation, error)
+        +UpdateInvitationStatus(context.Context, string, types.InvitationStatus) error
+        +BeginTx(context.Context) (store.Transaction, error)
+    }
+
+    postgres_PgTripStore ..|> store_TripStore : implements
+
+    Main -.-> postgres_PgTripStore  %% initializes
+    postgres_PgTripStore --> pgxpool.Pool
+
+    trip_TripModel --> store_TripStore
+    services_ChatService --> store_TripStore

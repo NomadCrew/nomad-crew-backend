@@ -56,23 +56,3 @@ func (r MemberRole) IsValid() bool {
 	}
 	return false
 }
-
-type InvitationStatus string
-
-const (
-	InvitationStatusPending  InvitationStatus = "PENDING"
-	InvitationStatusAccepted InvitationStatus = "ACCEPTED"
-	InvitationStatusDeclined InvitationStatus = "DECLINED"
-)
-
-type TripInvitation struct {
-	ID           string           `json:"id"`
-	TripID       string           `json:"tripId"`
-	InviterID    string           `json:"inviterId"`
-	InviteeEmail string           `json:"inviteeEmail"`
-	Role         MemberRole       `json:"role"`
-	Status       InvitationStatus `json:"status"`
-	CreatedAt    time.Time        `json:"createdAt"`
-	ExpiresAt    time.Time        `json:"expiresAt"`
-	Token        string           `json:"token"`
-}

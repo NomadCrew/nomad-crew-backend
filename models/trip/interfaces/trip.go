@@ -8,9 +8,9 @@ import (
 
 // TripModelInterface defines the interface for trip-related business logic
 type TripModelInterface interface {
-	CreateTrip(ctx context.Context, trip *types.Trip) error
-	GetTripByID(ctx context.Context, id string) (*types.Trip, error)
-	UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error
+	CreateTrip(ctx context.Context, trip *types.Trip) (*types.Trip, error)
+	GetTripByID(ctx context.Context, id string, userID string) (*types.Trip, error)
+	UpdateTrip(ctx context.Context, id string, userID string, update *types.TripUpdate) (*types.Trip, error)
 	DeleteTrip(ctx context.Context, id string) error
 	ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error)
 	SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error)
@@ -22,4 +22,9 @@ type TripModelInterface interface {
 	GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error)
 	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
 	LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error)
+	GetTripWithMembers(ctx context.Context, tripID string, userID string) (*types.TripWithMembers, error)
+	UpdateTripStatus(ctx context.Context, tripID string, newStatus types.TripStatus) error
+	GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
+	GetTrip(ctx context.Context, tripID string) (*types.Trip, error)
+	GetCommandContext() *CommandContext
 }

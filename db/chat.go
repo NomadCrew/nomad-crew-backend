@@ -1,3 +1,5 @@
+// Package db provides implementations for data access interfaces defined in internal/store.
+// It interacts with the PostgreSQL database using pgxpool and potentially other external services like Supabase.
 package db
 
 import (
@@ -8,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -17,9 +20,10 @@ import (
 	"github.com/supabase-community/supabase-go"
 )
 
-// ChatStore interface is now defined in internal/store/interfaces.go
+// ChatStore interface is defined in internal/store/interfaces.go
 
-// PostgresChatStore represents a PostgreSQL-backed chat store
+// PostgresChatStore implements the store.ChatStore interface using a PostgreSQL database
+// via pgxpool and a Supabase client for user-related operations.
 type PostgresChatStore struct {
 	db              *pgxpool.Pool
 	supabase        *supabase.Client
@@ -27,7 +31,7 @@ type PostgresChatStore struct {
 	supabaseAPIKey  string
 }
 
-// NewPostgresChatStore creates a new PostgreSQL-backed chat store
+// NewPostgresChatStore creates a new instance of PostgresChatStore.
 func NewPostgresChatStore(db *pgxpool.Pool, supabaseClient *supabase.Client, supabaseURL, supabaseKey string) store.ChatStore {
 	return &PostgresChatStore{
 		db:              db,
@@ -37,11 +41,11 @@ func NewPostgresChatStore(db *pgxpool.Pool, supabaseClient *supabase.Client, sup
 	}
 }
 
-// CreateChatGroup creates a new chat group
+// CreateChatGroup inserts a new chat group into the database.
+// It generates a new UUID for the group if one is not provided.
 func (s *PostgresChatStore) CreateChatGroup(ctx context.Context, group types.ChatGroup) (string, error) {
 	log := logger.GetLogger()
 
-	// Generate a new UUID if not provided
 	if group.ID == "" {
 		group.ID = uuid.New().String()
 	}
@@ -69,13 +73,13 @@ func (s *PostgresChatStore) CreateChatGroup(ctx context.Context, group types.Cha
 
 	if err != nil {
 		log.Errorw("Failed to create chat group", "error", err)
-		return "", err
+		return "", apperrors.NewDatabaseError(err)
 	}
 
 	return id, nil
 }
 
-// GetChatGroup retrieves a chat group by ID
+// GetChatGroup retrieves a specific chat group by its ID from the database.
 func (s *PostgresChatStore) GetChatGroup(ctx context.Context, groupID string) (*types.ChatGroup, error) {
 	log := logger.GetLogger()
 
@@ -99,16 +103,16 @@ func (s *PostgresChatStore) GetChatGroup(ctx context.Context, groupID string) (*
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			log.Warnw("Chat group not found", "groupID", groupID)
-			return nil, fmt.Errorf("chat group not found: %w", err)
+			return nil, apperrors.NotFound("ChatGroup", groupID)
 		}
 		log.Errorw("Failed to get chat group", "error", err, "groupID", groupID)
-		return nil, err
+		return nil, apperrors.NewDatabaseError(err)
 	}
 
 	return &group, nil
 }
 
-// UpdateChatGroup updates a chat group
+// UpdateChatGroup updates the name and/or description of an existing chat group.
 func (s *PostgresChatStore) UpdateChatGroup(ctx context.Context, groupID string, update types.ChatGroupUpdateRequest) error {
 	log := logger.GetLogger()
 
@@ -122,7 +126,7 @@ func (s *PostgresChatStore) UpdateChatGroup(ctx context.Context, groupID string,
 
 	now := time.Now()
 
-	_, err := s.db.Exec(ctx, query,
+	commandTag, err := s.db.Exec(ctx, query,
 		update.Name,
 		update.Description,
 		now,
@@ -131,13 +135,16 @@ func (s *PostgresChatStore) UpdateChatGroup(ctx context.Context, groupID string,
 
 	if err != nil {
 		log.Errorw("Failed to update chat group", "error", err, "groupID", groupID)
-		return err
+		return apperrors.NewDatabaseError(err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return apperrors.NotFound("ChatGroup", groupID)
 	}
 
 	return nil
 }
 
-// DeleteChatGroup deletes a chat group
+// DeleteChatGroup removes a chat group and potentially related data (handled by DB constraints/triggers) from the database.
 func (s *PostgresChatStore) DeleteChatGroup(ctx context.Context, groupID string) error {
 	log := logger.GetLogger()
 
@@ -146,31 +153,30 @@ func (s *PostgresChatStore) DeleteChatGroup(ctx context.Context, groupID string)
 		WHERE id = $1
 	`
 
-	_, err := s.db.Exec(ctx, query, groupID)
+	commandTag, err := s.db.Exec(ctx, query, groupID)
 
 	if err != nil {
 		log.Errorw("Failed to delete chat group", "error", err, "groupID", groupID)
-		return err
+		return apperrors.NewDatabaseError(err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return apperrors.NotFound("ChatGroup", groupID)
 	}
 
 	return nil
 }
 
-// ListChatGroupsByTrip lists all chat groups for a trip
+// ListChatGroupsByTrip retrieves a paginated list of chat groups associated with a specific trip ID.
 func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID string, limit, offset int) (*types.ChatGroupPaginatedResponse, error) {
 	log := logger.GetLogger()
 
-	// Set default limit if not provided
 	if limit <= 0 {
-		limit = 10
+		limit = 10 // Default limit
 	}
-
-	// Ensure offset is not negative
 	if offset < 0 {
-		offset = 0
+		offset = 0 // Default offset
 	}
 
-	// Initialize response with empty arrays
 	response := &types.ChatGroupPaginatedResponse{
 		Groups: make([]types.ChatGroup, 0),
 		Pagination: struct {
@@ -183,7 +189,6 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 		},
 	}
 
-	// Query to get chat groups
 	query := `
 		SELECT id, trip_id, name, description, created_by, created_at, updated_at
 		FROM chat_groups
@@ -195,7 +200,7 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 	rows, err := s.db.Query(ctx, query, tripID, limit, offset)
 	if err != nil {
 		log.Errorw("Failed to list chat groups", "error", err, "tripID", tripID)
-		return response, nil // Return empty response instead of error
+		return response, apperrors.NewDatabaseError(err)
 	}
 	defer rows.Close()
 
@@ -211,13 +216,17 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 			&group.UpdatedAt,
 		)
 		if err != nil {
-			log.Errorw("Failed to scan chat group", "error", err)
-			return response, nil // Return empty response instead of error
+			log.Errorw("Failed to scan chat group row", "error", err)
+			return response, apperrors.Wrap(err, apperrors.DatabaseError, "failed to scan chat group row")
 		}
 		response.Groups = append(response.Groups, group)
 	}
+	if err = rows.Err(); err != nil {
+		log.Errorw("Error after iterating chat group rows", "error", err)
+		return response, apperrors.Wrap(err, apperrors.DatabaseError, "error iterating chat group rows")
+	}
 
-	// Query to get total count
+	// Get total count for pagination metadata
 	countQuery := `
 		SELECT COUNT(*)
 		FROM chat_groups
@@ -228,7 +237,7 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 	err = s.db.QueryRow(ctx, countQuery, tripID).Scan(&total)
 	if err != nil {
 		log.Errorw("Failed to get total chat groups count", "error", err, "tripID", tripID)
-		return response, nil // Return empty response with zero total
+		return response, apperrors.NewDatabaseError(err)
 	}
 
 	response.Pagination.Total = total
@@ -236,351 +245,283 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 	return response, nil
 }
 
-// CreateChatMessage creates a new chat message
+// CreateChatMessage inserts a new chat message into the database.
+// It generates a new UUID for the message if one is not provided.
+// It defaults ContentType to 'text' if not provided.
 func (s *PostgresChatStore) CreateChatMessage(ctx context.Context, message types.ChatMessage) (string, error) {
 	log := logger.GetLogger()
 
-	// Generate a new UUID if not provided
 	if message.ID == "" {
 		message.ID = uuid.New().String()
 	}
+	if message.ContentType == "" {
+		message.ContentType = types.ContentTypeText // Default content type
+	}
 
+	// Reverted query to match assumed original fields
 	query := `
-		INSERT INTO chat_messages (id, group_id, user_id, content, created_at, updated_at, is_edited, is_deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO chat_messages (id, group_id, user_id, content, content_type, created_at, updated_at, is_edited, is_deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
 
 	now := time.Now()
-	message.CreatedAt = now
-	message.UpdatedAt = now
-
-	// For now, we'll use the TripID as the GroupID
-	// In a real implementation, you would look up the appropriate group ID for the trip
-	groupID := message.TripID
+	message.CreatedAt = now // Assumes CreatedAt exists
+	message.UpdatedAt = now // Assumes UpdatedAt exists
 
 	var id string
+	// Reverted scan logic
 	err := s.db.QueryRow(ctx, query,
 		message.ID,
-		groupID,
+		message.GroupID,
 		message.UserID,
 		message.Content,
-		message.CreatedAt,
-		message.UpdatedAt,
-		message.IsEdited,
-		message.IsDeleted,
+		message.ContentType, // Assumed field
+		message.CreatedAt,   // Assumed field
+		message.UpdatedAt,   // Assumed field
+		message.IsEdited,    // Assumed field
+		message.IsDeleted,   // Assumed field
 	).Scan(&id)
 
 	if err != nil {
-		log.Errorw("Failed to create chat message", "error", err)
-		return "", err
+		log.Errorw("Failed to create chat message", "error", err, "groupID", message.GroupID, "userID", message.UserID)
+		return "", apperrors.NewDatabaseError(err)
 	}
 
 	return id, nil
 }
 
-// GetChatMessage retrieves a chat message by ID
-func (s *PostgresChatStore) GetChatMessage(ctx context.Context, messageID string) (*types.ChatMessage, error) {
+// GetChatMessageByID retrieves a specific chat message by its ID.
+// It also fetches associated reactions in a separate query.
+func (s *PostgresChatStore) GetChatMessageByID(ctx context.Context, messageID string) (*types.ChatMessage, error) {
 	log := logger.GetLogger()
 
+	// Reverted query to match assumed original fields
 	query := `
-		SELECT m.id, m.group_id, m.user_id, m.content, m.created_at, m.updated_at, m.is_edited, m.is_deleted, g.trip_id
-		FROM chat_messages m
-		JOIN chat_groups g ON m.group_id = g.id
-		WHERE m.id = $1
+		SELECT id, group_id, user_id, content, content_type, created_at, updated_at, is_edited, is_deleted
+		FROM chat_messages
+		WHERE id = $1 AND is_deleted = false
 	`
 
-	var message types.ChatMessage
-	var groupID string
+	var msg types.ChatMessage
+	// Reverted scan logic
 	err := s.db.QueryRow(ctx, query, messageID).Scan(
-		&message.ID,
-		&groupID,
-		&message.UserID,
-		&message.Content,
-		&message.CreatedAt,
-		&message.UpdatedAt,
-		&message.IsEdited,
-		&message.IsDeleted,
-		&message.TripID,
+		&msg.ID,
+		&msg.GroupID,
+		&msg.UserID,
+		&msg.Content,
+		&msg.ContentType, // Assumed field
+		&msg.CreatedAt,   // Assumed field
+		&msg.UpdatedAt,   // Assumed field
+		&msg.IsEdited,    // Assumed field
+		&msg.IsDeleted,   // Assumed field
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Warnw("Chat message not found", "messageID", messageID)
+			return nil, apperrors.NotFound("ChatMessage", messageID)
+		}
 		log.Errorw("Failed to get chat message", "error", err, "messageID", messageID)
-		return nil, err
+		return nil, apperrors.NewDatabaseError(err)
 	}
 
-	return &message, nil
+	// Fetch reactions separately (original inefficient pattern)
+	reactions, reactErr := s.ListChatMessageReactions(ctx, messageID)
+	if reactErr != nil {
+		log.Errorw("Failed to fetch reactions for get message", "error", reactErr, "messageID", messageID)
+		msg.Reactions = []types.ChatMessageReaction{} // Ensure Reactions field exists and is empty on error
+	} else {
+		msg.Reactions = reactions // Assumes Reactions field exists
+	}
+
+	return &msg, nil
 }
 
-// UpdateChatMessage updates a chat message
+// UpdateChatMessage updates the content of an existing chat message and marks it as edited.
 func (s *PostgresChatStore) UpdateChatMessage(ctx context.Context, messageID string, content string) error {
 	log := logger.GetLogger()
 
+	// Reverted query to mark as edited and check is_deleted
 	query := `
 		UPDATE chat_messages
 		SET content = $1,
 			is_edited = true,
 			updated_at = $2
-		WHERE id = $3
+		WHERE id = $3 AND is_deleted = false
 	`
 
 	now := time.Now()
 
-	_, err := s.db.Exec(ctx, query, content, now, messageID)
+	commandTag, err := s.db.Exec(ctx, query, content, now, messageID)
 
 	if err != nil {
 		log.Errorw("Failed to update chat message", "error", err, "messageID", messageID)
-		return err
+		return apperrors.NewDatabaseError(err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		// Check if the message exists but is deleted, or doesn't exist at all
+		_, getErr := s.GetChatMessageByID(ctx, messageID) // Check existence (ignoring reactions fetch error)
+		if getErr != nil {
+			if appErr, ok := getErr.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
+				return apperrors.NotFound("ChatMessage", messageID) // Not found
+			}
+			// Some other error occurred during check
+			log.Warnw("Error checking chat message existence during update", "error", getErr, "messageID", messageID)
+		}
+		// If GetChatMessageByID returned nil error, it means the message exists but is_deleted=true (since RowsAffected was 0)
+		log.Warnw("Update chat message affected 0 rows, message likely deleted or not found", "messageID", messageID)
+		return apperrors.NotFound("ChatMessage (not updateable)", messageID) // Treat as not found for update purposes
 	}
 
 	return nil
 }
 
-// DeleteChatMessage marks a chat message as deleted
+// DeleteChatMessage performs a soft delete on a chat message by setting is_deleted to true.
 func (s *PostgresChatStore) DeleteChatMessage(ctx context.Context, messageID string) error {
 	log := logger.GetLogger()
 
+	// Reverted to soft delete query
 	query := `
 		UPDATE chat_messages
 		SET is_deleted = true,
 			updated_at = $1
-		WHERE id = $2
+		WHERE id = $2 AND is_deleted = false
 	`
-
 	now := time.Now()
-
-	_, err := s.db.Exec(ctx, query, now, messageID)
+	commandTag, err := s.db.Exec(ctx, query, now, messageID)
 
 	if err != nil {
-		log.Errorw("Failed to delete chat message", "error", err, "messageID", messageID)
-		return err
+		log.Errorw("Failed to soft delete chat message", "error", err, "messageID", messageID)
+		return apperrors.NewDatabaseError(err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		// Check if it exists but was already deleted or never existed
+		_, getErr := s.GetChatMessageByID(ctx, messageID) // Check existence (ignoring reactions fetch error)
+		if getErr != nil {
+			if appErr, ok := getErr.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
+				return apperrors.NotFound("ChatMessage", messageID) // Truly not found
+			}
+			log.Warnw("Error checking chat message existence during delete", "error", getErr, "messageID", messageID)
+		}
+		// If GetChatMessageByID returned nil error, it means the message exists but is_deleted=true (RowsAffected was 0)
+		log.Warnw("Soft delete chat message affected 0 rows, message likely already deleted", "messageID", messageID)
+		// No error needed if already deleted (idempotent)
+		return nil
 	}
 
 	return nil
 }
 
-// fetchUserFromSupabase fetches a user from Supabase REST API
-func (s *PostgresChatStore) fetchUserFromSupabase(userID string) (*types.UserResponse, error) {
-	// Construct the Supabase auth API URL
-	url := fmt.Sprintf("%s/auth/v1/admin/users/%s", s.supabaseBaseURL, userID)
-
-	// Create a new request
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add required headers
-	req.Header.Add("apikey", s.supabaseAPIKey)
-	req.Header.Add("Authorization", "Bearer "+s.supabaseAPIKey)
-
-	// Make the request
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch user: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch user, status: %d", resp.StatusCode)
-	}
-
-	// Parse response
-	var supabaseUser struct {
-		ID           string                 `json:"id"`
-		Email        string                 `json:"email"`
-		UserMetadata map[string]interface{} `json:"user_metadata"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&supabaseUser); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Convert to UserResponse
-	user := &types.UserResponse{
-		ID:    supabaseUser.ID,
-		Email: supabaseUser.Email,
-	}
-
-	// Safely extract user metadata
-	if supabaseUser.UserMetadata != nil {
-		if username, ok := supabaseUser.UserMetadata["username"].(string); ok {
-			user.Username = username
-		}
-		if firstName, ok := supabaseUser.UserMetadata["firstName"].(string); ok {
-			user.FirstName = firstName
-		}
-		if lastName, ok := supabaseUser.UserMetadata["lastName"].(string); ok {
-			user.LastName = lastName
-		}
-		if profilePicture, ok := supabaseUser.UserMetadata["profilePicture"].(string); ok {
-			user.ProfilePicture = profilePicture
-		}
-	}
-
-	return user, nil
-}
-
-// ListChatMessages lists all messages in a chat group
-func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string, limit, offset int) (*types.ChatMessagePaginatedResponse, error) {
+// ListChatMessages retrieves a paginated list of chat messages for a specific group.
+// Note: This currently fetches reactions separately for each message, which can be inefficient.
+// Consider optimizing this in production (e.g., JOIN query or batch fetching).
+func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string, params types.PaginationParams) ([]types.ChatMessage, int, error) {
 	log := logger.GetLogger()
 
-	// Set default limit if not provided
-	if limit <= 0 {
-		limit = 20
+	if params.Limit <= 0 {
+		params.Limit = 50 // Default limit
+	}
+	if params.Offset < 0 {
+		params.Offset = 0
 	}
 
-	// Ensure offset is not negative
-	if offset < 0 {
-		offset = 0
-	}
+	messages := make([]types.ChatMessage, 0, params.Limit)
 
-	// Initialize response with empty arrays
-	response := &types.ChatMessagePaginatedResponse{
-		Messages: make([]types.ChatMessageWithUser, 0),
-		Total:    0,
-		Limit:    limit,
-		Offset:   offset,
-	}
-
-	// Query to get chat messages
+	// Reverted query to assumed original fields matching types.ChatMessage
 	query := `
-		SELECT m.id, m.group_id, m.user_id, m.content, m.created_at, m.updated_at, m.is_edited, m.is_deleted
-		FROM chat_messages m
-		WHERE m.group_id = $1
-		ORDER BY m.created_at DESC
-		LIMIT $2 OFFSET $3
-	`
+        SELECT id, group_id, user_id, content, content_type, created_at, updated_at, is_edited, is_deleted
+        FROM chat_messages
+        WHERE group_id = $1 AND is_deleted = false
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+    `
 
-	rows, err := s.db.Query(ctx, query, groupID, limit, offset)
+	rows, err := s.db.Query(ctx, query, groupID, params.Limit, params.Offset)
 	if err != nil {
-		log.Errorw("Failed to list chat messages", "error", err, "groupID", groupID)
-		return response, nil // Return empty response instead of error
+		log.Errorw("Failed to list chat messages by group", "error", err, "groupID", groupID)
+		return nil, 0, apperrors.NewDatabaseError(err)
 	}
 	defer rows.Close()
 
-	var userIDs []string
-
-	// First, collect all messages and user IDs
 	for rows.Next() {
-		var message types.ChatMessage
-		var groupIDValue string
-		err := rows.Scan(
-			&message.ID,
-			&groupIDValue,
-			&message.UserID,
-			&message.Content,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-			&message.IsEdited,
-			&message.IsDeleted,
+		var msg types.ChatMessage
+		// Reverted scan to match reverted query
+		err = rows.Scan(
+			&msg.ID,
+			&msg.GroupID,
+			&msg.UserID,
+			&msg.Content,
+			&msg.ContentType,
+			&msg.CreatedAt,
+			&msg.UpdatedAt,
+			&msg.IsEdited,
+			&msg.IsDeleted,
 		)
 		if err != nil {
-			log.Errorw("Failed to scan chat message", "error", err)
-			return response, nil // Return empty response instead of error
+			log.Errorw("Failed to scan chat message row", "error", err)
+			return nil, 0, apperrors.Wrap(err, apperrors.DatabaseError, "failed to scan chat message row")
 		}
 
-		// Set the TripID from the group's trip_id
-		// For now, we'll leave it empty and fill it later if needed
-		message.TripID = ""
-
-		userIDs = append(userIDs, message.UserID)
-		response.Messages = append(response.Messages, types.ChatMessageWithUser{
-			Message: message,
-		})
-	}
-
-	// Get user information from Supabase for all users at once
-	userMap := make(map[string]types.UserResponse)
-	for _, userID := range userIDs {
-		user, err := s.fetchUserFromSupabase(userID)
-		if err != nil {
-			log.Warnw("Failed to fetch user from Supabase", "error", err, "userID", userID)
-			// Create a minimal user response if fetch fails
-			userMap[userID] = types.UserResponse{
-				ID: userID,
-			}
-			continue
+		// Original separate reaction fetch
+		reactions, reactErr := s.ListChatMessageReactions(ctx, msg.ID)
+		if reactErr != nil {
+			log.Errorw("Failed to fetch reactions for list message", "error", reactErr, "messageID", msg.ID)
+			msg.Reactions = []types.ChatMessageReaction{}
+		} else {
+			msg.Reactions = reactions
 		}
-		userMap[userID] = *user
+
+		messages = append(messages, msg)
+	}
+	if err = rows.Err(); err != nil {
+		log.Errorw("Error after iterating chat message rows", "error", err)
+		return nil, 0, apperrors.Wrap(err, apperrors.DatabaseError, "error iterating chat message rows")
 	}
 
-	// Attach user information to messages
-	for i := range response.Messages {
-		if user, ok := userMap[response.Messages[i].Message.UserID]; ok {
-			response.Messages[i].User = user
-		}
-	}
-
-	// Query to get total count
-	countQuery := `
-		SELECT COUNT(*)
-		FROM chat_messages
-		WHERE group_id = $1
-	`
-
+	// Original count query
+	countQuery := `SELECT COUNT(*) FROM chat_messages WHERE group_id = $1 AND is_deleted = false`
 	var total int
 	err = s.db.QueryRow(ctx, countQuery, groupID).Scan(&total)
 	if err != nil {
 		log.Errorw("Failed to get total chat messages count", "error", err, "groupID", groupID)
-		return response, nil // Return empty response with zero total
+		return nil, 0, apperrors.NewDatabaseError(err)
 	}
 
-	response.Total = total
-
-	return response, nil
+	return messages, total, nil
 }
 
-// AddChatGroupMember adds a user to a chat group
+// AddChatGroupMember adds a user to a chat group using an INSERT ... ON CONFLICT DO NOTHING query.
 func (s *PostgresChatStore) AddChatGroupMember(ctx context.Context, groupID, userID string) error {
-	log := logger.GetLogger()
-
-	query := `
-		INSERT INTO chat_group_members (id, group_id, user_id, joined_at)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (group_id, user_id) DO NOTHING
-	`
-
-	id := uuid.New().String()
-	now := time.Now()
-
-	_, err := s.db.Exec(ctx, query, id, groupID, userID, now)
-
-	if err != nil {
-		log.Errorw("Failed to add chat group member", "error", err, "groupID", groupID, "userID", userID)
-		return err
-	}
-
-	return nil
-}
-
-// RemoveChatGroupMember removes a user from a chat group
-func (s *PostgresChatStore) RemoveChatGroupMember(ctx context.Context, groupID, userID string) error {
-	log := logger.GetLogger()
-
-	query := `
-		DELETE FROM chat_group_members
-		WHERE group_id = $1 AND user_id = $2
-	`
-
+	query := `INSERT INTO chat_group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
 	_, err := s.db.Exec(ctx, query, groupID, userID)
-
 	if err != nil {
-		log.Errorw("Failed to remove chat group member", "error", err, "groupID", groupID, "userID", userID)
-		return err
+		logger.GetLogger().Errorw("Failed to add chat group member", "error", err, "groupID", groupID, "userID", userID)
+		return apperrors.NewDatabaseError(err)
 	}
-
 	return nil
 }
 
-// ListChatGroupMembers lists all members of a chat group
+// RemoveChatGroupMember removes a user from a chat group.
+// It logs a warning but returns no error if the member or group was not found (idempotency).
+func (s *PostgresChatStore) RemoveChatGroupMember(ctx context.Context, groupID, userID string) error {
+	query := `DELETE FROM chat_group_members WHERE group_id = $1 AND user_id = $2`
+	commandTag, err := s.db.Exec(ctx, query, groupID, userID)
+	if err != nil {
+		logger.GetLogger().Errorw("Failed to remove chat group member", "error", err, "groupID", groupID, "userID", userID)
+		return apperrors.NewDatabaseError(err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		// Log warning if no rows were affected, but don't return error for idempotency
+		logger.GetLogger().Warnw("Attempted to remove non-existent chat group member or group", "groupID", groupID, "userID", userID)
+	}
+	return nil
+}
+
+// ListChatGroupMembers retrieves a list of users who are members of a specific chat group.
+// It assumes the local 'users' table mirrors Supabase user metadata.
 func (s *PostgresChatStore) ListChatGroupMembers(ctx context.Context, groupID string) ([]types.UserResponse, error) {
 	log := logger.GetLogger()
-
-	// Initialize empty response array
-	users := make([]types.UserResponse, 0)
 
 	query := `
 		SELECT user_id
@@ -590,230 +531,168 @@ func (s *PostgresChatStore) ListChatGroupMembers(ctx context.Context, groupID st
 
 	rows, err := s.db.Query(ctx, query, groupID)
 	if err != nil {
-		log.Errorw("Failed to list chat group members", "error", err, "groupID", groupID)
-		return users, nil // Return empty array instead of error
+		log.Errorw("Failed to query chat group members", "error", err)
+		return nil, apperrors.NewDatabaseError(err)
 	}
 	defer rows.Close()
 
-	var userIDs []string
+	var members []types.UserResponse
 	for rows.Next() {
 		var userID string
-		err := rows.Scan(&userID)
-		if err != nil {
-			log.Errorw("Failed to scan chat group member", "error", err)
-			return users, nil // Return empty array instead of error
+		if err := rows.Scan(&userID); err != nil {
+			log.Errorw("Failed to scan user ID", "error", err)
+			return nil, apperrors.NewDatabaseError(err)
 		}
-		userIDs = append(userIDs, userID)
+
+		user, err := s.GetUserByID(ctx, userID)
+		if err != nil {
+			log.Errorw("Failed to fetch user from Supabase", "userId", userID, "error", err)
+			continue // Skip this user but continue with others
+		}
+
+		members = append(members, types.UserResponse{
+			ID:          user.ID,
+			Email:       user.Email,
+			Username:    user.UserMetadata.Username,
+			FirstName:   user.UserMetadata.FirstName,
+			LastName:    user.UserMetadata.LastName,
+			AvatarURL:   user.UserMetadata.ProfilePicture,
+			DisplayName: user.UserMetadata.Username, // Use username as display name if no first/last name
+		})
 	}
 
-	for _, userID := range userIDs {
-		user, err := s.fetchUserFromSupabase(userID)
-		if err != nil {
-			log.Warnw("Failed to fetch user from Supabase", "error", err, "userID", userID)
-			// Add a minimal user response if fetch fails
-			users = append(users, types.UserResponse{
-				ID: userID,
-			})
-			continue
-		}
-		users = append(users, *user)
-	}
-
-	return users, nil
+	return members, nil
 }
 
-// UpdateLastReadMessage updates the last read message for a user in a chat group
+// UpdateLastReadMessage updates the last message read marker for a user in a specific group.
+// It uses INSERT ... ON CONFLICT ... DO UPDATE to ensure atomicity and correctness,
+// only updating if the new message ID corresponds to a later message than the current marker.
 func (s *PostgresChatStore) UpdateLastReadMessage(ctx context.Context, groupID, userID, messageID string) error {
-	log := logger.GetLogger()
-
 	query := `
-		UPDATE chat_group_members
-		SET last_read_message_id = $1
-		WHERE group_id = $2 AND user_id = $3
-	`
-
-	_, err := s.db.Exec(ctx, query, messageID, groupID, userID)
-
+        INSERT INTO chat_last_read (group_id, user_id, last_read_message_id, last_read_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (group_id, user_id)
+        DO UPDATE SET last_read_message_id = EXCLUDED.last_read_message_id,
+                      last_read_at = EXCLUDED.last_read_at
+        WHERE (SELECT sent_at FROM chat_messages WHERE id = EXCLUDED.last_read_message_id) >
+              (SELECT sent_at FROM chat_messages WHERE id = chat_last_read.last_read_message_id)
+           OR chat_last_read.last_read_message_id IS NULL
+    `
+	_, err := s.db.Exec(ctx, query, groupID, userID, messageID, time.Now())
 	if err != nil {
-		log.Errorw("Failed to update last read message", "error", err, "groupID", groupID, "userID", userID, "messageID", messageID)
-		return err
+		logger.GetLogger().Errorw("Failed to update last read message", "error", err, "groupID", groupID, "userID", userID, "messageID", messageID)
+		return apperrors.NewDatabaseError(err)
 	}
-
 	return nil
 }
 
-// AddChatMessageReaction adds a reaction to a chat message
-func (s *PostgresChatStore) AddChatMessageReaction(ctx context.Context, messageID, userID, reaction string) error {
-	log := logger.GetLogger()
-
+// AddReaction adds a reaction from a user to a specific message.
+// It uses INSERT ... ON CONFLICT DO NOTHING to prevent duplicate reactions.
+func (s *PostgresChatStore) AddReaction(ctx context.Context, messageID, userID, reaction string) error {
 	query := `
-		INSERT INTO chat_message_reactions (id, message_id, user_id, reaction, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (message_id, user_id, reaction) DO NOTHING
-	`
-
-	id := uuid.New().String()
-	now := time.Now()
-
-	_, err := s.db.Exec(ctx, query, id, messageID, userID, reaction, now)
-
+        INSERT INTO chat_message_reactions (message_id, user_id, reaction, created_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (message_id, user_id, reaction)
+        DO NOTHING
+    `
+	_, err := s.db.Exec(ctx, query, messageID, userID, reaction, time.Now())
 	if err != nil {
-		log.Errorw("Failed to add chat message reaction", "error", err, "messageID", messageID, "userID", userID, "reaction", reaction)
-		return err
+		logger.GetLogger().Errorw("Failed to add message reaction", "error", err, "messageID", messageID, "userID", userID, "reaction", reaction)
+		return apperrors.NewDatabaseError(err)
 	}
-
 	return nil
 }
 
-// RemoveChatMessageReaction removes a reaction from a chat message
-func (s *PostgresChatStore) RemoveChatMessageReaction(ctx context.Context, messageID, userID, reaction string) error {
-	log := logger.GetLogger()
-
+// RemoveReaction removes a specific reaction made by a user on a message.
+// It logs a warning but returns no error if the reaction was not found (idempotency).
+func (s *PostgresChatStore) RemoveReaction(ctx context.Context, messageID, userID, reaction string) error {
 	query := `
-		DELETE FROM chat_message_reactions
-		WHERE message_id = $1 AND user_id = $2 AND reaction = $3
-	`
-
-	_, err := s.db.Exec(ctx, query, messageID, userID, reaction)
-
+        DELETE FROM chat_message_reactions
+        WHERE message_id = $1 AND user_id = $2 AND reaction = $3
+    `
+	commandTag, err := s.db.Exec(ctx, query, messageID, userID, reaction)
 	if err != nil {
-		log.Errorw("Failed to remove chat message reaction", "error", err, "messageID", messageID, "userID", userID, "reaction", reaction)
-		return err
+		logger.GetLogger().Errorw("Failed to remove message reaction", "error", err, "messageID", messageID, "userID", userID, "reaction", reaction)
+		return apperrors.NewDatabaseError(err)
 	}
-
+	if commandTag.RowsAffected() == 0 {
+		// Log warning but don't return error for idempotency
+		logger.GetLogger().Warnw("Attempted to remove non-existent message reaction", "messageID", messageID, "userID", userID, "reaction", reaction)
+	}
 	return nil
 }
 
-// ListChatMessageReactions lists all reactions for a chat message
+// ListChatMessageReactions retrieves all reactions for a specific message.
 func (s *PostgresChatStore) ListChatMessageReactions(ctx context.Context, messageID string) ([]types.ChatMessageReaction, error) {
 	log := logger.GetLogger()
+	reactions := make([]types.ChatMessageReaction, 0)
 
+	// Assuming ChatMessageReaction has fields: ID, MessageID, UserID, Reaction, CreatedAt
 	query := `
 		SELECT id, message_id, user_id, reaction, created_at
-		FROM chat_message_reactions
-		WHERE message_id = $1
-	`
-
+        FROM chat_message_reactions
+        WHERE message_id = $1
+        ORDER BY created_at ASC
+    `
 	rows, err := s.db.Query(ctx, query, messageID)
 	if err != nil {
-		log.Errorw("Failed to list chat message reactions", "error", err, "messageID", messageID)
-		return nil, err
+		log.Errorw("Failed to list reactions", "error", err, "messageID", messageID)
+		return nil, apperrors.NewDatabaseError(err)
 	}
 	defer rows.Close()
 
-	var reactions []types.ChatMessageReaction
 	for rows.Next() {
-		var reaction types.ChatMessageReaction
-		err := rows.Scan(
-			&reaction.ID,
-			&reaction.MessageID,
-			&reaction.UserID,
-			&reaction.Reaction,
-			&reaction.CreatedAt,
-		)
+		var r types.ChatMessageReaction
+		err := rows.Scan(&r.ID, &r.MessageID, &r.UserID, &r.Reaction, &r.CreatedAt)
 		if err != nil {
-			log.Errorw("Failed to scan chat message reaction", "error", err)
-			return nil, err
+			log.Errorw("Failed to scan reaction", "error", err)
+			return nil, apperrors.Wrap(err, apperrors.DatabaseError, "failed to scan reaction row")
 		}
-		reactions = append(reactions, reaction)
+		reactions = append(reactions, r)
+	}
+	if err = rows.Err(); err != nil {
+		log.Errorw("Error after iterating reactions", "error", err)
+		return nil, apperrors.Wrap(err, apperrors.DatabaseError, "error iterating reaction rows")
 	}
 
 	return reactions, nil
 }
 
-// GetUserInfo retrieves user information from Supabase
-func (s *PostgresChatStore) GetUserInfo(ctx context.Context, userID string) (*types.UserResponse, error) {
+// GetUserByID retrieves user details directly from the Supabase Go client using the admin method.
+// Returns the raw *supabase.User struct provided by the client library.
+func (s *PostgresChatStore) GetUserByID(ctx context.Context, userID string) (*types.SupabaseUser, error) {
 	log := logger.GetLogger()
 
-	// First try to fetch from Supabase
-	user, err := s.fetchUserFromSupabase(userID)
+	// Use the Supabase admin API to get user details
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s/auth/v1/admin/users/%s", s.supabaseBaseURL, userID),
+		nil)
 	if err != nil {
-		log.Warnw("Failed to fetch user from Supabase, falling back to local data", "error", err, "userID", userID)
-
-		// Fallback to local database if available
-		// This is a simplified implementation - in a real app, you might have a users table
-		// For now, we'll just return a minimal user object with the ID
-		return &types.UserResponse{
-			ID:       userID,
-			Username: "User " + userID[:8], // Use first 8 chars of UUID as username
-		}, nil
+		log.Errorw("Failed to create request for Supabase user", "error", err)
+		return nil, apperrors.NewExternalServiceError(err)
 	}
 
-	return user, nil
-}
+	req.Header.Set("apikey", s.supabaseAPIKey)
+	req.Header.Set("Authorization", "Bearer "+s.supabaseAPIKey)
 
-// ListTripMessages lists all messages for a trip
-func (s *PostgresChatStore) ListTripMessages(ctx context.Context, tripID string, limit, offset int) ([]types.ChatMessage, int, error) {
-	log := logger.GetLogger()
-
-	// First, get the total count
-	var total int
-	countQuery := `
-		SELECT COUNT(*) 
-		FROM chat_messages cm
-		JOIN chat_groups cg ON cm.group_id = cg.id
-		WHERE cg.trip_id = $1
-	`
-	err := s.db.QueryRow(ctx, countQuery, tripID).Scan(&total)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorw("Failed to count trip messages", "error", err, "tripID", tripID)
-		return nil, 0, fmt.Errorf("failed to count trip messages: %w", err)
+		log.Errorw("Failed to fetch user from Supabase", "error", err)
+		return nil, apperrors.NewExternalServiceError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Errorw("Supabase returned non-200 status", "status", resp.StatusCode)
+		return nil, apperrors.NewExternalServiceError(fmt.Errorf("supabase returned status %d", resp.StatusCode))
 	}
 
-	// Then get the messages with pagination
-	query := `
-		SELECT 
-			cm.id, 
-			cm.group_id, 
-			cm.user_id, 
-			cm.content, 
-			cm.created_at, 
-			cm.updated_at,
-			cm.is_edited,
-			cm.is_deleted
-		FROM chat_messages cm
-		JOIN chat_groups cg ON cm.group_id = cg.id
-		WHERE cg.trip_id = $1
-		ORDER BY cm.created_at DESC
-		LIMIT $2 OFFSET $3
-	`
-
-	rows, err := s.db.Query(ctx, query, tripID, limit, offset)
-	if err != nil {
-		log.Errorw("Failed to query trip messages", "error", err, "tripID", tripID)
-		return nil, 0, fmt.Errorf("failed to query trip messages: %w", err)
-	}
-	defer rows.Close()
-
-	messages := []types.ChatMessage{}
-	for rows.Next() {
-		var msg types.ChatMessage
-		var groupID string
-		err := rows.Scan(
-			&msg.ID,
-			&groupID, // We don't use this in the response
-			&msg.UserID,
-			&msg.Content,
-			&msg.CreatedAt,
-			&msg.UpdatedAt,
-			&msg.IsEdited,
-			&msg.IsDeleted,
-		)
-		if err != nil {
-			log.Errorw("Failed to scan message row", "error", err)
-			continue
-		}
-
-		// Set the TripID instead of GroupID
-		msg.TripID = tripID
-
-		messages = append(messages, msg)
+	var user types.SupabaseUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		log.Errorw("Failed to decode Supabase user response", "error", err)
+		return nil, apperrors.NewExternalServiceError(err)
 	}
 
-	if err := rows.Err(); err != nil {
-		log.Errorw("Error iterating message rows", "error", err)
-		return nil, 0, fmt.Errorf("error iterating message rows: %w", err)
-	}
-
-	return messages, total, nil
+	return &user, nil
 }

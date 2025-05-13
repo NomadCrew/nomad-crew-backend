@@ -2,144 +2,266 @@
 
 ## Overview
 
-This repository is dedicated to the backend services of Nomad Crew. Built using Go, it handles functionalities like user authentication, group management, location tracking, messaging, media handling, and expense management through microservices.
+This repository contains the backend API for the **Nomad Crew** platform — a mobile-first app that simplifies group travel planning through real-time coordination, expense tracking, and collaborative features.
 
-## Services
+The backend is a **monolithic Go application** built using the **Gin** web framework. It exposes RESTful endpoints and WebSocket interfaces to power features like:
 
-- User Service
-- Group Service
-- Location Service
-- Messaging Service
-- Media Service
-- Expense Service
+- User authentication and profile management
+- Comprehensive trip planning and management
+- Trip-specific real-time chat and event streaming via WebSockets
+- Real-time location tracking for users and trip members
+- Trip-specific to-do list management
+- Member invitation system for trips (acceptance flow needs verification)
+- User notification system (real-time delivery strategy under review for optimization)
+- Role-based permissions (via middleware and service layer checks)
+
+It integrates with **PostgreSQL** for persistent storage, **Redis** for caching, and **Supabase** for authentication services.
+
+👉 [Frontend Repository](https://github.com/NomadCrew/nomad-crew-frontend)
+
+---
+
+## MVP Release Focus
+
+We're currently working toward an MVP release with these priorities:
+
+### Core MVP Functionality
+
+- User authentication (via Supabase) and account/profile management
+- Trip Creation, Management: Create, list, search, view, update, delete trips; manage trip status.
+- Trip Member Management: Add members to trips, update their roles, remove them.
+- Trip Invitation System: Invite users to trips. (Note: Invitation acceptance and lifecycle management flows require full verification and potential implementation).
+- Trip-Specific Real-Time Chat: WebSocket-based chat within trips for coordination, including listing messages and managing read status. (Message sending/reactions via HTTP are in progress). Chat is automatically created with each trip.
+- Location Sharing: Real-time location updates for users (general) and specifically for trip members.
+- Trip-Specific To-Do Lists: Manage tasks and checklists within the context of a trip.
+- Basic Notification System: Users can receive and manage notifications. (Note: The real-time delivery mechanism for general notifications is under review for cost-effectiveness and efficiency, distinct from active trip chat).
+
+### Current Focus
+
+- Stabilizing critical services (chat, websockets, auth)
+- Ensuring core API endpoints work reliably
+- Fixing compilation errors and critical bugs
+- Verifying end-to-end flows for key user journeys
+
+### Post-MVP Improvements
+
+- Enhanced documentation with complete Swagger annotations
+- Expanded test coverage
+- Non-critical bug fixes and optimizations
+- Additional features as prioritized
+
+> Our goal is to deliver a functional, stable product as quickly as possible to gather user feedback.
+
+---
+
+## Architecture
+
+The codebase follows a layered, modular architecture to promote testability and maintainability:
+
+1. **`main.go`** – Application entry point: sets up dependencies and starts the server.
+2. **`router/`** – Defines API routes and middleware.
+3. **`handlers/`** – Gin HTTP handlers: parse input, validate, call services.
+4. **`models/*/service/`** – Business logic layer for each domain (e.g., trips, locations, crews). All permission checks happen here.
+5. **`db/`** – Data access layer using `pgx` to query PostgreSQL.
+6. **`middleware/`** – Custom middleware for JWT validation, CORS, error handling, rate limiting.
+7. **`internal/`** – Internal systems including:
+   - `ws/`: WebSocket manager for live communication
+   - `events/`: Internal event struct definitions and dispatching
+
+> ⚠️ Some legacy logic still resides in `services/`. All new features should follow the `models/*/service/` convention.
+
+Refer to `PROJECT_STRUCTURE.md` for a detailed breakdown of the directory structure.
+
+---
 
 ## Technology Stack
 
-- Go with gRPC for service communication
-- PostgreSQL and Redis for database management
-- Apache Kafka for messaging and event streaming
+| Layer               | Tool / Library                             |
+|---------------------|---------------------------------------------|
+| Language            | Go                                          |
+| Web Framework       | Gin                                         |
+| Database            | PostgreSQL + `pgx` driver                   |
+| Caching             | Redis                                       |
+| Real-time           | Gorilla WebSocket                           |
+| Authentication      | Supabase + JWT (`golang-jwt/jwt/v5`)        |
+| Config Management   | Viper (YAML + Env vars)                    |
+| Logging             | Uber Zap                                    |
+| Migrations          | SQL-based (`db/migrations/`)               |
+| Containerization    | Docker                                      |
+| CI/CD               | GitHub Actions                              |
+| Deployment          | Google Cloud Run (Primary), Fly.io (Backup)|
+| Testing             | Go `testing`, `testify`, `testcontainers-go`|
 
-## Development Guidelines
+---
 
-- Robust error handling and logging (using Zap for Go logging).
-- Efficient inter-service communication with gRPC.
-- Adherence to RESTful principles where applicable.
-- Database normalization and proper indexing for location-based queries.
+## API Documentation
 
-## Getting Started
+The API is documented using Swagger/OpenAPI. You can access the interactive documentation at `/swagger/index.html` when the server is running.
 
-Instructions for setting up the backend development environment will be provided here.
+## Generating Documentation
 
-## Contribution Guidelines
+To generate or update the API documentation:
 
-Follow the [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow). Branches for new features should be named as `feature/your-feature-name`, and bug fixes as `bugfix/bug-name`. Ensure compliance with [OWASP security standards](https://owasp.org/www-project-mobile-app-security/).
+1. Ensure your handler functions are properly annotated with Swagger comments
+2. Run the following command:
 
-## Project Roadmap
+```bash
+swag init -g main.go -o ./static/docs/api
+```
 
-- Phase 1: Setup and Basic Functionality
-- Phase 2: Advanced Features
-- Phase 3: Additional Features
-- Phase 4: Testing and Deployment
+## Documentation Tool
 
-## Contact and Support
+We provide a documentation helper tool to assist with adding Swagger annotations:
 
-- **Maintainers**: [List of Maintainers]
-- **Community**: [Slack Channel](https://join.slack.com/t/slack-les9847/shared_invite/zt-2a0dqjzvk-YLC9TQFBExNnPFsH9yAB6g)
+```bash
+cd scripts/doc_generator
+go run main.go
+```
+
+This will scan all handlers and provide templates for undocumented endpoints.
+
+For more information, see the [API Documentation Guide](docs/api-documentation-guide.md).
+
+---
+
+## Authentication Flow
+
+User authentication is handled by Supabase. After logging in, Supabase issues a JWT that the backend validates via JWKS. Auth middleware extracts and verifies the token on protected endpoints. Role and permission checks are enforced in service layers.
+
+---
+
+## Real-Time Features
+
+The application leverages WebSockets and an internal event system for real-time updates:
+
+- **Trip-Specific Chat & Events:** A dedicated WebSocket connection (`/v1/trips/:id/chat/ws/events`) is established when a user engages with a specific trip's chat. This connection handles real-time message exchange and other trip-specific events directly related to that chat session.
+- **Live Location Updates:** User and trip member location data is updated in real-time.
+- **General Notifications & Updates:** The system supports broadcasting other events and general notifications (e.g., new trip invitations, general alerts). The current real-time delivery strategy for these general updates (potentially via the `/v1/ws` endpoint or other mechanisms) is being evaluated to ensure cost-effectiveness and optimal performance, differentiating from the active trip-chat WebSockets.
+
+Internal events are defined in `internal/events/` and may be dispatched through services like `services/event_service.go` (potentially using Redis Pub/Sub for inter-service communication if applicable).
+
+---
+
+## Getting Started (Local Setup)
+
+1. **Clone the repository**
+2. **Install Go** (<https://golang.org/doc/install>)
+3. **Set up environment variables**  
+   Copy `.env.example` → `.env` and configure:
+   - Database URL
+   - Redis URL
+   - Supabase keys
+   - JWT secrets
+   - 3rd party API keys (Geoapify, Pexels, Resend)
+4. **Install dependencies**
+
+   ```bash
+   go mod tidy
+
+```
+
+5. **Start DB and Redis (Docker)**
+
+   ```bash
+   docker-compose up -d
+   ```
+
+6. **Run migrations**
+
+   ```bash
+   psql -d <db> -f db/migrations/init.sql
+   ```
+
+7. **Run the app**
+
+   ```bash
+   go run main.go
+   ```
+
+---
+
+## Common Dev Commands
+
+| Task        | Command              |
+| ----------- | -------------------- |
+| Run server  | `go run main.go`     |
+| Run tests   | `go test ./...`      |
+| Lint code   | `golangci-lint run`  |
+| Live reload | `air` (if installed) |
+| Format code | `gofmt -w .`         |
+
+---
 
 ## Environment Variables
 
-### Required Core Variables
-- `DB_CONNECTION_STRING`: PostgreSQL connection string
-- `REDIS_ADDRESS`: Redis server address
-- `JWT_SECRET_KEY`: JWT signing key for generating invitation tokens (min 32 chars)
+See `.env.example` for a full list. Below are key variables:
 
-### Required Supabase Integration
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_ANON_KEY`: Supabase anon key for client operations
-- `SUPABASE_SERVICE_KEY`: Supabase service key for admin operations (used by ChatStore)
-- `SUPABASE_JWT_SECRET`: Secret used to validate Supabase JWTs
+### Core
 
-### Other Required Variables
-- `GEOAPIFY_KEY`: API key for geolocation services
-- `PEXELS_API_KEY`: API key for Pexels image service
-- `RESEND_API_KEY`: API key for the Resend email service
+- `DB_CONNECTION_STRING`
+- `REDIS_ADDRESS`
+- `JWT_SECRET_KEY`
 
-### Optional/Configuration Variables
-- `SERVER_ENVIRONMENT`: Set to 'development', 'staging', or 'production'
-- `ALLOWED_ORIGINS`: CORS allowed origins (comma-separated)
-- `LOG_LEVEL`: Logging level (debug, info, warn, error)
+### Supabase
 
-### Database Configuration (Can use DB_CONNECTION_STRING instead)
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_MODE`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `SUPABASE_JWT_SECRET`
 
-### Redis Configuration (Additional options)
-- `REDIS_PASSWORD`, `REDIS_DB`, `REDIS_USE_TLS`, `REDIS_POOL_SIZE`, `REDIS_MIN_IDLE_CONNS`
+### Others
 
-## Deployment Notes
-
-Always:
-
-1. Use HTTPS in production
-2. Rotate secrets regularly
-3. Monitor database connection pool metrics
-4. Enable Redis persistence
-
-## Fly.io Deployment
-
-This project is configured for deployment on Fly.io, a platform that provides a cost-effective way to host applications.
-
-### Prerequisites
-
-1. Install the Fly CLI: [Installation Guide](https://fly.io/docs/hands-on/install-flyctl/)
-2. Sign up for a Fly.io account
-3. Log in to Fly.io: `flyctl auth login`
-
-### Deployment Steps
-
-1. Set up your secrets:
-   ```bash
-   flyctl secrets set JWT_SECRET_KEY=your_jwt_secret \
-     DB_PASSWORD=your_db_password \
-     REDIS_PASSWORD=your_redis_password \
-     # Add other required secrets here
-   ```
-
-2. Deploy the application:
-   ```bash
-   flyctl deploy
-   ```
-
-3. Check the deployment status:
-   ```bash
-   flyctl status
-   ```
-
-### Database and Redis Setup
-
-This project uses:
-- **Database**: Neon.tech PostgreSQL (free tier)
-- **Redis Cache**: Upstash Redis (free tier)
-
-Make sure to set up these services and update the connection details in your Fly.io secrets.
-
-### GitHub Actions Integration
-
-The repository includes a GitHub Actions workflow for automatic deployment to Fly.io. To use it:
-
-1. Add your `FLY_API_TOKEN` to your GitHub repository secrets
-2. Add all other required environment variables to your GitHub repository secrets
-3. Push to the main branch or manually trigger the workflow
+- `GEOAPIFY_KEY`, `PEXELS_API_KEY`, `RESEND_API_KEY`
+- `SERVER_ENVIRONMENT`, `LOG_LEVEL`, `ALLOWED_ORIGINS`
 
 ---
-Generated using GPT-4
-## Workflow Consolidation
 
-The GitHub Actions workflows have been consolidated to eliminate redundancy:
+## Deployment
 
-1. **deploy.yml** - This is the consolidated workflow that handles all AWS infrastructure deployment using Terraform. It combines the best features of the previous `deploy.yml` and `terraform-deploy.yml` workflows.
+The app is designed for cloud-native deployment with Docker and GitHub Actions.
 
-2. **main.yml** - This workflow handles CI/CD for the Go backend, including testing, security scanning, and building/pushing Docker images to GitHub Container Registry.
+### Targets
 
-3. **golang-cilint.yml** - This workflow runs Go linting checks.
+- ✅ **Primary**: Google Cloud Run
+- 🛑 **Backup**: Fly.io (manual fallback)
 
-The redundant `terraform-deploy.yml` workflow has been removed.
+### CI/CD Workflows
+
+- `deploy-cloud-run.yml`, `pr-preview-cloud-run.yml` – deploy on merge or PR
+- `main.yml` – runs tests, security checks, builds/pushes Docker image
+- `golang-cilint.yml` – linting workflow
+
+### Notes
+
+- Always use HTTPS in production.
+- Use secret managers (e.g., GCP Secret Manager) to avoid hardcoding secrets.
+
+---
+
+## Contribution Guidelines
+
+- Follow [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow).
+- Branch naming:
+  `feature/<name>` for features, `bugfix/<name>` for fixes
+- Ensure all new logic follows `models/*/service/` structure
+- Add tests and docs for new endpoints or behaviors
+
+---
+
+## Project Resources
+
+- **Frontend**: [Nomad Crew Frontend](https://github.com/NomadCrew/nomad-crew-frontend)
+- **Architecture Diagram**: Coming soon
+- **Schema Diagrams**: Coming soon
+- **API Docs**: Coming soon (Swagger)
+
+---
+
+## Contact
+
+- **Maintainers**: \[Add yourself here]
+- **Community**: [Join Slack](https://join.slack.com/t/slack-les9847/shared_invite/zt-2a0dqjzvk-YLC9TQFBExNnPFsH9yAB6g)
+
+---
+
+**Nomad Crew** is built to make group travel less chaotic and more memorable. If you'd like to contribute or have suggestions, we'd love to hear from you.

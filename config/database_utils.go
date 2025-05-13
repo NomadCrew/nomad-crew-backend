@@ -1,3 +1,5 @@
+// Package config handles loading and validation of application configuration
+// from environment variables and potentially configuration files.
 package config
 
 import (
@@ -13,7 +15,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// ConfigureNeonPostgresPool configures a pgxpool.Config for Neon PostgreSQL
+// ConfigureNeonPostgresPool creates and configures a pgxpool.Config suitable for connecting
+// to a Neon PostgreSQL database using the provided DatabaseConfig.
+// It sets up the connection string, configures TLS (required for Neon), and sets
+// connection pool parameters, logging non-sensitive details.
 func ConfigureNeonPostgresPool(cfg *DatabaseConfig) (*pgxpool.Config, error) {
 	log := logger.GetLogger()
 
@@ -64,7 +69,10 @@ func ConfigureNeonPostgresPool(cfg *DatabaseConfig) (*pgxpool.Config, error) {
 	return poolConfig, nil
 }
 
-// ConfigureUpstashRedisOptions configures redis.Options for Upstash Redis
+// ConfigureUpstashRedisOptions creates and configures a redis.Options suitable for connecting
+// to an Upstash Redis instance using the provided RedisConfig.
+// It sets up connection details, pool parameters, timeouts, retry logic, and enables
+// TLS (required for Upstash), logging non-sensitive details.
 func ConfigureUpstashRedisOptions(cfg *RedisConfig) *redis.Options {
 	log := logger.GetLogger()
 
@@ -106,7 +114,9 @@ func ConfigureUpstashRedisOptions(cfg *RedisConfig) *redis.Options {
 	return redisOptions
 }
 
-// TestRedisConnection tests the Redis connection with retries
+// TestRedisConnection attempts to ping the Redis server using the provided client.
+// It retries the connection up to a maximum number of times with a delay between attempts.
+// Returns nil if the connection is successful, otherwise returns an error.
 func TestRedisConnection(client *redis.Client) error {
 	log := logger.GetLogger()
 	maxRetries := 5
@@ -136,5 +146,7 @@ func TestRedisConnection(client *redis.Client) error {
 		return fmt.Errorf("failed to ping Redis after %d attempts: %w", maxRetries, err)
 	}
 
+	// This return should theoretically not be reached due to the loop structure,
+	// but included for completeness.
 	return nil
 }

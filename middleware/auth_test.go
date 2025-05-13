@@ -81,21 +81,21 @@ func TestAuthMiddleware(t *testing.T) {
 			tokenHeader:    "",
 			mockSetup:      func() {}, // No validation call expected
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"Authorization header is missing"}`,
+			expectedBody:   `{"code":401,"message":"AUTHENTICATION_ERROR: Authorization header missing or token not found"}`,
 		},
 		{
 			name:           "Invalid Authorization Header Format - No Bearer",
 			tokenHeader:    "InvalidToken",
 			mockSetup:      func() {}, // No validation call expected
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"Invalid authorization header format"}`,
+			expectedBody:   `{"code":401,"message":"AUTHENTICATION_ERROR: Invalid authorization header format"}`,
 		},
 		{
 			name:           "Invalid Authorization Header Format - Only Bearer",
 			tokenHeader:    "Bearer ",
 			mockSetup:      func() {}, // No validation call expected
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"Invalid authorization header format"}`,
+			expectedBody:   `{"code":401,"message":"AUTHENTICATION_ERROR: Invalid authorization header format"}`,
 		},
 		{
 			name:        "Token Validation Fails",
