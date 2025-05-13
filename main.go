@@ -207,9 +207,9 @@ func main() {
 
 	// Initialize Handlers
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService)
-	todoHandler := handlers.NewTodoHandler(todoModel, eventService)
+	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
-	locationHandler := handlers.NewLocationHandler(locationManagementService)
+	locationHandler := handlers.NewLocationHandler(locationManagementService, log.Desugar())
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
 	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
 

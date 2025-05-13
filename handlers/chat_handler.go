@@ -10,6 +10,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/service"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -78,7 +79,7 @@ func (h *ChatHandler) ListMessages(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("ListMessages: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -169,7 +170,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("SendMessage: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -238,7 +239,7 @@ func (h *ChatHandler) UpdateMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("UpdateMessage: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -306,7 +307,7 @@ func (h *ChatHandler) DeleteMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("DeleteMessage: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -367,7 +368,7 @@ func (h *ChatHandler) AddReaction(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("AddReaction: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -436,7 +437,7 @@ func (h *ChatHandler) RemoveReaction(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("RemoveReaction: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -526,7 +527,7 @@ func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("UpdateLastRead: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -594,7 +595,7 @@ func (h *ChatHandler) ListMembers(c *gin.Context) {
 	log := logger.GetLogger()
 
 	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("ListMembers: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))

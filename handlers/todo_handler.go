@@ -2,23 +2,34 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
+
+// PaginationParams defines pagination parameters
+type PaginationParams struct {
+	Limit  int
+	Offset int
+}
 
 type TodoHandler struct {
 	todoModel    *models.TodoModel
 	eventService types.EventPublisher
+	logger       *zap.Logger
 }
 
-func NewTodoHandler(model *models.TodoModel, eventService types.EventPublisher) *TodoHandler {
+func NewTodoHandler(model *models.TodoModel, eventService types.EventPublisher, logger *zap.Logger) *TodoHandler {
 	return &TodoHandler{
 		todoModel:    model,
 		eventService: eventService,
+		logger:       logger,
 	}
 }
 
@@ -47,7 +58,8 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	// Override the TripID from the request to ensure consistency.
 	req.TripID = tripID
 
-	userID := c.GetString("user_id")
+	// Set the UserID from the authenticated user in the context
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	todo := &types.Todo{
 		TripID:    req.TripID,
@@ -78,7 +90,7 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	if todoID == "" {
 		log.Error("Missing todo ID in URL parameters")
@@ -114,7 +126,7 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-	userID := c.GetString("user_id")
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	if todoID == "" {
 		log.Error("Missing todo ID in URL parameters")
@@ -137,41 +149,48 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	})
 }
 
-// ListTodosHandler
-// Uses trip ID from the parent route.
+// getPaginationParams extracts and validates pagination parameters from the request
+func getPaginationParams(c *gin.Context, defaultLimit, defaultOffset int) PaginationParams {
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(defaultLimit)))
+	if err != nil || limit <= 0 {
+		limit = defaultLimit
+	}
+
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", strconv.Itoa(defaultOffset)))
+	if err != nil || offset < 0 {
+		offset = defaultOffset
+	}
+
+	return PaginationParams{
+		Limit:  limit,
+		Offset: offset,
+	}
+}
+
+// ListTodosHandler retrieves todos for a given trip.
 func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	var params types.ListTodosParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		log.Errorw("Invalid query parameters", "error", err)
-		if err := c.Error(errors.ValidationFailed("Invalid query parameters", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
-		return
-	}
-
-	// Use the model's validation method for list parameters
-	h.todoModel.ValidateAndNormalizeListParams(&params)
 
 	tripID := c.Param("id")
+	userID := c.GetString(string(middleware.UserIDKey))
+
 	if tripID == "" {
-		log.Error("Trip ID missing in URL parameters")
-		if err := c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+		log.Warn("ListTodosHandler: missing trip ID")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
 		return
 	}
 
-	userID := c.GetString("user_id")
-	paginatedTodos, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, params.Limit, params.Offset)
+	// Parse pagination parameters
+	params := getPaginationParams(c, 100, 0)
+
+	todos, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, params.Limit, params.Offset)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to list todos", "error", err)
-		}
+		log.Errorw("ListTodosHandler: error listing todos", "error", err, "tripID", tripID)
+		_ = c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusOK, paginatedTodos)
+	c.JSON(http.StatusOK, todos)
 }
 
 // GetTodoHandler

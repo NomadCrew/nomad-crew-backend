@@ -6,21 +6,25 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	locationService "github.com/NomadCrew/nomad-crew-backend/models/location/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // LocationHandler handles location-related API requests
 type LocationHandler struct {
 	locationService locationService.LocationManagementServiceInterface
+	logger          *zap.Logger
 }
 
 // NewLocationHandler creates a new LocationHandler
-func NewLocationHandler(locService locationService.LocationManagementServiceInterface) *LocationHandler {
+func NewLocationHandler(locService locationService.LocationManagementServiceInterface, logger *zap.Logger) *LocationHandler {
 	return &LocationHandler{
 		locationService: locService,
+		logger:          logger,
 	}
 }
 
@@ -40,34 +44,37 @@ func NewLocationHandler(locService locationService.LocationManagementServiceInte
 // UpdateLocationHandler handles requests to update a user's location
 func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	userID := c.GetString("user_id")
 
+	// Get userID from context
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
-		log.Errorw("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		log.Warn("UpdateLocationHandler: User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID missing from context"})
 		return
 	}
 
+	// Get trip ID from URL
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("UpdateLocationHandler: Trip ID missing from URL parameters")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
+		return
+	}
+
+	// Parse request body
 	var locationUpdate types.LocationUpdate
 	if err := c.ShouldBindJSON(&locationUpdate); err != nil {
-		log.Errorw("Invalid location update request", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+		log.Warnw("UpdateLocationHandler: Invalid request body", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
 
+	// Update location using the existing interface method signature
 	location, err := h.locationService.UpdateLocation(c.Request.Context(), userID, locationUpdate)
 	if err != nil {
-		log.Errorw("Failed to update location", "userID", userID, "error", err)
-		var appErr *apperrors.AppError
-		if errors.As(err, &appErr) {
-			c.JSON(appErr.GetHTTPStatus(), gin.H{"error": appErr.Error()})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
-		}
+		log.Errorw("UpdateLocationHandler: Failed to update location", "error", err)
+		// Handle different error types
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update location: " + err.Error()})
 		return
 	}
 
@@ -91,20 +98,20 @@ func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 // GetTripMemberLocationsHandler handles requests to get locations of all members in a trip
 func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	tripID := c.Param("id")
-	userID := c.GetString("user_id")
 
-	if tripID == "" {
-		log.Errorw("Trip ID not provided")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Trip ID is required",
-		})
+	// Get userID from context
+	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("GetTripMemberLocationsHandler: User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID missing from context"})
 		return
 	}
 
-	if userID == "" {
-		log.Errorw("User ID not found in context for GetTripMemberLocationsHandler")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	// Get trip ID from URL
+	tripID := c.Param("id")
+	if tripID == "" {
+		log.Warn("GetTripMemberLocationsHandler: Trip ID missing from URL parameters")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
 		return
 	}
 

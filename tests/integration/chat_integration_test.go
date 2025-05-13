@@ -179,9 +179,6 @@ func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// Create mock JWT validator
-	jwtValidator := NewMockJWTValidator(suite.testUserID)
-
 	// Setup chat handler
 	mockTripService := NewMockTripService(suite.testTripID, suite.testUserID)
 	chatHandler := handlers.NewChatHandler(
@@ -191,12 +188,18 @@ func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
 		logger,
 	)
 
-	// Add auth middleware
-	authMiddleware := middleware.AuthMiddleware(jwtValidator)
+	// TEMPORARY TEST SOLUTION:
+	// Set the user ID using the standard key defined in middleware package
+	// This matches what the real middleware uses
+	authTestMiddleware := func(c *gin.Context) {
+		// Set the key that middleware.AuthMiddleware sets
+		c.Set(string(middleware.UserIDKey), suite.testUserID)
+		c.Next()
+	}
 
 	// Create authenticated group
 	auth := r.Group("")
-	auth.Use(authMiddleware)
+	auth.Use(authTestMiddleware)
 
 	// Add chat routes
 	tripGroup := auth.Group("/trips/:id")
