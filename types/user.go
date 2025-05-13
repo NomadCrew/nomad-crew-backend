@@ -68,7 +68,7 @@ type User struct {
 	UpdatedAt         time.Time              `json:"updated_at" db:"updated_at"`
 	ProfilePictureURL string                 `json:"profilePictureUrl,omitempty" db:"profile_picture_url"`
 	RawUserMetaData   []byte                 `json:"-" db:"raw_user_meta_data"`
-	LastSeenAt        time.Time              `json:"lastSeenAt,omitempty" db:"last_seen_at"`
+	LastSeenAt        *time.Time             `json:"lastSeenAt,omitempty" db:"last_seen_at"`
 	IsOnline          bool                   `json:"isOnline,omitempty" db:"is_online"`
 	Preferences       map[string]interface{} `json:"preferences,omitempty" db:"-"` // JSON data for user preferences
 }
