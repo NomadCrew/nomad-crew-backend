@@ -220,7 +220,7 @@ func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 		NewStatus:    types.InvitationStatusDeclined,
 	}
 
-	if _, cmdErr := updateCmd.Execute(c.Request.Context()); cmdErr != nil {
+	if _, cmdErr := updateCmd.Execute(c); cmdErr != nil {
 		handleModelError(c, cmdErr)
 		return
 	}
