@@ -105,16 +105,30 @@ Achieve a fully stable and reliable backend with comprehensive test coverage. Re
 - Foreign key constraint errors in chat setup (user and trip creation) are resolved.
 - Nil pointer dereferences in invitation test setup are fixed.
 - JWT secret key configuration for HS256 validation in invitation tests is corrected.
+- **Fixed "Failed to get user ID from context for event publishing" warnings in TestChatIntegrationSuite:**
+    - Standardized user ID context key usage across all handlers.
+    - Updated the following files to consistently use middleware.UserIDKey:
+        - handlers/chat_handler.go
+        - handlers/trip_handler.go
+        - handlers/todo_handler.go
+        - handlers/location_handler.go
+        - handlers/trip_chat_handler.go
+        - tests/integration/chat_integration_test.go
+    - Fixed linter errors in todo_handler.go:
+        - Implemented missing getPaginationParams function
+        - Removed unused userID variable
+    - Updated main.go to fix constructor calls for NewTodoHandler and NewLocationHandler to include zap.Logger parameters.
+    - All tests now pass without warnings about missing user ID in context.
 
 ## 🚧 What's In Progress
-- Investigating and planning to resolve warnings: `Failed to get user ID from context for event publishing` in `TestChatIntegrationSuite`.
+- Creating platform-specific skipping for Docker-dependent tests in remaining integration packages.
 
 ## 📝 What's Left / To Do
-- **High Priority**:
-    - Refactor `TestChatIntegrationSuite` to use an HTTP test server and include JWT authentication in test requests to ensure `UserID` is available in the context for event publishing (as detailed in `activeContext.md -> Next Steps`).
 - **Medium Priority**:
     - Investigate and address Redis PubSub EOF errors during test container shutdowns.
     - Address `SUPABASE_JWT_SECRET not set` warning in `TestNewJWTValidator` (ensure test config is robust).
+    - Update TestMain functions to handle environment detection consistently.
+    - Add documentation on running integration tests in CI environment.
 - **Low Priority / Future**:
     - Implement skipped tests:
         - `TestMigrations` (db/dbutils) - Requires `DB_TEST=true`.
@@ -130,6 +144,7 @@ Achieve a fully stable and reliable backend with comprehensive test coverage. Re
 - `chat_integration_test.go` setup modified to ensure correct `testUserID` propagation and added a small delay for DB commit visibility.
 - `types/invitation.go` changed `TripInvitation.Token` to `sql.NullString` and updated related test helpers.
 - `models/trip/command/invite_member.go` updated to assign token to `sql.NullString` field correctly.
+- **Standardized using `middleware.UserIDKey` across all handlers to ensure consistent user ID retrieval from context.**
 
 ## 📋 What's Left for MVP Release
 - **Finalize Integration Test Fixes**
@@ -205,3 +220,7 @@ Achieve a fully stable and reliable backend with comprehensive test coverage. Re
 - (2025-05-15) Fixed key compilation issues in the codebase including missing methods, wrong types, and interface mismatches
 - (2025-05-15) Fixed critical unit tests in models/tests, internal/handlers, and internal/events packages
 - (2025-05-15) Successfully built the entire project without compilation errors
+- (2025-05-16) Fixed integration tests in TestChatIntegrationSuite and TestDeclineInvitation_Success_InviteeIDKnown
+- (2025-05-16) Resolved database foreign key constraint violations and JWT secret key configuration
+- (2025-05-16) Fixed "Failed to get user ID from context for event publishing" warnings by standardizing middleware.UserIDKey usage
+- (2025-05-16) Successfully passed all tests without UserID context retrieval warnings

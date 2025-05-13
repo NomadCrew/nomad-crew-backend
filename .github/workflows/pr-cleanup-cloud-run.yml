@@ -14,6 +14,8 @@ jobs:
   cleanup:
     name: Cleanup PR Preview
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       SERVICE_NAME: nomadcrew-pr-${{ github.event.pull_request.number }}
