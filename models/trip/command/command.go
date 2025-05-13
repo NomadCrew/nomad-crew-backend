@@ -9,6 +9,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
@@ -55,7 +56,7 @@ func (c *BaseCommand) ValidatePermissions(ctx context.Context, tripID string, re
 		"commandUserID", c.UserID,
 		"tripID", tripID,
 		"requiredRole", requiredRole,
-		"contextUserID", ctx.Value("user_id"))
+		"contextUserID", ctx.Value(middleware.UserIDKey))
 
 	role, err := c.Ctx.Store.GetUserRole(ctx, tripID, c.UserID)
 	if err != nil {

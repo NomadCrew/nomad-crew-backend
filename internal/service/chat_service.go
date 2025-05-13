@@ -10,6 +10,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"go.uber.org/zap"
 )
@@ -129,7 +130,7 @@ func (s *ChatServiceImpl) CreateChatMessage(ctx context.Context, message types.C
 	}
 
 	// Verify the user making the request is part of the trip
-	userID, ok := ctx.Value("user_id").(string)
+	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
 		return "", errors.New("unauthorized: missing user ID in context")
 	}
@@ -892,7 +893,7 @@ func (s *ChatServiceImpl) publishChatEvent(ctx context.Context, tripID, eventTyp
 	}
 
 	// Get user ID from context
-	userID, ok := ctx.Value("user_id").(string)
+	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
 		// Log but don't fail
 		s.log.Warnw("Failed to get user ID from context for event publishing", "eventType", eventType)
