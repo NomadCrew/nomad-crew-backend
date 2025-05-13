@@ -9,6 +9,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/command"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -76,7 +77,7 @@ type DeclineInvitationRequest struct {
 func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("tripId")
-	inviterID := c.GetString("user_id")
+	inviterID := c.GetString(string(middleware.UserIDKey))
 
 	var req InviteMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -119,7 +120,7 @@ func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 // @Security BearerAuth // User must be logged in to accept
 func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	acceptingUserID := c.GetString("user_id")
+	acceptingUserID := c.GetString(string(middleware.UserIDKey))
 
 	var req AcceptInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -191,7 +192,7 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 // @Security BearerAuth // User must be logged in to decline
 func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	userID := c.GetString("user_id") // Actor's UserID from JWT claims
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	var req DeclineInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
