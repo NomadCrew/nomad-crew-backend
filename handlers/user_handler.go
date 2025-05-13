@@ -53,8 +53,8 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} types.UserProfile "User profile"
-// @Failure 401 {object} map[string]string "Unauthorized - No authenticated user"
-// @Failure 500 {object} map[string]string "Internal server error"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - No authenticated user"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /users/me [get]
 // @Security BearerAuth
 // GetCurrentUser returns the currently authenticated user's profile
@@ -109,9 +109,9 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 // @Produce json
 // @Param id path string true "User ID"
 // @Success 200 {object} types.UserProfile "User profile"
-// @Failure 400 {object} map[string]string "Bad request - Invalid user ID format"
-// @Failure 404 {object} map[string]string "Not found - User not found"
-// @Failure 500 {object} map[string]string "Internal server error"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid user ID format"
+// @Failure 404 {object} docs.ErrorResponse "Not found - User not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /users/{id} [get]
 // @Security BearerAuth
 // GetUserByID retrieves a user by ID
@@ -153,9 +153,9 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 // @Produce json
 // @Param offset query int false "Pagination offset (default 0)"
 // @Param limit query int false "Pagination limit (default 20, max 100)"
-// @Success 200 {object} map[string]interface{} "List of users with pagination info"
-// @Failure 400 {object} map[string]string "Bad request - Invalid pagination parameters"
-// @Failure 500 {object} map[string]string "Internal server error"
+// @Success 200 {object} docs.UserListResponse "List of users with pagination info"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid pagination parameters"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /users [get]
 // @Security BearerAuth
 // ListUsers retrieves a paginated list of users
@@ -221,7 +221,22 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// UpdateUser updates a user's profile
+// UpdateUser godoc
+// @Summary Update user profile
+// @Description Updates fields for a specified user. Only admin or the user themselves can perform this action.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID to update"
+// @Param request body docs.UserUpdateRequest true "User fields to update"
+// @Success 200 {object} types.UserProfile "Successfully updated user profile"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid user ID or request body"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this profile"
+// @Failure 404 {object} docs.ErrorResponse "Not found - User not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /users/{id} [put]
+// @Security BearerAuth
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	// Parse the UUID from path parameter
 	idStr := c.Param("id")
@@ -289,7 +304,22 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, profile)
 }
 
-// UpdateUserPreferences updates a user's preferences
+// UpdateUserPreferences godoc
+// @Summary Update user preferences
+// @Description Updates the preferences for a specified user. Only admin or the user themselves can perform this action.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID whose preferences to update"
+// @Param request body docs.UserPreferencesRequest true "User preferences map"
+// @Success 204 "Preferences updated successfully"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid user ID or preferences format"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update these preferences"
+// @Failure 404 {object} docs.ErrorResponse "Not found - User not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /users/{id}/preferences [put]
+// @Security BearerAuth
 func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
 	// Parse the UUID from path parameter
 	idStr := c.Param("id")
@@ -347,7 +377,7 @@ func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Preferences updated successfully"})
 }
 
-// CreateUser creates a new user (admin only)
+// CreateUser creates a new user (Admin only - Route currently disabled)
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	// This would typically be admin-only
 	var userReq struct {
@@ -413,7 +443,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, profile)
 }
 
-// SyncWithSupabase syncs a user with their Supabase profile
+// SyncWithSupabase syncs the current user's local data with Supabase (Route currently disabled)
 func (h *UserHandler) SyncWithSupabase(c *gin.Context) {
 	// Get the user ID from context (set by auth middleware)
 	userID, exists := c.Get("userID")
@@ -482,4 +512,11 @@ func (h *UserHandler) SyncWithSupabase(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, profile)
+}
+
+// DeleteUser deletes a user by ID (Admin only - Route currently disabled)
+func (h *UserHandler) DeleteUser(c *gin.Context) {
+	// This would typically be admin-only and requires an admin check middleware.
+	// Placeholder: Not implemented as route is disabled.
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "DeleteUser endpoint is not active"})
 }

@@ -58,13 +58,13 @@ type TripMemberResponse struct {
 // @Accept json
 // @Produce json
 // @Param tripId path string true "Trip ID"
-// @Param request body AddMemberRequest true "Member details"
-// @Success 201 {object} types.TripMembership "Successfully added member"
-// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input or user already member"
-// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} types.ErrorResponse "Forbidden - User does not have permission to add members"
-// @Failure 404 {object} types.ErrorResponse "Not found - Trip or User not found"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Param request body docs.AddMemberRequest true "Member details"
+// @Success 201 {object} docs.TripMemberResponse "Successfully added member"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input or user already member"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User does not have permission to add members"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip or User not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /trips/{tripId}/members [post]
 // @Security BearerAuth
 func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
@@ -103,13 +103,13 @@ func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
 // @Produce json
 // @Param tripId path string true "Trip ID"
 // @Param userId path string true "User ID of the member to update"
-// @Param request body UpdateMemberRoleRequest true "New role"
-// @Success 200 {object} types.TripMembership "Successfully updated member's role"
-// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input"
-// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} types.ErrorResponse "Forbidden - User does not have permission to update roles"
-// @Failure 404 {object} types.ErrorResponse "Not found - Trip, User, or Membership not found"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Param request body docs.UpdateMemberRoleRequest true "New role"
+// @Success 200 {object} docs.TripMemberResponse "Successfully updated member's role"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User does not have permission to update roles"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip, User, or Membership not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /trips/{tripId}/members/{userId}/role [put]
 // @Security BearerAuth
 func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
@@ -149,10 +149,10 @@ func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 // @Param tripId path string true "Trip ID"
 // @Param userId path string true "User ID of the member to remove"
 // @Success 204 "Successfully removed member"
-// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} types.ErrorResponse "Forbidden - User does not have permission to remove members"
-// @Failure 404 {object} types.ErrorResponse "Not found - Trip or User not found"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User does not have permission to remove members"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip or User not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /trips/{tripId}/members/{userId} [delete]
 // @Security BearerAuth
 func (h *MemberHandler) RemoveMemberHandler(c *gin.Context) {
@@ -175,11 +175,11 @@ func (h *MemberHandler) RemoveMemberHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param tripId path string true "Trip ID"
-// @Success 200 {array} TripMemberResponse "List of trip members with profile information"
-// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
-// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Success 200 {array} docs.TripMemberDetailResponse "List of trip members with profile information"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /trips/{tripId}/members [get]
 // @Security BearerAuth
 func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {

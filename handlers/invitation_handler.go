@@ -237,7 +237,6 @@ func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param token query string true "Invitation token"
-// @Success 200 {object} types.InvitationDetailsResponse "Invitation details if token is valid (e.g., for app to handle)"
 // @Failure 302 "Redirects to frontend with token or error"
 // @Failure 400 {object} types.ErrorResponse "Bad request - Invalid or expired token"
 // @Failure 404 {object} types.ErrorResponse "Not found - Invitation not found"

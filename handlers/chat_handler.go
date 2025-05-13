@@ -243,7 +243,23 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	c.JSON(http.StatusCreated, message)
 }
 
-// UpdateMessage handles the HTTP PUT request to update a message in a trip's chat.
+// UpdateMessage godoc
+// @Summary Update chat message
+// @Description Updates the content of an existing message in a trip's chat. User must be the author.
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Param messageId path string true "Message ID to update"
+// @Param request body docs.ChatMessageUpdateRequest true "New message content"
+// @Success 200 {object} types.ChatMessage "Updated message details"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input or message ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip or not the message author"
+// @Failure 404 {object} types.ErrorResponse "Not found - Message not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/messages/{messageId} [put]
+// @Security BearerAuth
 func (h *ChatHandler) UpdateMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -307,7 +323,7 @@ func (h *ChatHandler) UpdateMessage(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param messageId path string true "Message ID"
-// @Success 200 {object} map[string]string "Success response with message"
+// @Success 200 {object} docs.StatusResponse "Success response with message"
 // @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or message ID"
 // @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
@@ -371,7 +387,7 @@ func (h *ChatHandler) DeleteMessage(c *gin.Context) {
 // @Param id path string true "Trip ID"
 // @Param messageId path string true "Message ID"
 // @Param request body types.ChatMessageReactionRequest true "Reaction details"
-// @Success 200 {object} map[string]string "Success response with message"
+// @Success 200 {object} docs.StatusResponse "Success response with message"
 // @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID, message ID, or reaction"
 // @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
@@ -443,7 +459,7 @@ func (h *ChatHandler) AddReaction(c *gin.Context) {
 // @Param id path string true "Trip ID"
 // @Param messageId path string true "Message ID"
 // @Param reactionType path string true "Reaction type"
-// @Success 200 {object} map[string]string "Success response with message"
+// @Success 200 {object} docs.StatusResponse "Success response with message"
 // @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID, message ID, or reaction type"
 // @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
@@ -506,44 +522,42 @@ func (h *ChatHandler) RemoveReaction(c *gin.Context) {
 }
 
 // ListReactions godoc
-// @Summary List message reactions
-// @Description Lists all reactions for a message in a trip's chat (currently not implemented)
+// @Summary List reactions for a message
+// @Description Retrieves all reactions for a specific message in a trip's chat.
 // @Tags chat
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param messageId path string true "Message ID"
-// @Success 200 {object} map[string][]string "List of reactions by type"
-// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or message ID"
-// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
-// @Failure 501 {object} map[string]string "Not implemented"
+// @Success 200 {array} docs.ChatMessageReactionResponse "List of reactions for the message"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or message ID"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 404 {object} docs.ErrorResponse "Not found - Message not found"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 501 {object} docs.ErrorResponse "Not implemented - This feature is not yet available"
 // @Router /trips/{id}/chat/messages/{messageId}/reactions [get]
 // @Security BearerAuth
-// ListReactions handles the HTTP GET request to list all reactions for a message.
-// NOTE: This functionality is not directly supported by the current ChatService interface
-// and should be implemented in the future.
 func (h *ChatHandler) ListReactions(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, gin.H{"error": "Listing reactions is not implemented"})
 }
 
 // UpdateLastRead godoc
 // @Summary Update last read message
-// @Description Updates the user's last read message for a trip's chat
+// @Description Updates the last read message timestamp for the current user in the trip's chat.
 // @Tags chat
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Param request body types.ChatLastReadRequest true "Last read details"
-// @Success 200 {object} map[string]string "Success response with message"
-// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or missing last read message ID"
+// @Param request body docs.ChatLastReadRequest true "Last read message ID"
+// @Success 204 "Successfully updated last read timestamp"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input"
 // @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Message or chat group not found"
 // @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/chat/last-read [put]
 // @Security BearerAuth
-// UpdateLastRead handles the HTTP PUT request to update the user's last read message.
 func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -611,10 +625,23 @@ func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Last read message updated successfully"})
+	c.JSON(http.StatusNoContent, nil)
 }
 
-// ListMembers handles the HTTP GET request to list all members of a trip's chat.
+// ListMembers godoc
+// @Summary List chat members
+// @Description Retrieves a list of members in the trip's primary chat group.
+// @Tags chat
+// @Accept json
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Success 200 {array} types.UserResponse "List of chat members"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Chat group not found for the trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/chat/members [get]
+// @Security BearerAuth
 func (h *ChatHandler) ListMembers(c *gin.Context) {
 	log := logger.GetLogger()
 

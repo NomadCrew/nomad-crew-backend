@@ -37,8 +37,8 @@ func NewLocationHandler(locService locationService.LocationManagementServiceInte
 // @Param request body types.LocationUpdate true "Location update data"
 // @Success 200 {object} types.Location "Updated location"
 // @Failure 400 {object} types.ErrorResponse "Bad request - Invalid location data"
-// @Failure 401 {object} map[string]string "Unauthorized - User not logged in"
-// @Failure 500 {object} map[string]string "Internal server error"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /locations [put]
 // @Security BearerAuth
 // UpdateLocationHandler handles requests to update a user's location
@@ -88,11 +88,11 @@ func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Success 200 {array} types.MemberLocation "List of member locations"
-// @Failure 400 {object} map[string]string "Bad request - Invalid or missing trip ID"
-// @Failure 401 {object} map[string]string "Unauthorized - User not logged in"
-// @Failure 403 {object} map[string]string "Forbidden - User is not a member of this trip"
-// @Failure 500 {object} map[string]string "Internal server error"
+// @Success 200 {object} docs.MemberLocationListResponse "List of member locations"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid or missing trip ID"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User is not a member of this trip"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /trips/{id}/locations [get]
 // @Security BearerAuth
 // GetTripMemberLocationsHandler handles requests to get locations of all members in a trip

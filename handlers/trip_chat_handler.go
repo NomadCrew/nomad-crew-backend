@@ -370,7 +370,7 @@ type ChatLastReadRequest types.ChatLastReadRequest
 // @Produce json
 // @Param tripId path string true "Trip ID"
 // @Param request body ChatLastReadRequest true "Last read message ID"
-// @Success 200 {object} gin.H "Successfully updated last read timestamp"
+// @Success 200 {object} docs.StatusResponse "Successfully updated last read timestamp"
 // @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input"
 // @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 403 {object} types.ErrorResponse "Forbidden - User not a member of this trip"
