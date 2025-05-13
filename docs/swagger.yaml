@@ -967,7 +967,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
       security:
-      - BearerAuth // User must be logged in to accept: []
+      - BearerAuth: [] # User must be logged in to accept
       summary: Accept a trip invitation
       tags:
       - trips-invitations
@@ -1005,7 +1005,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
       security:
-      - BearerAuth // User must be logged in to decline: []
+      - BearerAuth: [] # Optional: User must be logged in to accept
       summary: Decline a trip invitation
       tags:
       - trips-invitations
@@ -2476,59 +2476,6 @@ paths:
       tags:
       - websocket
       - chat
-  /trips/{tripId}/chat/messages:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves a paginated list of chat messages for a specific trip.
-      parameters:
-      - description: Trip ID
-        in: path
-        name: tripId
-        required: true
-        type: string
-      - description: Timestamp to fetch messages before (ISO 8601)
-        in: query
-        name: before
-        type: string
-      - description: Number of messages to fetch (default 50)
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of chat messages
-          schema:
-            items:
-              $ref: '#/definitions/types.ChatMessage'
-            type: array
-        "400":
-          description: Bad request - Invalid parameters
-          schema:
-            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
-        "401":
-          description: Unauthorized - User not logged in
-          schema:
-            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
-        "403":
-          description: Forbidden - User not a member of this trip
-          schema:
-            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
-        "404":
-          description: Not found - Trip not found
-          schema:
-            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List messages for a trip
-      tags:
-      - trips-chat
   /trips/{tripId}/chat/read:
     post:
       consumes:
