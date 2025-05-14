@@ -174,4 +174,10 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-cursor-memory-bank*/*
+cursor-memory-bank/
+memory-bank/
+.42c/
+.cursor/
+.vscode/
+.cursorrules
+Makefile
