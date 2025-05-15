@@ -338,8 +338,6 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 	// Mock event publisher
 	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 
-	// Expect weather service StartWeatherUpdates to be called with lat/lon
-	suite.mockWeatherSvc.On("StartWeatherUpdates", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Once()
 	// Expect weather service TriggerImmediateUpdate to be called because status is Active
 	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Return(nil).Once()
 

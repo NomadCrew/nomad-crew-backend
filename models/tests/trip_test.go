@@ -14,6 +14,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -244,15 +245,16 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 
 	t.Run("successful update", func(t *testing.T) {
 		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(update types.TripUpdate) bool {
-			return *update.Name == "Updated Trip" &&
-				*update.Description == "Updated Description" &&
-				update.DestinationAddress != nil &&
-				update.DestinationLatitude != nil &&
-				update.DestinationLongitude != nil &&
-				*update.DestinationAddress == "Updated Destination Address" &&
-				*update.DestinationLatitude == 12.0 &&
-				*update.DestinationLongitude == 22.0
+		mockStore.On("GetUserRole", ctx, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
+		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(u types.TripUpdate) bool {
+			return *u.Name == "Updated Trip" &&
+				*u.Description == "Updated Description" &&
+				u.DestinationAddress != nil &&
+				u.DestinationLatitude != nil &&
+				u.DestinationLongitude != nil &&
+				*u.DestinationAddress == "Updated Destination Address" &&
+				*u.DestinationLatitude == 12.0 &&
+				*u.DestinationLongitude == 22.0
 		})).Return(&types.Trip{
 			ID:                   testTripID,
 			Name:                 "Updated Trip",
@@ -266,7 +268,8 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 			return event.Type == types.EventTypeTripUpdated
 		})).Return(nil).Once()
 
-		err := tripModel.UpdateTrip(ctx, testTripID, update) // No userID here as per interface
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		err := tripModel.UpdateTrip(ctxWithUser, testTripID, update)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
 		mockEventPublisher.AssertExpectations(t)
@@ -274,10 +277,11 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		nonExistentID := "non-existent-id"
-		mockStore.On("GetTrip", ctx, nonExistentID).Return(nil, &errors.AppError{
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		mockStore.On("GetTrip", ctxWithUser, nonExistentID).Return(nil, &errors.AppError{
 			Type: errors.TripNotFoundError,
 		}).Once()
-		err := tripModel.UpdateTrip(ctx, nonExistentID, update) // No userID here
+		err := tripModel.UpdateTrip(ctxWithUser, nonExistentID, update)
 		assert.Error(t, err)
 		appErr, ok := err.(*errors.AppError)
 		assert.True(t, ok)
@@ -286,29 +290,63 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 	})
 
 	t.Run("validation error - invalid dates", func(t *testing.T) {
-		invalidUpdate := types.TripUpdate{
-			Name:                 stringPtr(""),   // Prevent nil pointer dereference in matcher if store is called
-			Description:          stringPtr(""),   // Prevent nil pointer dereference
-			DestinationAddress:   stringPtr(""),   // Prevent nil pointer dereference
-			DestinationPlaceID:   stringPtr(""),   // Prevent nil pointer dereference
-			DestinationLatitude:  float64Ptr(0.0), // Prevent nil pointer dereference
-			DestinationLongitude: float64Ptr(0.0), // Prevent nil pointer dereference
-			StartDate:            timePtr(time.Now().Add(48 * time.Hour)),
-			EndDate:              timePtr(time.Now().Add(24 * time.Hour)), // Invalid: EndDate before StartDate
+		invalidUpdate := &types.TripUpdate{
+			StartDate: timePtr(time.Now().AddDate(0, 0, 2)), // Future
+			EndDate:   timePtr(time.Now().AddDate(0, 0, 1)), // Past (before start)
 		}
-		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
-		// UpdateTrip in the model should perform validation before calling store.UpdateTrip for this specific case.
-		// So, store.UpdateTrip might not be called if model validation catches it first.
-		// However, if the model relies on the store for this validation, the mock would be on store.UpdateTrip.
-		// For this test, assume model validation catches it.
-		err := tripModel.UpdateTrip(ctx, testTripID, &invalidUpdate)
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Once()
+		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
+
+		err := tripModel.UpdateTrip(ctxWithUser, testTripID, invalidUpdate)
 		assert.Error(t, err)
 		apErr, ok := err.(*errors.AppError)
 		assert.True(t, ok)
 		assert.Equal(t, errors.ValidationError, apErr.Type)
-		// We only expect GetTrip to be called.
-		mockStore.AssertCalled(t, "GetTrip", ctx, testTripID)
+		mockStore.AssertCalled(t, "GetTrip", ctxWithUser, testTripID)
+		mockStore.AssertCalled(t, "GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy)
 		mockStore.AssertNotCalled(t, "UpdateTrip")
+	})
+
+	t.Run("store error on GetTrip", func(t *testing.T) {
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(nil, errors.NewDatabaseError(assert.AnError)).Once()
+		err := tripModel.UpdateTrip(ctxWithUser, testTripID, update)
+		assert.Error(t, err)
+		apErr, ok := err.(*errors.AppError)
+		assert.True(t, ok)
+		assert.Equal(t, errors.DatabaseError, apErr.Type)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("store error on UpdateTrip", func(t *testing.T) {
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Once()
+		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
+		mockStore.On("UpdateTrip", ctxWithUser, testTripID, mock.MatchedBy(func(u types.TripUpdate) bool {
+			return true
+		})).Return(nil, errors.NewDatabaseError(assert.AnError)).Once()
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Maybe()
+
+		err := tripModel.UpdateTrip(ctxWithUser, testTripID, update)
+		assert.Error(t, err)
+		apErr, ok := err.(*errors.AppError)
+		assert.True(t, ok)
+		assert.Equal(t, errors.DatabaseError, apErr.Type)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("permission denied", func(t *testing.T) {
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Maybe()
+		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleMember, nil).Once()
+
+		err := tripModel.UpdateTrip(ctxWithUser, testTripID, update)
+		assert.Error(t, err)
+		apErr, ok := err.(*errors.AppError)
+		assert.True(t, ok)
+		assert.Equal(t, errors.AuthorizationError, apErr.Type)
+		mockStore.AssertExpectations(t)
 	})
 }
 
