@@ -340,6 +340,8 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 
 	// Expect weather service StartWeatherUpdates to be called with lat/lon
 	suite.mockWeatherSvc.On("StartWeatherUpdates", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Once()
+	// Expect weather service TriggerImmediateUpdate to be called because status is Active
+	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Return(nil).Once()
 
 	createdTrip, err := suite.service.CreateTrip(suite.ctx, tripToCreate)
 
@@ -606,7 +608,7 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Skipped() {
 	// Arrange
 	// Trip exists but doesn't meet criteria (e.g., no dates)
 	trip := createMockTrip(suite.testTripID, uuid.NewString())
-	trip.StartDate = time.Time{} // Zero date
+	trip.Status = types.TripStatusCompleted // This status should make shouldUpdateWeather return false
 	// Add coordinates to make destination valid initially - Use correct anonymous struct
 	trip.DestinationLatitude = 1
 	trip.DestinationLongitude = 1
@@ -731,6 +733,8 @@ func (suite *TripServiceTestSuite) TestUpdateTrip_Success() {
 func (suite *TripServiceTestSuite) TestUpdateTrip_NotFound() {
 	// Arrange
 	notFoundErr := apperrors.NotFound("Trip", suite.testTripID)
+	// Expect GetUserRole to be called and succeed, before GetTrip is called and fails.
+	suite.mockStore.On("GetUserRole", suite.ctx, suite.testTripID, suite.testUserID).Return(types.MemberRoleOwner, nil).Once()
 	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(nil, notFoundErr).Once()
 
 	// Act
@@ -743,6 +747,6 @@ func (suite *TripServiceTestSuite) TestUpdateTrip_NotFound() {
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), apperrors.NotFoundError, appErr.Type)
 	suite.mockStore.AssertExpectations(suite.T())
-	// Ensure GetUserRole is not called if GetTrip fails
-	suite.mockStore.AssertNotCalled(suite.T(), "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
+	// GetUserRole is expected to be called, so remove AssertNotCalled for it.
+	// suite.mockStore.AssertNotCalled(suite.T(), "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
 }

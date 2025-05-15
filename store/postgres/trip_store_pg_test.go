@@ -411,6 +411,11 @@ func TestPgTripStore_Integration(t *testing.T) {
 
 		memberUUID := authIDtoUUID("auth0|member123")
 
+		// Insert the member user into the users table first
+		_, err = pool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			memberUUID, "member@example.com", "Test Member")
+		require.NoError(t, err, "Failed to insert test member user")
+
 		// Add member
 		membership := &types.TripMembership{
 			TripID: tripID,

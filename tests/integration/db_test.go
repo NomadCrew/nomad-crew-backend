@@ -110,6 +110,11 @@ func TestTripStore_Integration(t *testing.T) {
 	tripStore := postgres.NewPgTripStore(dbClient.GetPool())
 	testUserUUID := authIDtoUUID(testAuthID)
 
+	// Insert the main test user for this test suite
+	_, err := dbClient.GetPool().Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+		testUserUUID, "integration-testuser@example.com", "Integration Test User")
+	require.NoError(t, err, "Failed to insert main test user for TestTripStore_Integration")
+
 	// Setup cleanup to run at the end
 	defer func() {
 		t.Run("Cleanup", func(t *testing.T) {
@@ -129,11 +134,11 @@ func TestTripStore_Integration(t *testing.T) {
 
 			tables := []string{
 				"trip_memberships",
-				"metadata",
 				"locations",
 				"expenses",
 				"trips",
 				"categories",
+				"users",
 			}
 			for _, table := range tables {
 				_, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))
@@ -225,8 +230,8 @@ func TestTripStore_Integration(t *testing.T) {
 				Description:          "Test Description",
 				DestinationAddress:   ptr(fmt.Sprintf("Test Location Address List %d", i)),
 				DestinationPlaceID:   ptr(fmt.Sprintf("list-place-id-%d", i)),
-				DestinationLatitude:   11.0 + float64(i),
-				DestinationLongitude:  21.0 + float64(i),
+				DestinationLatitude:  11.0 + float64(i),
+				DestinationLongitude: 21.0 + float64(i),
 				StartDate:            time.Now().Add(24 * time.Hour),
 				EndDate:              time.Now().Add(48 * time.Hour),
 				CreatedBy:            &testUserUUID,
@@ -252,8 +257,8 @@ func TestTripStore_Integration(t *testing.T) {
 			Description:          "Testing status transitions",
 			DestinationAddress:   ptr("Status Test Location"),
 			DestinationPlaceID:   ptr("status-place-id"),
-			DestinationLatitude:   12.0,
-			DestinationLongitude:  22.0,
+			DestinationLatitude:  12.0,
+			DestinationLongitude: 22.0,
 			StartDate:            time.Now().Add(24 * time.Hour),
 			EndDate:              time.Now().Add(48 * time.Hour),
 			CreatedBy:            &testUserUUID,
@@ -282,8 +287,8 @@ func TestTripStore_Integration(t *testing.T) {
 			Description:          "This trip will be deleted",
 			DestinationAddress:   ptr("Deletion Test Address 1"),
 			DestinationPlaceID:   ptr("delete-place-id-1"),
-			DestinationLatitude:   13.0,
-			DestinationLongitude:  23.0,
+			DestinationLatitude:  13.0,
+			DestinationLongitude: 23.0,
 			StartDate:            time.Now().Add(24 * time.Hour),
 			EndDate:              time.Now().Add(48 * time.Hour),
 			CreatedBy:            &testUserUUID,
@@ -295,8 +300,8 @@ func TestTripStore_Integration(t *testing.T) {
 			Description:          "This trip will remain",
 			DestinationAddress:   ptr("Deletion Test Address 2"),
 			DestinationPlaceID:   ptr("delete-place-id-2"),
-			DestinationLatitude:   14.0,
-			DestinationLongitude:  24.0,
+			DestinationLatitude:  14.0,
+			DestinationLongitude: 24.0,
 			StartDate:            time.Now().Add(24 * time.Hour),
 			EndDate:              time.Now().Add(48 * time.Hour),
 			CreatedBy:            &testUserUUID,
@@ -332,8 +337,8 @@ func TestTripStore_Integration(t *testing.T) {
 				Description:          "Summer vacation in Paris",
 				DestinationAddress:   ptr("Paris"),
 				DestinationPlaceID:   ptr("paris-summer-place-id"),
-				DestinationLatitude:   48.8566,
-				DestinationLongitude:  2.3522,
+				DestinationLatitude:  48.8566,
+				DestinationLongitude: 2.3522,
 				StartDate:            time.Now().Add(30 * 24 * time.Hour),
 				EndDate:              time.Now().Add(37 * 24 * time.Hour),
 				CreatedBy:            &testUserUUID,
@@ -344,8 +349,8 @@ func TestTripStore_Integration(t *testing.T) {
 				Description:          "Business meeting in London",
 				DestinationAddress:   ptr("London"),
 				DestinationPlaceID:   ptr("london-business-place-id"),
-				DestinationLatitude:   51.5074,
-				DestinationLongitude:  0.1278,
+				DestinationLatitude:  51.5074,
+				DestinationLongitude: 0.1278,
 				StartDate:            time.Now().Add(60 * 24 * time.Hour),
 				EndDate:              time.Now().Add(63 * 24 * time.Hour),
 				CreatedBy:            &testUserUUID,
@@ -356,8 +361,8 @@ func TestTripStore_Integration(t *testing.T) {
 				Description:          "Winter in Paris",
 				DestinationAddress:   ptr("Paris"),
 				DestinationPlaceID:   ptr("paris-winter-place-id"),
-				DestinationLatitude:   48.8566,
-				DestinationLongitude:  2.3522,
+				DestinationLatitude:  48.8566,
+				DestinationLongitude: 2.3522,
 				StartDate:            time.Now().Add(180 * 24 * time.Hour),
 				EndDate:              time.Now().Add(187 * 24 * time.Hour),
 				CreatedBy:            &testUserUUID,

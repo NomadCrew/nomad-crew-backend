@@ -189,6 +189,21 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 	if updateData.EndDate != nil {
 		existingTrip.EndDate = *updateData.EndDate
 	}
+
+	// Validate dates if both are being updated or one is updated to conflict with existing
+	currentStartDate := existingTrip.StartDate
+	currentEndDate := existingTrip.EndDate
+	if updateData.StartDate != nil {
+		currentStartDate = *updateData.StartDate
+	}
+	if updateData.EndDate != nil {
+		currentEndDate = *updateData.EndDate
+	}
+
+	if !currentStartDate.IsZero() && !currentEndDate.IsZero() && currentEndDate.Before(currentStartDate) {
+		return nil, apperrors.ValidationFailed("invalid_dates", "trip end date cannot be before start date")
+	}
+
 	if updateData.Status != nil { // Check if pointer is not nil
 		// Further validation for status transition should happen here or before if complex
 		existingTrip.Status = *updateData.Status // Dereference pointer for assignment
