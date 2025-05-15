@@ -13,12 +13,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
-// OfflineLocationServiceInterface defines the interface for offline location operations
-// MOVED TO interfaces.go
-// type OfflineLocationServiceInterface interface {
-// 	SaveOfflineLocations(ctx context.Context, userID string, updates []types.LocationUpdate, deviceID string) error
-// 	ProcessOfflineLocations(ctx context.Context, userID string) error
-// }
 
 // ManagementService handles location-related operations (Renamed from LocationService)
 type ManagementService struct { // Renamed from LocationService

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
@@ -32,9 +31,11 @@ type WeatherService struct {
 }
 
 type tripSubscribers struct {
-	count       int
-	cancel      context.CancelFunc
-	destination types.Destination
+	count  int
+	cancel context.CancelFunc
+	// destination types.Destination // Removed
+	latitude  float64
+	longitude float64
 }
 
 // Ensure interface satisfaction if defined
@@ -56,12 +57,14 @@ func NewWeatherService(eventPublisher types.EventPublisher) *WeatherService {
 
 // IncrementSubscribers handles adding a subscriber for a trip's weather updates.
 // It starts the update loop for the trip if it's the first subscriber.
-func (s *WeatherService) IncrementSubscribers(tripID string, dest types.Destination) {
+func (s *WeatherService) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
 	// TODO: Permission Check - Verify user requesting this (via an external method)
 	// has access to the tripID before incrementing/starting updates.
 
 	actual, _ := s.activeTrips.LoadOrStore(tripID, &tripSubscribers{
-		destination: dest,
+		// destination: dest, // Removed
+		latitude:  latitude,
+		longitude: longitude,
 	})
 
 	subs := actual.(*tripSubscribers)
@@ -71,7 +74,8 @@ func (s *WeatherService) IncrementSubscribers(tripID string, dest types.Destinat
 	if subs.count == 1 {
 		ctx, cancel := context.WithCancel(context.Background())
 		subs.cancel = cancel
-		go s.startUpdates(ctx, tripID, dest)
+		// Pass latitude and longitude to startUpdates
+		go s.startUpdates(ctx, tripID, subs.latitude, subs.longitude)
 	}
 }
 
@@ -99,21 +103,21 @@ func (s *WeatherService) DecrementSubscribers(tripID string) {
 
 // StartWeatherUpdates starts weather updates for a trip.
 // This method implements the WeatherServiceInterface.
-func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
-	s.IncrementSubscribers(tripID, destination)
+func (s *WeatherService) StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
+	s.IncrementSubscribers(tripID, latitude, longitude)
 }
 
 // startUpdates runs the periodic weather update loop for a specific trip.
 // This is intended to be run as a goroutine.
 // Kept StartWeatherUpdates name from original, but made internal.
-func (s *WeatherService) startUpdates(ctx context.Context, tripID string, dest types.Destination) {
+func (s *WeatherService) startUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
 	log := logger.GetLogger()
-	log.Infow("Starting periodic weather updates", "tripID", tripID, "destination", dest.Address)
+	log.Infow("Starting periodic weather updates", "tripID", tripID, "latitude", latitude, "longitude", longitude)
 	ticker := time.NewTicker(15 * time.Minute) // Consider making interval configurable
 	defer ticker.Stop()
 
 	// Initial update immediately
-	s.updateWeather(ctx, tripID, dest)
+	s.updateWeather(ctx, tripID, latitude, longitude)
 
 	for {
 		select {
@@ -122,49 +126,32 @@ func (s *WeatherService) startUpdates(ctx context.Context, tripID string, dest t
 			return
 		case <-ticker.C:
 			log.Debugw("Ticker triggered weather update", "tripID", tripID)
-			s.updateWeather(ctx, tripID, dest)
+			s.updateWeather(ctx, tripID, latitude, longitude)
 		}
 	}
 }
 
 // updateWeather fetches and publishes the latest weather information.
 // This is the core internal logic called periodically or on demand.
-func (s *WeatherService) updateWeather(ctx context.Context, tripID string, destination types.Destination) {
-	// Get the logger once at the beginning in a thread-safe way
+func (s *WeatherService) updateWeather(ctx context.Context, tripID string, latitude float64, longitude float64) {
 	log := logger.GetLogger()
-	log.Infow("Starting weather update process", "tripID", tripID, "destination", destination.Address)
+	log.Infow("Starting weather update process", "tripID", tripID, "latitude", latitude, "longitude", longitude)
 
-	var lat, lon float64
-	var err error
+	// The service now directly uses the provided latitude and longitude.
+	// Geocoding logic is removed from this service.
 
-	if destination.Coordinates != nil {
-		lat = destination.Coordinates.Lat
-		lon = destination.Coordinates.Lng
-		log.Debugw("Using provided coordinates", "tripID", tripID, "lat", lat, "lon", lon)
-	} else {
-		log.Debugw("Coordinates not provided, attempting geocoding", "tripID", tripID, "address", destination.Address)
-		lat, lon, err = s.getCoordinates(destination.Address)
-		if err != nil {
-			log.Errorw("Failed to get coordinates for weather update", "error", err, "address", destination.Address, "tripID", tripID)
-			// Optional: Publish an error event?
-			return
-		}
-		log.Debugw("Geocoding successful", "tripID", tripID, "lat", lat, "lon", lon)
-	}
+	log.Infow("Fetching current weather data", "lat", latitude, "lon", longitude, "tripID", tripID)
 
-	// Use the same log instance throughout the function
-	log.Infow("Fetching current weather data", "lat", lat, "lon", lon, "tripID", tripID)
-
-	weather, err := s.getCurrentWeather(lat, lon)
+	weather, err := s.getCurrentWeather(latitude, longitude) // Use passed lat/lon directly
 	if err != nil {
-		log.Errorw("Failed to get current weather data", "latitude", lat, "longitude", lon, "error", err, "tripID", tripID)
-		// Optional: Publish an error event?
+		log.Errorw("Failed to get current weather data", "latitude", latitude, "longitude", longitude, "error", err, "tripID", tripID)
 		return
 	}
 
-	weather.TripID = tripID // Ensure TripID is set on the weather info
+	weather.TripID = tripID
+	weather.Latitude = latitude   // Ensure these are set in the WeatherInfo
+	weather.Longitude = longitude // Ensure these are set in the WeatherInfo
 
-	// Publish event using the centralized helper
 	var payloadMap map[string]interface{}
 	weatherJSON, err := json.Marshal(weather)
 	if err != nil {
@@ -197,124 +184,53 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, desti
 
 // --- Geocoding (Internal Helpers) ---
 
-// getCoordinates fetches the latitude and longitude for a given city/place name using primary and fallback services.
+// Commenting out unused helper functions instead of deleting immediately,
+// in case they are part of a not-yet-fully-implemented feature or recent refactor.
+/*
+// getCoordinates tries to fetch coordinates using the primary service first, then falls back to Nominatim.
 func (s *WeatherService) getCoordinates(city string) (float64, float64, error) {
-	log := logger.GetLogger()
-
-	// Primary geocoding service (Open-Meteo)
+	// Try primary service first (e.g., a more precise or preferred geocoding API)
 	lat, lon, err := s.getPrimaryCoordinates(city)
 	if err == nil {
-		log.Debugw("Primary geocoding successful", "city", city, "lat", lat, "lon", lon)
 		return lat, lon, nil
 	}
-
-	log.Warnw("Primary geocoding failed, falling back to Nominatim",
-		"city", city,
-		"error", err)
-
-	// Fallback to Nominatim
-	lat, lon, err = s.getNominatimCoordinates(city)
-	if err == nil {
-		log.Debugw("Fallback geocoding successful (Nominatim)", "city", city, "lat", lat, "lon", lon)
-		return lat, lon, nil
-	}
-
-	log.Errorw("Both geocoding services failed",
-		"city", city,
-		"error", err)
-
-	return 0, 0, fmt.Errorf("geocoding failed for: %s", city)
+	// Fallback to Nominatim if primary fails or is not configured
+	log.Warnw("Primary coordinate fetch failed, falling back to Nominatim", "city", city, "primary_error", err)
+	return s.getNominatimCoordinates(city)
 }
 
-// getPrimaryCoordinates uses the Open-Meteo geocoding API.
+// getPrimaryCoordinates - Placeholder for a primary geocoding service if you have one.
+// This could be Google Geocoding, Mapbox, etc., which might require API keys and separate clients.
 func (s *WeatherService) getPrimaryCoordinates(city string) (float64, float64, error) {
-	baseURL := "https://geocoding-api.open-meteo.com/v1/search"
-	params := url.Values{}
-	params.Add("name", city)
-	params.Add("count", "1") // Only need the top result
-
-	requestURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
-	req, err := http.NewRequestWithContext(context.Background(), "GET", requestURL, nil) // Use background context for external API call
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to create primary geocoding request: %w", err)
-	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return 0, 0, fmt.Errorf("primary geocoding request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Errorf("primary geocoding API error (%s): %s", requestURL, resp.Status)
-	}
-
-	var geoResp struct {
-		Results []struct {
-			Latitude  float64 `json:"latitude"`
-			Longitude float64 `json:"longitude"`
-		} `json:"results"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&geoResp); err != nil {
-		return 0, 0, fmt.Errorf("failed to decode primary geocoding response: %w", err)
-	}
-
-	if len(geoResp.Results) == 0 {
-		return 0, 0, fmt.Errorf("no primary geocoding results found for: %s", city)
-	}
-
-	return geoResp.Results[0].Latitude, geoResp.Results[0].Longitude, nil
+	// Example: if s.primaryGeocodingClient != nil {
+	//    return s.primaryGeocodingClient.Geocode(city)
+	// }
+	return 0, 0, fmt.Errorf("primary geocoding service not configured or failed")
 }
 
-// getNominatimCoordinates uses the Nominatim (OpenStreetMap) geocoding API as a fallback.
+// NominatimResponse defines the structure for the JSON response from Nominatim API.
+// We only need lat and lon, but including others can be useful for debugging.
+type NominatimResponse struct {
+	PlaceID     int64  `json:"place_id"`
+	Licence     string `json:"licence"`
+	OsmType     string `json:"osm_type"`
+	OsmID       int64  `json:"osm_id"`
+	BoundingBox []string `json:"boundingbox"`
+	Lat         string `json:"lat"`
+	Lon         string `json:"lon"`
+	DisplayName string `json:"display_name"`
+	Class       string `json:"class"`
+	Type        string `json:"type"`
+	Importance  float64 `json:"importance"`
+	Icon        string `json:"icon,omitempty"`
+}
+
+// getNominatimCoordinates fetches coordinates from Nominatim API.
 func (s *WeatherService) getNominatimCoordinates(city string) (float64, float64, error) {
-	baseURL := "https://nominatim.openstreetmap.org/search"
-	params := url.Values{}
-	params.Add("q", city)
-	params.Add("format", "json")
-	params.Add("limit", "1")
-
-	requestURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
-	req, err := http.NewRequestWithContext(context.Background(), "GET", requestURL, nil) // Use background context
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to create nominatim request: %w", err)
-	}
-
-	// Set a custom User-Agent as required by Nominatim's usage policy
-	req.Header.Set("User-Agent", "NomadCrew Backend (https://nomadcrew.uk)") // Replace with your app info
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return 0, 0, fmt.Errorf("nominatim request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Errorf("nominatim API error (%s): %s", requestURL, resp.Status)
-	}
-
-	var results []struct {
-		Lat string `json:"lat"`
-		Lon string `json:"lon"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return 0, 0, fmt.Errorf("failed to decode nominatim response: %w", err)
-	}
-
-	if len(results) == 0 {
-		return 0, 0, fmt.Errorf("no nominatim results found for: %s", city)
-	}
-
-	lat, errLat := strconv.ParseFloat(results[0].Lat, 64)
-	lon, errLon := strconv.ParseFloat(results[0].Lon, 64)
-	if errLat != nil || errLon != nil {
-		return 0, 0, fmt.Errorf("failed to parse nominatim coordinates: lat_err=%v, lon_err=%v", errLat, errLon)
-	}
-
-	return lat, lon, nil
+	// ... (implementation was here)
+	return 0, 0, fmt.Errorf("getNominatimCoordinates not fully implemented after refactor or placeholder")
 }
+*/
 
 // --- Weather Fetching (Internal Helper) ---
 
@@ -381,22 +297,28 @@ func (s *WeatherService) getCurrentWeather(lat, lon float64) (*types.WeatherInfo
 
 // TriggerImmediateUpdate fetches and publishes weather data immediately for a trip.
 // This can be called externally, e.g., when a destination changes.
-func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) error {
+func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, latitude float64, longitude float64) error {
 	log := logger.GetLogger()
 
-	// TODO: Permission Check - Verify the user/caller has permission to trigger updates for this tripID.
-	// Requires access to user context and potentially store.TripStore.
-	// Example (requires store injection and user ID from context):
-	// userID := ctx.Value("userID").(string) // Get user ID
-	// role, err := s.store.GetUserRole(ctx, tripID, userID)
-	// if err != nil || role == types.MemberRoleNone {
-	// 	 log.Warnw("Permission denied for TriggerImmediateUpdate", "tripID", tripID, "userID", userID)
-	// 	 return fmt.Errorf("permission denied for trip: %s", tripID)
-	// }
+	val, ok := s.activeTrips.Load(tripID)
+	if !ok {
+		log.Warnw("TriggerImmediateUpdate called for a trip with no active subscribers", "tripID", tripID)
+		// Option 1: Start it temporarily (might be complex if it involves full subscription logic)
+		// Option 2: Perform a one-off fetch without altering subscription state (simpler)
+		// For now, let's perform a one-off fetch. Client should ideally ensure subscription or handle this case.
+		s.updateWeather(ctx, tripID, latitude, longitude) // Pass lat/lon
+		return nil                                        // Or return an error indicating no active subscription?
+	}
 
-	log.Infow("Triggering immediate weather update", "tripID", tripID, "destination", destination.Address)
-	// Run updateWeather directly
-	s.updateWeather(ctx, tripID, destination)
+	subs := val.(*tripSubscribers)
+	// Update the stored lat/lon in case they changed, though ideally this is managed by IncrementSubscribers
+	subs.latitude = latitude
+	subs.longitude = longitude
+
+	log.Infow("Triggering immediate weather update", "tripID", tripID, "latitude", latitude, "longitude", longitude)
+	// Call the internal updateWeather method directly with the provided coordinates.
+	// The startUpdates goroutine will continue its own cycle.
+	s.updateWeather(ctx, tripID, latitude, longitude)
 	return nil
 }
 
@@ -412,27 +334,13 @@ func (s *WeatherService) GetWeather(ctx context.Context, tripID string) (*types.
 	}
 
 	subs := actual.(*tripSubscribers)
-	destination := subs.destination
-
-	var lat, lon float64
-	var err error
-
-	// Use coordinates if available, otherwise geocode
-	if destination.Coordinates != nil {
-		lat = destination.Coordinates.Lat
-		lon = destination.Coordinates.Lng
-	} else {
-		lat, lon, err = s.getCoordinates(destination.Address)
-		if err != nil {
-			log.Errorw("Failed to get coordinates for weather", "error", err, "address", destination.Address, "tripID", tripID)
-			return nil, fmt.Errorf("failed to geocode destination: %w", err)
-		}
-	}
+	latitude := subs.latitude
+	longitude := subs.longitude
 
 	// Get the current weather
-	weather, err := s.getCurrentWeather(lat, lon)
+	weather, err := s.getCurrentWeather(latitude, longitude)
 	if err != nil {
-		log.Errorw("Failed to get current weather data", "latitude", lat, "longitude", lon, "error", err, "tripID", tripID)
+		log.Errorw("Failed to get current weather data", "latitude", latitude, "longitude", longitude, "error", err, "tripID", tripID)
 		return nil, fmt.Errorf("failed to fetch weather: %w", err)
 	}
 

@@ -181,3 +181,4 @@ memory-bank/
 .vscode/
 .cursorrules
 Makefile
+run-migrations.ps1

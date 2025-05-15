@@ -42,7 +42,7 @@ func (tm *TripModelFacade) CreateTrip(ctx context.Context, trip *types.Trip) err
 
 	// Start weather updates for the trip
 	if tm.weatherSvc != nil {
-		tm.weatherSvc.StartWeatherUpdates(ctx, id, trip.Destination)
+		tm.weatherSvc.StartWeatherUpdates(ctx, id, trip.DestinationLatitude, trip.DestinationLongitude)
 	}
 
 	// Simulate publishing an event
@@ -225,7 +225,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 	}
 
 	update := types.TripUpdate{
-		Status: newStatus,
+		Status: &newStatus,
 	}
 	_, err = tm.store.UpdateTrip(ctx, tripID, update)
 
@@ -249,7 +249,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 
 	// Start weather updates if the trip is now active
 	if err == nil && newStatus == types.TripStatusActive && tm.weatherSvc != nil {
-		tm.weatherSvc.StartWeatherUpdates(ctx, tripID, trip.Destination)
+		tm.weatherSvc.StartWeatherUpdates(ctx, tripID, trip.DestinationLatitude, trip.DestinationLongitude)
 	}
 
 	return err

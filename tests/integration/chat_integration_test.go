@@ -355,7 +355,7 @@ func (suite *ChatIntegrationTestSuite) SetupTest() {
 	// Store the returned actual trip ID
 	actualTripID, err := suite.tripStore.CreateTrip(suite.ctx, types.Trip{
 		Name:        "Chat Integration Test Trip",
-		CreatedBy:   suite.testUserID,
+		CreatedBy:   &suite.testUserID,
 		StartDate:   time.Now(),
 		EndDate:     time.Now().Add(24 * time.Hour),
 		Status:      types.TripStatusPlanning,

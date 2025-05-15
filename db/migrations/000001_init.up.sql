@@ -1,20 +1,24 @@
--- Drop existing tables if they exist
-DROP TABLE IF EXISTS metadata CASCADE;
-DROP TABLE IF EXISTS categories CASCADE;
-DROP TABLE IF EXISTS locations CASCADE;
-DROP TABLE IF EXISTS expenses CASCADE;
-DROP TABLE IF EXISTS trips CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS todos CASCADE;
-DROP TABLE IF EXISTS notifications CASCADE;
-DROP TABLE IF EXISTS chat_groups CASCADE;
-DROP TABLE IF EXISTS chat_group_members CASCADE;
-DROP TABLE IF EXISTS chat_messages CASCADE;
-DROP TABLE IF EXISTS chat_message_reactions CASCADE;
-DROP TABLE IF EXISTS offline_location_updates CASCADE;
-
 -- Enable the uuid-ossp extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create ENUM types
+CREATE TYPE trip_status AS ENUM ('PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED');
+CREATE TYPE membership_role AS ENUM ('OWNER', 'MEMBER', 'ADMIN');
+CREATE TYPE membership_status AS ENUM ('ACTIVE', 'INACTIVE');
+CREATE TYPE todo_status AS ENUM ('COMPLETE', 'INCOMPLETE');
+CREATE TYPE notification_type AS ENUM (
+    'TRIP_INVITATION_RECEIVED',
+    'TRIP_INVITATION_ACCEPTED',
+    'TRIP_INVITATION_DECLINED',
+    'TRIP_UPDATE',
+    'NEW_CHAT_MESSAGE',
+    'EXPENSE_REPORT_SUBMITTED',
+    'TASK_ASSIGNED',
+    'TASK_COMPLETED',
+    'LOCATION_SHARED',
+    'MEMBERSHIP_CHANGE'
+);
+CREATE TYPE invitation_status AS ENUM ('PENDING', 'ACCEPTED', 'DECLINED');
 
 -- Create users table
 CREATE TABLE users (
@@ -35,18 +39,6 @@ CREATE TABLE users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create metadata table for tracking record lifecycle
-CREATE TABLE metadata (
-    id SERIAL PRIMARY KEY,
-    table_name VARCHAR(50) NOT NULL,
-    record_id UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP,
-    deleted_by UUID,
-    UNIQUE (table_name, record_id)
-);
-
 -- Create trips table
 CREATE TABLE trips (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -54,20 +46,24 @@ CREATE TABLE trips (
     description TEXT,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    destination JSONB,
+    destination_place_id TEXT,
     destination_address TEXT,
-    status VARCHAR(50) NOT NULL DEFAULT 'PLANNING' CHECK (status IN ('PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED')),
-    created_by UUID NOT NULL,
+    destination_name TEXT,
+    destination_latitude DOUBLE PRECISION NOT NULL,
+    destination_longitude DOUBLE PRECISION NOT NULL,
+    status trip_status NOT NULL DEFAULT 'PLANNING',
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    background_image_url VARCHAR(512)
+    background_image_url VARCHAR(512),
+    deleted_at TIMESTAMPTZ NULL
 );
 
 -- Create expenses table
 CREATE TABLE expenses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    trip_id UUID NOT NULL REFERENCES trips(id),
-    user_id UUID NOT NULL,
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     amount DECIMAL(10, 2) NOT NULL,
     description TEXT,
     category VARCHAR(50),
@@ -75,24 +71,26 @@ CREATE TABLE expenses (
     receipt VARCHAR(255),
     status VARCHAR(50) DEFAULT 'pending',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ NULL
 );
 
 -- Create locations table
 CREATE TABLE locations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL,
-    latitude DECIMAL(10, 8) NOT NULL,
-    longitude DECIMAL(11, 8) NOT NULL,
-    accuracy DECIMAL(10, 5) NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    accuracy DOUBLE PRECISION NULL,
     "timestamp" TIMESTAMPTZ NOT NULL,
     location_name VARCHAR(255),
     location_type VARCHAR(50),
     notes TEXT,
     status VARCHAR(50) DEFAULT 'planned',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ NULL
 );
 
 -- Create categories table
@@ -107,12 +105,13 @@ CREATE TABLE categories (
 -- Create trip_memberships table
 CREATE TABLE trip_memberships (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    trip_id UUID NOT NULL REFERENCES trips(id),
-    user_id UUID NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER' CHECK (role IN ('OWNER', 'MEMBER')),
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role membership_role NOT NULL DEFAULT 'MEMBER',
+    status membership_status NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ NULL,
     UNIQUE(trip_id, user_id)
 );
 
@@ -120,14 +119,16 @@ CREATE TABLE trip_memberships (
 CREATE TABLE trip_invitations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-    inviter_id UUID NOT NULL,
+    inviter_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    invitee_id UUID REFERENCES users(id) ON DELETE CASCADE,
     invitee_email TEXT NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER' CHECK (role IN ('OWNER', 'MEMBER')),
+    role membership_role NOT NULL DEFAULT 'MEMBER',
     token TEXT,
-    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','ACCEPTED','DECLINED')),
+    status invitation_status NOT NULL DEFAULT 'PENDING',
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ NULL
 );
 
 -- Create todos table
@@ -135,29 +136,18 @@ CREATE TABLE todos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('COMPLETE', 'INCOMPLETE')),
+    status todo_status NOT NULL DEFAULT 'INCOMPLETE',
     created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMP WITH TIME ZONE
 );
 
--- Create trip_todos table
-CREATE TABLE trip_todos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    trip_id UUID NOT NULL REFERENCES trips(id),
-    text VARCHAR(255) NOT NULL,
-    created_by UUID NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'INCOMPLETE' CHECK (status IN ('COMPLETE', 'INCOMPLETE')),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Create notifications table
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
+    type notification_type NOT NULL,
     metadata JSONB NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -169,7 +159,8 @@ CREATE TABLE chat_groups (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
-    created_by UUID NOT NULL REFERENCES users(id),
+    description TEXT,
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -179,8 +170,9 @@ CREATE TABLE chat_groups (
 CREATE TABLE chat_messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     group_id UUID NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     content TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'text',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -208,12 +200,19 @@ CREATE TABLE chat_message_reactions (
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    IF NEW IS DISTINCT FROM OLD THEN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+    END IF;
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
 -- Add triggers
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_trips_updated_at
     BEFORE UPDATE ON trips
     FOR EACH ROW
@@ -234,18 +233,8 @@ CREATE TRIGGER update_categories_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_metadata_updated_at
-    BEFORE UPDATE ON metadata
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_trip_memberships_updated_at
     BEFORE UPDATE ON trip_memberships
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_trip_todos_updated_at
-    BEFORE UPDATE ON trip_todos
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -275,45 +264,50 @@ CREATE TRIGGER update_chat_messages_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Add indexes for better performance
+CREATE INDEX idx_users_email ON users(email);
+
 CREATE INDEX idx_trips_created_by ON trips(created_by);
+CREATE INDEX idx_trips_status ON trips(status);
+CREATE INDEX idx_trips_destination_place_id ON trips(destination_place_id);
+CREATE INDEX idx_trips_destination_coordinates ON trips(destination_latitude, destination_longitude);
+CREATE INDEX idx_trips_deleted_at ON trips(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_expenses_user_id ON expenses(user_id);
 CREATE INDEX idx_expenses_trip_id ON expenses(trip_id);
+CREATE INDEX idx_expenses_deleted_at ON expenses(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_locations_user_id ON locations(user_id);
 CREATE INDEX idx_locations_trip_id ON locations(trip_id);
-CREATE INDEX idx_metadata_table_record ON metadata(table_name, record_id);
-CREATE INDEX idx_metadata_deleted_at ON metadata(deleted_at);
+CREATE INDEX idx_locations_timestamp ON locations("timestamp");
+CREATE INDEX idx_locations_deleted_at ON locations(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_trip_memberships_trip_user ON trip_memberships(trip_id, user_id);
 CREATE INDEX idx_trip_memberships_user ON trip_memberships(user_id);
-CREATE INDEX idx_trip_todos_trip ON trip_todos(trip_id);
-CREATE INDEX idx_trip_todos_status ON trip_todos(status);
-CREATE INDEX idx_trip_todos_created_by ON trip_todos(created_by);
+CREATE INDEX idx_trip_memberships_deleted_at ON trip_memberships(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_trip_invitations_trip_id ON trip_invitations(trip_id);
 CREATE INDEX idx_trip_invitations_invitee_email ON trip_invitations(invitee_email);
-CREATE INDEX idx_locations_timestamp ON locations("timestamp");
+CREATE INDEX idx_trip_invitations_invitee_id ON trip_invitations(invitee_id);
+CREATE INDEX idx_trip_invitations_deleted_at ON trip_invitations(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_todos_trip_id ON todos(trip_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_todos_created_by ON todos(created_by) WHERE deleted_at IS NULL;
 CREATE INDEX idx_todos_status ON todos(status) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_notifications_user_id_created_at ON notifications (user_id, created_at DESC);
 CREATE INDEX idx_notifications_user_id_is_read ON notifications (user_id, is_read);
+CREATE INDEX idx_notifications_type ON notifications(type);
+
 CREATE INDEX idx_chat_groups_trip_id ON chat_groups(trip_id);
+CREATE INDEX idx_chat_groups_created_by ON chat_groups(created_by);
+CREATE INDEX idx_chat_groups_deleted_at ON chat_groups(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_chat_group_members_user_id ON chat_group_members(user_id);
+
 CREATE INDEX idx_chat_messages_group_id_created_at ON chat_messages(group_id, created_at DESC);
+CREATE INDEX idx_chat_messages_user_id ON chat_messages(user_id);
+CREATE INDEX idx_chat_messages_content_type ON chat_messages(content_type);
+CREATE INDEX idx_chat_messages_deleted_at ON chat_messages(deleted_at) WHERE deleted_at IS NULL;
+
 CREATE INDEX idx_chat_message_reactions_message_id ON chat_message_reactions(message_id);
-CREATE INDEX idx_chat_message_reactions_user_id ON chat_message_reactions(user_id);
-
--- Add an offline location updates table for storing offline tracking data
-CREATE TABLE IF NOT EXISTS offline_location_updates (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL,
-    latitude DECIMAL(10, 8) NOT NULL,
-    longitude DECIMAL(11, 8) NOT NULL,
-    accuracy DECIMAL(10, 5) NULL,
-    timestamp TIMESTAMPTZ NOT NULL,
-    is_uploaded BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_offline_location_updates_trip_user ON offline_location_updates(trip_id, user_id);
-CREATE INDEX idx_offline_location_updates_is_uploaded ON offline_location_updates(is_uploaded); 
+CREATE INDEX idx_chat_message_reactions_user_id ON chat_message_reactions(user_id); 

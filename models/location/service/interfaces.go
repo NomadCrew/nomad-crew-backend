@@ -7,7 +7,6 @@ import (
 )
 
 // LocationUpdateProcessor defines the interface for processing location updates
-// This interface is used to break circular dependencies between ManagementService and OfflineLocationService
 type LocationUpdateProcessor interface {
 	// UpdateLocation updates a user's location and publishes an event
 	UpdateLocation(ctx context.Context, userID string, update types.LocationUpdate) (*types.Location, error)

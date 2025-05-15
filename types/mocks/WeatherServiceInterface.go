@@ -50,18 +50,18 @@ func (_m *WeatherServiceInterface) GetWeather(ctx context.Context, tripID string
 }
 
 // IncrementSubscribers provides a mock function with given fields: tripID, dest
-func (_m *WeatherServiceInterface) IncrementSubscribers(tripID string, dest types.Destination) {
-	_m.Called(tripID, dest)
+func (_m *WeatherServiceInterface) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
+	_m.Called(tripID, latitude, longitude)
 }
 
 // StartWeatherUpdates provides a mock function with given fields: ctx, tripID, destination
-func (_m *WeatherServiceInterface) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
-	_m.Called(ctx, tripID, destination)
+func (_m *WeatherServiceInterface) StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
+	_m.Called(ctx, tripID, latitude, longitude)
 }
 
 // TriggerImmediateUpdate provides a mock function with given fields: ctx, tripID, destination
-func (_m *WeatherServiceInterface) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) {
-	_m.Called(ctx, tripID, destination)
+func (_m *WeatherServiceInterface) TriggerImmediateUpdate(ctx context.Context, tripID string, latitude float64, longitude float64) {
+	_m.Called(ctx, tripID, latitude, longitude)
 }
 
 // NewWeatherServiceInterface creates a new instance of WeatherServiceInterface. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

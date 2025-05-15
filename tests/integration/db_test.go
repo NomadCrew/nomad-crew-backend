@@ -149,13 +149,16 @@ func TestTripStore_Integration(t *testing.T) {
 
 	t.Run("Create and Get Trip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			Destination: types.Destination{Address: "Test Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Test Trip",
+			Description:          "Test Description",
+			DestinationAddress:   ptr("Test Location Address"),
+			DestinationPlaceID:   ptr("test-place-id-create"),
+			DestinationLatitude:  10.0,
+			DestinationLongitude: 20.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		// Test creation
@@ -168,50 +171,66 @@ func TestTripStore_Integration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, trip.Name, fetchedTrip.Name)
 		require.Equal(t, trip.Description, fetchedTrip.Description)
-		require.Equal(t, trip.Destination, fetchedTrip.Destination)
-		require.Equal(t, testUserUUID, fetchedTrip.CreatedBy)
+		require.Equal(t, *trip.DestinationAddress, *fetchedTrip.DestinationAddress)
+		require.Equal(t, *trip.DestinationPlaceID, *fetchedTrip.DestinationPlaceID)
+		require.Equal(t, trip.DestinationLatitude, fetchedTrip.DestinationLatitude)
+		require.Equal(t, trip.DestinationLongitude, fetchedTrip.DestinationLongitude)
+		require.Equal(t, *trip.CreatedBy, *fetchedTrip.CreatedBy)
 	})
 
 	t.Run("Update Trip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Update Test Trip",
-			Description: "Original Description",
-			Destination: types.Destination{Address: "Original Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Update Test Trip",
+			Description:          "Original Description",
+			DestinationAddress:   ptr("Original Location Address"),
+			DestinationPlaceID:   ptr("original-place-id-update"),
+			DestinationLatitude:  30.0,
+			DestinationLongitude: 40.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		id, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
 		update := types.TripUpdate{
-			Name:        ptr("Updated Trip"),
-			Description: ptr("Updated Description"),
-			Destination: &types.Destination{Address: "Updated Location"},
+			Name:                 ptr("Updated Trip"),
+			Description:          ptr("Updated Description"),
+			DestinationAddress:   ptr("Updated Location Address"),
+			DestinationPlaceID:   ptr("updated-place-id"),
+			DestinationLatitude:  float64Ptr(50.0),
+			DestinationLongitude: float64Ptr(60.0),
 		}
 
-		_, err = tripStore.UpdateTrip(ctx, id, update)
+		updatedTripFull, err := tripStore.UpdateTrip(ctx, id, update)
 		require.NoError(t, err)
+		require.NotNil(t, updatedTripFull)
 
 		fetchedTrip, err := tripStore.GetTrip(ctx, id)
 		require.NoError(t, err)
 		require.Equal(t, *update.Name, fetchedTrip.Name)
 		require.Equal(t, *update.Description, fetchedTrip.Description)
-		require.Equal(t, update.Destination.Address, fetchedTrip.Destination.Address)
+		require.Equal(t, *update.DestinationAddress, *fetchedTrip.DestinationAddress)
+		require.Equal(t, *update.DestinationPlaceID, *fetchedTrip.DestinationPlaceID)
+		require.Equal(t, *update.DestinationLatitude, fetchedTrip.DestinationLatitude)
+		require.Equal(t, *update.DestinationLongitude, fetchedTrip.DestinationLongitude)
 	})
 
 	t.Run("List User Trips", func(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			trip := types.Trip{
-				Name:        fmt.Sprintf("List Test Trip %d", i),
-				Description: "Test Description",
-				Destination: types.Destination{Address: "Test Location"},
-				StartDate:   time.Now().Add(24 * time.Hour),
-				EndDate:     time.Now().Add(48 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
+				Name:                 fmt.Sprintf("List Test Trip %d", i),
+				Description:          "Test Description",
+				DestinationAddress:   ptr(fmt.Sprintf("Test Location Address List %d", i)),
+				DestinationPlaceID:   ptr(fmt.Sprintf("list-place-id-%d", i)),
+				DestinationLatitude:   11.0 + float64(i),
+				DestinationLongitude:  21.0 + float64(i),
+				StartDate:            time.Now().Add(24 * time.Hour),
+				EndDate:              time.Now().Add(48 * time.Hour),
+				CreatedBy:            &testUserUUID,
+				Status:               types.TripStatusPlanning,
 			}
 			_, err := tripStore.CreateTrip(ctx, trip)
 			require.NoError(t, err)
@@ -222,27 +241,32 @@ func TestTripStore_Integration(t *testing.T) {
 		require.GreaterOrEqual(t, len(trips), 3)
 
 		for _, trip := range trips {
-			require.Equal(t, testUserUUID, trip.CreatedBy)
+			require.NotNil(t, trip.CreatedBy)
+			require.Equal(t, testUserUUID, *trip.CreatedBy)
 		}
 	})
 
 	t.Run("Status Transitions", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Status Test Trip",
-			Description: "Testing status transitions",
-			Destination: types.Destination{Address: "Test Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Status Test Trip",
+			Description:          "Testing status transitions",
+			DestinationAddress:   ptr("Status Test Location"),
+			DestinationPlaceID:   ptr("status-place-id"),
+			DestinationLatitude:   12.0,
+			DestinationLongitude:  22.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		id, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
 		// Transition to Active
+		activeStatus := types.TripStatusActive
 		update := types.TripUpdate{
-			Status: types.TripStatusActive,
+			Status: &activeStatus,
 		}
 		_, err = tripStore.UpdateTrip(ctx, id, update)
 		require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
@@ -254,23 +278,29 @@ func TestTripStore_Integration(t *testing.T) {
 
 	t.Run("Soft Delete Functionality", func(t *testing.T) {
 		trip1 := types.Trip{
-			Name:        "Trip to Delete",
-			Description: "This trip will be deleted",
-			Destination: types.Destination{Address: "Deletion Test"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Trip to Delete",
+			Description:          "This trip will be deleted",
+			DestinationAddress:   ptr("Deletion Test Address 1"),
+			DestinationPlaceID:   ptr("delete-place-id-1"),
+			DestinationLatitude:   13.0,
+			DestinationLongitude:  23.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		trip2 := types.Trip{
-			Name:        "Trip to Keep",
-			Description: "This trip will remain",
-			Destination: types.Destination{Address: "Deletion Test"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Trip to Keep",
+			Description:          "This trip will remain",
+			DestinationAddress:   ptr("Deletion Test Address 2"),
+			DestinationPlaceID:   ptr("delete-place-id-2"),
+			DestinationLatitude:   14.0,
+			DestinationLongitude:  24.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		id1, err := tripStore.CreateTrip(ctx, trip1)
@@ -282,7 +312,7 @@ func TestTripStore_Integration(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = tripStore.GetTrip(ctx, id1)
-		require.Error(t, err) // Should return NotFound error
+		require.Error(t, err)
 
 		fetchedTrip2, err := tripStore.GetTrip(ctx, id2)
 		require.NoError(t, err)
@@ -298,31 +328,40 @@ func TestTripStore_Integration(t *testing.T) {
 	t.Run("Search Functionality", func(t *testing.T) {
 		searchTrips := []types.Trip{
 			{
-				Name:        "Paris Summer Trip",
-				Description: "Summer vacation in Paris",
-				Destination: types.Destination{Address: "Paris"},
-				StartDate:   time.Now().Add(30 * 24 * time.Hour),
-				EndDate:     time.Now().Add(37 * 24 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
+				Name:                 "Paris Summer Trip",
+				Description:          "Summer vacation in Paris",
+				DestinationAddress:   ptr("Paris"),
+				DestinationPlaceID:   ptr("paris-summer-place-id"),
+				DestinationLatitude:   48.8566,
+				DestinationLongitude:  2.3522,
+				StartDate:            time.Now().Add(30 * 24 * time.Hour),
+				EndDate:              time.Now().Add(37 * 24 * time.Hour),
+				CreatedBy:            &testUserUUID,
+				Status:               types.TripStatusPlanning,
 			},
 			{
-				Name:        "London Business Trip",
-				Description: "Business meeting in London",
-				Destination: types.Destination{Address: "London"},
-				StartDate:   time.Now().Add(60 * 24 * time.Hour),
-				EndDate:     time.Now().Add(63 * 24 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
+				Name:                 "London Business Trip",
+				Description:          "Business meeting in London",
+				DestinationAddress:   ptr("London"),
+				DestinationPlaceID:   ptr("london-business-place-id"),
+				DestinationLatitude:   51.5074,
+				DestinationLongitude:  0.1278,
+				StartDate:            time.Now().Add(60 * 24 * time.Hour),
+				EndDate:              time.Now().Add(63 * 24 * time.Hour),
+				CreatedBy:            &testUserUUID,
+				Status:               types.TripStatusPlanning,
 			},
 			{
-				Name:        "Paris Winter Trip",
-				Description: "Winter in Paris",
-				Destination: types.Destination{Address: "Paris"},
-				StartDate:   time.Now().Add(180 * 24 * time.Hour),
-				EndDate:     time.Now().Add(187 * 24 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
+				Name:                 "Paris Winter Trip",
+				Description:          "Winter in Paris",
+				DestinationAddress:   ptr("Paris"),
+				DestinationPlaceID:   ptr("paris-winter-place-id"),
+				DestinationLatitude:   48.8566,
+				DestinationLongitude:  2.3522,
+				StartDate:            time.Now().Add(180 * 24 * time.Hour),
+				EndDate:              time.Now().Add(187 * 24 * time.Hour),
+				CreatedBy:            &testUserUUID,
+				Status:               types.TripStatusPlanning,
 			},
 		}
 
@@ -339,7 +378,8 @@ func TestTripStore_Integration(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, results, 2)
 			for _, trip := range results {
-				require.Equal(t, "Paris", trip.Destination.Address)
+				require.NotNil(t, trip.DestinationAddress)
+				require.Equal(t, "Paris", *trip.DestinationAddress)
 			}
 		})
 
@@ -385,4 +425,8 @@ func isValidUUID(u string) bool {
 // Helper to create string pointers
 func ptr(s string) *string {
 	return &s
+}
+
+func float64Ptr(f float64) *float64 {
+	return &f
 }

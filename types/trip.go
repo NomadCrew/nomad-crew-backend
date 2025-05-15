@@ -11,27 +11,23 @@ const (
 	TripStatusCancelled TripStatus = "CANCELLED" // Trip was cancelled before or during
 )
 
-type Destination struct {
-	Address     string `json:"address"`
-	PlaceID     string `json:"placeId"`
-	Coordinates *struct {
-		Lat float64 `json:"lat"`
-		Lng float64 `json:"lng"`
-	} `json:"coordinates,omitempty"`
-}
-
 type Trip struct {
-	ID                 string      `json:"id"`
-	Name               string      `json:"name"`
-	Description        string      `json:"description"`
-	Destination        Destination `json:"destination"`
-	StartDate          time.Time   `json:"startDate"`
-	EndDate            time.Time   `json:"endDate"`
-	Status             TripStatus  `json:"status"`
-	CreatedBy          string      `json:"createdBy"`
-	CreatedAt          time.Time   `json:"createdAt"`
-	UpdatedAt          time.Time   `json:"updatedAt"`
-	BackgroundImageURL string      `json:"backgroundImageUrl"`
+	ID                   string     `json:"id"`
+	Name                 string     `json:"name"`
+	Description          string     `json:"description"`
+	DestinationPlaceID   *string    `json:"destinationPlaceId,omitempty"`
+	DestinationAddress   *string    `json:"destinationAddress,omitempty"`
+	DestinationName      *string    `json:"destinationName,omitempty"`
+	DestinationLatitude  float64    `json:"destinationLatitude"`
+	DestinationLongitude float64    `json:"destinationLongitude"`
+	StartDate            time.Time  `json:"startDate"`
+	EndDate              time.Time  `json:"endDate"`
+	Status               TripStatus `json:"status"`
+	CreatedBy            *string    `json:"createdBy,omitempty"`
+	CreatedAt            time.Time  `json:"createdAt"`
+	UpdatedAt            time.Time  `json:"updatedAt"`
+	DeletedAt            *time.Time `json:"deletedAt,omitempty"`
+	BackgroundImageURL   string     `json:"backgroundImageUrl"`
 }
 
 // IsValidTransition checks if a status transition is allowed
@@ -78,12 +74,16 @@ func (ts TripStatus) IsValid() bool {
 }
 
 type TripUpdate struct {
-	Name        *string      `json:"name,omitempty"`
-	Description *string      `json:"description,omitempty"`
-	Destination *Destination `json:"destination,omitempty"`
-	StartDate   *time.Time   `json:"startDate,omitempty"`
-	EndDate     *time.Time   `json:"endDate,omitempty"`
-	Status      TripStatus   `json:"status,omitempty"`
+	Name                 *string     `json:"name,omitempty"`
+	Description          *string     `json:"description,omitempty"`
+	DestinationPlaceID   *string     `json:"destinationPlaceId,omitempty"`
+	DestinationAddress   *string     `json:"destinationAddress,omitempty"`
+	DestinationName      *string     `json:"destinationName,omitempty"`
+	DestinationLatitude  *float64    `json:"destinationLatitude,omitempty"`
+	DestinationLongitude *float64    `json:"destinationLongitude,omitempty"`
+	StartDate            *time.Time  `json:"startDate,omitempty"`
+	EndDate              *time.Time  `json:"endDate,omitempty"`
+	Status               *TripStatus `json:"status,omitempty"`
 }
 
 type TripSearchCriteria struct {

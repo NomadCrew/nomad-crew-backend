@@ -38,18 +38,6 @@ func TestMemberRole_IsAuthorizedFor(t *testing.T) {
 			expectAuthorized: true,
 		},
 		{
-			name:             "None cannot access Member resources",
-			currentRole:      MemberRoleNone,
-			requiredRole:     MemberRoleMember,
-			expectAuthorized: false,
-		},
-		{
-			name:             "None cannot access Owner resources",
-			currentRole:      MemberRoleNone,
-			requiredRole:     MemberRoleOwner,
-			expectAuthorized: false,
-		},
-		{
 			name:             "Invalid role cannot access Member resources",
 			currentRole:      "INVALID",
 			requiredRole:     MemberRoleMember,

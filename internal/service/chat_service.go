@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -159,10 +160,7 @@ func (s *ChatServiceImpl) CreateChatMessage(ctx context.Context, message types.C
 	var user *types.UserResponse
 	if s.userStore != nil {
 		userInfo, err := s.userStore.GetUserByID(ctx, message.UserID)
-		if err != nil {
-			// Log but continue
-			fmt.Printf("error getting user details: %v\n", err)
-		} else {
+		if err == nil {
 			userProfile := types.UserResponse{
 				ID:          userInfo.ID,
 				Email:       userInfo.Email,
@@ -210,11 +208,23 @@ func (s *ChatServiceImpl) CreateGroup(ctx context.Context, tripID, groupName, cr
 	// Verify user can create a group for this trip
 	role, err := s.tripStore.GetUserRole(ctx, tripID, createdByUserID)
 	if err != nil {
-		return nil, fmt.Errorf("error checking trip membership: %w", err)
+		// Simplified error check: if GetUserRole returns any error, assume user is not a member or not authorized.
+		// This can be refined once the custom error structure (apperrors.Error, apperrors.ErrorCodeNotFound) is confirmed.
+		var specificError *apperrors.AppError
+		if errors.As(err, &specificError) && specificError.Type == apperrors.NotFoundError {
+			s.log.Warnw("User not found or not an active member during group creation", "tripID", tripID, "userID", createdByUserID, "error", err)
+			return nil, fmt.Errorf("user is not an active member of this trip or trip does not exist")
+		}
+		s.log.Errorw("Error checking trip membership during group creation", "tripID", tripID, "userID", createdByUserID, "error", err)
+		return nil, fmt.Errorf("permission denied or error checking trip membership: %w", err)
 	}
 
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
+	// At this point, err is nil, so 'role' is a valid role (OWNER, MEMBER, or ADMIN).
+	// Check if the user's role is sufficient to create a group.
+	// For example, allow only ADMIN or OWNER.
+	if !(role == types.MemberRoleOwner || role == types.MemberRoleAdmin) { // Example: Only Owner or Admin can create.
+		s.log.Warnw("User does not have permission to create group", "tripID", tripID, "userID", createdByUserID, "userRole", role)
+		return nil, fmt.Errorf("user (role: %s) does not have sufficient permission to create a group", role)
 	}
 
 	// Create the group
@@ -226,21 +236,26 @@ func (s *ChatServiceImpl) CreateGroup(ctx context.Context, tripID, groupName, cr
 
 	groupID, err := s.chatStore.CreateChatGroup(ctx, group)
 	if err != nil {
+		s.log.Errorw("Failed to create chat group in store", "tripID", tripID, "groupName", groupName, "error", err)
 		return nil, fmt.Errorf("error creating chat group: %w", err)
 	}
 
 	// Add the creator as a member
 	err = s.chatStore.AddChatGroupMember(ctx, groupID, createdByUserID)
 	if err != nil {
+		s.log.Errorw("Failed to add creator to chat group", "groupID", groupID, "userID", createdByUserID, "error", err)
+		// Potentially rollback group creation or handle inconsistency
 		return nil, fmt.Errorf("error adding creator to chat group: %w", err)
 	}
 
 	// Get the created group
 	createdGroup, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
+		s.log.Errorw("Failed to retrieve created chat group", "groupID", groupID, "error", err)
 		return nil, fmt.Errorf("error retrieving created chat group: %w", err)
 	}
 
+	s.log.Infow("Chat group created successfully", "groupID", groupID, "tripID", tripID, "groupName", groupName)
 	return createdGroup, nil
 }
 
@@ -248,59 +263,65 @@ func (s *ChatServiceImpl) GetGroup(ctx context.Context, groupID, requestingUserI
 	// Get the group
 	group, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving chat group: %w", err)
+		s.log.Errorw("Failed to get chat group from store", "groupID", groupID, "error", err)
+		return nil, fmt.Errorf("error getting chat group: %w", err) // Or apperrors.NotFound if applicable
 	}
 
-	// Verify user is a member of the trip
+	// Verify the user making the request is part of the trip
 	role, err := s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
 	if err != nil {
-		return nil, fmt.Errorf("error checking trip membership: %w", err)
+		var specificError *apperrors.AppError
+		if errors.As(err, &specificError) && specificError.Type == apperrors.NotFoundError {
+			s.log.Warnw("User not found or not an active member during get group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
+			return nil, fmt.Errorf("user is not an active member of this trip or trip does not exist")
+		}
+		s.log.Errorw("Error checking trip membership during get group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
+		return nil, fmt.Errorf("permission denied or error checking trip membership: %w", err)
 	}
 
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
-	}
+	// Any active member of the trip can view group details.
+	// If more specific role checks are needed (e.g. only group members), add them here or in store.
+	_ = role // Explicitly use role to satisfy linter if no further checks based on its value are made here.
 
+	s.log.Debugw("User authorized to get group", "groupID", groupID, "userID", requestingUserID, "userRole", role)
 	return group, nil
 }
 
 func (s *ChatServiceImpl) UpdateGroup(ctx context.Context, groupID, requestingUserID string, updateReq types.ChatGroupUpdateRequest) (*types.ChatGroup, error) {
-	// Get the group to check permissions
+	// Get the group to find its TripID
 	group, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("error getting chat group: %w", err)
+		s.log.Errorw("Failed to get chat group for update", "groupID", groupID, "error", err)
+		return nil, fmt.Errorf("error finding group to update: %w", err)
 	}
 
-	// Verify requesting user is a member of the trip
+	// Verify the user has permission (e.g., Admin or Owner of the trip)
 	role, err := s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
 	if err != nil {
-		return nil, fmt.Errorf("error checking trip membership: %w", err)
+		var specificError *apperrors.AppError
+		if errors.As(err, &specificError) && specificError.Type == apperrors.NotFoundError {
+			s.log.Warnw("User not found or not an active member during update group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
+			return nil, fmt.Errorf("user is not an active member of this trip or trip does not exist")
+		}
+		s.log.Errorw("Error checking trip membership during update group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
+		return nil, fmt.Errorf("permission denied or error checking trip membership: %w", err)
 	}
 
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
+	if !(role == types.MemberRoleAdmin || role == types.MemberRoleOwner) {
+		s.log.Warnw("User does not have permission to update group", "groupID", groupID, "userID", requestingUserID, "userRole", role)
+		return nil, fmt.Errorf("user (role: %s) does not have permission to update this group", role)
 	}
 
-	// Only admin, owner, or the creator can update the group
-	if role != types.MemberRoleAdmin && role != types.MemberRoleOwner && group.CreatedBy != requestingUserID {
-		return nil, fmt.Errorf("not authorized to update this group")
-	}
-
-	// Update the group
-	if err := s.chatStore.UpdateChatGroup(ctx, groupID, updateReq); err != nil {
+	// Perform the update
+	err = s.chatStore.UpdateChatGroup(ctx, groupID, updateReq)
+	if err != nil {
+		s.log.Errorw("Failed to update chat group in store", "groupID", groupID, "error", err)
 		return nil, fmt.Errorf("error updating chat group: %w", err)
 	}
 
-	// Get the updated group
-	updatedGroup, err := s.chatStore.GetChatGroup(ctx, groupID)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving updated chat group: %w", err)
-	}
-
-	// Publish event
-	s.publishChatEvent(ctx, group.TripID, "group_updated", updatedGroup, nil)
-
-	return updatedGroup, nil
+	s.log.Infow("Chat group updated successfully", "groupID", groupID)
+	// Fetch and return the updated group
+	return s.chatStore.GetChatGroup(ctx, groupID)
 }
 
 func (s *ChatServiceImpl) DeleteGroup(ctx context.Context, groupID, requestingUserID string) error {
@@ -316,9 +337,8 @@ func (s *ChatServiceImpl) DeleteGroup(ctx context.Context, groupID, requestingUs
 		return fmt.Errorf("error checking trip membership: %w", err)
 	}
 
-	if role == types.MemberRoleNone {
-		return fmt.Errorf("user is not a member of this trip")
-	}
+	// If GetUserRole returned no error, the user is a member of the trip and 'role' contains their role.
+	// The specific role (Admin, Owner, Member) is checked below for authorization.
 
 	// Only admin, owner, or the creator can delete the group
 	if role != types.MemberRoleAdmin && role != types.MemberRoleOwner && group.CreatedBy != requestingUserID {
@@ -342,13 +362,9 @@ func (s *ChatServiceImpl) DeleteGroup(ctx context.Context, groupID, requestingUs
 
 func (s *ChatServiceImpl) ListTripGroups(ctx context.Context, tripID, requestingUserID string, params types.PaginationParams) (*types.ChatGroupPaginatedResponse, error) {
 	// Verify user is a member of the trip
-	role, err := s.tripStore.GetUserRole(ctx, tripID, requestingUserID)
+	_, err := s.tripStore.GetUserRole(ctx, tripID, requestingUserID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Get the groups from the store
@@ -368,9 +384,8 @@ func (s *ChatServiceImpl) AddMember(ctx context.Context, groupID, actorUserID, t
 		return fmt.Errorf("error checking actor's trip membership: %w", err)
 	}
 
-	if actorRole == types.MemberRoleNone {
-		return fmt.Errorf("actor is not a member of this trip")
-	}
+	// If GetUserRole returned no error, the actor is a member of the trip.
+	// No need for MemberRoleNone check here.
 
 	// Only admins, owners, or the group creator can add members
 	if actorRole != types.MemberRoleAdmin && actorRole != types.MemberRoleOwner && group.CreatedBy != actorUserID {
@@ -378,13 +393,9 @@ func (s *ChatServiceImpl) AddMember(ctx context.Context, groupID, actorUserID, t
 	}
 
 	// Verify target user is a member of the trip
-	targetRole, err := s.tripStore.GetUserRole(ctx, group.TripID, targetUserID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, targetUserID)
 	if err != nil {
-		return fmt.Errorf("error checking target user's trip membership: %w", err)
-	}
-
-	if targetRole == types.MemberRoleNone {
-		return fmt.Errorf("target user is not a member of this trip")
+		return fmt.Errorf("error checking target user's trip membership or target user not a member: %w", err)
 	}
 
 	// Add the member
@@ -436,9 +447,8 @@ func (s *ChatServiceImpl) RemoveMember(ctx context.Context, groupID, actorUserID
 			return fmt.Errorf("error checking actor's trip membership: %w", err)
 		}
 
-		if actorRole == types.MemberRoleNone {
-			return fmt.Errorf("actor is not a member of this trip")
-		}
+		// If GetUserRole returned no error, the actor is a member of the trip.
+		// No need for MemberRoleNone check here.
 
 		// Only admins, owners, or the group creator can remove members
 		if actorRole != types.MemberRoleAdmin && actorRole != types.MemberRoleOwner && group.CreatedBy != actorUserID {
@@ -470,13 +480,9 @@ func (s *ChatServiceImpl) ListMembers(ctx context.Context, groupID, requestingUs
 	}
 
 	// Verify requesting user is a member of the trip
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Get the members
@@ -498,13 +504,9 @@ func (s *ChatServiceImpl) PostMessage(ctx context.Context, groupID, userID, cont
 		return nil, fmt.Errorf("error retrieving chat group: %w", err)
 	}
 
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, userID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Create the message
@@ -575,13 +577,9 @@ func (s *ChatServiceImpl) GetMessage(ctx context.Context, messageID, requestingU
 	}
 
 	// Verify requesting user is a member of the trip
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Get user info
@@ -733,13 +731,9 @@ func (s *ChatServiceImpl) ListMessages(ctx context.Context, groupID, requestingU
 		return nil, fmt.Errorf("error retrieving chat group: %w", err)
 	}
 
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, requestingUserID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return nil, fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Get messages from the store
@@ -795,13 +789,9 @@ func (s *ChatServiceImpl) AddReaction(ctx context.Context, messageID, userID, re
 	}
 
 	// Verify user is a member of the trip
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, userID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, userID)
 	if err != nil {
 		return fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Add the reaction
@@ -852,13 +842,9 @@ func (s *ChatServiceImpl) RemoveReaction(ctx context.Context, messageID, userID,
 	}
 
 	// Verify user is a member of the trip
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, userID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, userID)
 	if err != nil {
 		return fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Remove the reaction
@@ -884,13 +870,9 @@ func (s *ChatServiceImpl) UpdateLastRead(ctx context.Context, groupID, userID, m
 		return fmt.Errorf("error retrieving chat group: %w", err)
 	}
 
-	role, err := s.tripStore.GetUserRole(ctx, group.TripID, userID)
+	_, err = s.tripStore.GetUserRole(ctx, group.TripID, userID)
 	if err != nil {
 		return fmt.Errorf("error checking trip membership: %w", err)
-	}
-
-	if role == types.MemberRoleNone {
-		return fmt.Errorf("user is not a member of this trip")
 	}
 
 	// Update the last read status

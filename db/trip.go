@@ -54,18 +54,30 @@ func (tdb *TripDB) CreateTrip(ctx context.Context, trip types.Trip) (string, err
 
 	err := WithTx(ctx, tdb.GetPool(), func(tx pgx.Tx) error {
 		// Create trip
+		// NOTE: The SQL here is based on the OLD schema with a single 'destination' column.
+		// Since this file is deprecated and types.Trip now has discrete destination fields,
+		// this SQL would fail. trip.Destination is no longer a field.
+		// For go vet purposes, we handle the reference to the non-existent trip.Destination.
+		// var destValue interface{} // Placeholder for go vet - REMOVED as it was unused
+		// if trip.Destination != nil { destValue = trip.Destination } // Original line would be like this
+
 		err := tx.QueryRow(ctx, `
             INSERT INTO trips (
                 name, description, start_date, end_date, 
-                destination, created_by, status, background_image_url
+                destination_latitude, destination_longitude, destination_name, destination_place_id, destination_address, -- Assuming new columns for deprecated SQL path
+                created_by, status, background_image_url
             ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
             RETURNING id`,
 			trip.Name,
 			trip.Description,
 			trip.StartDate,
 			trip.EndDate,
-			trip.Destination,
+			trip.DestinationLatitude,  // Use new field
+			trip.DestinationLongitude, // Use new field
+			trip.DestinationName,      // Use new field
+			trip.DestinationPlaceID,   // Use new field
+			trip.DestinationAddress,   // Use new field
 			trip.CreatedBy,
 			string(trip.Status),
 			trip.BackgroundImageURL,
@@ -105,26 +117,26 @@ func (tdb *TripDB) GetTrip(ctx context.Context, id string) (*types.Trip, error) 
 	log := logger.GetLogger()
 	query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
+               t.destination_latitude, t.destination_longitude, t.destination_name, t.destination_place_id, t.destination_address, -- Use new columns
+               t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
         FROM trips t
-        WHERE t.id = $1
-        AND NOT EXISTS (
-            SELECT 1 FROM metadata m 
-            WHERE m.table_name = 'trips' 
-            AND m.record_id = t.id 
-            AND m.deleted_at IS NOT NULL
-        )`
+        WHERE t.id = $1 AND t.deleted_at IS NULL` // Simplified soft delete check for deprecated file
 
 	log.Debugw("Executing GetTrip query", "query", query, "tripId", id)
 
 	var trip types.Trip
+	// var destValuePlaceholder interface{} // Placeholder for scanning old destination
 	err := tdb.client.GetPool().QueryRow(ctx, query, id).Scan(
 		&trip.ID,
 		&trip.Name,
 		&trip.Description,
 		&trip.StartDate,
 		&trip.EndDate,
-		&trip.Destination,
+		&trip.DestinationLatitude,  // Scan into new field
+		&trip.DestinationLongitude, // Scan into new field
+		&trip.DestinationName,      // Scan into new field
+		&trip.DestinationPlaceID,   // Scan into new field
+		&trip.DestinationAddress,   // Scan into new field
 		&trip.Status,
 		&trip.CreatedBy,
 		&trip.CreatedAt,
@@ -149,18 +161,18 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 
 	// Retrieve the current status for validation
 	var currentStatusStr string
-	err := tdb.client.GetPool().QueryRow(ctx, "SELECT status FROM trips WHERE id = $1", id).Scan(&currentStatusStr)
+	err := tdb.client.GetPool().QueryRow(ctx, "SELECT status FROM trips WHERE id = $1 AND deleted_at IS NULL", id).Scan(&currentStatusStr)
 	if err != nil {
 		log.Errorw("Failed to fetch current status for trip", "tripId", id, "error", err)
-		return nil, fmt.Errorf("unable to fetch current status for trip %s: %v", id, err)
+		return nil, fmt.Errorf("unable to fetch current status for trip %s: %w", id, err)
 	}
 
 	currentStatus := types.TripStatus(currentStatusStr)
 
 	// Ensure status transition is valid
-	if update.Status != "" && !currentStatus.IsValidTransition(update.Status) {
-		log.Errorw("Invalid status transition", "tripId", id, "currentStatus", currentStatus, "requestedStatus", update.Status)
-		return nil, fmt.Errorf("invalid status transition: %s -> %s", currentStatus, update.Status)
+	if update.Status != nil && !currentStatus.IsValidTransition(*update.Status) { // Check nil, dereference for validation
+		log.Errorw("Invalid status transition", "tripId", id, "currentStatus", currentStatus, "requestedStatus", *update.Status)
+		return nil, fmt.Errorf("invalid status transition: %s -> %s", currentStatus, *update.Status)
 	}
 
 	var setFields []string
@@ -168,53 +180,75 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 	argPosition := 1
 
 	// Update fields - need to check for nil pointers
-	if update.Name != nil && *update.Name != "" {
+	if update.Name != nil {
 		setFields = append(setFields, fmt.Sprintf("name = $%d", argPosition))
 		args = append(args, *update.Name)
 		argPosition++
 	}
-	if update.Description != nil && *update.Description != "" {
+	if update.Description != nil {
 		setFields = append(setFields, fmt.Sprintf("description = $%d", argPosition))
 		args = append(args, *update.Description)
 		argPosition++
 	}
-	if update.Destination != nil {
-		// Handle JSONB destination
-		destJSON, err := json.Marshal(update.Destination)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal destination: %w", err)
-		}
-		setFields = append(setFields, fmt.Sprintf("destination = $%d", argPosition))
-		args = append(args, destJSON)
+
+	// Handle new destination fields
+	if update.DestinationPlaceID != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_place_id = $%d", argPosition))
+		args = append(args, *update.DestinationPlaceID)
 		argPosition++
 	}
-	if update.StartDate != nil && !update.StartDate.IsZero() {
+	if update.DestinationAddress != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_address = $%d", argPosition))
+		args = append(args, *update.DestinationAddress)
+		argPosition++
+	}
+	if update.DestinationName != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_name = $%d", argPosition))
+		args = append(args, *update.DestinationName)
+		argPosition++
+	}
+	if update.DestinationLatitude != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_latitude = $%d", argPosition))
+		args = append(args, *update.DestinationLatitude)
+		argPosition++
+	}
+	if update.DestinationLongitude != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_longitude = $%d", argPosition))
+		args = append(args, *update.DestinationLongitude)
+		argPosition++
+	}
+
+	if update.StartDate != nil {
 		setFields = append(setFields, fmt.Sprintf("start_date = $%d", argPosition))
 		args = append(args, *update.StartDate)
 		argPosition++
 	}
-	if update.EndDate != nil && !update.EndDate.IsZero() {
+	if update.EndDate != nil {
 		setFields = append(setFields, fmt.Sprintf("end_date = $%d", argPosition))
 		args = append(args, *update.EndDate)
 		argPosition++
 	}
-	if update.Status != "" {
+	if update.Status != nil { // Check nil
 		setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
-		args = append(args, string(update.Status))
+		args = append(args, string(*update.Status)) // Dereference for string conversion
 		argPosition++
+	}
+
+	// Always update updated_at, ensure it's not the only field if no other changes.
+	if len(setFields) == 0 {
+		// No actual fields to update other than potentially updated_at, which is implicitly handled by trigger or explicit SET below.
+		// Return current trip or specific indication of no changes made.
+		log.Infow("No updatable fields provided for trip", "tripId", id)
+		return tdb.GetTrip(ctx, id) // Or return nil, nil if no-op should not fetch
 	}
 
 	setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
 
-	if len(setFields) == 0 {
-		return nil, nil
-	}
-
 	query := fmt.Sprintf(`
         UPDATE trips 
         SET %s
-        WHERE id = $%d
-        RETURNING status;`,
+        WHERE id = $%d AND deleted_at IS NULL
+        RETURNING status;`, // Also check deleted_at to prevent updating soft-deleted trips
 		strings.Join(setFields, ", "),
 		argPosition,
 	)
@@ -229,10 +263,10 @@ func (tdb *TripDB) UpdateTrip(ctx context.Context, id string, update types.TripU
 		return nil, err
 	}
 
-	// Verify status matches expected value
-	if update.Status != "" && updatedStatusStr != string(update.Status) {
-		log.Errorw("Mismatch in updated status", "tripId", id, "expected", update.Status, "got", updatedStatusStr)
-		return nil, fmt.Errorf("status mismatch: expected %s, got %s", update.Status, updatedStatusStr)
+	// Verify status matches expected value if a status update was intended
+	if update.Status != nil && updatedStatusStr != string(*update.Status) { // Check nil, dereference for comparison
+		log.Errorw("Mismatch in updated status", "tripId", id, "expected", *update.Status, "got", updatedStatusStr)
+		return nil, fmt.Errorf("status mismatch: expected %s, got %s", *update.Status, updatedStatusStr)
 	}
 
 	log.Infow("Trip updated successfully", "tripId", id, "newStatus", updatedStatusStr)
@@ -266,7 +300,8 @@ func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.T
 	log := logger.GetLogger()
 	query := `
     SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-           t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
+           t.destination_latitude, t.destination_longitude, t.destination_name, t.destination_place_id, t.destination_address, -- Use new columns
+           t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
     FROM trips t
     WHERE t.created_by = $1
     AND NOT EXISTS (
@@ -293,7 +328,11 @@ func (tdb *TripDB) ListUserTrips(ctx context.Context, userID string) ([]*types.T
 			&trip.Description,
 			&trip.StartDate,
 			&trip.EndDate,
-			&trip.Destination,
+			&trip.DestinationLatitude,  // Scan into new field
+			&trip.DestinationLongitude, // Scan into new field
+			&trip.DestinationName,      // Scan into new field
+			&trip.DestinationPlaceID,   // Scan into new field
+			&trip.DestinationAddress,   // Scan into new field
 			&trip.Status,
 			&trip.CreatedBy,
 			&trip.CreatedAt,
@@ -328,7 +367,8 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 	// Base query selects non-deleted trips.
 	baseQuery := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
+               t.destination_latitude, t.destination_longitude, t.destination_name, t.destination_place_id, t.destination_address, -- Use new columns
+               t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
         FROM trips t
         WHERE NOT EXISTS (
             SELECT 1 FROM metadata m 
@@ -337,7 +377,7 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 
 	// Add conditions based on search criteria.
 	if criteria.Destination != "" { // Filter based on Destination (address field within JSONB)
-		conditions = append(conditions, fmt.Sprintf("t.destination->>'address' ILIKE $%d", argCount))
+		conditions = append(conditions, fmt.Sprintf("t.destination_address ILIKE $%d", argCount))
 		args = append(args, "%"+criteria.Destination+"%") // Case-insensitive partial match
 		argCount++
 	}
@@ -377,7 +417,11 @@ func (tdb *TripDB) SearchTrips(ctx context.Context, criteria types.TripSearchCri
 			&trip.Description,
 			&trip.StartDate,
 			&trip.EndDate,
-			&trip.Destination,
+			&trip.DestinationLatitude,  // Scan into new field
+			&trip.DestinationLongitude, // Scan into new field
+			&trip.DestinationName,      // Scan into new field
+			&trip.DestinationPlaceID,   // Scan into new field
+			&trip.DestinationAddress,   // Scan into new field
 			&trip.Status,
 			&trip.CreatedBy,
 			&trip.CreatedAt,
