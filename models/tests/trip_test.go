@@ -287,11 +287,14 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 
 	t.Run("validation error - invalid dates", func(t *testing.T) {
 		invalidUpdate := types.TripUpdate{
-			// DestinationAddress: stringPtr("Invalid"), // Not strictly needed for this date validation test
-			// DestinationLatitude:  float64Ptr(12.0),
-			// DestinationLongitude: float64Ptr(22.0),
-			StartDate: timePtr(time.Now().Add(48 * time.Hour)),
-			EndDate:   timePtr(time.Now().Add(24 * time.Hour)),
+			Name:                 stringPtr(""),   // Prevent nil pointer dereference in matcher if store is called
+			Description:          stringPtr(""),   // Prevent nil pointer dereference
+			DestinationAddress:   stringPtr(""),   // Prevent nil pointer dereference
+			DestinationPlaceID:   stringPtr(""),   // Prevent nil pointer dereference
+			DestinationLatitude:  float64Ptr(0.0), // Prevent nil pointer dereference
+			DestinationLongitude: float64Ptr(0.0), // Prevent nil pointer dereference
+			StartDate:            timePtr(time.Now().Add(48 * time.Hour)),
+			EndDate:              timePtr(time.Now().Add(24 * time.Hour)), // Invalid: EndDate before StartDate
 		}
 		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
 		// UpdateTrip in the model should perform validation before calling store.UpdateTrip for this specific case.

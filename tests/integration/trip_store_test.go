@@ -84,6 +84,24 @@ func TestTripStore(t *testing.T) {
 	ctx := context.Background()
 	testUserID := uuid.New().String()
 
+	// Insert the test user before any trip operations
+	_, errUser := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+		testUserID, fmt.Sprintf("user-%s@example.com", testUserID), "Test User For TripStore")
+	require.NoError(t, errUser, "Failed to insert test user for TestTripStore")
+
+	// Defer cleanup of test data
+	defer func() {
+		_, err := testPool.Exec(ctx, "DELETE FROM trip_memberships WHERE trip_id IN (SELECT id FROM trips WHERE created_by = $1)", testUserID)
+		assert.NoError(t, err) // Use assert to not fail other cleanup steps
+		_, err = testPool.Exec(ctx, "DELETE FROM trips WHERE created_by = $1", testUserID)
+		assert.NoError(t, err)
+		// Clean up users created specifically in this test function scope if needed by matching email pattern or similar
+		// For now, cleaning the specific testUserID should be okay if tests don't create users with conflicting IDs
+		// but are based on *this* testUserID for trips.
+		_, err = testPool.Exec(ctx, "DELETE FROM users WHERE id = $1", testUserID)
+		assert.NoError(t, err)
+	}()
+
 	// Test CreateTrip
 	t.Run("CreateTrip", func(t *testing.T) {
 		trip := types.Trip{

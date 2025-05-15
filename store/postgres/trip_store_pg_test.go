@@ -88,6 +88,12 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	_, err = pool.Exec(ctx, string(migrationSQL))
 	require.NoError(t, err, "Failed to apply migration")
 
+	// Insert a test user for trip foreign key constraints
+	testUserUUID := authIDtoUUID(testAuthID) // Ensure this is the same as used in tests
+	_, err = pool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+		testUserUUID, "testuser@example.com", "Test User Integration")
+	require.NoError(t, err, "Failed to insert test user")
+
 	return pool, func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("failed to terminate container: %s", err)
@@ -132,11 +138,11 @@ func TestPgTripStore_Integration(t *testing.T) {
 
 			tables := []string{
 				"trip_memberships",
-				"metadata",
 				"locations",
 				"expenses",
 				"trips",
 				"categories",
+				"users", // Added users table for cleanup
 			}
 			for _, table := range tables {
 				_, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))

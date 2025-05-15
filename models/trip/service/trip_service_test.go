@@ -327,7 +327,7 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 		StartDate:            time.Now().Add(24 * time.Hour),
 		EndDate:              time.Now().Add(48 * time.Hour),
 		CreatedBy:            &userID, // Use pointer to userID
-		Status:               types.TripStatusPlanning,
+		Status:               types.TripStatusActive,
 	}
 
 	// Mock store CreateTrip
@@ -622,6 +622,8 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Skipped() {
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), apperrors.ValidationError, appErr.Type)
 	suite.mockStore.AssertExpectations(suite.T())
+	// Ensure weather service GetWeather was not called
+	suite.mockWeatherSvc.AssertNotCalled(suite.T(), "GetWeather", suite.ctx, suite.testTripID)
 }
 
 func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Success() {
@@ -705,6 +707,8 @@ func (suite *TripServiceTestSuite) TestUpdateTrip_Success() {
 		// or ensure they are correctly set based on the update.
 	}
 
+	// Mock GetTrip which is called first internally
+	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(existingTrip, nil).Once()
 	// Mock GetUserRole to allow update
 	suite.mockStore.On("GetUserRole", suite.ctx, suite.testTripID, suite.testUserID).Return(types.MemberRoleOwner, nil).Once()
 	// Mock store UpdateTrip
@@ -739,4 +743,6 @@ func (suite *TripServiceTestSuite) TestUpdateTrip_NotFound() {
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), apperrors.NotFoundError, appErr.Type)
 	suite.mockStore.AssertExpectations(suite.T())
+	// Ensure GetUserRole is not called if GetTrip fails
+	suite.mockStore.AssertNotCalled(suite.T(), "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
 }
