@@ -410,7 +410,7 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 			CreatedBy:            &userID,
 			DestinationLatitude:  10.0,
 			DestinationLongitude: 20.0,
-			EndDate:              time.Now().Add(24 * time.Hour), // Ensure EndDate is in the future
+			EndDate:              time.Now().Add(7 * 24 * time.Hour), // Ensure EndDate is significantly in the future
 		}
 
 		mockStore.On("GetTrip", ctx, testTripID).Return(tripForActiveTest, nil).Once()
