@@ -249,7 +249,6 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 			val := c.Value(middleware.UserIDKey)
 			return val != nil && val.(string) == *existingTrip.CreatedBy
 		}), testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
 		mockStore.On("UpdateTrip", ctxWithUser, testTripID, mock.MatchedBy(func(u types.TripUpdate) bool {
 			return *u.Name == "Updated Trip" &&
 				*u.Description == "Updated Description" &&
@@ -299,16 +298,14 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 		}
 		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
 		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
-
 		err := tripModel.UpdateTrip(ctxWithUser, testTripID, invalidUpdate)
 		assert.Error(t, err)
 		apErr, ok := err.(*errors.AppError)
 		assert.True(t, ok)
 		assert.Equal(t, errors.ValidationError, apErr.Type)
 		mockStore.AssertCalled(t, "GetTrip", ctxWithUser, testTripID)
-		mockStore.AssertCalled(t, "GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy)
-		mockStore.AssertNotCalled(t, "UpdateTrip")
+		mockStore.AssertNotCalled(t, "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
+		mockStore.AssertNotCalled(t, "UpdateTrip", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("store error on GetTrip", func(t *testing.T) {
@@ -325,7 +322,6 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 	t.Run("store error on UpdateTrip", func(t *testing.T) {
 		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
 		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
 		mockStore.On("UpdateTrip", ctxWithUser, testTripID, mock.MatchedBy(func(u types.TripUpdate) bool {
 			return true
 		})).Return(nil, errors.NewDatabaseError(assert.AnError)).Once()

@@ -73,12 +73,17 @@ func (tm *TripModelFacade) GetTripByID(ctx context.Context, id string) (*types.T
 // UpdateTrip implements a facade method for tests
 func (tm *TripModelFacade) UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error {
 	// First check if the trip exists
-	_, err := tm.store.GetTrip(ctx, id)
+	existingTrip, err := tm.store.GetTrip(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// If trip exists, update it
+	// Validate the update payload against the existing trip
+	if err := validation.ValidateTripUpdate(update, existingTrip); err != nil {
+		return err // Return validation error before attempting to update in store
+	}
+
+	// If trip exists and validation passes, update it
 	_, err = tm.store.UpdateTrip(ctx, id, *update)
 	// Simulate publishing an event
 	if err == nil && tm.eventPublisher != nil {
