@@ -441,11 +441,17 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 	})
 
 	t.Run("invalid status transition", func(t *testing.T) {
+		// Isolate mocks for this sub-test
+		localMockStore := new(mocks.MockTripStore)
+		localMockWeatherService := new(MockWeatherService)
+		localMockEventPublisher := new(mocks.MockEventPublisher)
+		localTripModel := models.NewTripModel(localMockStore, localMockWeatherService, localMockEventPublisher)
+
 		currentTripState := &types.Trip{ID: testTripID, Status: types.TripStatusCompleted, CreatedBy: &userID}
-		mockStore.On("GetTrip", ctx, testTripID).Return(currentTripState, nil).Once()
+		localMockStore.On("GetTrip", ctx, testTripID).Return(currentTripState, nil).Once()
 
 		newStatus := types.TripStatusActive // Cannot go from COMPLETED to ACTIVE
-		err := tripModel.UpdateTripStatus(ctx, testTripID, newStatus)
+		err := localTripModel.UpdateTripStatus(ctx, testTripID, newStatus)
 
 		assert.Error(t, err)
 		apErr, ok := err.(*errors.AppError)
@@ -455,10 +461,11 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 		expectedMessage := fmt.Sprintf("Cannot transition from %s to %s", types.TripStatusCompleted, types.TripStatusActive)
 		assert.Equal(t, expectedMessage, apErr.Message)
 
-		// Ensure UpdateTrip and subsequent actions are not called
-		mockStore.AssertNotCalled(t, "UpdateTrip", mock.Anything, mock.Anything, mock.Anything)
-		mockEventPublisher.AssertNotCalled(t, "Publish", mock.Anything, mock.Anything, mock.Anything)
-		mockWeatherService.AssertNotCalled(t, "StartWeatherUpdates", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		// Ensure UpdateTrip and subsequent actions are not called on the local mocks
+		localMockStore.AssertExpectations(t) // Ensures GetTrip was called as expected
+		localMockStore.AssertNotCalled(t, "UpdateTrip", mock.Anything, mock.Anything, mock.Anything)
+		localMockEventPublisher.AssertNotCalled(t, "Publish", mock.Anything, mock.Anything, mock.Anything)
+		localMockWeatherService.AssertNotCalled(t, "StartWeatherUpdates", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
