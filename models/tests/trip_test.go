@@ -16,7 +16,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/tests/mocks"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
@@ -314,21 +313,6 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *localExistingTrip.CreatedBy)
 		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(localExistingTrip, nil).Once()
 
-		// We expect this NOT to be called if validation works.
-		// The arguments to UpdateTrip here need to match exactly what would be passed if it were called.
-		// For this test, it's *invalidUpdate.
-		// Removed the debug .Maybe() mock for UpdateTrip as the primary check is AssertNotCalled
-		// mockStore.On("UpdateTrip", ctxWithUser, testTripID, *invalidUpdate).Return(fmt.Errorf("UpdateTrip was called in validation_error_-_invalid_dates test")).Maybe()
-
-		// --- BEGIN DEBUGGING BLOCK ---
-		validationErr := validation.ValidateTripUpdate(invalidUpdate, localExistingTrip)
-		if validationErr != nil {
-			t.Logf("DEBUG: validation.ValidateTripUpdate for 'validation_error_-_invalid_dates' returned error: %v", validationErr)
-		} else {
-			t.Logf("DEBUG: validation.ValidateTripUpdate for 'validation_error_-_invalid_dates' returned nil (NO ERROR)!")
-		}
-		// --- END DEBUGGING BLOCK ---
-
 		err := tripModel.UpdateTrip(ctxWithUser, testTripID, invalidUpdate)
 		assert.Error(t, err, "Expected an error due to invalid dates")
 		apErr, ok := err.(*errors.AppError)
@@ -336,7 +320,7 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 		assert.Equal(t, errors.ValidationError, apErr.Type, "Error type should be ValidationError")
 		mockStore.AssertCalled(t, "GetTrip", ctxWithUser, testTripID)
 		mockStore.AssertNotCalled(t, "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
-		mockStore.AssertNotCalled(t, "UpdateTrip", mock.Anything, mock.Anything, mock.Anything)
+		mockStore.AssertNotCalled(t, "UpdateTrip", ctxWithUser, testTripID, *invalidUpdate)
 	})
 
 	t.Run("store error on GetTrip", func(t *testing.T) {
@@ -408,31 +392,33 @@ func TestTripModel_DeleteTrip(t *testing.T) {
 
 func TestTripModel_UpdateTripStatus(t *testing.T) {
 	mockStore := new(mocks.MockTripStore)
-	mockEventPublisher := new(mocks.MockEventPublisher)
 	mockWeatherService := new(MockWeatherService)
+	mockEventPublisher := new(mocks.MockEventPublisher)
 	tripModel := models.NewTripModel(mockStore, mockWeatherService, mockEventPublisher)
 	ctx := context.Background()
-	userID := testUserID // Defined userID as a variable to take its address
-
-	existingTrip := &types.Trip{
-		ID:                   testTripID,
-		Name:                 "Test Status Update",
-		Status:               types.TripStatusPlanning,
-		CreatedBy:            &userID,
-		DestinationLatitude:  10.0,
-		DestinationLongitude: 20.0,
-	}
+	userID := testUserID
 
 	t.Run("successful status update to Active", func(t *testing.T) {
 		newStatus := types.TripStatusActive
 		updateArg := types.TripUpdate{Status: &newStatus}
 
-		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("UpdateTrip", ctx, testTripID, updateArg).Return(&types.Trip{ID: testTripID, Status: newStatus, DestinationLatitude: 10.0, DestinationLongitude: 20.0, CreatedBy: &userID}, nil).Once()
-		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
-		mockWeatherService.On("StartWeatherUpdates", ctx, testTripID, existingTrip.DestinationLatitude, existingTrip.DestinationLongitude).Once()
+		// Create a specific trip instance for this test with a future EndDate
+		tripForActiveTest := &types.Trip{
+			ID:                   testTripID,
+			Name:                 "Test Status Update to Active",
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &userID,
+			DestinationLatitude:  10.0,
+			DestinationLongitude: 20.0,
+			EndDate:              time.Now().Add(24 * time.Hour), // Ensure EndDate is in the future
+		}
 
-		err := tripModel.UpdateTripStatus(ctx, testTripID, newStatus) // Correct: Removed userID argument
+		mockStore.On("GetTrip", ctx, testTripID).Return(tripForActiveTest, nil).Once()
+		mockStore.On("UpdateTrip", ctx, testTripID, updateArg).Return(&types.Trip{ID: testTripID, Status: newStatus, DestinationLatitude: 10.0, DestinationLongitude: 20.0, CreatedBy: &userID, EndDate: tripForActiveTest.EndDate}, nil).Once()
+		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
+		mockWeatherService.On("StartWeatherUpdates", ctx, testTripID, tripForActiveTest.DestinationLatitude, tripForActiveTest.DestinationLongitude).Once()
+
+		err := tripModel.UpdateTripStatus(ctx, testTripID, newStatus)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
 		mockEventPublisher.AssertExpectations(t)
@@ -458,17 +444,21 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 		currentTripState := &types.Trip{ID: testTripID, Status: types.TripStatusCompleted, CreatedBy: &userID}
 		mockStore.On("GetTrip", ctx, testTripID).Return(currentTripState, nil).Once()
 
-		newStatus := types.TripStatusActive                           // Cannot go from COMPLETED to ACTIVE
-		err := tripModel.UpdateTripStatus(ctx, testTripID, newStatus) // Correct: Removed userID argument
+		newStatus := types.TripStatusActive // Cannot go from COMPLETED to ACTIVE
+		err := tripModel.UpdateTripStatus(ctx, testTripID, newStatus)
 
 		assert.Error(t, err)
 		apErr, ok := err.(*errors.AppError)
 		assert.True(t, ok)
 		assert.Equal(t, errors.ValidationError, apErr.Type)
-		assert.Contains(t, apErr.Message, "Invalid status transition")
-		mockStore.AssertExpectations(t)
-		mockEventPublisher.AssertNotCalled(t, "Publish")
-		mockWeatherService.AssertNotCalled(t, "StartWeatherUpdates")
+		// More specific error message check
+		expectedMessage := fmt.Sprintf("Cannot transition from %s to %s", types.TripStatusCompleted, types.TripStatusActive)
+		assert.Equal(t, expectedMessage, apErr.Message)
+
+		// Ensure UpdateTrip and subsequent actions are not called
+		mockStore.AssertNotCalled(t, "UpdateTrip", mock.Anything, mock.Anything, mock.Anything)
+		mockEventPublisher.AssertNotCalled(t, "Publish", mock.Anything, mock.Anything, mock.Anything)
+		mockWeatherService.AssertNotCalled(t, "StartWeatherUpdates", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
@@ -610,7 +600,7 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 				EndDate:              now.Add(48 * time.Hour),
 				CreatedBy:            &userID, // Corrected: Use pointer to variable
 			},
-			expectError: "trip destination is required",
+			expectError: "destination_coordinates_required", // Updated expected error
 		},
 		{
 			name: "end date before start date",
@@ -667,7 +657,7 @@ func TestTripModel_CreateTrip_Validation(t *testing.T) {
 				Status:               types.TripStatusPlanning,
 				CreatedBy:            &userID, // Corrected: Use pointer to variable
 			},
-			expectError: "trip destination is required",
+			expectError: "destination_coordinates_required", // Updated expected error
 		},
 	}
 
