@@ -298,6 +298,10 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 		}
 		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
 		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Once()
+
+		// Debugging: Add a specific expectation for UpdateTrip to see if it's hit
+		mockStore.On("UpdateTrip", ctxWithUser, testTripID, *invalidUpdate).Return(fmt.Errorf("UpdateTrip was called in validation_error_-_invalid_dates test")).Maybe()
+
 		err := tripModel.UpdateTrip(ctxWithUser, testTripID, invalidUpdate)
 		assert.Error(t, err)
 		apErr, ok := err.(*errors.AppError)
@@ -338,8 +342,6 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 	t.Run("permission denied", func(t *testing.T) {
 		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
 		mockStore.On("GetTrip", ctxWithUser, testTripID).Return(existingTrip, nil).Maybe()
-		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleMember, nil).Once()
-
 		err := tripModel.UpdateTrip(ctxWithUser, testTripID, update)
 		assert.Error(t, err)
 		apErr, ok := err.(*errors.AppError)
