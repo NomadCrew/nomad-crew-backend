@@ -244,9 +244,13 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 	}
 
 	t.Run("successful update", func(t *testing.T) {
-		mockStore.On("GetTrip", ctx, testTripID).Return(existingTrip, nil).Once()
-		mockStore.On("GetUserRole", ctx, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
-		mockStore.On("UpdateTrip", ctx, testTripID, mock.MatchedBy(func(u types.TripUpdate) bool {
+		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
+		mockStore.On("GetTrip", mock.MatchedBy(func(c context.Context) bool {
+			val := c.Value(middleware.UserIDKey)
+			return val != nil && val.(string) == *existingTrip.CreatedBy
+		}), testTripID).Return(existingTrip, nil).Once()
+		mockStore.On("GetUserRole", ctxWithUser, testTripID, *existingTrip.CreatedBy).Return(types.MemberRoleOwner, nil).Once()
+		mockStore.On("UpdateTrip", ctxWithUser, testTripID, mock.MatchedBy(func(u types.TripUpdate) bool {
 			return *u.Name == "Updated Trip" &&
 				*u.Description == "Updated Description" &&
 				u.DestinationAddress != nil &&
@@ -268,7 +272,6 @@ func TestTripModel_UpdateTrip(t *testing.T) {
 			return event.Type == types.EventTypeTripUpdated
 		})).Return(nil).Once()
 
-		ctxWithUser := context.WithValue(ctx, middleware.UserIDKey, *existingTrip.CreatedBy)
 		err := tripModel.UpdateTrip(ctxWithUser, testTripID, update)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
