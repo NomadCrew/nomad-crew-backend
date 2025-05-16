@@ -42,7 +42,7 @@ func (tm *TripModelFacade) CreateTrip(ctx context.Context, trip *types.Trip) err
 
 	// Start weather updates for the trip
 	if tm.weatherSvc != nil {
-		tm.weatherSvc.StartWeatherUpdates(ctx, id, trip.Destination)
+		tm.weatherSvc.StartWeatherUpdates(ctx, id, trip.DestinationLatitude, trip.DestinationLongitude)
 	}
 
 	// Simulate publishing an event
@@ -72,17 +72,33 @@ func (tm *TripModelFacade) GetTripByID(ctx context.Context, id string) (*types.T
 
 // UpdateTrip implements a facade method for tests
 func (tm *TripModelFacade) UpdateTrip(ctx context.Context, id string, update *types.TripUpdate) error {
+	log := logger.GetLogger() // Get a logger
+
 	// First check if the trip exists
-	_, err := tm.store.GetTrip(ctx, id)
-	if err != nil {
-		return err
+	existingTrip, errGT := tm.store.GetTrip(ctx, id)
+	if errGT != nil {
+		log.Infow("UpdateTrip: GetTrip failed", "tripID", id, "error", errGT)
+		return errGT
 	}
 
-	// If trip exists, update it
-	_, err = tm.store.UpdateTrip(ctx, id, *update)
+	// Validate the update payload against the existing trip
+	validationErr := validation.ValidateTripUpdate(update, existingTrip)
+	if validationErr != nil {
+		log.Infow("UpdateTrip: Validation failed", "tripID", id, "updatePayload", update, "existingTrip", existingTrip, "error", validationErr)
+		return validationErr // Explicitly return the validation error
+	}
+
+	log.Infow("UpdateTrip: Validation passed, proceeding to call store.UpdateTrip", "tripID", id, "updatePayload", update)
+	updatedTrip, errUT := tm.store.UpdateTrip(ctx, id, *update)
+	if errUT != nil {
+		log.Infow("UpdateTrip: store.UpdateTrip failed", "tripID", id, "error", errUT)
+		return errUT
+	}
+	log.Infow("UpdateTrip: store.UpdateTrip succeeded", "tripID", id, "updatedTrip", updatedTrip)
+
 	// Simulate publishing an event
-	if err == nil && tm.eventPublisher != nil {
-		if err := tm.eventPublisher.Publish(ctx, id, types.Event{
+	if tm.eventPublisher != nil {
+		if pubErr := tm.eventPublisher.Publish(ctx, id, types.Event{
 			BaseEvent: types.BaseEvent{
 				Type:      types.EventTypeTripUpdated,
 				TripID:    id,
@@ -92,12 +108,12 @@ func (tm *TripModelFacade) UpdateTrip(ctx context.Context, id string, update *ty
 			Metadata: types.EventMetadata{
 				Source: "trip_model",
 			},
-		}); err != nil {
-			log := logger.GetLogger()
-			log.Warnw("Failed to publish trip updated event", "error", err)
+		}); pubErr != nil {
+			log.Warnw("Failed to publish trip updated event", "tripID", id, "error", pubErr)
+			// Decide if this error should be returned or just logged
 		}
 	}
-	return err
+	return nil // If everything succeeded including publish (or publish error is not returned)
 }
 
 // DeleteTrip implements a facade method for tests
@@ -225,7 +241,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 	}
 
 	update := types.TripUpdate{
-		Status: newStatus,
+		Status: &newStatus,
 	}
 	_, err = tm.store.UpdateTrip(ctx, tripID, update)
 
@@ -249,7 +265,7 @@ func (tm *TripModelFacade) UpdateTripStatus(ctx context.Context, tripID string, 
 
 	// Start weather updates if the trip is now active
 	if err == nil && newStatus == types.TripStatusActive && tm.weatherSvc != nil {
-		tm.weatherSvc.StartWeatherUpdates(ctx, tripID, trip.Destination)
+		tm.weatherSvc.StartWeatherUpdates(ctx, tripID, trip.DestinationLatitude, trip.DestinationLongitude)
 	}
 
 	return err

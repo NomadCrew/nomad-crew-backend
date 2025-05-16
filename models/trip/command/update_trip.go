@@ -69,11 +69,12 @@ func (c *UpdateTripCommand) Execute(ctx context.Context) (*tripinterfaces.Comman
 	}
 
 	// Status transition validation
-	if c.Update.Status != "" {
-		if err := validation.ValidateStatusTransition(c.originalTrip, c.Update.Status); err != nil {
+	if c.Update.Status != nil {
+		newStatusValue := *c.Update.Status
+		if err := validation.ValidateStatusTransition(c.originalTrip, newStatusValue); err != nil {
 			return nil, errors.InvalidStatusTransition(
 				c.originalTrip.Status.String(),
-				c.Update.Status.String(),
+				newStatusValue.String(),
 			)
 		}
 	}

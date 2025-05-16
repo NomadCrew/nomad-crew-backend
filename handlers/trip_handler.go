@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
-	"github.com/NomadCrew/nomad-crew-backend/docs"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
@@ -47,12 +46,17 @@ type UpdateTripStatusRequest struct {
 
 // CreateTripRequest represents the request body for creating a trip
 type CreateTripRequest struct {
-	Name        string            `json:"name" binding:"required"`
-	Description string            `json:"description"`
-	Destination types.Destination `json:"destination" binding:"required"`
-	StartDate   time.Time         `json:"startDate" binding:"required"`
-	EndDate     time.Time         `json:"endDate" binding:"required"`
-	Status      types.TripStatus  `json:"status"`
+	Name                 string           `json:"name" binding:"required"`
+	Description          string           `json:"description,omitempty"`
+	DestinationPlaceID   *string          `json:"destinationPlaceId,omitempty"`
+	DestinationAddress   *string          `json:"destinationAddress,omitempty"`
+	DestinationName      *string          `json:"destinationName,omitempty"`
+	DestinationLatitude  float64          `json:"destinationLatitude" binding:"required"`
+	DestinationLongitude float64          `json:"destinationLongitude" binding:"required"`
+	StartDate            time.Time        `json:"startDate" binding:"required"`
+	EndDate              time.Time        `json:"endDate" binding:"required"`
+	Status               types.TripStatus `json:"status,omitempty"` // Made omitempty, default will be PLANNING
+	BackgroundImageURL   string           `json:"backgroundImageUrl,omitempty"`
 }
 
 // CreateTripHandler godoc
@@ -69,19 +73,39 @@ type CreateTripRequest struct {
 // @Router /trips [post]
 // @Security BearerAuth
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
-	var req types.Trip
+	var req CreateTripRequest // Use the redefined CreateTripRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log := logger.GetLogger()
-		log.Errorw("Invalid request", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
+		log.Errorw("Invalid request for CreateTripHandler", "error", err)
+		if bindErr := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); bindErr != nil {
+			log.Errorw("Failed to set error in context for CreateTripHandler", "error", bindErr)
 		}
 		return
 	}
 
-	req.CreatedBy = c.GetString(string(middleware.UserIDKey))
+	userIDStr := c.GetString(string(middleware.UserIDKey))
 
-	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &req)
+	// Map CreateTripRequest to types.Trip
+	tripToCreate := types.Trip{
+		Name:                 req.Name,
+		Description:          req.Description,
+		DestinationPlaceID:   req.DestinationPlaceID,
+		DestinationAddress:   req.DestinationAddress,
+		DestinationName:      req.DestinationName,
+		DestinationLatitude:  req.DestinationLatitude,
+		DestinationLongitude: req.DestinationLongitude,
+		StartDate:            req.StartDate,
+		EndDate:              req.EndDate,
+		Status:               req.Status, // Will be 'PLANNING' by default if empty due to omitempty and DB default
+		BackgroundImageURL:   req.BackgroundImageURL,
+		CreatedBy:            &userIDStr, // Correctly assign pointer
+	}
+
+	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
+		tripToCreate.Status = types.TripStatusPlanning
+	}
+
+	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
@@ -345,53 +369,66 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 
 // TriggerWeatherUpdateHandler godoc
 // @Summary Trigger weather update for a trip
-// @Description Manually triggers a weather data update for the specified trip if conditions are met (e.g., trip is active or planning).
-// @Tags trips
-// @Tags weather
+// @Description Manually triggers an immediate weather forecast update for the specified trip if it has a valid destination.
+// @Tags trips,weather
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Success 200 {object} docs.StatusResponse "Weather update triggered successfully or already up-to-date"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or conditions not met for update (e.g. trip completed)"
+// @Success 200 {object} docs.SuccessResponse "Successfully triggered weather update"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID"
 // @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to trigger weather updates for this trip"
+// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized or trip has no destination"
 // @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
-// @Router /trips/{id}/weather/trigger-update [post]
+// @Failure 500 {object} docs.ErrorResponse "Internal server error or weather service error"
+// @Router /trips/{id}/weather/trigger [post]
 // @Security BearerAuth
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
-	// Fetch trip details to get destination and ensure user has access
+	// Fetch the trip to ensure it exists and to get destination details
+	// Use GetTripByID which includes membership check implicitly via the model layer
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
-		h.handleModelError(c, err) // Handles 404 if trip not found, 403 if not member, etc.
+		h.handleModelError(c, err) // Handles NotFound, Forbidden, etc.
 		return
 	}
 
-	if h.weatherService == nil {
-		log.Error("Weather service is not initialized in TripHandler")
-		appErr := apperrors.New(apperrors.ServerError, "Weather service unavailable", "Service not configured")
-		h.handleModelError(c, appErr)
-		return
-	}
-
-	// Call the weather service to trigger an update
-	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.Destination); err != nil {
-		// Check if the error is a validation error (e.g., trip not active)
-		if appErr, ok := err.(*apperrors.AppError); ok && appErr.HTTPStatus == http.StatusBadRequest {
-			h.handleModelError(c, appErr)
-		} else {
-			log.Errorw("Failed to trigger weather update", "tripID", tripID, "error", err)
-			internalErr := apperrors.New(apperrors.ServerError, "Failed to trigger weather update", err.Error())
-			h.handleModelError(c, internalErr)
+	if trip.DestinationLatitude == 0 && trip.DestinationLongitude == 0 {
+		log.Warnw("Cannot trigger weather update, trip has no valid destination coordinates", "tripID", tripID, "userID", userID)
+		if err := c.Error(apperrors.Forbidden("no_destination", "Trip has no destination set for weather updates.")); err != nil {
+			log.Errorw("Failed to set error in context for TriggerWeatherUpdateHandler no destination", "error", err)
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, docs.StatusResponse{Message: "Weather update successfully triggered"})
+	if h.weatherService == nil {
+		log.Errorw("Weather service not available in TripHandler", "tripID", tripID, "userID", userID)
+		if err := c.Error(apperrors.InternalServerError("Weather service is not configured.")); err != nil {
+			log.Errorw("Failed to set error in context for TriggerWeatherUpdateHandler weather service unavailable", "error", err)
+		}
+		return
+	}
+
+	log.Infow("Attempting to trigger weather update for trip", "tripID", tripID, "userID", userID, "lat", trip.DestinationLatitude, "lon", trip.DestinationLongitude)
+
+	// Call the weather service to trigger an immediate update
+	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
+		log.Errorw("Failed to trigger weather update", "tripID", tripID, "userID", userID, "error", err)
+		// Propagate the error to the client, ensuring it's an AppError
+		appErr, ok := err.(*apperrors.AppError)
+		if !ok {
+			// If it's not an AppError, wrap it as an internal server error
+			appErr = apperrors.InternalServerError("Failed to trigger weather update due to an unexpected error")
+		}
+		if bindErr := c.Error(appErr); bindErr != nil { // Use c.Error to let middleware handle it
+			log.Errorw("Failed to bind appErr to context in TriggerWeatherUpdateHandler", "error", bindErr, "originalAppError", appErr)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Weather update triggered successfully for trip " + tripID})
 }
 
 // UploadTripImage godoc

@@ -32,13 +32,11 @@ func NewTripChatService(
 // ListMessages lists messages for a trip
 func (s *TripChatService) ListMessages(ctx context.Context, tripID string, userID string, limit int, before string) ([]*types.ChatMessage, error) {
 	// Check if the user is a member of the trip (based on membership data)
-	role, err := s.tripStore.GetUserRole(ctx, tripID, userID)
+	_, err := s.tripStore.GetUserRole(ctx, tripID, userID) // We only need to check the error
 	if err != nil {
-		return nil, err
-	}
-
-	if role == types.MemberRoleNone {
-		return nil, internal_errors.NewForbiddenError("User is not a member of this trip")
+		// Consider wrapping the error or returning a specific "access denied" error.
+		// For now, returning the original error which might indicate "not found" or other issues.
+		return nil, internal_errors.NewForbiddenError("User is not a member of this trip or access denied")
 	}
 
 	// Using appropriate method from the store
@@ -65,13 +63,10 @@ func (s *TripChatService) ListMessages(ctx context.Context, tripID string, userI
 // UpdateLastReadMessage updates the last read message for a user in a trip
 func (s *TripChatService) UpdateLastReadMessage(ctx context.Context, tripID string, userID string, messageID string) error {
 	// Check if the user is a member of the trip
-	role, err := s.tripStore.GetUserRole(ctx, tripID, userID)
+	_, err := s.tripStore.GetUserRole(ctx, tripID, userID) // We only need to check the error
 	if err != nil {
-		return err
-	}
-
-	if role == types.MemberRoleNone {
-		return internal_errors.NewForbiddenError("User is not a member of this trip")
+		// Consider wrapping the error or returning a specific "access denied" error.
+		return internal_errors.NewForbiddenError("User is not a member of this trip or access denied")
 	}
 
 	// Since the ChatStore doesn't have a direct method for trip message read status,

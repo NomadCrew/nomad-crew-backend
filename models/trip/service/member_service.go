@@ -53,6 +53,7 @@ func (s *TripMemberService) UpdateMemberRole(ctx context.Context, tripID, member
 	// Get the user's current role to compare
 	oldRole, err := s.GetUserRole(ctx, tripID, memberID)
 	if err != nil {
+		// If GetUserRole fails, the user is likely not a member or an error occurred.
 		return nil, err
 	}
 
@@ -79,7 +80,8 @@ func (s *TripMemberService) UpdateMemberRole(ctx context.Context, tripID, member
 
 // RemoveMember removes a member from a trip
 func (s *TripMemberService) RemoveMember(ctx context.Context, tripID, userID string) error {
-	// Check if the member exists
+	// Check if the member exists by trying to get their role.
+	// If GetUserRole returns an error, the member is not found or another error occurred.
 	_, err := s.GetUserRole(ctx, tripID, userID)
 	if err != nil {
 		return err
@@ -107,31 +109,31 @@ func (s *TripMemberService) GetTripMembers(ctx context.Context, tripID string) (
 	return members, nil
 }
 
-// GetUserRole gets a user's role in a trip
+// GetUserRole gets a user's role in a trip.
+// It returns an empty role string and the error if the user is not found or another error occurs.
 func (s *TripMemberService) GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error) {
 	role, err := s.store.GetUserRole(ctx, tripID, userID)
 	if err != nil {
-		return types.MemberRoleNone, &errors.AppError{
-			Type:    errors.NotFoundError,
-			Message: "User is not a member of this trip",
-		}
+		return "", err // Return empty role and the original error from the store
 	}
 	return role, nil
 }
 
-// IsTripMember checks if a user is a member of a specific trip
+// IsTripMember checks if a user is a member of a specific trip.
 // This is needed to satisfy the handlers.TripServiceInterface
 func (s *TripMemberService) IsTripMember(ctx context.Context, tripID, userID string) (bool, error) {
-	role, err := s.store.GetUserRole(ctx, tripID, userID)
+	_, err := s.store.GetUserRole(ctx, tripID, userID)
 	if err != nil {
-		// If there's an error, check if it's because the user isn't a member
+		// Check if the error is specifically a "not found" type error from the store.
+		// The exact error type or code to check might depend on the store's implementation.
 		if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.NotFoundError {
-			return false, nil
+			return false, nil // User not found, so not a member, no error to bubble up for this specific check.
 		}
+		// For other types of errors, return false and the error.
 		return false, err
 	}
-
-	return role != types.MemberRoleNone, nil
+	// If GetUserRole succeeded without error, the user is a member.
+	return true, nil
 }
 
 // Helper method to publish events using the centralized helper

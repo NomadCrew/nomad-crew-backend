@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/store"
@@ -250,92 +251,49 @@ func (h *WSHandler) HandleChatWebSocketConnection(c *gin.Context) {
 		return
 	}
 
-	// Set trip ID on connection
-	safeConn.TripID = tripID
-
-	// Create a context with timeout for database queries
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
-
-	// Verify user is a member of the trip
-	role, err := h.tripStore.GetUserRole(ctx, tripID, safeConn.UserID)
+	// Verify user membership for the trip
+	// Use a fresh context for this critical check, or ensure c.Request.Context() is still valid
+	// For long-lived WebSocket connections, managing context lifecycle is important.
+	// Using context.Background() for now as an example for a self-contained operation.
+	_, err := h.tripStore.GetUserRole(context.Background(), tripID, safeConn.UserID)
 	if err != nil {
-		log.Error("HandleChatWebSocketConnection: Error checking trip membership", zap.String("tripID", tripID), zap.String("userID", safeConn.UserID), zap.Error(err))
-		h.sendErrorResponse(safeConn, "Server error checking trip membership")
-		if err := safeConn.Close(); err != nil {
-			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "error checking membership"))
-		}
-		return
-	}
-
-	// Check if the user has a valid role (not NONE)
-	if role == types.MemberRoleNone {
-		log.Warn("HandleChatWebSocketConnection: User not a member of the trip", zap.String("tripID", tripID), zap.String("userID", safeConn.UserID))
-		h.sendErrorResponse(safeConn, "Not a member of this trip")
-		if err := safeConn.Close(); err != nil {
-			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "not a member"))
-		}
-		return
-	}
-
-	// Send a welcome message to confirm successful connection
-	welcomeMsg, _ := json.Marshal(map[string]interface{}{
-		"type": "welcome",
-		"data": map[string]interface{}{
-			"message": "Connected to trip chat",
-			"tripID":  tripID,
-			"role":    string(role),
-		},
-	})
-
-	if err := safeConn.WriteMessage(websocket.TextMessage, welcomeMsg); err != nil {
-		log.Warn("Failed to send welcome message",
+		log.Warn("Failed to get user role for trip chat, access denied or error.",
 			zap.String("userID", safeConn.UserID),
 			zap.String("tripID", tripID),
 			zap.Error(err))
-	}
-
-	log.Info("Chat WebSocket connection established",
-		zap.String("userID", safeConn.UserID),
-		zap.String("tripID", tripID),
-		zap.String("role", string(role)))
-
-	// Initialize chat message event handling
-	client := middleware.GetWSClient(safeConn)
-	if client == nil {
-		log.Error("Failed to get WebSocket client",
-			zap.String("userID", safeConn.UserID),
-			zap.String("tripID", tripID))
-		h.sendErrorResponse(safeConn, "Failed to initialize chat session")
-		if err := safeConn.Close(); err != nil {
-			log.Warn("Error closing WebSocket connection", zap.Error(err), zap.String("userID", safeConn.UserID), zap.String("reason", "failed to init session"))
+		// Differentiate between not found and other errors for a more specific response
+		if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.NotFoundError {
+			h.sendErrorResponse(safeConn, "Forbidden: You are not a member of this trip.")
+		} else {
+			// For other errors, a more generic message might be suitable
+			h.sendErrorResponse(safeConn, "Server error: Could not verify trip membership.")
+		}
+		if closeErr := safeConn.Close(); closeErr != nil {
+			log.Warn("Error closing WebSocket connection after membership check failure", zap.Error(closeErr), zap.String("userID", safeConn.UserID))
 		}
 		return
 	}
 
-	// Handle WebSocket messages in a separate goroutine
-	// This ensures the HTTP handler can return while the connection remains active
-	go func() {
-		// Create a new context for the goroutine
-		goCtx := context.Background()
+	// If GetUserRole returned no error, the user is a member and has a valid role.
+	// The check for MemberRoleNone is no longer needed.
 
-		// Handle chat events through the event service
-		client.HandleChatMessages(goCtx, h.eventService, tripID)
+	// Set trip ID for the connection (if not already set in SafeConn)
+	safeConn.TripID = tripID
 
-		// Process incoming messages
-		h.handleWebSocketMessages(goCtx, safeConn)
+	// Create a context for the message handling loop.
+	// This context can be derived from c.Request.Context() if appropriate for request-scoped resources,
+	// or context.Background() if the WebSocket lifecycle is independent of the initial HTTP request.
+	// Using c.Request.Context() as a base for cancellation if the underlying request is cancelled.
+	ctx, cancel := context.WithCancel(c.Request.Context()) // Changed to WithCancel for clarity if timeout not strictly needed here
+	defer cancel()
 
-		// Ensure connection is closed when done
-		if !middleware.ConnIsClosed(safeConn) {
-			if err := safeConn.Close(); err != nil {
-				log.Warn("Error closing chat WebSocket connection from main handler loop", zap.Error(err), zap.String("userID", safeConn.UserID))
-			}
-		}
+	// Log successful trip chat connection
+	log.Info("Trip chat WebSocket connection authorized",
+		zap.String("userID", safeConn.UserID),
+		zap.String("tripID", tripID))
 
-		log.Info("Chat WebSocket handler completed",
-			zap.String("userID", safeConn.UserID),
-			zap.String("tripID", tripID))
-	}()
+	// Start message handling loop, passing the created context
+	h.handleWebSocketMessages(ctx, safeConn)
 }
 
 // handleWebSocketMessages processes incoming WebSocket messages

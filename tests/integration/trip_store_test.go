@@ -84,15 +84,37 @@ func TestTripStore(t *testing.T) {
 	ctx := context.Background()
 	testUserID := uuid.New().String()
 
+	// Insert the test user before any trip operations
+	_, errUser := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+		testUserID, fmt.Sprintf("user-%s@example.com", testUserID), "Test User For TripStore")
+	require.NoError(t, errUser, "Failed to insert test user for TestTripStore")
+
+	// Defer cleanup of test data
+	defer func() {
+		_, err := testPool.Exec(ctx, "DELETE FROM trip_memberships WHERE trip_id IN (SELECT id FROM trips WHERE created_by = $1)", testUserID)
+		assert.NoError(t, err) // Use assert to not fail other cleanup steps
+		_, err = testPool.Exec(ctx, "DELETE FROM trips WHERE created_by = $1", testUserID)
+		assert.NoError(t, err)
+		// Clean up users created specifically in this test function scope if needed by matching email pattern or similar
+		// For now, cleaning the specific testUserID should be okay if tests don't create users with conflicting IDs
+		// but are based on *this* testUserID for trips.
+		_, err = testPool.Exec(ctx, "DELETE FROM users WHERE id = $1", testUserID)
+		assert.NoError(t, err)
+	}()
+
 	// Test CreateTrip
 	t.Run("CreateTrip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip Create",
+			Description:          "Test Description Create",
+			DestinationAddress:   stringPtr("Address Create"),
+			DestinationPlaceID:   stringPtr("place-id-create"),
+			DestinationLatitude:  1.0,
+			DestinationLongitude: 1.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &testUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
@@ -103,12 +125,16 @@ func TestTripStore(t *testing.T) {
 	// Test GetTrip
 	t.Run("GetTrip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip Get",
+			Description:          "Test Description Get",
+			DestinationAddress:   stringPtr("Address Get"),
+			DestinationPlaceID:   stringPtr("place-id-get"),
+			DestinationLatitude:  2.0,
+			DestinationLongitude: 2.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &testUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
@@ -118,39 +144,54 @@ func TestTripStore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tripID, retrievedTrip.ID)
 		assert.Equal(t, trip.Name, retrievedTrip.Name)
+		assert.Equal(t, *trip.DestinationAddress, *retrievedTrip.DestinationAddress)
+		assert.NotNil(t, retrievedTrip.CreatedBy)
+		assert.Equal(t, testUserID, *retrievedTrip.CreatedBy)
 	})
 
 	// Test UpdateTrip
 	t.Run("UpdateTrip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip Update Initial",
+			Description:          "Test Description Update Initial",
+			DestinationAddress:   stringPtr("Address Update Initial"),
+			DestinationPlaceID:   stringPtr("place-id-update-initial"),
+			DestinationLatitude:  3.0,
+			DestinationLongitude: 3.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &testUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
 		update := types.TripUpdate{
-			Name: stringPtr("Updated Trip"),
+			Name:               stringPtr("Updated Trip Name"),
+			Description:        stringPtr("Updated Trip Description"),
+			DestinationAddress: stringPtr("Updated Address"),
 		}
 		updatedTrip, err := tripStore.UpdateTrip(ctx, tripID, update)
 		require.NoError(t, err)
-		assert.Equal(t, "Updated Trip", updatedTrip.Name)
+		assert.Equal(t, "Updated Trip Name", updatedTrip.Name)
+		assert.Equal(t, "Updated Trip Description", updatedTrip.Description)
+		assert.Equal(t, "Updated Address", *updatedTrip.DestinationAddress)
 	})
 
 	// Test DeleteTrip
 	t.Run("DeleteTrip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip Delete",
+			Description:          "Test Description Delete",
+			DestinationAddress:   stringPtr("Address Delete"),
+			DestinationPlaceID:   stringPtr("place-id-delete"),
+			DestinationLatitude:  4.0,
+			DestinationLongitude: 4.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &testUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
@@ -165,52 +206,105 @@ func TestTripStore(t *testing.T) {
 
 	// Test ListUserTrips
 	t.Run("ListUserTrips", func(t *testing.T) {
+		listTestUserID := uuid.New().String()
+		// Insert the listTestUserID user
+		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			listTestUserID, fmt.Sprintf("listuser-%s@example.com", listTestUserID), "List Test User")
+		require.NoError(t, errUserInsert, "Failed to insert listTestUserID")
+
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip List",
+			Description:          "Test Description List",
+			DestinationAddress:   stringPtr("Address List"),
+			DestinationPlaceID:   stringPtr("place-id-list"),
+			DestinationLatitude:  5.0,
+			DestinationLongitude: 5.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &listTestUserID,
 		}
 
 		_, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
-		trips, err := tripStore.ListUserTrips(ctx, testUserID)
+		trips, err := tripStore.ListUserTrips(ctx, listTestUserID)
 		require.NoError(t, err)
 		assert.NotEmpty(t, trips)
+		assert.Len(t, trips, 1)
+		assert.Equal(t, listTestUserID, *trips[0].CreatedBy)
 	})
 
 	// Test SearchTrips
 	t.Run("SearchTrips", func(t *testing.T) {
+		searchUserID := uuid.New().String()
+		// Insert the searchUserID user
+		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			searchUserID, fmt.Sprintf("searchuser-%s@example.com", searchUserID), "Search Test User")
+		require.NoError(t, errUserInsert, "Failed to insert searchUserID")
+
+		searchTrip := types.Trip{
+			Name:                 "Searchable Trip",
+			DestinationAddress:   stringPtr("Searchable Address"),
+			DestinationPlaceID:   stringPtr("searchable-place-id"),
+			DestinationLatitude:  6.0,
+			DestinationLongitude: 6.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(5 * 24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &searchUserID,
+		}
+		_, err := tripStore.CreateTrip(ctx, searchTrip)
+		require.NoError(t, err)
+
 		criteria := types.TripSearchCriteria{
-			UserID:        testUserID,
+			UserID:        searchUserID,
 			StartDateFrom: time.Now().Add(-24 * time.Hour),
 			StartDateTo:   time.Now().Add(24 * time.Hour),
 			Limit:         10,
 			Offset:        0,
+			Destination:   "Searchable Address",
 		}
 		trips, err := tripStore.SearchTrips(ctx, criteria)
 		require.NoError(t, err)
 		assert.NotNil(t, trips)
+		assert.GreaterOrEqual(t, len(trips), 1, "Should find at least the created searchable trip")
+		if len(trips) > 0 {
+			assert.Equal(t, "Searchable Trip", trips[0].Name)
+		}
 	})
 
 	// Test AddMember
 	t.Run("AddMember", func(t *testing.T) {
+		addMemberUserID := uuid.New().String() // This is the trip creator
+		memberID := uuid.New().String()        // This is the user to be added as a member
+
+		// Insert the trip creator user
+		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			addMemberUserID, fmt.Sprintf("addmemberuser-%s@example.com", addMemberUserID), "AddMember Test User (Creator)")
+		require.NoError(t, errUserInsert, "Failed to insert addMemberUserID")
+
+		// Insert the member user
+		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			memberID, fmt.Sprintf("member-%s@example.com", memberID), "AddMember Test User (Member)")
+		require.NoError(t, errMemberInsert, "Failed to insert memberID for AddMember test")
+
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip AddMember",
+			Description:          "Test Description AddMember",
+			DestinationAddress:   stringPtr("Address AddMember"),
+			DestinationPlaceID:   stringPtr("place-id-addmember"),
+			DestinationLatitude:  7.0,
+			DestinationLongitude: 7.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &addMemberUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
-		memberID := uuid.New().String()
 		membership := &types.TripMembership{
 			TripID: tripID,
 			UserID: memberID,
@@ -223,23 +317,48 @@ func TestTripStore(t *testing.T) {
 		members, err := tripStore.GetTripMembers(ctx, tripID)
 		require.NoError(t, err)
 		assert.NotEmpty(t, members)
+		foundAddedMember := false
+		for _, m := range members {
+			if m.UserID == memberID {
+				foundAddedMember = true
+				break
+			}
+		}
+		assert.True(t, foundAddedMember, "Added member not found in trip members list")
 	})
 
 	// Test UpdateMemberRole
 	t.Run("UpdateMemberRole", func(t *testing.T) {
+		updateRoleUserID := uuid.New().String() // This is the trip creator
+		memberID := uuid.New().String()         // This is the user whose role will be updated
+
+		// Insert the trip creator user
+		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			updateRoleUserID, fmt.Sprintf("updateroleuser-%s@example.com", updateRoleUserID), "UpdateRole Test User (Creator)")
+		require.NoError(t, errUserInsert, "Failed to insert updateRoleUserID")
+
+		// Insert the member user
+		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			memberID, fmt.Sprintf("member-%s@example.com", memberID), "UpdateRole Test User (Member)")
+		require.NoError(t, errMemberInsert, "Failed to insert memberID for UpdateMemberRole test")
+
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip UpdateMemberRole",
+			Description:          "Test Description UpdateMemberRole",
+			DestinationAddress:   stringPtr("Address UpdateMemberRole"),
+			DestinationPlaceID:   stringPtr("place-id-updaterole"),
+			DestinationLatitude:  8.0,
+			DestinationLongitude: 8.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &updateRoleUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
-		memberID := uuid.New().String()
+		// Add the member first
 		membership := &types.TripMembership{
 			TripID: tripID,
 			UserID: memberID,
@@ -247,50 +366,77 @@ func TestTripStore(t *testing.T) {
 			Status: types.MembershipStatusActive,
 		}
 		err = tripStore.AddMember(ctx, membership)
-		require.NoError(t, err)
+		require.NoError(t, err, "Failed to add member in UpdateMemberRole setup")
 
 		err = tripStore.UpdateMemberRole(ctx, tripID, memberID, types.MemberRoleOwner)
 		require.NoError(t, err)
 
 		members, err := tripStore.GetTripMembers(ctx, tripID)
 		require.NoError(t, err)
-		assert.Equal(t, types.MemberRoleOwner, members[0].Role)
+		foundUpdatedMember := false
+		for _, m := range members {
+			if m.UserID == memberID && m.Role == types.MemberRoleOwner {
+				foundUpdatedMember = true
+				break
+			}
+		}
+		assert.True(t, foundUpdatedMember, "Member role was not updated to Owner")
 	})
 
 	// Test RemoveMember
 	t.Run("RemoveMember", func(t *testing.T) {
+		removeMemberUserID := uuid.New().String() // This is the trip creator
+		memberToRemoveID := uuid.New().String()   // This is the user to be removed
+
+		// Insert the trip creator user
+		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			removeMemberUserID, fmt.Sprintf("removememberuser-%s@example.com", removeMemberUserID), "RemoveMember Test User (Creator)")
+		require.NoError(t, errUserInsert, "Failed to insert removeMemberUserID")
+
+		// Insert the member user to be removed
+		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			memberToRemoveID, fmt.Sprintf("membertoremove-%s@example.com", memberToRemoveID), "RemoveMember Test User (To Remove)")
+		require.NoError(t, errMemberInsert, "Failed to insert memberToRemoveID")
+
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip RemoveMember",
+			Description:          "Test Description RemoveMember",
+			DestinationAddress:   stringPtr("Address RemoveMember"),
+			DestinationPlaceID:   stringPtr("place-id-removemember"),
+			DestinationLatitude:  9.0,
+			DestinationLongitude: 9.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &removeMemberUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
-		memberID := uuid.New().String()
 		membership := &types.TripMembership{
 			TripID: tripID,
-			UserID: memberID,
+			UserID: memberToRemoveID,
 			Role:   types.MemberRoleMember,
 			Status: types.MembershipStatusActive,
 		}
-		err = tripStore.AddMember(ctx, membership)
-		require.NoError(t, err)
+		errAddMember := tripStore.AddMember(ctx, membership)
+		require.NoError(t, errAddMember, "Failed to add member in RemoveMember setup")
 
-		err = tripStore.RemoveMember(ctx, tripID, memberID)
+		err = tripStore.RemoveMember(ctx, tripID, memberToRemoveID)
 		require.NoError(t, err)
 
 		members, err := tripStore.GetTripMembers(ctx, tripID)
 		require.NoError(t, err)
 
-		// Check that the specific member was removed
-		for _, member := range members {
-			require.NotEqual(t, memberID, member.UserID, "Member should have been removed")
+		foundRemovedMember := false
+		for _, m := range members {
+			if m.UserID == memberToRemoveID {
+				foundRemovedMember = true
+				break
+			}
 		}
+		assert.False(t, foundRemovedMember, "Removed member still found in trip members list")
 	})
 
 	// Test Transaction Handling
@@ -299,12 +445,16 @@ func TestTripStore(t *testing.T) {
 		require.NoError(t, err)
 
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			StartDate:   time.Now(),
-			EndDate:     time.Now().Add(24 * time.Hour),
-			Status:      "PLANNING",
-			CreatedBy:   testUserID,
+			Name:                 "Test Trip Transaction",
+			Description:          "Test Description Transaction",
+			DestinationAddress:   stringPtr("Address Transaction"),
+			DestinationPlaceID:   stringPtr("place-id-transaction"),
+			DestinationLatitude:  10.0,
+			DestinationLongitude: 10.0,
+			StartDate:            time.Now(),
+			EndDate:              time.Now().Add(24 * time.Hour),
+			Status:               types.TripStatusPlanning,
+			CreatedBy:            &testUserID,
 		}
 
 		tripID, err := tripStore.CreateTrip(ctx, trip)
