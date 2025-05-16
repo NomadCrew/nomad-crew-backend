@@ -8,7 +8,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/shared"
-	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 )
@@ -48,9 +47,8 @@ func (c *RemoveMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		return nil, errors.NotFound("member_not_found", "member not found in trip")
 	}
 
-	if err := validation.ValidateRoleTransition(targetRole, types.MemberRoleNone); err != nil {
-		return nil, err
-	}
+	// The ValidateRoleTransition check with MemberRoleNone is removed as it's redundant
+	// and MemberRoleNone is deprecated. GetUserRole confirms the member exists.
 
 	// Last owner protection
 	if targetRole == types.MemberRoleOwner {

@@ -16,9 +16,17 @@ func ValidateTrip(trip *types.Trip) error {
 		validationErrors = append(validationErrors, "trip name is required")
 	}
 
-	if trip.Destination.Address == "" {
-		validationErrors = append(validationErrors, "trip destination is required")
+	// Validate new destination fields (coordinates are mandatory)
+	if trip.DestinationLatitude == 0 && trip.DestinationLongitude == 0 {
+		validationErrors = append(validationErrors, "trip destination coordinates (latitude and longitude) are required")
 	}
+	// Optional: Validate ranges for latitude and longitude if needed
+	// if trip.DestinationLatitude < -90 || trip.DestinationLatitude > 90 {
+	// 	validationErrors = append(validationErrors, "invalid latitude value")
+	// }
+	// if trip.DestinationLongitude < -180 || trip.DestinationLongitude > 180 {
+	// 	validationErrors = append(validationErrors, "invalid longitude value")
+	// }
 
 	if trip.StartDate.IsZero() {
 		validationErrors = append(validationErrors, "trip start date is required")
@@ -40,11 +48,11 @@ func ValidateTrip(trip *types.Trip) error {
 		validationErrors = append(validationErrors, "trip end date cannot be before start date")
 	}
 
-	if trip.CreatedBy == "" {
+	if trip.CreatedBy == nil || *trip.CreatedBy == "" { // Updated for pointer
 		validationErrors = append(validationErrors, "trip creator ID is required")
 	}
 
-	if trip.Status == "" {
+	if trip.Status == "" { // This check might need adjustment if Status can be empty string from DB (unlikely for ENUM)
 		trip.Status = types.TripStatusPlanning
 	} else if !trip.Status.IsValid() {
 		validationErrors = append(validationErrors, "invalid trip status")
@@ -63,9 +71,12 @@ func ValidateNewTrip(trip *types.Trip) error {
 	if trip.Name == "" {
 		return errors.ValidationFailed("name_required", "trip name is required")
 	}
-	if trip.Destination.Address == "" {
-		return errors.ValidationFailed("destination_required", "trip destination is required")
+
+	// Validate new destination fields (coordinates are mandatory)
+	if trip.DestinationLatitude == 0 && trip.DestinationLongitude == 0 {
+		return errors.ValidationFailed("destination_coordinates_required", "trip destination coordinates (latitude and longitude) are required")
 	}
+	// Optional: Validate ranges for latitude and longitude if needed
 
 	// Check if start date is in the past (compare dates only, not time)
 	now := time.Now()
@@ -79,10 +90,10 @@ func ValidateNewTrip(trip *types.Trip) error {
 	if trip.EndDate.Before(trip.StartDate) {
 		return errors.ValidationFailed("invalid_end_date", "trip end date cannot be before start date")
 	}
-	if trip.CreatedBy == "" {
+	if trip.CreatedBy == nil || *trip.CreatedBy == "" { // Updated for pointer
 		return errors.ValidationFailed("creator_required", "trip creator ID is required")
 	}
-	if trip.Status != "" && !trip.Status.IsValid() {
+	if trip.Status != "" && !trip.Status.IsValid() { // This check might need adjustment
 		return errors.ValidationFailed("invalid_status", "invalid trip status")
 	}
 	return nil
@@ -113,16 +124,18 @@ func ValidateTripUpdate(update *types.TripUpdate, originalTrip *types.Trip) erro
 	}
 
 	// Status transition validation with date checks
-	if update.Status != "" {
-		if err := ValidateStatusTransition(originalTrip, update.Status); err != nil {
+	if update.Status != nil && *update.Status != "" { // Check pointer and its value
+		if err := ValidateStatusTransition(originalTrip, *update.Status); err != nil {
 			validationErrors = append(validationErrors, err.Error())
 		}
 	}
 
-	// Null field handling validation
-	if update.Destination != nil && update.Destination.Address == "" {
-		validationErrors = append(validationErrors, "destination address cannot be empty")
+	// Validate new destination fields (if one coordinate is provided, the other must also be)
+	if (update.DestinationLatitude != nil && update.DestinationLongitude == nil) ||
+		(update.DestinationLatitude == nil && update.DestinationLongitude != nil) {
+		validationErrors = append(validationErrors, "both latitude and longitude must be provided if one is updated")
 	}
+	// Optional: Add range validation for lat/lon if values are present
 
 	if len(validationErrors) > 0 {
 		return errors.ValidationFailed(

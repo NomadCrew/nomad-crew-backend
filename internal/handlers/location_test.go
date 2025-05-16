@@ -249,14 +249,3 @@ func TestGetTripMemberLocations(t *testing.T) {
 	assert.Equal(t, expectedLocations[0].ID, response["locations"][0].ID)
 	assert.Equal(t, expectedLocations[0].UserName, response["locations"][0].UserName)
 }
-
-/*
-// TODO: Offline location functionality was removed. These tests are no longer valid.
-func TestSaveOfflineLocations(t *testing.T) {
-	// Removed as mentioned in the comment
-}
-
-func TestProcessOfflineLocations(t *testing.T) {
-	// Removed as mentioned in the comment
-}
-*/

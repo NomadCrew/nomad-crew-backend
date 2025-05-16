@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,17 +80,19 @@ func (s *PostgresChatStore) CreateChatGroup(ctx context.Context, group types.Cha
 	return id, nil
 }
 
-// GetChatGroup retrieves a specific chat group by its ID from the database.
+// GetChatGroup retrieves a chat group by ID from the database.
 func (s *PostgresChatStore) GetChatGroup(ctx context.Context, groupID string) (*types.ChatGroup, error) {
 	log := logger.GetLogger()
 
 	query := `
-		SELECT id, trip_id, name, description, created_by, created_at, updated_at
+		SELECT id, trip_id, name, description, created_by, created_at, updated_at, deleted_at
 		FROM chat_groups
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	var group types.ChatGroup
+	var deletedAt sql.NullTime // Use sql.NullTime for nullable deleted_at field
+
 	err := s.db.QueryRow(ctx, query, groupID).Scan(
 		&group.ID,
 		&group.TripID,
@@ -98,15 +101,21 @@ func (s *PostgresChatStore) GetChatGroup(ctx context.Context, groupID string) (*
 		&group.CreatedBy,
 		&group.CreatedAt,
 		&group.UpdatedAt,
+		&deletedAt,
 	)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("Chat group not found", "groupID", groupID)
+			log.Infow("Chat group not found", "groupID", groupID)
 			return nil, apperrors.NotFound("ChatGroup", groupID)
 		}
 		log.Errorw("Failed to get chat group", "error", err, "groupID", groupID)
 		return nil, apperrors.NewDatabaseError(err)
+	}
+
+	// Convert sql.NullTime to *time.Time for DeletedAt
+	if deletedAt.Valid {
+		group.DeletedAt = &deletedAt.Time
 	}
 
 	return &group, nil
@@ -144,23 +153,38 @@ func (s *PostgresChatStore) UpdateChatGroup(ctx context.Context, groupID string,
 	return nil
 }
 
-// DeleteChatGroup removes a chat group and potentially related data (handled by DB constraints/triggers) from the database.
+// DeleteChatGroup performs a soft delete on a chat group by setting deleted_at timestamp.
 func (s *PostgresChatStore) DeleteChatGroup(ctx context.Context, groupID string) error {
 	log := logger.GetLogger()
 
 	query := `
-		DELETE FROM chat_groups
-		WHERE id = $1
+		UPDATE chat_groups
+		SET deleted_at = $1,
+		    updated_at = $1
+		WHERE id = $2 AND deleted_at IS NULL
 	`
 
-	commandTag, err := s.db.Exec(ctx, query, groupID)
+	now := time.Now()
+	commandTag, err := s.db.Exec(ctx, query, now, groupID)
 
 	if err != nil {
 		log.Errorw("Failed to delete chat group", "error", err, "groupID", groupID)
 		return apperrors.NewDatabaseError(err)
 	}
 	if commandTag.RowsAffected() == 0 {
-		return apperrors.NotFound("ChatGroup", groupID)
+		// Check if it exists at all or is already deleted
+		existsQuery := `SELECT 1 FROM chat_groups WHERE id = $1`
+		var exists bool
+		if err := s.db.QueryRow(ctx, existsQuery, groupID).Scan(&exists); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apperrors.NotFound("ChatGroup", groupID)
+			}
+			return apperrors.NewDatabaseError(err)
+		}
+
+		// Group exists but is already soft-deleted
+		log.Warnw("Soft delete chat group affected 0 rows, group likely already deleted", "groupID", groupID)
+		return nil
 	}
 
 	return nil
@@ -174,11 +198,11 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 		limit = 10 // Default limit
 	}
 	if offset < 0 {
-		offset = 0 // Default offset
+		offset = 0
 	}
 
 	response := &types.ChatGroupPaginatedResponse{
-		Groups: make([]types.ChatGroup, 0),
+		Groups: make([]types.ChatGroup, 0, limit),
 		Pagination: struct {
 			Total  int `json:"total"`
 			Limit  int `json:"limit"`
@@ -190,22 +214,24 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 	}
 
 	query := `
-		SELECT id, trip_id, name, description, created_by, created_at, updated_at
+		SELECT id, trip_id, name, description, created_by, created_at, updated_at, deleted_at
 		FROM chat_groups
-		WHERE trip_id = $1
+		WHERE trip_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at DESC
 		LIMIT $2 OFFSET $3
 	`
 
 	rows, err := s.db.Query(ctx, query, tripID, limit, offset)
 	if err != nil {
-		log.Errorw("Failed to list chat groups", "error", err, "tripID", tripID)
+		log.Errorw("Failed to query chat groups", "error", err, "tripID", tripID)
 		return response, apperrors.NewDatabaseError(err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var group types.ChatGroup
+		var deletedAt sql.NullTime // Use sql.NullTime for nullable deleted_at field
+
 		err := rows.Scan(
 			&group.ID,
 			&group.TripID,
@@ -214,11 +240,18 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 			&group.CreatedBy,
 			&group.CreatedAt,
 			&group.UpdatedAt,
+			&deletedAt,
 		)
 		if err != nil {
 			log.Errorw("Failed to scan chat group row", "error", err)
 			return response, apperrors.Wrap(err, apperrors.DatabaseError, "failed to scan chat group row")
 		}
+
+		// Convert sql.NullTime to *time.Time for DeletedAt
+		if deletedAt.Valid {
+			group.DeletedAt = &deletedAt.Time
+		}
+
 		response.Groups = append(response.Groups, group)
 	}
 	if err = rows.Err(); err != nil {
@@ -226,11 +259,10 @@ func (s *PostgresChatStore) ListChatGroupsByTrip(ctx context.Context, tripID str
 		return response, apperrors.Wrap(err, apperrors.DatabaseError, "error iterating chat group rows")
 	}
 
-	// Get total count for pagination metadata
 	countQuery := `
 		SELECT COUNT(*)
 		FROM chat_groups
-		WHERE trip_id = $1
+		WHERE trip_id = $1 AND deleted_at IS NULL
 	`
 
 	var total int
@@ -258,29 +290,26 @@ func (s *PostgresChatStore) CreateChatMessage(ctx context.Context, message types
 		message.ContentType = types.ContentTypeText // Default content type
 	}
 
-	// Reverted query to match assumed original fields
+	// Updated query to match actual database schema
 	query := `
-		INSERT INTO chat_messages (id, group_id, user_id, content, content_type, created_at, updated_at, is_edited, is_deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO chat_messages (id, group_id, user_id, content, content_type, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
 	`
 
 	now := time.Now()
-	message.CreatedAt = now // Assumes CreatedAt exists
-	message.UpdatedAt = now // Assumes UpdatedAt exists
+	message.CreatedAt = now
+	message.UpdatedAt = now
 
 	var id string
-	// Reverted scan logic
 	err := s.db.QueryRow(ctx, query,
 		message.ID,
 		message.GroupID,
 		message.UserID,
 		message.Content,
-		message.ContentType, // Assumed field
-		message.CreatedAt,   // Assumed field
-		message.UpdatedAt,   // Assumed field
-		message.IsEdited,    // Assumed field
-		message.IsDeleted,   // Assumed field
+		message.ContentType,
+		message.CreatedAt,
+		message.UpdatedAt,
 	).Scan(&id)
 
 	if err != nil {
@@ -296,25 +325,22 @@ func (s *PostgresChatStore) CreateChatMessage(ctx context.Context, message types
 func (s *PostgresChatStore) GetChatMessageByID(ctx context.Context, messageID string) (*types.ChatMessage, error) {
 	log := logger.GetLogger()
 
-	// Reverted query to match assumed original fields
+	// Updated query to match actual database schema
 	query := `
-		SELECT id, group_id, user_id, content, content_type, created_at, updated_at, is_edited, is_deleted
+		SELECT id, group_id, user_id, content, content_type, created_at, updated_at
 		FROM chat_messages
-		WHERE id = $1 AND is_deleted = false
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	var msg types.ChatMessage
-	// Reverted scan logic
 	err := s.db.QueryRow(ctx, query, messageID).Scan(
 		&msg.ID,
 		&msg.GroupID,
 		&msg.UserID,
 		&msg.Content,
-		&msg.ContentType, // Assumed field
-		&msg.CreatedAt,   // Assumed field
-		&msg.UpdatedAt,   // Assumed field
-		&msg.IsEdited,    // Assumed field
-		&msg.IsDeleted,   // Assumed field
+		&msg.ContentType,
+		&msg.CreatedAt,
+		&msg.UpdatedAt,
 	)
 
 	if err != nil {
@@ -326,29 +352,28 @@ func (s *PostgresChatStore) GetChatMessageByID(ctx context.Context, messageID st
 		return nil, apperrors.NewDatabaseError(err)
 	}
 
-	// Fetch reactions separately (original inefficient pattern)
+	// Fetch reactions separately
 	reactions, reactErr := s.ListChatMessageReactions(ctx, messageID)
 	if reactErr != nil {
 		log.Errorw("Failed to fetch reactions for get message", "error", reactErr, "messageID", messageID)
 		msg.Reactions = []types.ChatMessageReaction{} // Ensure Reactions field exists and is empty on error
 	} else {
-		msg.Reactions = reactions // Assumes Reactions field exists
+		msg.Reactions = reactions
 	}
 
 	return &msg, nil
 }
 
-// UpdateChatMessage updates the content of an existing chat message and marks it as edited.
+// UpdateChatMessage updates the content of an existing chat message.
 func (s *PostgresChatStore) UpdateChatMessage(ctx context.Context, messageID string, content string) error {
 	log := logger.GetLogger()
 
-	// Reverted query to mark as edited and check is_deleted
+	// Updated query to match actual database schema
 	query := `
 		UPDATE chat_messages
 		SET content = $1,
-			is_edited = true,
 			updated_at = $2
-		WHERE id = $3 AND is_deleted = false
+		WHERE id = $3 AND deleted_at IS NULL
 	`
 
 	now := time.Now()
@@ -360,33 +385,34 @@ func (s *PostgresChatStore) UpdateChatMessage(ctx context.Context, messageID str
 		return apperrors.NewDatabaseError(err)
 	}
 	if commandTag.RowsAffected() == 0 {
-		// Check if the message exists but is deleted, or doesn't exist at all
-		_, getErr := s.GetChatMessageByID(ctx, messageID) // Check existence (ignoring reactions fetch error)
-		if getErr != nil {
-			if appErr, ok := getErr.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
-				return apperrors.NotFound("ChatMessage", messageID) // Not found
+		// Check if message exists but is soft-deleted or doesn't exist at all
+		existsQuery := `SELECT 1 FROM chat_messages WHERE id = $1`
+		var exists bool
+		if err := s.db.QueryRow(ctx, existsQuery, messageID).Scan(&exists); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apperrors.NotFound("ChatMessage", messageID)
 			}
-			// Some other error occurred during check
-			log.Warnw("Error checking chat message existence during update", "error", getErr, "messageID", messageID)
+			return apperrors.NewDatabaseError(err)
 		}
-		// If GetChatMessageByID returned nil error, it means the message exists but is_deleted=true (since RowsAffected was 0)
-		log.Warnw("Update chat message affected 0 rows, message likely deleted or not found", "messageID", messageID)
-		return apperrors.NotFound("ChatMessage (not updateable)", messageID) // Treat as not found for update purposes
+
+		// Message exists but is soft-deleted
+		log.Warnw("Update chat message affected 0 rows, message likely deleted", "messageID", messageID)
+		return apperrors.NotFound("ChatMessage (not updateable)", messageID)
 	}
 
 	return nil
 }
 
-// DeleteChatMessage performs a soft delete on a chat message by setting is_deleted to true.
+// DeleteChatMessage performs a soft delete on a chat message by setting deleted_at timestamp.
 func (s *PostgresChatStore) DeleteChatMessage(ctx context.Context, messageID string) error {
 	log := logger.GetLogger()
 
-	// Reverted to soft delete query
+	// Updated query to use deleted_at timestamp for soft delete
 	query := `
 		UPDATE chat_messages
-		SET is_deleted = true,
+		SET deleted_at = $1,
 			updated_at = $1
-		WHERE id = $2 AND is_deleted = false
+		WHERE id = $2 AND deleted_at IS NULL
 	`
 	now := time.Now()
 	commandTag, err := s.db.Exec(ctx, query, now, messageID)
@@ -397,14 +423,16 @@ func (s *PostgresChatStore) DeleteChatMessage(ctx context.Context, messageID str
 	}
 	if commandTag.RowsAffected() == 0 {
 		// Check if it exists but was already deleted or never existed
-		_, getErr := s.GetChatMessageByID(ctx, messageID) // Check existence (ignoring reactions fetch error)
-		if getErr != nil {
-			if appErr, ok := getErr.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
-				return apperrors.NotFound("ChatMessage", messageID) // Truly not found
+		existsQuery := `SELECT 1 FROM chat_messages WHERE id = $1`
+		var exists bool
+		if err := s.db.QueryRow(ctx, existsQuery, messageID).Scan(&exists); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apperrors.NotFound("ChatMessage", messageID)
 			}
-			log.Warnw("Error checking chat message existence during delete", "error", getErr, "messageID", messageID)
+			return apperrors.NewDatabaseError(err)
 		}
-		// If GetChatMessageByID returned nil error, it means the message exists but is_deleted=true (RowsAffected was 0)
+
+		// Message exists but is already soft-deleted
 		log.Warnw("Soft delete chat message affected 0 rows, message likely already deleted", "messageID", messageID)
 		// No error needed if already deleted (idempotent)
 		return nil
@@ -428,14 +456,14 @@ func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string
 
 	messages := make([]types.ChatMessage, 0, params.Limit)
 
-	// Reverted query to assumed original fields matching types.ChatMessage
+	// Update query to filter by deleted_at IS NULL instead of is_deleted = false
 	query := `
-        SELECT id, group_id, user_id, content, content_type, created_at, updated_at, is_edited, is_deleted
-        FROM chat_messages
-        WHERE group_id = $1 AND is_deleted = false
-        ORDER BY created_at DESC
-        LIMIT $2 OFFSET $3
-    `
+		SELECT id, group_id, user_id, content, content_type, created_at, updated_at
+		FROM chat_messages
+		WHERE group_id = $1 AND deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
 
 	rows, err := s.db.Query(ctx, query, groupID, params.Limit, params.Offset)
 	if err != nil {
@@ -446,7 +474,6 @@ func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string
 
 	for rows.Next() {
 		var msg types.ChatMessage
-		// Reverted scan to match reverted query
 		err = rows.Scan(
 			&msg.ID,
 			&msg.GroupID,
@@ -455,8 +482,6 @@ func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string
 			&msg.ContentType,
 			&msg.CreatedAt,
 			&msg.UpdatedAt,
-			&msg.IsEdited,
-			&msg.IsDeleted,
 		)
 		if err != nil {
 			log.Errorw("Failed to scan chat message row", "error", err)
@@ -480,7 +505,11 @@ func (s *PostgresChatStore) ListChatMessages(ctx context.Context, groupID string
 	}
 
 	// Original count query
-	countQuery := `SELECT COUNT(*) FROM chat_messages WHERE group_id = $1 AND is_deleted = false`
+	countQuery := `
+		SELECT COUNT(*)
+		FROM chat_messages
+		WHERE group_id = $1 AND deleted_at IS NULL
+	`
 	var total int
 	err = s.db.QueryRow(ctx, countQuery, groupID).Scan(&total)
 	if err != nil {
@@ -565,24 +594,34 @@ func (s *PostgresChatStore) ListChatGroupMembers(ctx context.Context, groupID st
 }
 
 // UpdateLastReadMessage updates the last message read marker for a user in a specific group.
-// It uses INSERT ... ON CONFLICT ... DO UPDATE to ensure atomicity and correctness,
-// only updating if the new message ID corresponds to a later message than the current marker.
+// It updates the last_read_message_id column in the chat_group_members table.
 func (s *PostgresChatStore) UpdateLastReadMessage(ctx context.Context, groupID, userID, messageID string) error {
 	query := `
-        INSERT INTO chat_last_read (group_id, user_id, last_read_message_id, last_read_at)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (group_id, user_id)
-        DO UPDATE SET last_read_message_id = EXCLUDED.last_read_message_id,
-                      last_read_at = EXCLUDED.last_read_at
-        WHERE (SELECT sent_at FROM chat_messages WHERE id = EXCLUDED.last_read_message_id) >
-              (SELECT sent_at FROM chat_messages WHERE id = chat_last_read.last_read_message_id)
-           OR chat_last_read.last_read_message_id IS NULL
+        UPDATE chat_group_members 
+        SET last_read_message_id = $3
+        WHERE group_id = $1 AND user_id = $2
     `
-	_, err := s.db.Exec(ctx, query, groupID, userID, messageID, time.Now())
+	commandTag, err := s.db.Exec(ctx, query, groupID, userID, messageID)
 	if err != nil {
 		logger.GetLogger().Errorw("Failed to update last read message", "error", err, "groupID", groupID, "userID", userID, "messageID", messageID)
 		return apperrors.NewDatabaseError(err)
 	}
+
+	// If no row was updated, user is not in the group yet, so insert a membership record
+	if commandTag.RowsAffected() == 0 {
+		insertQuery := `
+            INSERT INTO chat_group_members (group_id, user_id, last_read_message_id, joined_at)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (group_id, user_id) DO UPDATE 
+            SET last_read_message_id = EXCLUDED.last_read_message_id
+        `
+		_, err = s.db.Exec(ctx, insertQuery, groupID, userID, messageID, time.Now())
+		if err != nil {
+			logger.GetLogger().Errorw("Failed to insert chat group member with last read", "error", err, "groupID", groupID, "userID", userID, "messageID", messageID)
+			return apperrors.NewDatabaseError(err)
+		}
+	}
+
 	return nil
 }
 
@@ -627,9 +666,9 @@ func (s *PostgresChatStore) ListChatMessageReactions(ctx context.Context, messag
 	log := logger.GetLogger()
 	reactions := make([]types.ChatMessageReaction, 0)
 
-	// Assuming ChatMessageReaction has fields: ID, MessageID, UserID, Reaction, CreatedAt
+	// Updated query to match database schema
 	query := `
-		SELECT id, message_id, user_id, reaction, created_at
+		SELECT message_id, user_id, reaction, created_at
         FROM chat_message_reactions
         WHERE message_id = $1
         ORDER BY created_at ASC
@@ -643,16 +682,12 @@ func (s *PostgresChatStore) ListChatMessageReactions(ctx context.Context, messag
 
 	for rows.Next() {
 		var r types.ChatMessageReaction
-		err := rows.Scan(&r.ID, &r.MessageID, &r.UserID, &r.Reaction, &r.CreatedAt)
+		err := rows.Scan(&r.MessageID, &r.UserID, &r.Reaction, &r.CreatedAt)
 		if err != nil {
 			log.Errorw("Failed to scan reaction", "error", err)
 			return nil, apperrors.Wrap(err, apperrors.DatabaseError, "failed to scan reaction row")
 		}
 		reactions = append(reactions, r)
-	}
-	if err = rows.Err(); err != nil {
-		log.Errorw("Error after iterating reactions", "error", err)
-		return nil, apperrors.Wrap(err, apperrors.DatabaseError, "error iterating reaction rows")
 	}
 
 	return reactions, nil

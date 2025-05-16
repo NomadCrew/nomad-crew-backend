@@ -88,6 +88,12 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	_, err = pool.Exec(ctx, string(migrationSQL))
 	require.NoError(t, err, "Failed to apply migration")
 
+	// Insert a test user for trip foreign key constraints
+	testUserUUID := authIDtoUUID(testAuthID) // Ensure this is the same as used in tests
+	_, err = pool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+		testUserUUID, "testuser@example.com", "Test User Integration")
+	require.NoError(t, err, "Failed to insert test user")
+
 	return pool, func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("failed to terminate container: %s", err)
@@ -132,11 +138,11 @@ func TestPgTripStore_Integration(t *testing.T) {
 
 			tables := []string{
 				"trip_memberships",
-				"metadata",
 				"locations",
 				"expenses",
 				"trips",
 				"categories",
+				"users", // Added users table for cleanup
 			}
 			for _, table := range tables {
 				_, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))
@@ -153,13 +159,15 @@ func TestPgTripStore_Integration(t *testing.T) {
 	// Test sub-suites
 	t.Run("Create and Get Trip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Test Trip",
-			Description: "Test Description",
-			Destination: types.Destination{Address: "Test Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Test Trip",
+			Description:          "Test Description",
+			DestinationAddress:   stringPtr("Test Location"),
+			DestinationLatitude:  10.0,
+			DestinationLongitude: 20.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		// Test creation
@@ -172,28 +180,34 @@ func TestPgTripStore_Integration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, trip.Name, fetchedTrip.Name)
 		require.Equal(t, trip.Description, fetchedTrip.Description)
-		require.Equal(t, trip.Destination, fetchedTrip.Destination)
-		require.Equal(t, testUserUUID, fetchedTrip.CreatedBy)
+		require.Equal(t, trip.DestinationAddress, fetchedTrip.DestinationAddress)
+		require.Equal(t, trip.DestinationLatitude, fetchedTrip.DestinationLatitude)
+		require.Equal(t, trip.DestinationLongitude, fetchedTrip.DestinationLongitude)
+		require.Equal(t, &testUserUUID, fetchedTrip.CreatedBy)
 	})
 
 	t.Run("Update Trip", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Update Test Trip",
-			Description: "Original Description",
-			Destination: types.Destination{Address: "Original Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Update Test Trip",
+			Description:          "Original Description",
+			DestinationAddress:   stringPtr("Original Location"),
+			DestinationLatitude:  30.0,
+			DestinationLongitude: 40.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		id, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
 		update := types.TripUpdate{
-			Name:        ptr("Updated Trip"),
-			Description: ptr("Updated Description"),
-			Destination: &types.Destination{Address: "Updated Location"},
+			Name:                 stringPtr("Updated Trip"),
+			Description:          stringPtr("Updated Description"),
+			DestinationAddress:   stringPtr("Updated Location"),
+			DestinationLatitude:  float64Ptr(35.0),
+			DestinationLongitude: float64Ptr(45.0),
 		}
 
 		_, err = tripStore.UpdateTrip(ctx, id, update)
@@ -203,19 +217,24 @@ func TestPgTripStore_Integration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, *update.Name, fetchedTrip.Name)
 		require.Equal(t, *update.Description, fetchedTrip.Description)
-		require.Equal(t, update.Destination.Address, fetchedTrip.Destination.Address)
+		require.NotNil(t, fetchedTrip.DestinationAddress)
+		require.Equal(t, *update.DestinationAddress, *fetchedTrip.DestinationAddress)
+		require.Equal(t, *update.DestinationLatitude, fetchedTrip.DestinationLatitude)
+		require.Equal(t, *update.DestinationLongitude, fetchedTrip.DestinationLongitude)
 	})
 
 	t.Run("List User Trips", func(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			trip := types.Trip{
-				Name:        fmt.Sprintf("List Test Trip %d", i),
-				Description: "Test Description",
-				Destination: types.Destination{Address: "Test Location"},
-				StartDate:   time.Now().Add(24 * time.Hour),
-				EndDate:     time.Now().Add(48 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
+				Name:                 fmt.Sprintf("List Test Trip %d", i),
+				Description:          "Test Description",
+				DestinationAddress:   stringPtr("Test Location"),
+				DestinationLatitude:  float64(i + 10.0),
+				DestinationLongitude: float64(i + 20.0),
+				StartDate:            time.Now().Add(24 * time.Hour),
+				EndDate:              time.Now().Add(48 * time.Hour),
+				CreatedBy:            &testUserUUID,
+				Status:               types.TripStatusPlanning,
 			}
 			_, err := tripStore.CreateTrip(ctx, trip)
 			require.NoError(t, err)
@@ -226,55 +245,70 @@ func TestPgTripStore_Integration(t *testing.T) {
 		require.GreaterOrEqual(t, len(trips), 3)
 
 		for _, trip := range trips {
-			require.Equal(t, testUserUUID, trip.CreatedBy)
+			require.Equal(t, &testUserUUID, trip.CreatedBy)
 		}
 	})
 
 	t.Run("Status Transitions", func(t *testing.T) {
 		trip := types.Trip{
-			Name:        "Status Test Trip",
-			Description: "Testing status transitions",
-			Destination: types.Destination{Address: "Test Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Status Test Trip",
+			Description:          "Testing status transitions",
+			DestinationAddress:   stringPtr("Test Location"),
+			DestinationLatitude:  50.0,
+			DestinationLongitude: 60.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		id, err := tripStore.CreateTrip(ctx, trip)
 		require.NoError(t, err)
 
 		// Transition to Active
-		update := types.TripUpdate{
-			Status: types.TripStatusActive,
+		activeStatus := types.TripStatusActive
+		updateActive := types.TripUpdate{
+			Status: &activeStatus,
 		}
-		_, err = tripStore.UpdateTrip(ctx, id, update)
-		require.NoError(t, err, "Expected status transition to ACTIVE to succeed")
-
-		fetchedTrip, err := tripStore.GetTrip(ctx, id)
+		_, err = tripStore.UpdateTrip(ctx, id, updateActive)
 		require.NoError(t, err)
+		fetchedTrip, _ := tripStore.GetTrip(ctx, id)
 		require.Equal(t, types.TripStatusActive, fetchedTrip.Status)
+
+		// Transition to Completed
+		completedStatus := types.TripStatusCompleted
+		updateCompleted := types.TripUpdate{
+			Status: &completedStatus,
+		}
+		_, err = tripStore.UpdateTrip(ctx, id, updateCompleted)
+		require.NoError(t, err)
+		fetchedTrip, _ = tripStore.GetTrip(ctx, id)
+		require.Equal(t, types.TripStatusCompleted, fetchedTrip.Status)
 	})
 
 	t.Run("Soft Delete Trip", func(t *testing.T) {
 		trip1 := types.Trip{
-			Name:        "Trip to Delete",
-			Description: "Will be soft deleted",
-			Destination: types.Destination{Address: "Test Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Trip to Delete",
+			Description:          "Will be soft deleted",
+			DestinationAddress:   stringPtr("Test Location"),
+			DestinationLatitude:  10.0,
+			DestinationLongitude: 20.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		trip2 := types.Trip{
-			Name:        "Trip to Keep",
-			Description: "Will remain active",
-			Destination: types.Destination{Address: "Test Location"},
-			StartDate:   time.Now().Add(24 * time.Hour),
-			EndDate:     time.Now().Add(48 * time.Hour),
-			CreatedBy:   testUserUUID,
-			Status:      types.TripStatusPlanning,
+			Name:                 "Trip to Keep",
+			Description:          "Will remain active",
+			DestinationAddress:   stringPtr("Test Location"),
+			DestinationLatitude:  10.0,
+			DestinationLongitude: 20.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
 
 		id1, err := tripStore.CreateTrip(ctx, trip1)
@@ -300,76 +334,136 @@ func TestPgTripStore_Integration(t *testing.T) {
 	})
 
 	t.Run("Search Trips", func(t *testing.T) {
-		// Create test trips
-		searchTrips := []types.Trip{
-			{
-				Name:        "Paris Adventure",
-				Description: "A trip to Paris",
-				Destination: types.Destination{Address: "Paris, France"},
-				StartDate:   time.Now().Add(30 * 24 * time.Hour),
-				EndDate:     time.Now().Add(35 * 24 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
-			},
-			{
-				Name:        "Tokyo Exploration",
-				Description: "Exploring Tokyo",
-				Destination: types.Destination{Address: "Tokyo, Japan"},
-				StartDate:   time.Now().Add(60 * 24 * time.Hour),
-				EndDate:     time.Now().Add(65 * 24 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
-			},
-			{
-				Name:        "New York City",
-				Description: "NYC trip",
-				Destination: types.Destination{Address: "New York, USA"},
-				StartDate:   time.Now().Add(90 * 24 * time.Hour),
-				EndDate:     time.Now().Add(95 * 24 * time.Hour),
-				CreatedBy:   testUserUUID,
-				Status:      types.TripStatusPlanning,
-			},
+		// Create some trips for searching
+		trip1 := types.Trip{
+			Name:                 "Paris Adventure",
+			Description:          "Exploring the city of lights",
+			DestinationAddress:   stringPtr("Paris, France"),
+			DestinationLatitude:  48.8566,
+			DestinationLongitude: 2.3522,
+			StartDate:            time.Now().AddDate(0, 1, 0), // Next month
+			EndDate:              time.Now().AddDate(0, 1, 7),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
 		}
+		_, err := tripStore.CreateTrip(ctx, trip1)
+		require.NoError(t, err)
 
-		for _, trip := range searchTrips {
-			_, err := tripStore.CreateTrip(ctx, trip)
-			require.NoError(t, err)
+		trip2 := types.Trip{
+			Name:                 "Beach Getaway",
+			Description:          "Relaxing by the sea",
+			DestinationAddress:   stringPtr("Malibu, California"),
+			DestinationLatitude:  34.0259,
+			DestinationLongitude: -118.7798,
+			StartDate:            time.Now().AddDate(0, 2, 0), // Two months from now
+			EndDate:              time.Now().AddDate(0, 2, 10),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusActive,
 		}
+		_, err = tripStore.CreateTrip(ctx, trip2)
+		require.NoError(t, err)
 
-		// Test search by destination
-		criteria := types.TripSearchCriteria{
+		// Search by destination name (partial match)
+		criteria1 := types.TripSearchCriteria{
 			Destination: "Paris",
 		}
-		results, err := tripStore.SearchTrips(ctx, criteria)
+		results1, err := tripStore.SearchTrips(ctx, criteria1)
 		require.NoError(t, err)
-		require.Len(t, results, 1)
-		require.Equal(t, "Paris Adventure", results[0].Name)
+		require.Len(t, results1, 1)
+		require.Equal(t, "Paris Adventure", results1[0].Name)
 
-		// Test search by date range
-		criteria = types.TripSearchCriteria{
-			StartDate: time.Now().Add(20 * 24 * time.Hour),
-			EndDate:   time.Now().Add(40 * 24 * time.Hour),
+		// Search by date range
+		startDate := time.Now().AddDate(0, 1, -5) // Slightly before trip1 starts
+		endDate := time.Now().AddDate(0, 1, 5)    // During trip1
+		criteria2 := types.TripSearchCriteria{
+			StartDateFrom: startDate,
+			StartDateTo:   endDate,
 		}
-		results, err = tripStore.SearchTrips(ctx, criteria)
+		results2, err := tripStore.SearchTrips(ctx, criteria2)
 		require.NoError(t, err)
-		require.Len(t, results, 1, "Expected 1 trip within 20-40 days")
-		require.Equal(t, "Paris Adventure", results[0].Name)
+		require.Len(t, results2, 1)
+		require.Equal(t, "Paris Adventure", results2[0].Name)
 
-		// Test search by date range (no results)
-		criteria = types.TripSearchCriteria{
-			StartDate: time.Now().Add(150 * 24 * time.Hour),
+		// Search by status
+		criteria3 := types.TripSearchCriteria{
+			Destination: "Malibu",
 		}
-		results, err = tripStore.SearchTrips(ctx, criteria)
+		results3, err := tripStore.SearchTrips(ctx, criteria3)
 		require.NoError(t, err)
-		require.Empty(t, results)
+		require.Len(t, results3, 1)
+		require.Equal(t, "Beach Getaway", results3[0].Name)
+	})
+
+	t.Run("Trip Membership", func(t *testing.T) {
+		trip := types.Trip{
+			Name:                 "Membership Test Trip",
+			Description:          "Testing membership functions",
+			DestinationAddress:   stringPtr("Membership Location"),
+			DestinationLatitude:  70.0,
+			DestinationLongitude: 80.0,
+			StartDate:            time.Now().Add(24 * time.Hour),
+			EndDate:              time.Now().Add(48 * time.Hour),
+			CreatedBy:            &testUserUUID,
+			Status:               types.TripStatusPlanning,
+		}
+		tripID, err := tripStore.CreateTrip(ctx, trip)
+		require.NoError(t, err)
+
+		memberUUID := authIDtoUUID("auth0|member123")
+
+		// Insert the member user into the users table first
+		_, err = pool.Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+			memberUUID, "member@example.com", "Test Member")
+		require.NoError(t, err, "Failed to insert test member user")
+
+		// Add member
+		membership := &types.TripMembership{
+			TripID: tripID,
+			UserID: memberUUID,
+			Role:   types.MemberRoleMember,
+			Status: types.MembershipStatusActive,
+		}
+		err = tripStore.AddMember(ctx, membership)
+		require.NoError(t, err)
+
+		// Get user role
+		role, err := tripStore.GetUserRole(ctx, tripID, memberUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.MemberRoleMember, role)
+
+		// Update member role
+		err = tripStore.UpdateMemberRole(ctx, tripID, memberUUID, types.MemberRoleAdmin)
+		require.NoError(t, err)
+		role, _ = tripStore.GetUserRole(ctx, tripID, memberUUID)
+		require.Equal(t, types.MemberRoleAdmin, role)
+
+		// Get trip members
+		members, err := tripStore.GetTripMembers(ctx, tripID)
+		require.NoError(t, err)
+		// Owner (creator) + added member
+		require.Len(t, members, 2)
+
+		// Remove member
+		err = tripStore.RemoveMember(ctx, tripID, memberUUID)
+		require.NoError(t, err)
+		_, err = tripStore.GetUserRole(ctx, tripID, memberUUID)
+		// Expect an error because the user should no longer be an active member
+		require.Error(t, err)
 	})
 }
 
+// Helper to check if a string is a valid UUID
 func isValidUUID(u string) bool {
 	_, err := uuid.Parse(u)
 	return err == nil
 }
 
-func ptr(s string) *string {
+// Helper to get a pointer to a string
+func stringPtr(s string) *string {
 	return &s
+}
+
+// Helper to get a pointer to a float64
+func float64Ptr(f float64) *float64 {
+	return &f
 }

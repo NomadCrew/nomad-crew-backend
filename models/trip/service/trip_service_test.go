@@ -223,8 +223,8 @@ type MockWeatherService struct {
 	mock.Mock
 }
 
-func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, destination types.Destination) error {
-	args := m.Called(ctx, tripID, destination)
+func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, lat float64, lon float64) error {
+	args := m.Called(ctx, tripID, lat, lon)
 	return args.Error(0)
 }
 
@@ -234,12 +234,12 @@ func (m *MockWeatherService) DecrementSubscribers(tripID string) {
 }
 
 // Add missing methods from interface
-func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, destination types.Destination) {
-	m.Called(ctx, tripID, destination)
+func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, lat float64, lon float64) {
+	m.Called(ctx, tripID, lat, lon)
 }
 
-func (m *MockWeatherService) IncrementSubscribers(tripID string, dest types.Destination) {
-	m.Called(tripID, dest)
+func (m *MockWeatherService) IncrementSubscribers(tripID string, lat float64, lon float64) {
+	m.Called(tripID, lat, lon)
 }
 
 // Add mock for GetWeather - Already added earlier, this confirms it's present
@@ -318,76 +318,61 @@ func (suite *TripServiceTestSuite) TestExample_Placeholder() {
 // --- Add tests for each method: CreateTrip, GetTrip, UpdateTrip, DeleteTrip, etc. ---
 
 func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
-	// Arrange
-	now := time.Now()
-	destination := types.Destination{
-		Address: "123 Test St",
-		PlaceID: "ChIJtestplaceid",
-		Coordinates: &struct {
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
-		}{Lat: 40.7128, Lng: -74.0060},
-	}
-	tripInput := &types.Trip{
-		Name:        "Test Trip",
-		Description: "A trip for testing",
-		Destination: destination,
-		StartDate:   now,
-		EndDate:     now.AddDate(0, 0, 7),
-		Status:      types.TripStatusPlanning,
-	}
-	expectedTripID := suite.testTripID
-	expectedMembership := &types.TripMembership{
-		TripID: expectedTripID,
-		UserID: suite.testUserID,
-		Role:   types.MemberRoleOwner,
+	userID := suite.testUserID // Define for use with pointer
+	tripToCreate := &types.Trip{
+		Name:                 "Test Trip",
+		Description:          "A cool trip",
+		DestinationLatitude:  10.0,
+		DestinationLongitude: 20.0,
+		StartDate:            time.Now().Add(24 * time.Hour),
+		EndDate:              time.Now().Add(48 * time.Hour),
+		CreatedBy:            &userID, // Use pointer to userID
+		Status:               types.TripStatusActive,
 	}
 
-	// --- Mock Expectations ---
-	suite.mockStore.On("CreateTrip", mock.Anything, mock.MatchedBy(func(t types.Trip) bool {
-		return t.Name == tripInput.Name && t.CreatedBy == suite.testUserID
-	})).Return(expectedTripID, nil).Once()
+	// Mock store CreateTrip
+	suite.mockStore.On("CreateTrip", suite.ctx, *tripToCreate).Return(suite.testTripID, nil).Once()
+	// Mock store AddMember for the creator
+	suite.mockStore.On("AddMember", suite.ctx, mock.AnythingOfType("*types.TripMembership")).Return(nil).Once()
 
-	suite.mockStore.On("AddMember", mock.AnythingOfType("*context.valueCtx"), expectedMembership).Return(nil).Once()
+	// Mock event publisher
+	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 
-	suite.mockEventPublisher.On(
-		"Publish",
-		mock.Anything, // ctx
-		expectedTripID,
-		mock.MatchedBy(func(e types.Event) bool {
-			return e.Type == tripservice.EventTypeTripCreated &&
-				e.UserID == suite.testUserID &&
-				e.Metadata.Source == "trip-management-service"
-		}),
-	).Return(nil).Maybe()
+	// Expect weather service TriggerImmediateUpdate to be called because status is Active
+	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Return(nil).Once()
 
-	suite.mockWeatherSvc.On(
-		"TriggerImmediateUpdate",
-		mock.Anything, // Use mock.Anything for context to avoid matching issues
-		expectedTripID,
-		mock.AnythingOfType("types.Destination"),
-	).Return(nil).Once()
+	createdTrip, err := suite.service.CreateTrip(suite.ctx, tripToCreate)
 
-	// --- Debug Logging ---
-	// Removed debug logging
+	suite.NoError(err)
+	suite.NotNil(createdTrip)
+	suite.Equal(suite.testTripID, createdTrip.ID)
+	suite.Equal(tripToCreate.Name, createdTrip.Name)
+	// Corrected: Compare pointer with address of string variable
+	suite.Equal(&userID, createdTrip.CreatedBy)
 
-	// Act
-	createdTrip, err := suite.service.CreateTrip(suite.ctx, tripInput)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), createdTrip)
-	assert.Equal(suite.T(), expectedTripID, createdTrip.ID)
-	assert.Equal(suite.T(), suite.testUserID, createdTrip.CreatedBy)
-	assert.Equal(suite.T(), tripInput.Name, createdTrip.Name)
-
-	// Verify mocks
 	suite.mockStore.AssertExpectations(suite.T())
 	suite.mockEventPublisher.AssertExpectations(suite.T())
 	suite.mockWeatherSvc.AssertExpectations(suite.T())
 }
 
-// Add more tests for CreateTrip failure cases (store error, add member error)
+func (suite *TripServiceTestSuite) TestCreateTrip_Failure_StoreError() {
+	userID := suite.testUserID // Define for use with pointer
+	tripToCreate := &types.Trip{
+		Name: "Test Trip Store Error",
+		// Corrected: Use discrete destination fields
+		DestinationLatitude:  1.0,
+		DestinationLongitude: 1.0,
+		CreatedBy:            &userID, // Use pointer to userID
+	}
+
+	dbError := apperrors.NewDatabaseError(fmt.Errorf("db error"))
+	suite.mockStore.On("CreateTrip", suite.ctx, *tripToCreate).Return("", dbError).Once()
+
+	_, err := suite.service.CreateTrip(suite.ctx, tripToCreate)
+	suite.Error(err)
+	suite.Equal(dbError, err)
+	suite.mockStore.AssertExpectations(suite.T())
+}
 
 // Add tests for GetTrip (success, not found, permission denied)
 func (suite *TripServiceTestSuite) TestGetTrip_Success() {
@@ -443,7 +428,7 @@ func (suite *TripServiceTestSuite) TestGetTripWithMembers_Success() {
 	existingTrip := createMockTrip(suite.testTripID, uuid.NewString())
 	expectedMembers := []types.TripMembership{
 		{ID: uuid.NewString(), TripID: suite.testTripID, UserID: suite.testUserID, Role: types.MemberRoleMember, Status: types.MembershipStatusActive},
-		{ID: uuid.NewString(), TripID: suite.testTripID, UserID: existingTrip.CreatedBy, Role: types.MemberRoleOwner, Status: types.MembershipStatusActive},
+		{ID: uuid.NewString(), TripID: suite.testTripID, UserID: *existingTrip.CreatedBy, Role: types.MemberRoleOwner, Status: types.MembershipStatusActive},
 	}
 	// Convert to slice of pointers for the expected result struct
 	expectedMemberPtrs := make([]*types.TripMembership, len(expectedMembers))
@@ -547,7 +532,7 @@ func (suite *TripServiceTestSuite) TestTriggerWeatherUpdate_Success() {
 	// Mock internal GetTrip
 	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(tripToUpdate, nil).Once()
 	// Expect weather service call with a nil error return
-	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToUpdate.Destination).Return(nil).Once()
+	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToUpdate.DestinationLatitude, tripToUpdate.DestinationLongitude).Return(nil).Once()
 
 	// Act
 	err := suite.service.TriggerWeatherUpdate(suite.ctx, suite.testTripID)
@@ -621,12 +606,10 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Skipped() {
 	// Arrange
 	// Trip exists but doesn't meet criteria (e.g., no dates)
 	trip := createMockTrip(suite.testTripID, uuid.NewString())
-	trip.StartDate = time.Time{} // Zero date
+	trip.Status = types.TripStatusCompleted // This status should make shouldUpdateWeather return false
 	// Add coordinates to make destination valid initially - Use correct anonymous struct
-	trip.Destination.Coordinates = &struct {
-		Lat float64 `json:"lat"`
-		Lng float64 `json:"lng"`
-	}{Lat: 1, Lng: 1}
+	trip.DestinationLatitude = 1
+	trip.DestinationLongitude = 1
 	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(trip, nil).Once()
 
 	// Act
@@ -639,6 +622,8 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Skipped() {
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), apperrors.ValidationError, appErr.Type)
 	suite.mockStore.AssertExpectations(suite.T())
+	// Ensure weather service GetWeather was not called
+	suite.mockWeatherSvc.AssertNotCalled(suite.T(), "GetWeather", suite.ctx, suite.testTripID)
 }
 
 func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Success() {
@@ -672,28 +657,94 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Success() {
 	suite.mockWeatherSvc.AssertExpectations(suite.T())
 }
 
-// Helper function to create a mock trip for tests
-// Ensure Destination is populated if needed for weather checks
+// Helper function to create a mock trip for testing
 func createMockTrip(id, userID string) *types.Trip {
-	now := time.Now()
+	destAddr := "123 Mock Address, Mock City"
 	return &types.Trip{
-		ID:          id,
-		Name:        "Test Trip " + id,
-		Description: "A description",
-		// Add valid Coordinates to the default destination - Use correct anonymous struct
-		Destination: types.Destination{
-			Address: "Helper Addr",
-			PlaceID: "helper-place-id",
-			Coordinates: &struct {
-				Lat float64 `json:"lat"`
-				Lng float64 `json:"lng"`
-			}{Lat: 40.7128, Lng: -74.0060},
-		},
-		StartDate: now,
-		EndDate:   now.AddDate(0, 0, 10),
-		Status:    types.TripStatusPlanning,
-		CreatedBy: userID,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:                   id,
+		Name:                 "Mock Trip",
+		Description:          "This is a mock trip.",
+		DestinationLatitude:  12.34,
+		DestinationLongitude: 56.78,
+		DestinationAddress:   &destAddr, // Correct way to get pointer to string
+		StartDate:            time.Now().Add(24 * time.Hour),
+		EndDate:              time.Now().Add(72 * time.Hour),
+		CreatedBy:            &userID,
+		Status:               types.TripStatusPlanning,
+		BackgroundImageURL:   "http://example.com/image.jpg",
+		CreatedAt:            time.Now(),
+		UpdatedAt:            time.Now(),
 	}
+}
+
+func (suite *TripServiceTestSuite) TestUpdateTrip_Success() {
+	userID := suite.testUserID // Define for use with pointer
+	existingTrip := &types.Trip{
+		ID:                   suite.testTripID,
+		Name:                 "Existing Trip",
+		CreatedBy:            &userID, // Use pointer to userID
+		Status:               types.TripStatusPlanning,
+		DestinationLatitude:  10.0,
+		DestinationLongitude: 20.0,
+	}
+
+	newDescription := "Updated Description"
+	updatedTripData := types.TripUpdate{
+		Description: &newDescription,
+	}
+
+	// Prepare the expected trip after update
+	// Ensure CreatedBy remains a pointer here
+	returnedTripFromMock := &types.Trip{
+		ID:                   suite.testTripID,
+		Name:                 existingTrip.Name, // Name doesn't change in this update
+		Description:          newDescription,
+		CreatedBy:            &userID,             // Ensure this is a pointer
+		Status:               existingTrip.Status, // Status doesn't change
+		DestinationLatitude:  existingTrip.DestinationLatitude,
+		DestinationLongitude: existingTrip.DestinationLongitude,
+		// Copy other relevant fields from existingTrip if necessary
+		// or ensure they are correctly set based on the update.
+	}
+
+	// Mock GetTrip which is called first internally
+	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(existingTrip, nil).Once()
+	// Mock GetUserRole to allow update
+	suite.mockStore.On("GetUserRole", suite.ctx, suite.testTripID, suite.testUserID).Return(types.MemberRoleOwner, nil).Once()
+	// Mock store UpdateTrip
+	suite.mockStore.On("UpdateTrip", suite.ctx, suite.testTripID, updatedTripData).Return(returnedTripFromMock, nil).Once()
+
+	// Mock event publisher
+	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
+
+	updatedTrip, err := suite.service.UpdateTrip(suite.ctx, suite.testTripID, suite.testUserID, updatedTripData)
+
+	suite.NoError(err)
+	suite.NotNil(updatedTrip)
+	suite.Equal(newDescription, updatedTrip.Description)
+	suite.Equal(&userID, updatedTrip.CreatedBy) // Assert CreatedBy is still correct pointer
+
+	suite.mockStore.AssertExpectations(suite.T())
+	suite.mockEventPublisher.AssertExpectations(suite.T())
+}
+
+func (suite *TripServiceTestSuite) TestUpdateTrip_NotFound() {
+	// Arrange
+	notFoundErr := apperrors.NotFound("Trip", suite.testTripID)
+	// Expect GetUserRole to be called and succeed, before GetTrip is called and fails.
+	suite.mockStore.On("GetUserRole", suite.ctx, suite.testTripID, suite.testUserID).Return(types.MemberRoleOwner, nil).Once()
+	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(nil, notFoundErr).Once()
+
+	// Act
+	updatedTrip, err := suite.service.UpdateTrip(suite.ctx, suite.testTripID, suite.testUserID, types.TripUpdate{})
+
+	// Assert
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), updatedTrip)
+	appErr, ok := err.(*apperrors.AppError)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), apperrors.NotFoundError, appErr.Type)
+	suite.mockStore.AssertExpectations(suite.T())
+	// GetUserRole is expected to be called, so remove AssertNotCalled for it.
+	// suite.mockStore.AssertNotCalled(suite.T(), "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
 }

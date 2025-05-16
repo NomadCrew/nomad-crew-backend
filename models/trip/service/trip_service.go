@@ -39,7 +39,7 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	if err != nil {
 		return nil, err
 	}
-	trip.CreatedBy = userID
+	trip.CreatedBy = &userID
 
 	// Create the trip
 	tripID, err := s.store.CreateTrip(ctx, *trip)
@@ -62,12 +62,16 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	}
 
 	// Publish event
+	var createdByUserID string
+	if trip.CreatedBy != nil {
+		createdByUserID = *trip.CreatedBy
+	}
 	err = events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
 		EventTypeTripCreated,
 		trip.ID,
-		trip.CreatedBy,
+		createdByUserID,
 		map[string]interface{}{
 			"event_id": utils.GenerateEventID(),
 			"tripName": trip.Name,
@@ -79,9 +83,13 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 		logger.GetLogger().Warnw("Failed to publish trip created event", "error", err, "tripID", trip.ID)
 	}
 
-	// Trigger weather update if applicable
-	if s.shouldUpdateWeather(trip) {
-		s.triggerWeatherUpdate(ctx, trip)
+	// Trigger weather update if the trip starts as active and has a valid destination
+	if trip.Status == types.TripStatusActive && s.shouldUpdateWeather(trip) {
+		if err := s.triggerWeatherUpdate(ctx, trip); err != nil {
+			log := logger.GetLogger()
+			log.Errorw("Failed to trigger weather update during trip creation", "error", err, "tripID", trip.ID)
+			// Decide if this error should be returned or just logged. For now, just logging.
+		}
 	}
 
 	// Return the created trip object
@@ -150,17 +158,30 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 	}
 
 	// Store a copy for later comparison
-	originalTrip := *existingTrip
+	// originalTrip := *existingTrip // Removed as it was unused after refactor
 
-	// Apply updates (example: update name if provided)
+	// Apply updates
 	if updateData.Name != nil {
 		existingTrip.Name = *updateData.Name
 	}
 	if updateData.Description != nil {
 		existingTrip.Description = *updateData.Description
 	}
-	if updateData.Destination != nil {
-		existingTrip.Destination = *updateData.Destination
+	// Destination fields should be updated individually if present in updateData
+	if updateData.DestinationPlaceID != nil {
+		existingTrip.DestinationPlaceID = updateData.DestinationPlaceID
+	}
+	if updateData.DestinationAddress != nil {
+		existingTrip.DestinationAddress = updateData.DestinationAddress
+	}
+	if updateData.DestinationName != nil {
+		existingTrip.DestinationName = updateData.DestinationName
+	}
+	if updateData.DestinationLatitude != nil {
+		existingTrip.DestinationLatitude = *updateData.DestinationLatitude
+	}
+	if updateData.DestinationLongitude != nil {
+		existingTrip.DestinationLongitude = *updateData.DestinationLongitude
 	}
 	if updateData.StartDate != nil {
 		existingTrip.StartDate = *updateData.StartDate
@@ -168,20 +189,40 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 	if updateData.EndDate != nil {
 		existingTrip.EndDate = *updateData.EndDate
 	}
-	if updateData.Status != "" {
-		existingTrip.Status = updateData.Status
+
+	// Validate dates if both are being updated or one is updated to conflict with existing
+	currentStartDate := existingTrip.StartDate
+	currentEndDate := existingTrip.EndDate
+	if updateData.StartDate != nil {
+		currentStartDate = *updateData.StartDate
+	}
+	if updateData.EndDate != nil {
+		currentEndDate = *updateData.EndDate
 	}
 
-	// Update the trip in the store
+	if !currentStartDate.IsZero() && !currentEndDate.IsZero() && currentEndDate.Before(currentStartDate) {
+		return nil, apperrors.ValidationFailed("invalid_dates", "trip end date cannot be before start date")
+	}
+
+	if updateData.Status != nil { // Check if pointer is not nil
+		// Further validation for status transition should happen here or before if complex
+		existingTrip.Status = *updateData.Status // Dereference pointer for assignment
+	}
+
+	// Update the trip in the store using the original updateData
+	// The store method is responsible for applying the partial update correctly.
 	updatedTrip, err := s.store.UpdateTrip(ctx, id, updateData)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if weather update is needed based on changes
-	if s.hasWeatherCriticalChanges(&originalTrip, updatedTrip) {
-		if s.shouldUpdateWeather(updatedTrip) { // Double check if the *new* state warrants updates
-			s.triggerWeatherUpdate(ctx, updatedTrip)
+	// If critical weather-related fields changed, or if trip became active, trigger weather update
+	if s.hasWeatherCriticalChanges(existingTrip, updatedTrip) && s.shouldUpdateWeather(updatedTrip) {
+		log := logger.GetLogger()
+		log.Debugw("Weather critical fields changed, triggering update", "tripID", id)
+		if err := s.triggerWeatherUpdate(ctx, updatedTrip); err != nil {
+			log.Errorw("Failed to trigger weather update during trip update", "error", err, "tripID", id)
+			// Decide if this error should be returned or just logged. For now, just logging.
 		}
 	}
 
@@ -257,50 +298,61 @@ func (s *TripManagementService) SearchTrips(ctx context.Context, criteria types.
 func (s *TripManagementService) UpdateTripStatus(ctx context.Context, tripID, userID string, newStatus types.TripStatus) error {
 	log := logger.GetLogger()
 
-	// Fetch the trip to get current status and validate existence
-	trip, err := s.store.GetTrip(ctx, tripID)
+	// Validate Permission: Check if the user is an owner of the trip
+	role, err := s.store.GetUserRole(ctx, tripID, userID)
 	if err != nil {
-		log.Errorw("Failed to get trip for status update", "error", err, "tripID", tripID)
 		if appErr, ok := err.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
-			return apperrors.NotFound("trip", tripID)
+			return apperrors.Forbidden("access_denied", "User not found or not a member of this trip")
 		}
-		return apperrors.Wrap(err, apperrors.DatabaseError, "Failed to get trip for status update")
+		return err // Database or other error
+	}
+	if role != types.MemberRoleOwner && role != types.MemberRoleAdmin { // Allow Admins too
+		return apperrors.Forbidden("permission_denied", "User must be an owner or admin to update trip status")
 	}
 
-	// Validate the status transition using the method on the type
-	if !trip.Status.IsValidTransition(newStatus) { // Updated call
-		log.Warnw("Invalid status transition attempt", "tripID", tripID, "currentStatus", trip.Status, "newStatus", newStatus)
-		return apperrors.ValidationFailed("invalid_status_transition", fmt.Sprintf("Cannot transition from %s to %s", trip.Status, newStatus))
+	// Get the current trip for status transition validation
+	currentTrip, err := s.store.GetTrip(ctx, tripID)
+	if err != nil {
+		return apperrors.NotFound("Trip", tripID)
+	}
+
+	// Validate the status transition (e.g., cannot complete a trip not yet active)
+	if !currentTrip.Status.IsValidTransition(newStatus) {
+		return apperrors.InvalidStatusTransition(string(currentTrip.Status), string(newStatus))
 	}
 
 	// Update the trip status using the UpdateTrip store method
-	updateData := types.TripUpdate{
-		Status: newStatus,
+	update := types.TripUpdate{
+		Status: &newStatus,
 	}
-	if _, err := s.store.UpdateTrip(ctx, tripID, updateData); err != nil {
+	updatedTrip, err := s.store.UpdateTrip(ctx, tripID, update) // updatedTrip is now used
+	if err != nil {
 		log.Errorw("Failed to update trip status in store", "error", err, "tripID", tripID, "newStatus", newStatus)
 		return apperrors.NewDatabaseError(err)
 	}
 
+	// Trigger weather update if the trip becomes active and has a valid destination
+	if newStatus == types.TripStatusActive && s.shouldUpdateWeather(updatedTrip) {
+		if err := s.triggerWeatherUpdate(ctx, updatedTrip); err != nil {
+			log.Errorw("Failed to trigger weather update during status change to active", "error", err, "tripID", updatedTrip.ID)
+			// Decide if this error should be returned or just logged. For now, just logging.
+		}
+	}
+
 	// Publish event
-	err = events.PublishEventWithContext(
+	return events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
-		EventTypeTripStatusChanged,
+		string(types.EventTypeTripStatusUpdated),
 		tripID,
 		userID,
 		map[string]interface{}{
 			"event_id":   utils.GenerateEventID(),
-			"old_status": string(trip.Status),
+			"old_status": string(currentTrip.Status),
 			"new_status": string(newStatus),
 		},
 		"trip-management-service",
 	)
-	if err != nil {
-		log.Warnw("Failed to publish trip status changed event", "error", err, "tripID", tripID)
-	}
-
-	return nil
 }
 
 // GetTripWithMembers gets a trip with its members
@@ -339,7 +391,10 @@ func (s *TripManagementService) TriggerWeatherUpdate(ctx context.Context, tripID
 		return err
 	}
 	if s.shouldUpdateWeather(trip) {
-		s.triggerWeatherUpdate(ctx, trip)
+		if err := s.triggerWeatherUpdate(ctx, trip); err != nil {
+			log.Errorw("Failed to manually trigger weather update", "error", err, "tripID", tripID)
+			return err // Propagate the error
+		}
 		log.Infow("Manually triggered weather update", "tripID", tripID)
 		return nil
 	}
@@ -347,50 +402,60 @@ func (s *TripManagementService) TriggerWeatherUpdate(ctx context.Context, tripID
 	return apperrors.ValidationFailed("weather_update_skipped", "Trip conditions not met for weather update")
 }
 
-// shouldUpdateWeather determines if a weather update should be performed based on trip status and data
+// shouldUpdateWeather checks if a trip is in a state that warrants weather updates (e.g., active and has a destination)
 func (s *TripManagementService) shouldUpdateWeather(trip *types.Trip) bool {
 	if trip == nil {
 		return false
 	}
-	// Only update for active or planning trips with valid destination and dates
-	return (trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning) &&
-		!trip.StartDate.IsZero() &&
-		!trip.EndDate.IsZero() &&
-		IsDestinationValid(trip.Destination)
+	// Only update weather for active or planning trips with valid destination coordinates
+	isValidDest := trip.DestinationLatitude != 0 || trip.DestinationLongitude != 0
+	return (trip.Status == types.TripStatusActive || trip.Status == types.TripStatusPlanning) && isValidDest
 }
 
-// hasWeatherCriticalChanges checks if trip updates require a weather update
+// hasWeatherCriticalChanges checks if destination or status relevant to weather has changed.
 func (s *TripManagementService) hasWeatherCriticalChanges(oldTrip, newTrip *types.Trip) bool {
 	if oldTrip == nil || newTrip == nil {
-		return false // Cannot compare if one is nil
+		return oldTrip != newTrip // If one is nil and other isn't, it's a change
 	}
-	// Check if destination changed significantly
-	destinationChanged := !AreDestinationsEqual(oldTrip.Destination, newTrip.Destination)
-
-	// Check if dates changed
-	datesChanged := !oldTrip.StartDate.Equal(newTrip.StartDate) || !oldTrip.EndDate.Equal(newTrip.EndDate)
-
-	// Check if status changed to active/planning (from something else)
-	statusBecameRelevant := (oldTrip.Status != types.TripStatusActive && oldTrip.Status != types.TripStatusPlanning) &&
-		(newTrip.Status == types.TripStatusActive || newTrip.Status == types.TripStatusPlanning)
-
-	return (destinationChanged || datesChanged || statusBecameRelevant) && IsDestinationValid(newTrip.Destination)
+	// Check for changes in coordinates
+	if oldTrip.DestinationLatitude != newTrip.DestinationLatitude ||
+		oldTrip.DestinationLongitude != newTrip.DestinationLongitude {
+		return true
+	}
+	// Check for changes in PlaceID (important for geocoding if lat/lon are not primary)
+	if (oldTrip.DestinationPlaceID == nil && newTrip.DestinationPlaceID != nil) ||
+		(oldTrip.DestinationPlaceID != nil && newTrip.DestinationPlaceID == nil) ||
+		(oldTrip.DestinationPlaceID != nil && newTrip.DestinationPlaceID != nil && *oldTrip.DestinationPlaceID != *newTrip.DestinationPlaceID) {
+		return true
+	}
+	// Check if status changed to/from a weather-relevant state
+	isOldRelevant := (oldTrip.Status == types.TripStatusActive || oldTrip.Status == types.TripStatusPlanning)
+	isNewRelevant := (newTrip.Status == types.TripStatusActive || newTrip.Status == types.TripStatusPlanning)
+	return isOldRelevant != isNewRelevant
 }
 
-// triggerWeatherUpdate calls the weather service to start/trigger updates
-func (s *TripManagementService) triggerWeatherUpdate(ctx context.Context, trip *types.Trip) {
+// triggerWeatherUpdate triggers an immediate weather update for the trip.
+func (s *TripManagementService) triggerWeatherUpdate(ctx context.Context, trip *types.Trip) error {
+	if s.weatherSvc == nil || trip == nil {
+		return nil // Or an error indicating service/trip not available
+	}
 	log := logger.GetLogger()
-	if s.weatherSvc != nil {
-		log.Infow("Triggering weather service update", "tripID", trip.ID)
-		if err := s.weatherSvc.TriggerImmediateUpdate(ctx, trip.ID, trip.Destination); err != nil {
-			log.Errorw("Failed to trigger immediate weather update", "error", err, "tripID", trip.ID)
+	// Ensure destination coordinates are valid before triggering
+	if trip.DestinationLatitude != 0 || trip.DestinationLongitude != 0 {
+		log.Infow("Triggering immediate weather update for trip", "tripID", trip.ID, "lat", trip.DestinationLatitude, "lon", trip.DestinationLongitude)
+		if err := s.weatherSvc.TriggerImmediateUpdate(ctx, trip.ID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
+			log.Errorw("Failed to trigger weather update via weather service", "error", err, "tripID", trip.ID)
+			return err // Propagate error
 		}
 	} else {
-		log.Warnw("Weather service not available, cannot trigger update", "tripID", trip.ID)
+		log.Warnw("Skipping weather update trigger due to invalid/missing destination coordinates", "tripID", trip.ID)
+		// Optionally return a specific error here if this case should be an error
+		// return apperrors.ValidationFailed("missing_destination_coords", "Cannot trigger weather update without destination coordinates.")
 	}
+	return nil
 }
 
-// GetWeatherForTrip retrieves the weather forecast for a trip
+// GetWeatherForTrip retrieves weather information for a trip.
 func (s *TripManagementService) GetWeatherForTrip(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
 	// Check if the trip exists
 	trip, err := s.store.GetTrip(ctx, tripID)

@@ -93,8 +93,8 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
 	require.NoError(t, err)
 
 	_, err = testPool.Exec(ctx, `
-		INSERT INTO trips (id, name, description, start_date, end_date, status, created_by, created_at, updated_at)
-		VALUES ($1, 'Test Trip', 'Test Description', NOW(), NOW() + INTERVAL '1 day', 'PLANNING', $2, NOW(), NOW())`,
+		INSERT INTO trips (id, name, description, start_date, end_date, status, created_by, created_at, updated_at, destination_latitude, destination_longitude)
+		VALUES ($1, 'Test Trip', 'Test Description', NOW(), NOW() + INTERVAL '1 day', 'PLANNING', $2, NOW(), NOW(), 0.0, 0.0)`,
 		tripID,
 		userID,
 	)

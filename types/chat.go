@@ -6,13 +6,14 @@ import (
 
 // ChatGroup represents a chat group within a trip
 type ChatGroup struct {
-	ID          string    `json:"id"`
-	TripID      string    `json:"tripId"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedBy   string    `json:"createdBy"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          string     `json:"id"`
+	TripID      string     `json:"tripId"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	CreatedBy   string     `json:"createdBy"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	DeletedAt   *time.Time `json:"deletedAt,omitempty"`
 }
 
 // ChatMessage represents a message in a chat group
@@ -22,13 +23,12 @@ type ChatMessage struct {
 	GroupID     string                `json:"groupId"` // Specific group within the trip, if applicable
 	UserID      string                `json:"userId"`
 	Content     string                `json:"content"`
-	ContentType string                `json:"contentType"` // Added: e.g., "text", "image_url", "system"
+	ContentType string                `json:"contentType"` // e.g., "text", "image_url", "system"
 	CreatedAt   time.Time             `json:"createdAt"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
-	IsEdited    bool                  `json:"isEdited"`
-	IsDeleted   bool                  `json:"isDeleted"`
-	Reactions   []ChatMessageReaction `json:"reactions,omitempty"` // Added
-	Sender      *MessageSender        `json:"sender,omitempty"`    // Added for sender details
+	DeletedAt   *time.Time            `json:"deletedAt,omitempty"`
+	Reactions   []ChatMessageReaction `json:"reactions,omitempty"`
+	Sender      *MessageSender        `json:"sender,omitempty"` // Added for sender details
 }
 
 // MessageSender defines the structure for sender information in a chat message
@@ -60,7 +60,6 @@ type ChatMessageAttachment struct {
 
 // ChatMessageReaction represents an emoji reaction to a message
 type ChatMessageReaction struct {
-	ID        string    `json:"id"`
 	MessageID string    `json:"messageId"`
 	UserID    string    `json:"userId"`
 	Reaction  string    `json:"reaction"` // The emoji character(s)

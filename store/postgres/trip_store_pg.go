@@ -49,17 +49,22 @@ func (s *pgTripStore) CreateTrip(ctx context.Context, trip types.Trip) (string, 
 		err := tx.QueryRow(ctx, `
             INSERT INTO trips (
                 name, description, start_date, end_date,
-                destination, created_by, status, background_image_url
+                destination_place_id, destination_address, destination_name, destination_latitude, destination_longitude, 
+                created_by, status, background_image_url
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING id`,
 			trip.Name,
 			trip.Description,
 			trip.StartDate,
 			trip.EndDate,
-			trip.Destination, // Assuming Destination is handled correctly (e.g., JSONB marshaled if needed)
+			trip.DestinationPlaceID,
+			trip.DestinationAddress,
+			trip.DestinationName,
+			trip.DestinationLatitude,
+			trip.DestinationLongitude,
 			trip.CreatedBy,
-			string(trip.Status),
+			string(trip.Status), // Status is already types.TripStatus, direct string conversion is fine
 			trip.BackgroundImageURL,
 		).Scan(&tripID)
 
@@ -75,8 +80,8 @@ func (s *pgTripStore) CreateTrip(ctx context.Context, trip types.Trip) (string, 
             VALUES ($1, $2, $3, $4)`,
 			tripID,
 			trip.CreatedBy,
-			types.MemberRoleOwner,
-			types.MembershipStatusActive,
+			types.MemberRoleOwner,        // Assuming types.MemberRoleOwner is still the intended role
+			types.MembershipStatusActive, // Assuming types.MembershipStatusActive is still the intended status
 		)
 		if err != nil {
 			log.Errorw("Failed to add creator as owner member in transaction", "tripId", tripID, "userId", trip.CreatedBy, "error", err)
@@ -105,15 +110,11 @@ func (s *pgTripStore) GetTrip(ctx context.Context, id string) (*types.Trip, erro
 	log := logger.GetLogger()
 	query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
+               t.destination_place_id, t.destination_address, t.destination_name, 
+               t.destination_latitude, t.destination_longitude,
+               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, t.background_image_url
         FROM trips t
-        WHERE t.id = $1
-        AND NOT EXISTS (
-            SELECT 1 FROM metadata m
-            WHERE m.table_name = 'trips'
-            AND m.record_id = t.id
-            AND m.deleted_at IS NOT NULL
-        )`
+        WHERE t.id = $1 AND t.deleted_at IS NULL`
 
 	log.Debugw("Executing GetTrip query", "query", query, "tripId", id)
 
@@ -124,11 +125,16 @@ func (s *pgTripStore) GetTrip(ctx context.Context, id string) (*types.Trip, erro
 		&trip.Description,
 		&trip.StartDate,
 		&trip.EndDate,
-		&trip.Destination, // Assuming Destination is handled correctly (e.g., JSONB unmarshaled if needed)
+		&trip.DestinationPlaceID,
+		&trip.DestinationAddress,
+		&trip.DestinationName,
+		&trip.DestinationLatitude,
+		&trip.DestinationLongitude,
 		&trip.Status,
 		&trip.CreatedBy,
 		&trip.CreatedAt,
 		&trip.UpdatedAt,
+		&trip.DeletedAt,
 		&trip.BackgroundImageURL,
 	)
 
@@ -155,7 +161,9 @@ func (s *pgTripStore) UpdateTrip(ctx context.Context, id string, update types.Tr
 
 	// Retrieve the current status for validation
 	var currentStatusStr string
-	err := s.pool.QueryRow(ctx, "SELECT status FROM trips WHERE id = $1", id).Scan(&currentStatusStr)
+	// Also fetch deleted_at to ensure we don't update a deleted trip
+	var deletedAtCheck interface{} // Use interface{} to scan potentially NULL value
+	err := s.pool.QueryRow(ctx, "SELECT status, deleted_at FROM trips WHERE id = $1", id).Scan(&currentStatusStr, &deletedAtCheck)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			log.Warnw("Trip not found during update attempt", "tripId", id)
@@ -165,13 +173,19 @@ func (s *pgTripStore) UpdateTrip(ctx context.Context, id string, update types.Tr
 		return nil, fmt.Errorf("unable to fetch current status for trip %s: %w", id, err)
 	}
 
+	if deletedAtCheck != nil { // If deleted_at is not NULL
+		log.Warnw("Attempted to update an already soft-deleted trip", "tripId", id)
+		return nil, apperrors.NotFound("trip", id) // Or a specific error like "Conflict" or "Gone"
+	}
+
 	currentStatus := types.TripStatus(currentStatusStr)
 
 	// Ensure status transition is valid if a new status is provided
-	if update.Status != "" && !currentStatus.IsValidTransition(update.Status) {
-		log.Warnw("Invalid status transition attempted", "tripId", id, "currentStatus", currentStatus, "requestedStatus", update.Status)
-		// Use the specific custom error for invalid transitions
-		return nil, apperrors.InvalidStatusTransition(string(currentStatus), string(update.Status))
+	if update.Status != nil && *update.Status != "" { // Dereference pointer for check
+		if !currentStatus.IsValidTransition(*update.Status) { // Dereference pointer for method call
+			log.Warnw("Invalid status transition attempted", "tripId", id, "currentStatus", currentStatus, "requestedStatus", *update.Status)
+			return nil, apperrors.InvalidStatusTransition(string(currentStatus), string(*update.Status)) // Dereference pointer for string conversion
+		}
 	}
 
 	var setFields []string
@@ -189,17 +203,34 @@ func (s *pgTripStore) UpdateTrip(ctx context.Context, id string, update types.Tr
 		args = append(args, *update.Description)
 		argPosition++
 	}
-	if update.Destination != nil {
-		destJSON, err := json.Marshal(update.Destination)
-		if err != nil {
-			log.Errorw("Failed to marshal destination for update", "tripId", id, "error", err)
-			// Return a validation error or internal server error?
-			return nil, fmt.Errorf("failed to marshal destination: %w", err)
-		}
-		setFields = append(setFields, fmt.Sprintf("destination = $%d", argPosition))
-		args = append(args, destJSON)
+
+	// New destination fields
+	if update.DestinationPlaceID != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_place_id = $%d", argPosition))
+		args = append(args, *update.DestinationPlaceID)
 		argPosition++
 	}
+	if update.DestinationAddress != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_address = $%d", argPosition))
+		args = append(args, *update.DestinationAddress)
+		argPosition++
+	}
+	if update.DestinationName != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_name = $%d", argPosition))
+		args = append(args, *update.DestinationName)
+		argPosition++
+	}
+	if update.DestinationLatitude != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_latitude = $%d", argPosition))
+		args = append(args, *update.DestinationLatitude)
+		argPosition++
+	}
+	if update.DestinationLongitude != nil {
+		setFields = append(setFields, fmt.Sprintf("destination_longitude = $%d", argPosition))
+		args = append(args, *update.DestinationLongitude)
+		argPosition++
+	}
+
 	if update.StartDate != nil && !update.StartDate.IsZero() {
 		setFields = append(setFields, fmt.Sprintf("start_date = $%d", argPosition))
 		args = append(args, *update.StartDate)
@@ -210,42 +241,36 @@ func (s *pgTripStore) UpdateTrip(ctx context.Context, id string, update types.Tr
 		args = append(args, *update.EndDate)
 		argPosition++
 	}
-	if update.Status != "" {
+	if update.Status != nil && *update.Status != "" { // Dereference pointer
 		setFields = append(setFields, fmt.Sprintf("status = $%d", argPosition))
-		args = append(args, string(update.Status))
+		args = append(args, string(*update.Status)) // Dereference pointer
 		argPosition++
 	}
 
 	// Always update the updated_at timestamp
 	setFields = append(setFields, "updated_at = CURRENT_TIMESTAMP")
 
-	// If only updated_at is set (no actual data changes), we might return early?
-	// The original code proceeded, let's keep that behavior for now.
-	if len(args) == 0 { // Check if any values were actually added besides the ID later
+	if len(args) == 0 {
 		log.Infow("No update fields provided for trip", "tripId", id)
-		// Return the current trip state without performing an update?
-		return s.GetTrip(ctx, id) // Call the store's GetTrip method
+		return s.GetTrip(ctx, id)
 	}
 
-	// Construct the final UPDATE query
 	query := fmt.Sprintf(`
         UPDATE trips
         SET %s
-        WHERE id = $%d
-        RETURNING id`, // Returning id to confirm the update happened
+        WHERE id = $%d AND deleted_at IS NULL
+        RETURNING id`,
 		strings.Join(setFields, ", "),
 		argPosition,
 	)
 
 	args = append(args, id)
 
-	// Execute the update query
 	var updatedID string
 	err = s.pool.QueryRow(ctx, query, args...).Scan(&updatedID)
 	if err != nil {
-		// Check if the error is because the trip was not found (perhaps deleted between checks)
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("Trip not found during final update execution", "tripId", id)
+			log.Warnw("Trip not found during final update execution or was already deleted", "tripId", id)
 			return nil, apperrors.NotFound("trip", id)
 		}
 		log.Errorw("Failed to execute update trip query", "tripId", id, "query", query, "args", args, "error", err)
@@ -253,47 +278,39 @@ func (s *pgTripStore) UpdateTrip(ctx context.Context, id string, update types.Tr
 	}
 
 	if updatedID != id {
-		// This shouldn't happen if the WHERE clause worked, but good sanity check
 		log.Errorw("Update query returned unexpected ID", "expectedId", id, "returnedId", updatedID)
 		return nil, fmt.Errorf("internal error during trip update: ID mismatch")
 	}
 
 	log.Infow("Trip updated successfully in database", "tripId", id)
-
-	// Fetch and return the updated trip details using the store's GetTrip method
 	return s.GetTrip(ctx, id)
 }
 
 // SoftDeleteTrip implements internal_store.TripStore.
-// Marks a trip as deleted by adding/updating a record in the metadata table.
+// Marks a trip as deleted by setting the deleted_at timestamp.
 func (s *pgTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
 	log := logger.GetLogger()
 	query := `
-        INSERT INTO metadata (table_name, record_id, deleted_at)
-        VALUES ('trips', $1, CURRENT_TIMESTAMP)
-        ON CONFLICT (table_name, record_id)
-        DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
-        RETURNING record_id` // Returning ID to confirm the operation affected a row
+        UPDATE trips
+        SET deleted_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING id` // Returning ID to confirm the operation affected a row
 
 	var returnedID string
 	err := s.pool.QueryRow(ctx, query, id).Scan(&returnedID)
 
 	if err != nil {
-		// If QueryRow returns ErrNoRows, it means the RETURNING clause didn't return anything.
-		// This *could* happen if the ON CONFLICT clause didn't find a row to update AND
-		// the initial INSERT somehow failed silently (unlikely with RETURNING).
-		// More likely, it means the trip ID itself doesn't exist even to be soft-deleted.
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("Attempted to soft-delete non-existent trip", "tripId", id)
-			// We return NotFound, as the target entity couldn't be found for the operation.
+			log.Warnw("Attempted to soft-delete non-existent or already deleted trip", "tripId", id)
+			// Consider if NotFound or no error is more appropriate.
+			// If it's already deleted, is it an error? Or idempotent success?
+			// Returning NotFound if no row was updated (either not found or already deleted).
 			return apperrors.NotFound("trip", id)
 		}
-		// Log other unexpected database errors
 		log.Errorw("Failed to soft-delete trip in database", "tripId", id, "error", err)
 		return fmt.Errorf("database error during soft-delete: %w", err)
 	}
 
-	// Sanity check if the returned ID matches
 	if returnedID != id {
 		log.Errorw("Soft-delete returned unexpected ID", "expectedId", id, "returnedId", returnedID)
 		return fmt.Errorf("internal error during soft-delete: ID mismatch")
@@ -310,29 +327,21 @@ func (s *pgTripStore) ListUserTrips(ctx context.Context, userID string) ([]*type
 	log := logger.GetLogger()
 	query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
+               t.destination_place_id, t.destination_address, t.destination_name,
+               t.destination_latitude, t.destination_longitude,
+               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, t.background_image_url
         FROM trips t
-        WHERE t.created_by = $1
-        AND NOT EXISTS (
-            SELECT 1 FROM metadata m
-            WHERE m.table_name = 'trips'
-            AND m.record_id = t.id
-            AND m.deleted_at IS NOT NULL
-        )
+        WHERE t.created_by = $1 AND t.deleted_at IS NULL
         ORDER BY t.start_date DESC`
 
 	rows, err := s.pool.Query(ctx, query, userID)
 	if err != nil {
-		// Check specifically for NoRows, though Query should return empty rows, not ErrNoRows.
-		// Still, good practice to check if needed.
 		if errors.Is(err, pgx.ErrNoRows) {
 			log.Infow("No trips found for user", "userID", userID)
-			return []*types.Trip{}, nil // Return empty slice, not error
+			return []*types.Trip{}, nil
 		}
 		log.Errorw("Failed to query user trips from database", "userID", userID, "error", err)
-		// Use the custom database error wrapper if available
-		// return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to list trips for user %s: %w", userID, err))
-		return nil, fmt.Errorf("database error listing user trips: %w", err) // Generic error for now
+		return nil, fmt.Errorf("database error listing user trips: %w", err)
 	}
 	defer rows.Close()
 
@@ -345,27 +354,27 @@ func (s *pgTripStore) ListUserTrips(ctx context.Context, userID string) ([]*type
 			&trip.Description,
 			&trip.StartDate,
 			&trip.EndDate,
-			&trip.Destination, // Assuming Destination JSON handling is correct
+			&trip.DestinationPlaceID,
+			&trip.DestinationAddress,
+			&trip.DestinationName,
+			&trip.DestinationLatitude,
+			&trip.DestinationLongitude,
 			&trip.Status,
 			&trip.CreatedBy,
 			&trip.CreatedAt,
 			&trip.UpdatedAt,
+			&trip.DeletedAt,
 			&trip.BackgroundImageURL,
 		)
 		if err != nil {
 			log.Errorw("Failed to scan user trip row during list", "userID", userID, "error", err)
-			// The original code returned partial results here. Decide if that's desired.
-			// For consistency, let's return the error and potentially empty/partial slice.
-			// return trips, apperrors.NewDatabaseError(fmt.Errorf("failed scanning trip for user %s: %w", userID, err))
 			return trips, fmt.Errorf("database error scanning trip row: %w", err)
 		}
 		trips = append(trips, &trip)
 	}
 
-	// Check for errors encountered during iteration (e.g., network issues)
 	if err := rows.Err(); err != nil {
 		log.Errorw("Error iterating user trip rows", "userID", userID, "error", err)
-		// return trips, apperrors.NewDatabaseError(fmt.Errorf("error iterating trips for user %s: %w", userID, err))
 		return trips, fmt.Errorf("database error iterating trip rows: %w", err)
 	}
 
@@ -381,25 +390,23 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 	var args []interface{}
 	argCount := 1
 
-	// Base query selects non-deleted trips.
 	baseQuery := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination, t.status, t.created_by, t.created_at, t.updated_at, t.background_image_url
+               t.destination_place_id, t.destination_address, t.destination_name,
+               t.destination_latitude, t.destination_longitude,
+               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, t.background_image_url
         FROM trips t
-        WHERE NOT EXISTS (
-            SELECT 1 FROM metadata m
-            WHERE m.table_name = 'trips' AND m.record_id = t.id AND m.deleted_at IS NOT NULL
-        )`
+        WHERE t.deleted_at IS NULL`
 
-	// Add conditions based on search criteria.
 	if criteria.Destination != "" {
-		// Filter based on Destination address field within JSONB (case-insensitive partial match)
-		conditions = append(conditions, fmt.Sprintf("t.destination->>'address' ILIKE $%d", argCount))
+		// Search against destination_name or destination_address. Let's use destination_name for now.
+		conditions = append(conditions, fmt.Sprintf("(t.destination_name ILIKE $%d OR t.destination_address ILIKE $%d)", argCount, argCount))
 		args = append(args, "%"+criteria.Destination+"%")
+		// argCount will be incremented after adding the argument.
+		// No, the same argCount should be used for both parts of OR if using the same criteria value
 		argCount++
 	}
 
-	// Handle date range searches
 	if !criteria.StartDate.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", argCount))
 		args = append(args, criteria.StartDate)
@@ -411,7 +418,6 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 		argCount++
 	}
 
-	// Handle StartDateFrom and StartDateTo which are used in the tests
 	if !criteria.StartDateFrom.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date >= $%d", argCount))
 		args = append(args, criteria.StartDateFrom)
@@ -420,21 +426,20 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 	if !criteria.StartDateTo.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("t.start_date <= $%d", argCount))
 		args = append(args, criteria.StartDateTo)
+		// argCount++ // No increment if it's the last condition using args
 	}
 
-	// Combine base query with conditions.
 	finalQuery := baseQuery
 	if len(conditions) > 0 {
 		finalQuery += " AND " + strings.Join(conditions, " AND ")
 	}
-	finalQuery += " ORDER BY t.start_date DESC" // Default ordering
+	finalQuery += " ORDER BY t.start_date DESC"
 
 	log.Debugw("Executing SearchTrips query", "query", finalQuery, "args", args)
 
 	rows, err := s.pool.Query(ctx, finalQuery, args...)
 	if err != nil {
 		log.Errorw("Failed to execute search trips query", "criteria", criteria, "error", err)
-		// return nil, apperrors.NewDatabaseError(fmt.Errorf("failed searching trips: %w", err))
 		return nil, fmt.Errorf("database error searching trips: %w", err)
 	}
 	defer rows.Close()
@@ -448,16 +453,20 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 			&trip.Description,
 			&trip.StartDate,
 			&trip.EndDate,
-			&trip.Destination, // Assuming JSON handling is correct
+			&trip.DestinationPlaceID,
+			&trip.DestinationAddress,
+			&trip.DestinationName,
+			&trip.DestinationLatitude,
+			&trip.DestinationLongitude,
 			&trip.Status,
 			&trip.CreatedBy,
 			&trip.CreatedAt,
 			&trip.UpdatedAt,
+			&trip.DeletedAt,
 			&trip.BackgroundImageURL,
 		)
 		if err != nil {
 			log.Errorw("Failed to scan search trip row", "criteria", criteria, "error", err)
-			// return trips, apperrors.NewDatabaseError(fmt.Errorf("failed scanning searched trip: %w", err))
 			return trips, fmt.Errorf("database error scanning searched trip: %w", err)
 		}
 		trips = append(trips, &trip)
@@ -465,7 +474,6 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
 
 	if err := rows.Err(); err != nil {
 		log.Errorw("Error iterating search trip rows", "criteria", criteria, "error", err)
-		// return trips, apperrors.NewDatabaseError(fmt.Errorf("error iterating searched trips: %w", err))
 		return trips, fmt.Errorf("database error iterating searched trips: %w", err)
 	}
 
