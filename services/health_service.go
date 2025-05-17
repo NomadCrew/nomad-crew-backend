@@ -40,6 +40,14 @@ func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthCo
 	const testChannel = "health:ws:test"
 	const testMessage = "ping"
 
+	// In serverless environments, give more time for websocket connections
+	// Only use stricter timing after the service has been up for a while
+	wsTimeout := 5 * time.Second
+	uptime := time.Since(h.startTime)
+	if uptime > 5*time.Minute {
+		wsTimeout = 2 * time.Second // Use original value for established services
+	}
+
 	// Create a test pubsub instance
 	pubsub := h.redisClient.Subscribe(ctx, testChannel)
 	defer pubsub.Close()
@@ -68,10 +76,12 @@ func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthCo
 	select {
 	case <-msgChan:
 		// Success, message received
-	case <-time.After(2 * time.Second):
+	case <-time.After(wsTimeout):
+		// Use degraded status instead of down for WebSocket issues
+		// This is less critical than database connection issues
 		return types.HealthComponent{
 			Status:  types.HealthStatusDegraded,
-			Details: "PubSub message not received in time",
+			Details: fmt.Sprintf("PubSub message not received in time (timeout: %s)", wsTimeout),
 		}
 	}
 
@@ -148,10 +158,28 @@ func (h *HealthService) checkDatabase(ctx context.Context) types.HealthComponent
 			// Check connection pool metrics with adjusted thresholds for serverless
 			stat := h.dbPool.Stat()
 			totalConns := stat.TotalConns()
+			acquireCount := stat.AcquireCount()
 
 			// Only check pool capacity if we have connections
 			if totalConns > 0 {
-				acquireRatio := float64(stat.AcquireCount()) / float64(totalConns)
+				// Calculate pool capacity properly
+				// The original formula "AcquireCount/TotalConns" is incorrect
+				// as AcquireCount is cumulative over time and can exceed TotalConns
+				// Instead, look at current vs max connections
+
+				// Check current connections against max connections
+				maxConns := h.dbPool.Config().MaxConns
+				currentConns := stat.AcquiredConns()
+
+				h.log.Debugw("Database pool stats",
+					"total_conns", totalConns,
+					"current_conns", currentConns,
+					"max_conns", maxConns,
+					"acquire_count", acquireCount)
+
+				// Calculate usage percentage
+				usageRatio := float64(currentConns) / float64(maxConns)
+				usagePercent := usageRatio * 100
 
 				// For recently started instances, use a higher threshold
 				uptime := time.Since(h.startTime)
@@ -162,10 +190,10 @@ func (h *HealthService) checkDatabase(ctx context.Context) types.HealthComponent
 					threshold = 0.8
 				}
 
-				if acquireRatio > threshold {
+				if usageRatio > threshold {
 					return types.HealthComponent{
 						Status:  types.HealthStatusDegraded,
-						Details: fmt.Sprintf("Connection pool near capacity (%.1f%%)", acquireRatio*100),
+						Details: fmt.Sprintf("Connection pool near capacity (%.1f%%)", usagePercent),
 					}
 				}
 			}
