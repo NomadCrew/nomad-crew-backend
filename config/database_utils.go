@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -54,19 +55,76 @@ func ConfigureNeonPostgresPool(cfg *DatabaseConfig) (*pgxpool.Config, error) {
 		}
 	}
 
-	// Set connection pool parameters optimized for free tier
+	// Set connection pool parameters optimized for serverless environments
 	connMaxLifeStr := cfg.ConnMaxLife
 	connMaxLife, err := time.ParseDuration(connMaxLifeStr)
 	if err != nil {
-		log.Warnw("Invalid connection max lifetime, using default 1h", "value", connMaxLifeStr, "error", err)
-		connMaxLife = time.Hour
+		log.Warnw("Invalid connection max lifetime, using default 5m for serverless", "value", connMaxLifeStr, "error", err)
+		connMaxLife = 5 * time.Minute // Shorter lifetime for serverless
 	}
 
-	poolConfig.MaxConns = int32(math.Min(float64(cfg.MaxOpenConns), float64(math.MaxInt32)))
-	poolConfig.MinConns = int32(math.Min(float64(cfg.MaxIdleConns), float64(math.MaxInt32)))
+	// Check if we're running in a serverless environment
+	isServerless := isRunningInServerless()
+
+	// Set more conservative pool sizes for serverless environments
+	maxOpenConns := cfg.MaxOpenConns
+	maxIdleConns := cfg.MaxIdleConns
+
+	if isServerless {
+		// More conservative settings for serverless
+		if maxOpenConns > 7 {
+			maxOpenConns = 7 // Limit max connections for serverless
+		}
+		if maxIdleConns > 3 {
+			maxIdleConns = 3 // Keep fewer idle connections in serverless
+		}
+		// Further reduce connection lifetime for serverless
+		if connMaxLife > 5*time.Minute {
+			connMaxLife = 5 * time.Minute
+		}
+
+		log.Info("Using optimized connection pool settings for serverless environment")
+	}
+
+	poolConfig.MaxConns = int32(math.Min(float64(maxOpenConns), float64(math.MaxInt32)))
+	poolConfig.MinConns = int32(math.Min(float64(maxIdleConns), float64(math.MaxInt32)))
 	poolConfig.MaxConnLifetime = connMaxLife
 
+	// Add healthcheck for connections
+	poolConfig.HealthCheckPeriod = 30 * time.Second
+
+	// Add connection timeouts for better handling in serverless
+	poolConfig.ConnConfig.ConnectTimeout = 5 * time.Second
+
+	log.Infow("Configured database connection pool",
+		"max_conns", poolConfig.MaxConns,
+		"min_conns", poolConfig.MinConns,
+		"max_conn_lifetime", connMaxLife.String(),
+		"health_check_period", poolConfig.HealthCheckPeriod.String())
+
 	return poolConfig, nil
+}
+
+// isRunningInServerless checks if the application is running in a serverless environment
+// like Google Cloud Run by checking for environment variables that would be present
+func isRunningInServerless() bool {
+	// Check for Google Cloud Run environment variables
+	if os.Getenv("K_SERVICE") != "" {
+		return true
+	}
+
+	// Check for explicit configuration
+	if os.Getenv("SERVER_ENVIRONMENT") == "production" {
+		return true
+	}
+
+	return false
+}
+
+// IsRunningInServerless checks if the application is running in a serverless environment.
+// This is a public version of the function for use by other packages.
+func IsRunningInServerless() bool {
+	return isRunningInServerless()
 }
 
 // ConfigureUpstashRedisOptions creates and configures a redis.Options suitable for connecting

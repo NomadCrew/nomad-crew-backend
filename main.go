@@ -104,22 +104,39 @@ func main() {
 		log.Fatalf("Failed to configure database: %v", err)
 	}
 
-	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer pool.Close()
+	// Create context with timeout for initial connection
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	pool, err := pgxpool.ConnectConfig(dbCtx, poolConfig)
+	dbCancel()
 
-	// Initialize database dependencies with concrete implementation
-	dbClient := db.NewDatabaseClient(pool)
-	tripStore := dbStore.NewPgTripStore(pool)
+	if err != nil {
+		log.Errorw("Failed to establish initial database connection, will retry during operation",
+			"error", err)
+		// Don't fatal here, the app will retry connections
+	} else {
+		log.Info("Successfully established initial database connection")
+		defer pool.Close()
+	}
+
+	// Initialize database dependencies with enhanced resilient client
+	dbClient := db.NewDatabaseClientWithConfig(pool, poolConfig)
+
+	// Configure more aggressive reconnection for serverless environment
+	if config.IsRunningInServerless() {
+		dbClient.SetMaxRetries(5)           // Increase max retries
+		dbClient.SetRetryDelay(time.Second) // Start with shorter delay
+		log.Info("Configured database client with serverless-optimized reconnection settings")
+	}
+
+	// Other store initializations using the database pool
+	tripStore := dbStore.NewPgTripStore(dbClient.GetPool())
 	todoStore := db.NewTodoDB(dbClient)
 	locationDB := db.NewLocationDB(dbClient)
-	notificationDB := dbStore.NewPgNotificationStore(pool)
+	notificationDB := dbStore.NewPgNotificationStore(dbClient.GetPool())
 
 	// Get Supabase service key from environment variable
 	supabaseServiceKey := os.Getenv("SUPABASE_SERVICE_KEY")
-	userDB := internalPgStore.NewUserStore(pool, cfg.ExternalServices.SupabaseURL, supabaseServiceKey)
+	userDB := internalPgStore.NewUserStore(dbClient.GetPool(), cfg.ExternalServices.SupabaseURL, supabaseServiceKey)
 
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
@@ -167,7 +184,7 @@ func main() {
 
 	weatherService := weatherSvc.NewWeatherService(eventService)
 	emailService := services.NewEmailService(&cfg.Email)
-	healthService := services.NewHealthService(pool, redisClient, cfg.Server.Version)
+	healthService := services.NewHealthService(dbClient.GetPool(), redisClient, cfg.Server.Version)
 
 	// Initialize notification service with correct dependencies
 	notificationService := service.NewNotificationService(notificationDB, userDB, tripStore, eventService, log.Desugar())
@@ -179,7 +196,7 @@ func main() {
 	)
 
 	// Initialize Chat Store and Service
-	chatStore := internalPgStore.NewChatStore(pool)
+	chatStore := internalPgStore.NewChatStore(dbClient.GetPool())
 
 	// Use the internal service package's ChatService implementation
 	chatService := internalService.NewChatService(chatStore, tripStore, eventService)
