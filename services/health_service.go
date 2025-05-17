@@ -42,58 +42,114 @@ func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthCo
 
 	// In serverless environments, give more time for websocket connections
 	// Only use stricter timing after the service has been up for a while
-	wsTimeout := 5 * time.Second
+	wsTimeout := 3 * time.Second // Reduced from 5s to 3s but adding retries
 	uptime := time.Since(h.startTime)
 	if uptime > 5*time.Minute {
 		wsTimeout = 2 * time.Second // Use original value for established services
 	}
 
-	// Create a test pubsub instance
-	pubsub := h.redisClient.Subscribe(ctx, testChannel)
-	defer pubsub.Close()
+	// Add retry logic for PubSub checks
+	maxRetries := 2
+	retryDelay := 500 * time.Millisecond
 
-	// Create a channel to receive the test message
-	msgChan := make(chan struct{})
-	go func() {
-		defer close(msgChan)
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil || msg.Payload != testMessage {
-			return
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Create a test pubsub instance for this attempt
+		pubsub := h.redisClient.Subscribe(ctx, testChannel)
+
+		// Create a channel to receive the test message
+		msgChan := make(chan struct{})
+		go func() {
+			defer close(msgChan)
+			receiveCtx, cancel := context.WithTimeout(ctx, wsTimeout)
+			defer cancel()
+
+			msg, err := pubsub.ReceiveMessage(receiveCtx)
+			if err != nil || msg.Payload != testMessage {
+				h.log.Debugw("Failed to receive PubSub message",
+					"attempt", attempt+1,
+					"error", err,
+					"payload", msg.Payload)
+				return
+			}
+			msgChan <- struct{}{}
+		}()
+
+		// Publish test message
+		publishErr := h.redisClient.Publish(ctx, testChannel, testMessage).Err()
+		if publishErr != nil {
+			pubsub.Close()
+			if attempt == maxRetries-1 {
+				h.log.Errorw("WebSocket health check failed to publish after retries",
+					"error", publishErr,
+					"attempts", attempt+1)
+				return types.HealthComponent{
+					Status:  types.HealthStatusDegraded,
+					Details: "PubSub publish failed: " + publishErr.Error(),
+				}
+			}
+
+			// Retry after delay
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+			continue
 		}
-		msgChan <- struct{}{}
-	}()
 
-	// Publish test message
-	if err := h.redisClient.Publish(ctx, testChannel, testMessage).Err(); err != nil {
-		h.log.Errorw("WebSocket health check failed to publish", "error", err)
-		return types.HealthComponent{
-			Status:  types.HealthStatusDegraded,
-			Details: "PubSub publish failed: " + err.Error(),
+		// Wait for message or timeout
+		select {
+		case <-msgChan:
+			// Success, message received
+			pubsub.Close()
+
+			// If this wasn't the first attempt, log success after retry
+			if attempt > 0 {
+				h.log.Infow("PubSub message received successfully after retry",
+					"attempt", attempt+1)
+			}
+
+			// Get active connection count if available
+			var activeConns int
+			if h.activeConnections != nil {
+				activeConns = h.activeConnections()
+			}
+
+			return types.HealthComponent{
+				Status:  types.HealthStatusUp,
+				Details: fmt.Sprintf("Active connections: %d", activeConns),
+			}
+
+		case <-time.After(wsTimeout):
+			// Timeout on this attempt
+			pubsub.Close()
+
+			// If we have more retries, try again
+			if attempt < maxRetries-1 {
+				h.log.Warnw("PubSub message not received in time, retrying",
+					"attempt", attempt+1,
+					"timeout", wsTimeout)
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+				continue
+			}
+
+			// Final attempt failed
+			h.log.Warnw("PubSub message not received after all retries",
+				"attempts", maxRetries,
+				"timeout", wsTimeout)
+
+			// Use degraded status instead of down for WebSocket issues
+			// This is less critical than database connection issues
+			return types.HealthComponent{
+				Status: types.HealthStatusDegraded,
+				Details: fmt.Sprintf("PubSub message not received after %d attempts (timeout: %s)",
+					maxRetries, wsTimeout),
+			}
 		}
 	}
 
-	// Wait for message or timeout
-	select {
-	case <-msgChan:
-		// Success, message received
-	case <-time.After(wsTimeout):
-		// Use degraded status instead of down for WebSocket issues
-		// This is less critical than database connection issues
-		return types.HealthComponent{
-			Status:  types.HealthStatusDegraded,
-			Details: fmt.Sprintf("PubSub message not received in time (timeout: %s)", wsTimeout),
-		}
-	}
-
-	// Get active connection count if available
-	var activeConns int
-	if h.activeConnections != nil {
-		activeConns = h.activeConnections()
-	}
-
+	// This code should not be reached due to the loop structure
 	return types.HealthComponent{
-		Status:  types.HealthStatusUp,
-		Details: fmt.Sprintf("Active connections: %d", activeConns),
+		Status:  types.HealthStatusDegraded,
+		Details: "Unexpected flow in WebSocket health check",
 	}
 }
 
@@ -122,10 +178,12 @@ func (h *HealthService) CheckHealth(ctx context.Context) types.HealthCheck {
 	// Add WebSocket health check
 	wsStatus := h.checkWebSocketHealth(ctx)
 	components["websocket"] = wsStatus
+
+	// For WebSocket, only set overall status to DOWN if websocket is DOWN
+	// Don't mark the whole service as DEGRADED just because WebSocket is DEGRADED
+	// This makes the readiness probe more reliable in Kubernetes
 	if wsStatus.Status == types.HealthStatusDown {
 		overallStatus = types.HealthStatusDown
-	} else if wsStatus.Status == types.HealthStatusDegraded && overallStatus != types.HealthStatusDown {
-		overallStatus = types.HealthStatusDegraded
 	}
 
 	return types.HealthCheck{
