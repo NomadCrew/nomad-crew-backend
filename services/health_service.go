@@ -77,7 +77,9 @@ func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthCo
 		// Publish test message
 		publishErr := h.redisClient.Publish(ctx, testChannel, testMessage).Err()
 		if publishErr != nil {
-			pubsub.Close()
+			if err := pubsub.Close(); err != nil {
+				h.log.Warnw("Failed to close pubsub after publish error", "error", err)
+			}
 			if attempt == maxRetries-1 {
 				h.log.Errorw("WebSocket health check failed to publish after retries",
 					"error", publishErr,
@@ -98,7 +100,9 @@ func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthCo
 		select {
 		case <-msgChan:
 			// Success, message received
-			pubsub.Close()
+			if err := pubsub.Close(); err != nil {
+				h.log.Warnw("Failed to close pubsub after successful message receive", "error", err)
+			}
 
 			// If this wasn't the first attempt, log success after retry
 			if attempt > 0 {
@@ -119,7 +123,9 @@ func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthCo
 
 		case <-time.After(wsTimeout):
 			// Timeout on this attempt
-			pubsub.Close()
+			if err := pubsub.Close(); err != nil {
+				h.log.Warnw("Failed to close pubsub after timeout", "error", err)
+			}
 
 			// If we have more retries, try again
 			if attempt < maxRetries-1 {
