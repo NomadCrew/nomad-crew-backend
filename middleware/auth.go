@@ -19,14 +19,6 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log := logger.GetLogger()
 		requestPath := c.Request.URL.Path
-
-		// Log all incoming headers for debugging
-		headers := make(map[string][]string)
-		for k, v := range c.Request.Header {
-			headers[k] = v
-		}
-		log.Infow("Incoming request headers", "path", requestPath, "headers", headers)
-
 		// Step 1: Extract Token
 		token, err := extractToken(c)
 		if err != nil {
@@ -94,7 +86,6 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		log.Debugw("Authentication successful", "userID", userID, "path", requestPath)
 		c.Set(string(UserIDKey), userID) // Use UserIDKey defined in context_keys.go
 
 		// ALSO set userID in the standard Go context for downstream use
@@ -132,7 +123,6 @@ func extractToken(c *gin.Context) (string, error) {
 	if isWebSocketUpgrade {
 		tokenFromQuery := c.Query("token")
 		if tokenFromQuery != "" {
-			log.Debugw("Using token from query parameter for WebSocket", "path", c.Request.URL.Path)
 			return tokenFromQuery, nil
 		}
 		log.Warnw("WebSocket upgrade request missing 'token' in query parameter", "path", c.Request.URL.Path)

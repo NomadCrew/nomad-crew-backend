@@ -42,13 +42,6 @@ func NewNotificationHandler(ns service.NotificationService, logger *zap.Logger) 
 // @Router /notifications [get]
 // @Security BearerAuth
 func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
-	// DEBUG: Log all Gin context keys and their values
-	contextKeys := make(map[string]interface{})
-	for k, v := range c.Keys {
-		contextKeys[k] = v
-	}
-	h.logger.Debug("Gin context keys before extracting user ID", zap.Any("contextKeys", contextKeys))
-
 	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
 	if err != nil {
 		h.logger.Warn("Unauthorized attempt to get notifications", zap.Error(err))
