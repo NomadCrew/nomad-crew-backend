@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -95,6 +96,10 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 		}
 		log.Debugw("Authentication successful", "userID", userID, "path", requestPath)
 		c.Set(string(UserIDKey), userID) // Use UserIDKey defined in context_keys.go
+
+		// ALSO set userID in the standard Go context for downstream use
+		newCtx := context.WithValue(c.Request.Context(), UserIDKey, userID)
+		c.Request = c.Request.WithContext(newCtx)
 
 		c.Next()
 	}
