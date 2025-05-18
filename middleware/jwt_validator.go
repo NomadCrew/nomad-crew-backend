@@ -90,14 +90,18 @@ func NewJWTValidator(cfg *config.Config) (Validator, error) {
 func (v *JWTValidator) Validate(tokenString string) (string, error) {
 	log := logger.GetLogger()
 
+	log.Infow("Starting JWT validation", "token", tokenString)
+
 	// 1. Try HS256 validation if secret is available
 	var staticErr error
 	if len(v.staticSecret) > 0 {
+		log.Infow("Attempting HS256 validation", "token", tokenString)
 		userID, err := v.validateHS256(tokenString)
 		if err == nil {
 			log.Debug("JWT validation successful using HS256")
 			return userID, nil // Success!
 		}
+		log.Errorw("HS256 validation failed", "error", err, "token", tokenString)
 		// Don't return ErrTokenExpired immediately from HS256 if JWKS is also possible
 		if !errors.Is(err, ErrTokenExpired) {
 			log.Debugw("HS256 validation failed (non-expiry)", "error", err)
@@ -108,10 +112,11 @@ func (v *JWTValidator) Validate(tokenString string) (string, error) {
 	// 2. Try JWKS validation if cache is available and token has 'kid'
 	var jwksErr error
 	if v.jwksCache != nil {
+		log.Infow("Attempting JWKS validation", "token", tokenString)
 		// Extract kid without full validation first
 		kid, alg, err := v.extractKIDAndAlg(tokenString)
 		if err != nil {
-			log.Warnw("Could not extract kid/alg from token header for JWKS check", "error", err)
+			log.Warnw("Could not extract kid/alg from token header for JWKS check", "error", err, "token", tokenString)
 			// If HS256 also failed, return its error or a generic invalid token error
 			if staticErr != nil {
 				return "", staticErr // Return the HS256 error if it occurred
@@ -120,14 +125,14 @@ func (v *JWTValidator) Validate(tokenString string) (string, error) {
 		}
 
 		if kid != "" {
-			log.Debugw("Attempting JWKS validation", "kid", kid, "alg", alg)
+			log.Debugw("Attempting JWKS validation", "kid", kid, "alg", alg, "token", tokenString)
 			userID, err := v.validateJWKS(tokenString, kid, alg)
 			if err == nil {
 				log.Debug("JWT validation successful using JWKS")
 				return userID, nil // Success!
 			}
 			jwksErr = err // Store JWKS error
-			log.Debugw("JWKS validation failed", "kid", kid, "error", jwksErr)
+			log.Errorw("JWKS validation failed", "kid", kid, "error", jwksErr, "token", tokenString)
 		} else {
 			log.Debug("No 'kid' found in token header, skipping JWKS validation.")
 			jwksErr = errors.New("no kid in header for jwks") // Mark as skipped
@@ -135,7 +140,7 @@ func (v *JWTValidator) Validate(tokenString string) (string, error) {
 	}
 
 	// 3. Determine final outcome
-	log.Warnw("All JWT validation methods failed or were skipped", "static_error", staticErr, "jwks_error", jwksErr)
+	log.Warnw("All JWT validation methods failed or were skipped", "static_error", staticErr, "jwks_error", jwksErr, "token", tokenString)
 
 	// Prioritize returning expiry error if either method reported it
 	if errors.Is(staticErr, ErrTokenExpired) || errors.Is(jwksErr, ErrTokenExpired) {
@@ -190,6 +195,7 @@ func (v *JWTValidator) extractKIDAndAlg(tokenString string) (kid string, alg str
 
 // validateHS256 attempts validation using the static secret.
 func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
+	log := logger.GetLogger()
 	token, err := jwt.Parse([]byte(tokenString),
 		jwt.WithKey(jwa.HS256, v.staticSecret),
 		jwt.WithValidate(true), // Enable clock skew etc.
@@ -197,6 +203,7 @@ func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
 		// jwt.WithAcceptableSkew(1*time.Minute), // Example: Add skew if needed
 	)
 	if err != nil {
+		log.Errorw("HS256 JWT validation error", "error", err, "token", tokenString)
 		// Check for expiration explicitly
 		if errors.Is(err, jwt.ErrTokenExpired()) {
 			return "", fmt.Errorf("%w: %w", ErrTokenExpired, err)
@@ -206,6 +213,7 @@ func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
 
 	sub := token.Subject()
 	if sub == "" {
+		log.Errorw("HS256 JWT validation error: subject claim missing", "token", tokenString)
 		return "", ErrTokenMissingClaim // Missing subject claim
 	}
 	return sub, nil
