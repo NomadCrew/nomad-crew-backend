@@ -73,15 +73,18 @@ type CreateTripRequest struct {
 // @Router /trips [post]
 // @Security BearerAuth
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	log.Infow("Received CreateTrip request")
+
 	var req CreateTripRequest // Use the redefined CreateTripRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log := logger.GetLogger()
 		log.Errorw("Invalid request for CreateTripHandler", "error", err)
 		if bindErr := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); bindErr != nil {
 			log.Errorw("Failed to set error in context for CreateTripHandler", "error", bindErr)
 		}
 		return
 	}
+	log.Infow("Parsed CreateTripRequest", "request", req)
 
 	userIDStr := c.GetString(string(middleware.UserIDKey))
 
@@ -107,10 +110,12 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
 	if err != nil {
+		log.Errorw("Failed to create trip", "error", err)
 		h.handleModelError(c, err)
 		return
 	}
 
+	log.Infow("Successfully created trip", "trip", createdTrip)
 	c.JSON(http.StatusCreated, createdTrip)
 }
 
