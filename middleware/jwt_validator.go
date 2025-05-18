@@ -196,6 +196,11 @@ func (v *JWTValidator) extractKIDAndAlg(tokenString string) (kid string, alg str
 // validateHS256 attempts validation using the static secret.
 func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
 	log := logger.GetLogger()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorw("Panic during HS256 JWT validation", "recover", r, "token", tokenString)
+		}
+	}()
 	token, err := jwt.Parse([]byte(tokenString),
 		jwt.WithKey(jwa.HS256, v.staticSecret),
 		jwt.WithValidate(true), // Enable clock skew etc.
@@ -206,8 +211,10 @@ func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
 		log.Errorw("HS256 JWT validation error", "error", err, "token", tokenString)
 		// Check for expiration explicitly
 		if errors.Is(err, jwt.ErrTokenExpired()) {
+			log.Errorw("HS256 JWT validation error: token expired", "error", err, "token", tokenString)
 			return "", fmt.Errorf("%w: %w", ErrTokenExpired, err)
 		}
+		log.Errorw("HS256 JWT validation error: parse/validation failed", "error", err, "token", tokenString)
 		return "", fmt.Errorf("hs256 parse/validation failed: %w", err)
 	}
 
@@ -216,6 +223,7 @@ func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
 		log.Errorw("HS256 JWT validation error: subject claim missing", "token", tokenString)
 		return "", ErrTokenMissingClaim // Missing subject claim
 	}
+	log.Infow("HS256 JWT validation succeeded", "subject", sub, "token", tokenString)
 	return sub, nil
 }
 
