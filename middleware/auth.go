@@ -19,6 +19,13 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 		log := logger.GetLogger()
 		requestPath := c.Request.URL.Path
 
+		// Log all incoming headers for debugging
+		headers := make(map[string][]string)
+		for k, v := range c.Request.Header {
+			headers[k] = v
+		}
+		log.Infow("Incoming request headers", "path", requestPath, "headers", headers)
+
 		// Step 1: Extract Token
 		token, err := extractToken(c)
 		if err != nil {
