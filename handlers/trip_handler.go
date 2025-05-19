@@ -9,6 +9,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/supabase-community/supabase-go"
@@ -21,6 +22,7 @@ type TripHandler struct {
 	supabaseClient *supabase.Client
 	serverConfig   *config.ServerConfig
 	weatherService types.WeatherServiceInterface
+	userService    userservice.UserServiceInterface
 }
 
 // NewTripHandler creates a new TripHandler with the given dependencies.
@@ -30,6 +32,7 @@ func NewTripHandler(
 	supabaseClient *supabase.Client,
 	serverConfig *config.ServerConfig,
 	weatherService types.WeatherServiceInterface,
+	userService userservice.UserServiceInterface,
 ) *TripHandler {
 	return &TripHandler{
 		tripModel:      tripModel,
@@ -37,6 +40,7 @@ func NewTripHandler(
 		supabaseClient: supabaseClient,
 		serverConfig:   serverConfig,
 		weatherService: weatherService,
+		userService:    userService,
 	}
 }
 
@@ -86,7 +90,22 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	}
 	log.Infow("Parsed CreateTripRequest", "request", req)
 
-	userIDStr := c.GetString(string(middleware.UserIDKey))
+	// Extract Supabase user ID from context
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
+	if supabaseUserID == "" {
+		log.Errorw("No user ID found in context for CreateTripHandler")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
+		return
+	}
+
+	// Map Supabase user ID to internal UUID
+	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseUserID)
+	if err != nil || user == nil {
+		log.Errorw("Failed to map Supabase user ID to internal UUID", "supabaseUserID", supabaseUserID, "error", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or not onboarded"})
+		return
+	}
+	userIDStr := user.ID.String()
 
 	// Map CreateTripRequest to types.Trip
 	tripToCreate := types.Trip{
@@ -101,7 +120,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		EndDate:              req.EndDate,
 		Status:               req.Status, // Will be 'PLANNING' by default if empty due to omitempty and DB default
 		BackgroundImageURL:   req.BackgroundImageURL,
-		CreatedBy:            &userIDStr, // Correctly assign pointer
+		CreatedBy:            &userIDStr, // Use internal UUID
 	}
 
 	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request

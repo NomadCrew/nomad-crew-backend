@@ -222,17 +222,17 @@ func main() {
 	)
 	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
 
+	// Initialize User Service and Handler
+	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret)
+	userHandler := handlers.NewUserHandler(userService)
+
 	// Initialize Handlers
-	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService)
+	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService, userService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
 	locationHandler := handlers.NewLocationHandler(locationManagementService, log.Desugar())
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
 	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
-
-	// Initialize User Service and Handler
-	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret)
-	userHandler := handlers.NewUserHandler(userService)
 
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
