@@ -92,6 +92,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	// Extract Supabase user ID from context
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
+	log.Infow("[DEBUG] Supabase user ID from context", "supabaseUserID", supabaseUserID)
 	if supabaseUserID == "" {
 		log.Errorw("No user ID found in context for CreateTripHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
@@ -106,6 +107,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		return
 	}
 	userIDStr := user.ID.String()
+	log.Infow("[DEBUG] Mapped internal user UUID", "internalUUID", userIDStr)
 
 	// Map CreateTripRequest to types.Trip
 	tripToCreate := types.Trip{
@@ -122,6 +124,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		BackgroundImageURL:   req.BackgroundImageURL,
 		CreatedBy:            &userIDStr, // Use internal UUID
 	}
+	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 
 	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
 		tripToCreate.Status = types.TripStatusPlanning
@@ -129,7 +132,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
 	if err != nil {
-		log.Errorw("Failed to create trip", "error", err)
+		log.Errorw("Failed to create trip", "error", err, "tripToCreate", tripToCreate, "internalUUID", userIDStr, "supabaseUserID", supabaseUserID)
 		h.handleModelError(c, err)
 		return
 	}
