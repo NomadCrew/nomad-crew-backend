@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 	"time"
 
@@ -62,6 +62,33 @@ type CreateTripRequest struct {
 	EndDate              time.Time        `json:"endDate" binding:"required"`
 	Status               types.TripStatus `json:"status,omitempty"` // Made omitempty, default will be PLANNING
 	BackgroundImageURL   string           `json:"backgroundImageUrl,omitempty"`
+}
+
+// TripWithMembersAndInvitationsResponse is the response for trip creation
+// matching the FE's expected shape
+// (Consider moving to a shared types or docs file if reused)
+type TripWithMembersAndInvitationsResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Destination struct {
+		Address     string `json:"address"`
+		Coordinates struct {
+			Lat float64 `json:"lat"`
+			Lng float64 `json:"lng"`
+		} `json:"coordinates"`
+		PlaceID string `json:"placeId"`
+		Name    string `json:"name,omitempty"`
+	} `json:"destination"`
+	StartDate          time.Time               `json:"startDate"`
+	EndDate            time.Time               `json:"endDate"`
+	Status             string                  `json:"status"`
+	CreatedBy          string                  `json:"createdBy"`
+	CreatedAt          time.Time               `json:"createdAt"`
+	UpdatedAt          time.Time               `json:"updatedAt"`
+	BackgroundImageURL string                  `json:"backgroundImageUrl"`
+	Members            []*types.TripMembership `json:"members"`
+	Invitations        []*types.TripInvitation `json:"invitations"`
 }
 
 // CreateTripHandler godoc
@@ -127,13 +154,6 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	}
 	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 
-	// Log the type and value of CreatedBy before calling CreateTrip
-	if tripToCreate.CreatedBy != nil {
-		log.Infow("[DEBUG] Type and value of tripToCreate.CreatedBy before CreateTrip", "type", fmt.Sprintf("%T", tripToCreate.CreatedBy), "value", *tripToCreate.CreatedBy)
-	} else {
-		log.Infow("[DEBUG] tripToCreate.CreatedBy is nil before CreateTrip")
-	}
-
 	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
 		tripToCreate.Status = types.TripStatusPlanning
 	}
@@ -144,9 +164,79 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		h.handleModelError(c, err)
 		return
 	}
-
 	log.Infow("Successfully created trip", "trip", createdTrip)
-	c.JSON(http.StatusCreated, createdTrip)
+
+	// Fetch members (should include the creator as owner)
+	membersRaw, err := h.tripModel.GetTripMembers(c.Request.Context(), createdTrip.ID)
+	if err != nil {
+		log.Errorw("Failed to fetch trip members after creation", "tripID", createdTrip.ID, "error", err)
+		membersRaw = []types.TripMembership{} // fallback to empty
+	}
+	members := make([]*types.TripMembership, len(membersRaw))
+	for i := range membersRaw {
+		members[i] = &membersRaw[i]
+	}
+
+	// Fetch invitations (if any)
+	invitations := []*types.TripInvitation{}
+	if h.tripModel != nil {
+		if invGetter, ok := h.tripModel.(interface {
+			GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
+		}); ok {
+			invitations, _ = invGetter.GetInvitationsByTripID(c.Request.Context(), createdTrip.ID)
+		}
+	}
+
+	// Compose destination object
+	dest := struct {
+		Address     string `json:"address"`
+		Coordinates struct {
+			Lat float64 `json:"lat"`
+			Lng float64 `json:"lng"`
+		} `json:"coordinates"`
+		PlaceID string `json:"placeId"`
+		Name    string `json:"name,omitempty"`
+	}{}
+	dest.Address = ""
+	if createdTrip.DestinationAddress != nil {
+		dest.Address = *createdTrip.DestinationAddress
+	}
+	dest.Coordinates.Lat = createdTrip.DestinationLatitude
+	dest.Coordinates.Lng = createdTrip.DestinationLongitude
+	dest.PlaceID = ""
+	if createdTrip.DestinationPlaceID != nil {
+		dest.PlaceID = *createdTrip.DestinationPlaceID
+	}
+	dest.Name = ""
+	if createdTrip.DestinationName != nil {
+		dest.Name = *createdTrip.DestinationName
+	}
+
+	resp := TripWithMembersAndInvitationsResponse{
+		ID:                 createdTrip.ID,
+		Name:               createdTrip.Name,
+		Description:        createdTrip.Description,
+		Destination:        dest,
+		StartDate:          createdTrip.StartDate,
+		EndDate:            createdTrip.EndDate,
+		Status:             string(createdTrip.Status),
+		CreatedBy:          derefString(createdTrip.CreatedBy),
+		CreatedAt:          createdTrip.CreatedAt,
+		UpdatedAt:          createdTrip.UpdatedAt,
+		BackgroundImageURL: createdTrip.BackgroundImageURL,
+		Members:            members,
+		Invitations:        invitations,
+	}
+
+	c.JSON(http.StatusCreated, resp)
+}
+
+// derefString returns the value of a *string or "" if nil
+func derefString(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
 }
 
 // GetTripHandler godoc
