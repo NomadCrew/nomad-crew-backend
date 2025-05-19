@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -125,6 +126,13 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		CreatedBy:            &userIDStr, // Use internal UUID
 	}
 	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
+
+	// Log the type and value of CreatedBy before calling CreateTrip
+	if tripToCreate.CreatedBy != nil {
+		log.Infow("[DEBUG] Type and value of tripToCreate.CreatedBy before CreateTrip", "type", fmt.Sprintf("%T", tripToCreate.CreatedBy), "value", *tripToCreate.CreatedBy)
+	} else {
+		log.Infow("[DEBUG] tripToCreate.CreatedBy is nil before CreateTrip")
+	}
 
 	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
 		tripToCreate.Status = types.TripStatusPlanning
