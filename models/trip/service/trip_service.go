@@ -34,12 +34,14 @@ func NewTripManagementService(
 
 // CreateTrip creates a new trip and returns the created trip object
 func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip) (*types.Trip, error) {
-	// Set creator as the creator
-	userID, err := utils.GetUserIDFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	trip.CreatedBy = &userID
+	// Do NOT overwrite trip.CreatedBy here; it should already be set to the internal UUID by the handler
+	logger.GetLogger().Infow("[DEBUG] trip.CreatedBy in service before DB call", "type", fmt.Sprintf("%T", trip.CreatedBy), "value", func() string {
+		if trip.CreatedBy != nil {
+			return *trip.CreatedBy
+		} else {
+			return "<nil>"
+		}
+	}())
 
 	// Create the trip
 	tripID, err := s.store.CreateTrip(ctx, *trip)
@@ -53,8 +55,14 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	// Add creator as an owner
 	membership := &types.TripMembership{
 		TripID: trip.ID,
-		UserID: userID,
-		Role:   types.MemberRoleOwner,
+		UserID: func() string {
+			if trip.CreatedBy != nil {
+				return *trip.CreatedBy
+			} else {
+				return ""
+			}
+		}(),
+		Role: types.MemberRoleOwner,
 	}
 	if err := s.store.AddMember(ctx, membership); err != nil {
 		// Consider potential rollback/cleanup here if needed
