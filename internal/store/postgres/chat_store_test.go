@@ -103,12 +103,14 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 	user2Meta := `{"username":"anotheruser","avatar_url":"http://example.com/avatar2.png"}`
 
 	_, err = testPool.Exec(ctx, `
-		INSERT INTO users (id, email, name, raw_user_meta_data, created_at, updated_at)
-		VALUES ($1, 'test@example.com', 'testuser', $3::jsonb, NOW(), NOW()),
-		       ($2, 'another@example.com', 'anotheruser', $4::jsonb, NOW(), NOW())`,
+		INSERT INTO users (id, supabase_id, email, name, raw_user_meta_data, created_at, updated_at)
+		VALUES ($1, $2, 'test@example.com', 'testuser', $3::jsonb, NOW(), NOW()),
+		       ($4, $5, 'another@example.com', 'anotheruser', $6::jsonb, NOW(), NOW())`,
 		userID,
-		anotherUserID,
+		uuid.New().String(),
 		user1Meta,
+		anotherUserID,
+		uuid.New().String(),
 		user2Meta,
 	)
 	require.NoError(t, err)

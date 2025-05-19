@@ -111,8 +111,8 @@ func TestTripStore_Integration(t *testing.T) {
 	testUserUUID := authIDtoUUID(testAuthID)
 
 	// Insert the main test user for this test suite
-	_, err := dbClient.GetPool().Exec(ctx, "INSERT INTO users (id, email, name, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
-		testUserUUID, "integration-testuser@example.com", "Integration Test User")
+	_, err := dbClient.GetPool().Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
+		testUserUUID, uuid.New().String(), "integration-testuser@example.com", "Integration Test User")
 	require.NoError(t, err, "Failed to insert main test user for TestTripStore_Integration")
 
 	// Setup cleanup to run at the end
