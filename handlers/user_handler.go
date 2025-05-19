@@ -520,3 +520,41 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 	// Placeholder: Not implemented as route is disabled.
 	c.JSON(http.StatusNotImplemented, gin.H{"message": "DeleteUser endpoint is not active"})
 }
+
+// OnboardUser handles idempotent user onboarding from Supabase JWT
+// @Summary Onboard or upsert user from Supabase JWT
+// @Description Upserts the user into the backend users table using info from the Supabase JWT
+// @Tags user
+// @Accept json
+// @Produce json
+// @Success 200 {object} types.UserProfile "User profile"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid or missing JWT"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - Invalid token"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /users/onboard [post]
+// @Security BearerAuth
+func (h *UserHandler) OnboardUser(c *gin.Context) {
+	// Extract JWT from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid Authorization header"})
+		return
+	}
+	tokenString := authHeader[7:]
+
+	// Validate and parse JWT
+	claims, err := h.userService.ValidateAndExtractClaims(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token: " + err.Error()})
+		return
+	}
+
+	// Onboard (upsert) user using claims
+	profile, err := h.userService.OnboardUserFromJWTClaims(c.Request.Context(), claims)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to onboard user: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
+}

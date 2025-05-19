@@ -231,7 +231,7 @@ func main() {
 	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
 
 	// Initialize User Service and Handler
-	userService := userSvc.NewUserService(userDB)
+	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret)
 	userHandler := handlers.NewUserHandler(userService)
 
 	// Prepare Router Dependencies

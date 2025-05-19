@@ -168,6 +168,8 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				userRoutes.PUT("/:id/preferences", deps.UserHandler.UpdateUserPreferences)
 				// Add SyncWithSupabase as a special endpoint
 				userRoutes.POST("/sync", deps.UserHandler.SyncWithSupabase)
+				// Register the onboarding endpoint
+				userRoutes.POST("/onboard", deps.UserHandler.OnboardUser)
 			}
 		}
 	}
