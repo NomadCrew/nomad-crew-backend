@@ -62,7 +62,8 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 				return ""
 			}
 		}(),
-		Role: types.MemberRoleOwner,
+		Role:   types.MemberRoleOwner,
+		Status: types.MembershipStatusActive,
 	}
 	if err := s.store.AddMember(ctx, membership); err != nil {
 		// Consider potential rollback/cleanup here if needed

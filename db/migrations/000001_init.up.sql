@@ -23,7 +23,7 @@ CREATE TYPE invitation_status AS ENUM ('PENDING', 'ACCEPTED', 'DECLINED');
 -- Create users table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    supabase_id TEXT,
+    supabase_id TEXT UNIQUE NOT NULL,
     email TEXT NOT NULL UNIQUE,
     encrypted_password TEXT,
     username TEXT,
