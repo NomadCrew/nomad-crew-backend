@@ -86,6 +86,7 @@ func AuthMiddleware(validator Validator) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		log.Infow("Extracted userID from JWT", "userID", userID, "path", requestPath)
 		c.Set(string(UserIDKey), userID) // Use UserIDKey defined in context_keys.go
 
 		// ALSO set userID in the standard Go context for downstream use
