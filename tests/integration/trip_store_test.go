@@ -86,7 +86,7 @@ func TestTripStore(t *testing.T) {
 
 	// Insert the test user before any trip operations
 	_, errUser := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-		testUserID, uuid.New().String(), fmt.Sprintf("user-%s@example.com", testUserID), "Test User For TripStore", uuid.New().String())
+		testUserID, uuid.New().String(), fmt.Sprintf("user-%s@example.com", testUserID), "Test User For TripStore")
 	require.NoError(t, errUser, "Failed to insert test user for TestTripStore")
 
 	// Defer cleanup of test data
@@ -209,7 +209,7 @@ func TestTripStore(t *testing.T) {
 		listTestUserID := uuid.New().String()
 		// Insert the listTestUserID user
 		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			listTestUserID, uuid.New().String(), fmt.Sprintf("listuser-%s@example.com", listTestUserID), "List Test User", uuid.New().String())
+			listTestUserID, uuid.New().String(), fmt.Sprintf("listuser-%s@example.com", listTestUserID), "List Test User")
 		require.NoError(t, errUserInsert, "Failed to insert listTestUserID")
 
 		trip := types.Trip{
@@ -240,7 +240,7 @@ func TestTripStore(t *testing.T) {
 		searchUserID := uuid.New().String()
 		// Insert the searchUserID user
 		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			searchUserID, uuid.New().String(), fmt.Sprintf("searchuser-%s@example.com", searchUserID), "Search Test User", uuid.New().String())
+			searchUserID, uuid.New().String(), fmt.Sprintf("searchuser-%s@example.com", searchUserID), "Search Test User")
 		require.NoError(t, errUserInsert, "Failed to insert searchUserID")
 
 		searchTrip := types.Trip{
@@ -281,12 +281,12 @@ func TestTripStore(t *testing.T) {
 
 		// Insert the trip creator user
 		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			addMemberUserID, uuid.New().String(), fmt.Sprintf("addmemberuser-%s@example.com", addMemberUserID), "AddMember Test User (Creator)", uuid.New().String())
+			addMemberUserID, uuid.New().String(), fmt.Sprintf("addmemberuser-%s@example.com", addMemberUserID), "AddMember Test User (Creator)")
 		require.NoError(t, errUserInsert, "Failed to insert addMemberUserID")
 
 		// Insert the member user
 		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			memberID, uuid.New().String(), fmt.Sprintf("member-%s@example.com", memberID), "AddMember Test User (Member)", uuid.New().String())
+			memberID, uuid.New().String(), fmt.Sprintf("member-%s@example.com", memberID), "AddMember Test User (Member)")
 		require.NoError(t, errMemberInsert, "Failed to insert memberID for AddMember test")
 
 		trip := types.Trip{
@@ -334,12 +334,12 @@ func TestTripStore(t *testing.T) {
 
 		// Insert the trip creator user
 		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			updateRoleUserID, uuid.New().String(), fmt.Sprintf("updateroleuser-%s@example.com", updateRoleUserID), "UpdateRole Test User (Creator)", uuid.New().String())
+			updateRoleUserID, uuid.New().String(), fmt.Sprintf("updateroleuser-%s@example.com", updateRoleUserID), "UpdateRole Test User (Creator)")
 		require.NoError(t, errUserInsert, "Failed to insert updateRoleUserID")
 
 		// Insert the member user
 		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			memberID, uuid.New().String(), fmt.Sprintf("member-%s@example.com", memberID), "UpdateRole Test User (Member)", uuid.New().String())
+			memberID, uuid.New().String(), fmt.Sprintf("member-%s@example.com", memberID), "UpdateRole Test User (Member)")
 		require.NoError(t, errMemberInsert, "Failed to insert memberID for UpdateMemberRole test")
 
 		trip := types.Trip{
@@ -390,12 +390,12 @@ func TestTripStore(t *testing.T) {
 
 		// Insert the trip creator user
 		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			removeMemberUserID, uuid.New().String(), fmt.Sprintf("removememberuser-%s@example.com", removeMemberUserID), "RemoveMember Test User (Creator)", uuid.New().String())
+			removeMemberUserID, uuid.New().String(), fmt.Sprintf("removememberuser-%s@example.com", removeMemberUserID), "RemoveMember Test User (Creator)")
 		require.NoError(t, errUserInsert, "Failed to insert removeMemberUserID")
 
 		// Insert the member user to be removed
 		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			memberToRemoveID, uuid.New().String(), fmt.Sprintf("membertoremove-%s@example.com", memberToRemoveID), "RemoveMember Test User (To Remove)", uuid.New().String())
+			memberToRemoveID, uuid.New().String(), fmt.Sprintf("membertoremove-%s@example.com", memberToRemoveID), "RemoveMember Test User (To Remove)")
 		require.NoError(t, errMemberInsert, "Failed to insert memberToRemoveID")
 
 		trip := types.Trip{
