@@ -90,8 +90,8 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 
 	// Insert a test user for trip foreign key constraints
 	testUserUUID := authIDtoUUID(testAuthID) // Ensure this is the same as used in tests
-	_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-		testUserUUID, uuid.New().String(), "testuser@example.com", "Test User Integration")
+	_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
+		testUserUUID, uuid.New().String(), "testuser@example.com", "testuser1", "Test User Integration")
 	require.NoError(t, err, "Failed to insert test user")
 
 	return pool, func() {
@@ -412,8 +412,8 @@ func TestPgTripStore_Integration(t *testing.T) {
 		memberUUID := authIDtoUUID("auth0|member123")
 
 		// Insert the member user into the users table first
-		_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, name, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-			memberUUID, uuid.New().String(), "member@example.com", "Test Member")
+		_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
+			memberUUID, uuid.New().String(), "member@example.com", "member123", "Test Member")
 		require.NoError(t, err, "Failed to insert test member user")
 
 		// Add member

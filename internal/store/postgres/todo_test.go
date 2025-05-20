@@ -86,8 +86,8 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
 	tripID := uuid.New()
 
 	_, err = testPool.Exec(ctx, `
-		INSERT INTO users (id, supabase_id, email, name, created_at, updated_at)
-		VALUES ($1, $2, 'test@example.com', 'Test User', NOW(), NOW())`,
+		INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at)
+		VALUES ($1, $2, 'test@example.com', 'testuser1', 'Test User', NOW(), NOW())`,
 		userID,
 		uuid.New().String(),
 	)
