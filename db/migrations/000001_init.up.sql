@@ -26,7 +26,7 @@ CREATE TABLE users (
     supabase_id TEXT UNIQUE NOT NULL,
     email TEXT NOT NULL UNIQUE,
     encrypted_password TEXT,
-    username TEXT,
+    username TEXT UNIQUE NOT NULL,
     name TEXT,
     first_name TEXT,
     last_name TEXT,
@@ -310,4 +310,6 @@ CREATE INDEX idx_chat_messages_content_type ON chat_messages(content_type);
 CREATE INDEX idx_chat_messages_deleted_at ON chat_messages(deleted_at) WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_chat_message_reactions_message_id ON chat_message_reactions(message_id);
-CREATE INDEX idx_chat_message_reactions_user_id ON chat_message_reactions(user_id); 
+CREATE INDEX idx_chat_message_reactions_user_id ON chat_message_reactions(user_id);
+
+-- NOTE: The username field in the users table is now UNIQUE and NOT NULL as of this migration. 

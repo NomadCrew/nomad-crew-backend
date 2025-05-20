@@ -673,6 +673,17 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 		return nil, errors.New("missing required user info in JWT claims")
 	}
 
+	username := strings.TrimSpace(claims.Username)
+	if username == "" {
+		return nil, errors.New("username is required and cannot be empty")
+	}
+
+	// Check if username is already taken by another user
+	existingByUsername, err := s.userStore.GetUserByUsername(ctx, username)
+	if err == nil && existingByUsername != nil && existingByUsername.SupabaseID != claims.UserID {
+		return nil, errors.New("username is already taken")
+	}
+
 	// Try to get user by SupabaseID (UserID in claims)
 	typesUser, err := s.userStore.GetUserBySupabaseID(ctx, claims.UserID)
 	if err != nil && err.Error() != "user not found: no rows in result set" {
@@ -684,7 +695,7 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 		user := &models.User{
 			SupabaseID: claims.UserID,
 			Email:      claims.Email,
-			Username:   claims.Username,
+			Username:   username,
 		}
 		id, err := s.CreateUser(ctx, user)
 		if err != nil {
@@ -698,8 +709,8 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 	if typesUser.Email != claims.Email {
 		updates["email"] = claims.Email
 	}
-	if typesUser.Username != claims.Username && claims.Username != "" {
-		updates["username"] = claims.Username
+	if typesUser.Username != username {
+		updates["username"] = username
 	}
 	if len(updates) > 0 {
 		_, err := s.userStore.UpdateUser(ctx, typesUser.ID, updates)

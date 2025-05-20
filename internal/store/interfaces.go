@@ -138,6 +138,9 @@ type UserStore interface {
 
 	// BeginTx starts a transaction
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
+
+	// GetUserByUsername retrieves a user by their username
+	GetUserByUsername(ctx context.Context, username string) (*types.User, error)
 }
 
 // Use types.DatabaseTransaction here instead of a local interface

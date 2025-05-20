@@ -731,3 +731,57 @@ func (s *UserStore) ConvertToUserResponse(user *types.User) (types.UserResponse,
 		DisplayName: user.GetDisplayName(),
 	}, nil
 }
+
+// GetUserByUsername retrieves a user by their username
+func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*types.User, error) {
+	query := `
+		SELECT 
+			id, supabase_id, username, first_name, last_name, email, 
+			created_at, updated_at, profile_picture_url, raw_user_meta_data,
+			last_seen_at, is_online, preferences
+		FROM users
+		WHERE username = $1`
+
+	user := &types.User{}
+	var rawMetaData json.RawMessage
+	var preferencesJSON json.RawMessage
+
+	row := s.queryRow(ctx, query, username)
+	err := row.Scan(
+		&user.ID,
+		&user.SupabaseID,
+		&user.Username,
+		&user.FirstName,
+		&user.LastName,
+		&user.Email,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.ProfilePictureURL,
+		&rawMetaData,
+		&user.LastSeenAt,
+		&user.IsOnline,
+		&preferencesJSON,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil // Not found is not an error
+		}
+		return nil, fmt.Errorf("error getting user by username: %w", err)
+	}
+
+	// Unmarshal raw user metadata
+	if len(rawMetaData) > 0 {
+		user.RawUserMetaData = rawMetaData
+	}
+
+	// Unmarshal preferences if available
+	if len(preferencesJSON) > 0 {
+		var prefs map[string]interface{}
+		if err := json.Unmarshal(preferencesJSON, &prefs); err == nil {
+			user.Preferences = prefs
+		}
+	}
+
+	return user, nil
+}

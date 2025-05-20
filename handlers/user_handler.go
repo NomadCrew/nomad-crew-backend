@@ -542,6 +542,12 @@ func (h *UserHandler) OnboardUser(c *gin.Context) {
 	}
 	tokenString := authHeader[7:]
 
+	// Parse optional username from JSON body
+	var req struct {
+		Username string `json:"username"`
+	}
+	_ = c.ShouldBindJSON(&req) // Ignore error, username is optional
+
 	// Validate and parse JWT
 	claims, err := h.userService.ValidateAndExtractClaims(tokenString)
 	if err != nil {
@@ -549,9 +555,22 @@ func (h *UserHandler) OnboardUser(c *gin.Context) {
 		return
 	}
 
-	// Onboard (upsert) user using claims
+	// If username is provided in the request, override claims.Username
+	if req.Username != "" {
+		claims.Username = req.Username
+	}
+
+	// Onboard (upsert) user using claims (with username)
 	profile, err := h.userService.OnboardUserFromJWTClaims(c.Request.Context(), claims)
 	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+			return
+		}
+		if strings.Contains(err.Error(), "username") && strings.Contains(err.Error(), "null") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required and cannot be empty"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to onboard user: " + err.Error()})
 		return
 	}
