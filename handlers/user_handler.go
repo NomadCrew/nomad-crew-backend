@@ -563,11 +563,11 @@ func (h *UserHandler) OnboardUser(c *gin.Context) {
 	// Onboard (upsert) user using claims (with username)
 	profile, err := h.userService.OnboardUserFromJWTClaims(c.Request.Context(), claims)
 	if err != nil {
-		if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "already exists") {
+		if strings.Contains(err.Error(), "username is already taken") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
 			return
 		}
-		if strings.Contains(err.Error(), "username") && strings.Contains(err.Error(), "null") {
+		if strings.Contains(err.Error(), "username is required") || strings.Contains(err.Error(), "cannot be empty") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required and cannot be empty"})
 			return
 		}

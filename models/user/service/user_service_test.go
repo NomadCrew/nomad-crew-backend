@@ -109,7 +109,7 @@ func TestOnboardUserFromJWTClaims_Success(t *testing.T) {
 
 	mockStore.On("GetUserByUsername", mock.Anything, "uniqueuser").Return(nil, nil)
 	mockStore.On("GetUserBySupabaseID", mock.Anything, "supabase-123").Return(nil, errors.New("user not found: no rows in result set"))
-	mockStore.On("CreateUser", mock.Anything, mock.Anything).Return("uuid-1", nil)
+	mockStore.On("CreateUser", mock.Anything, mock.Anything).Return("00000000-0000-0000-0000-000000000001", nil)
 
 	profile, err := svc.OnboardUserFromJWTClaims(context.Background(), claims)
 	assert.NoError(t, err)
