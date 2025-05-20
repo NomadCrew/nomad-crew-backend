@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -35,6 +37,81 @@ func (m *MockUserService) OnboardUserFromJWTClaims(ctx context.Context, claims *
 }
 
 // ... other methods can panic or be no-ops for now ...
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) CreateUser(ctx context.Context, user *models.User) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) GetUserBySupabaseID(ctx context.Context, supabaseID string) (*models.User, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) GetUserProfile(ctx context.Context, id uuid.UUID) (*types.UserProfile, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) GetUserProfiles(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*types.UserProfile, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) ListUsers(ctx context.Context, offset, limit int) ([]*models.User, int, error) {
+	return nil, 0, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) SetOnlineStatus(ctx context.Context, id uuid.UUID, isOnline bool) error {
+	return nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) SyncWithSupabase(ctx context.Context, supabaseID string) (*models.User, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) UpdateLastSeen(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) UpdateUser(ctx context.Context, id uuid.UUID, req models.UserUpdateRequest) (*models.User, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) UpdateUserPreferences(ctx context.Context, id uuid.UUID, prefs map[string]interface{}) error {
+	return nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) UpdateUserPreferencesWithValidation(ctx context.Context, id uuid.UUID, currentUserID uuid.UUID, isAdmin bool, prefs map[string]interface{}) error {
+	return nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) UpdateUserProfile(ctx context.Context, id uuid.UUID, currentUserID uuid.UUID, isAdmin bool, req models.UserUpdateRequest) (*models.User, error) {
+	return nil, nil
+}
+
+// Add this to satisfy UserServiceInterface
+func (m *MockUserService) ValidateUserUpdateRequest(req models.UserUpdateRequest) error {
+	return nil
+}
 
 func TestOnboardUser_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
