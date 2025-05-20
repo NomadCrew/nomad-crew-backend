@@ -42,10 +42,12 @@ func (m *MockUserStore) UpdateUser(ctx context.Context, userID string, updates m
 	}
 	return args.Get(0).(*types.User), args.Error(1)
 }
-
-// Implement all other methods as no-ops or panics for interface compliance
-func (m *MockUserStore) GetUserByID(ctx context.Context, userID string) (*types.User, error) {
-	panic("not implemented")
+func (m *MockUserStore) GetUserByID(ctx context.Context, id string) (*types.User, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
 }
 func (m *MockUserStore) GetUserByEmail(ctx context.Context, email string) (*types.User, error) {
 	panic("not implemented")
@@ -110,6 +112,7 @@ func TestOnboardUserFromJWTClaims_Success(t *testing.T) {
 	mockStore.On("GetUserByUsername", mock.Anything, "uniqueuser").Return(nil, nil)
 	mockStore.On("GetUserBySupabaseID", mock.Anything, "supabase-123").Return(nil, errors.New("user not found: no rows in result set"))
 	mockStore.On("CreateUser", mock.Anything, mock.Anything).Return("00000000-0000-0000-0000-000000000001", nil)
+	mockStore.On("GetUserByID", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(&types.User{ID: "00000000-0000-0000-0000-000000000001", Username: "uniqueuser", Email: "unique@example.com"}, nil)
 
 	profile, err := svc.OnboardUserFromJWTClaims(context.Background(), claims)
 	assert.NoError(t, err)
