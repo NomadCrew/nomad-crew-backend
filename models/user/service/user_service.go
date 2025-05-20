@@ -506,6 +506,7 @@ func (s *UserService) GetUserProfile(ctx context.Context, id uuid.UUID) (*types.
 
 	profile := &types.UserProfile{
 		ID:          user.ID.String(),
+		SupabaseID:  user.SupabaseID,
 		Email:       user.Email,
 		Username:    user.Username,
 		FirstName:   user.FirstName,

@@ -458,15 +458,17 @@ func (s *UserStore) GetSupabaseUser(ctx context.Context, userID string) (*types.
 func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.UserProfile, error) {
 	query := `
 		SELECT 
-			id, username, first_name, last_name, email, profile_picture_url,
+			id, supabase_id, username, first_name, last_name, email, profile_picture_url,
 			last_seen_at, is_online
 		FROM users
 		WHERE id = $1`
 
 	row := s.queryRow(ctx, query, userID)
 	profile := &types.UserProfile{}
+	var supabaseID string
 	err := row.Scan(
 		&profile.ID,
+		&supabaseID,
 		&profile.Username,
 		&profile.FirstName,
 		&profile.LastName,
@@ -475,6 +477,7 @@ func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.U
 		&profile.LastSeenAt,
 		&profile.IsOnline,
 	)
+	profile.SupabaseID = supabaseID
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -516,8 +519,10 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 	profiles := make(map[string]*types.UserProfile)
 	for rows.Next() {
 		profile := &types.UserProfile{}
+		var supabaseID string
 		err := rows.Scan(
 			&profile.ID,
+			&supabaseID,
 			&profile.Username,
 			&profile.FirstName,
 			&profile.LastName,
@@ -526,6 +531,7 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 			&profile.LastSeenAt,
 			&profile.IsOnline,
 		)
+		profile.SupabaseID = supabaseID
 		if err != nil {
 			return nil, fmt.Errorf("error scanning user profile row: %w", err)
 		}

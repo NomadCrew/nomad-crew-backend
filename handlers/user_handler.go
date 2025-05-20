@@ -59,42 +59,33 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Security BearerAuth
 // GetCurrentUser returns the currently authenticated user's profile
 func (h *UserHandler) GetCurrentUser(c *gin.Context) {
-	// Get the user ID from context (set by auth middleware)
+	// Get the Supabase user ID from context (set by auth middleware)
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
-	// Parse the UUID
-	id, err := uuid.Parse(userID.(string))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+	supabaseID := userID.(string)
+
+	// Get the user by Supabase ID
+	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
-	// Update last seen timestamp
-	go func(ctx context.Context, userID uuid.UUID) {
-		if err := h.userService.UpdateLastSeen(ctx, userID); err != nil {
-			logger.GetLogger().Warnw("Failed to update last seen", "error", err, "userID", userID)
+	// Update last seen timestamp (non-blocking)
+	go func(ctx context.Context, userID string) {
+		if err := h.userService.UpdateLastSeen(ctx, user.ID); err != nil {
+			logger.GetLogger().Warnw("Failed to update last seen", "error", err, "userID", user.ID)
 		}
-	}(c.Request.Context(), id)
+	}(c.Request.Context(), user.ID.String())
 
-	// Get the user profile
-	profile, err := h.userService.GetUserProfile(c.Request.Context(), id)
+	// Get the user profile (now includes supabase_id)
+	profile, err := h.userService.GetUserProfile(c.Request.Context(), user.ID)
 	if err != nil {
-		var status int
-		var message string
-
-		if appErr, ok := err.(*apperrors.AppError); ok {
-			status = appErr.GetHTTPStatus()
-			message = appErr.Error()
-		} else {
-			status = http.StatusInternalServerError
-			message = "Failed to get user profile"
-		}
-
-		c.JSON(status, gin.H{"error": message})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user profile"})
 		return
 	}
 
