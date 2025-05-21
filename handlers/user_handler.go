@@ -76,11 +76,13 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 	}
 
 	// Update last seen timestamp (non-blocking)
-	go func(ctx context.Context, userID string) {
-		if err := h.userService.UpdateLastSeen(ctx, user.ID); err != nil {
-			logger.GetLogger().Warnw("Failed to update last seen", "error", err, "userID", user.ID)
+	go func(userID uuid.UUID) {
+		// Create a new background context for this self-contained task
+		bgCtx := context.Background()
+		if err := h.userService.UpdateLastSeen(bgCtx, userID); err != nil {
+			logger.GetLogger().Warnw("Failed to update last seen", "error", err, "userID", userID)
 		}
-	}(c.Request.Context(), user.ID.String())
+	}(user.ID)
 
 	// Get the user profile (now includes supabase_id)
 	profile, err := h.userService.GetUserProfile(c.Request.Context(), user.ID)
