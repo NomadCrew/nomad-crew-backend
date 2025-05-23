@@ -238,6 +238,11 @@ func LoadConfig() (*Config, error) {
 	// Note: We already bind Supabase environment variables to EXTERNAL_SERVICES above,
 	// so we don't need to duplicate bindings for the dedicated Supabase config.
 
+	// Add binding for Supabase Service Key
+	if err := v.BindEnv("SUPABASE.SERVICE_KEY", "SUPABASE_SERVICE_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind SUPABASE.SERVICE_KEY: %w", err)
+	}
+
 	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
 	log.Infow("RESEND_API_KEY check",
 		"present", resendAPIKey != "",
