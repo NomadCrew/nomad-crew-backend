@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -35,58 +34,6 @@ func (h *HealthService) SetActiveConnectionsGetter(getter func() int) {
 	h.activeConnections = getter
 }
 
-func (h *HealthService) checkWebSocketHealth(ctx context.Context) types.HealthComponent {
-	// Check if Redis pubsub is working for WebSockets
-	const testChannel = "health:ws:test"
-	const testMessage = "ping"
-
-	// Create a test pubsub instance
-	pubsub := h.redisClient.Subscribe(ctx, testChannel)
-	defer pubsub.Close()
-
-	// Create a channel to receive the test message
-	msgChan := make(chan struct{})
-	go func() {
-		defer close(msgChan)
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil || msg.Payload != testMessage {
-			return
-		}
-		msgChan <- struct{}{}
-	}()
-
-	// Publish test message
-	if err := h.redisClient.Publish(ctx, testChannel, testMessage).Err(); err != nil {
-		h.log.Errorw("WebSocket health check failed to publish", "error", err)
-		return types.HealthComponent{
-			Status:  types.HealthStatusDegraded,
-			Details: "PubSub publish failed: " + err.Error(),
-		}
-	}
-
-	// Wait for message or timeout
-	select {
-	case <-msgChan:
-		// Success, message received
-	case <-time.After(2 * time.Second):
-		return types.HealthComponent{
-			Status:  types.HealthStatusDegraded,
-			Details: "PubSub message not received in time",
-		}
-	}
-
-	// Get active connection count if available
-	var activeConns int
-	if h.activeConnections != nil {
-		activeConns = h.activeConnections()
-	}
-
-	return types.HealthComponent{
-		Status:  types.HealthStatusUp,
-		Details: fmt.Sprintf("Active connections: %d", activeConns),
-	}
-}
-
 func (h *HealthService) CheckHealth(ctx context.Context) types.HealthCheck {
 	components := make(map[string]types.HealthComponent)
 	overallStatus := types.HealthStatusUp
@@ -106,15 +53,6 @@ func (h *HealthService) CheckHealth(ctx context.Context) types.HealthCheck {
 	if redisStatus.Status == types.HealthStatusDown {
 		overallStatus = types.HealthStatusDown
 	} else if redisStatus.Status == types.HealthStatusDegraded && overallStatus != types.HealthStatusDown {
-		overallStatus = types.HealthStatusDegraded
-	}
-
-	// Add WebSocket health check
-	wsStatus := h.checkWebSocketHealth(ctx)
-	components["websocket"] = wsStatus
-	if wsStatus.Status == types.HealthStatusDown {
-		overallStatus = types.HealthStatusDown
-	} else if wsStatus.Status == types.HealthStatusDegraded && overallStatus != types.HealthStatusDown {
 		overallStatus = types.HealthStatusDegraded
 	}
 

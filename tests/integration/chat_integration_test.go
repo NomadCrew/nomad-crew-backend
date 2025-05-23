@@ -617,10 +617,8 @@ func (suite *ChatIntegrationTestSuite) TestChatMessagePagination() {
 	assert.Len(t, thirdPageResponse.Messages, 5, "Third page should have 5 messages")
 }
 
-// Skip WebSocketIntegration test as it requires a more complex setup
-func (suite *ChatIntegrationTestSuite) TestWebSocketIntegration() {
-	suite.T().Skip("WebSocket testing requires a more complex setup with WebSocket client")
-}
+// Note: WebSocket functionality has been removed and migrated to Supabase Realtime
+// See docs/SUPABASE_MIGRATION_GUIDE.md and .cursor/websocket-to-supabase-migration-doc.md for details
 
 // Ensure the test suite is run
 func TestChatIntegrationSuite(t *testing.T) {

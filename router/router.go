@@ -21,13 +21,11 @@ type Dependencies struct {
 	HealthHandler       *handlers.HealthHandler
 	LocationHandler     *handlers.LocationHandler
 	NotificationHandler *handlers.NotificationHandler
-	WSHandler           *handlers.WSHandler
 	ChatHandler         *handlers.ChatHandler
 	UserHandler         *handlers.UserHandler
 	Logger              *zap.SugaredLogger
 	MemberHandler       *handlers.MemberHandler
 	InvitationHandler   *handlers.InvitationHandler
-	TripChatHandler     *handlers.TripChatHandler
 	SupabaseService     *services.SupabaseService
 	FeatureFlags        config.FeatureFlags
 	// Supabase Realtime handlers
@@ -65,11 +63,6 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	// Versioned API Group (v1)
 	v1 := r.Group("/v1")
 	{
-		// WebSocket Route - only register if Supabase Realtime is not enabled
-		if !deps.FeatureFlags.EnableSupabaseRealtime {
-			v1.GET("/ws", deps.WSHandler.HandleWebSocketConnection)
-		}
-
 		// Public Invitation routes (actions that don't require user to be logged in *yet*)
 		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink) // For deep links from emails
 		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)  // To get details using a token (public potentially)
@@ -132,13 +125,6 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				// Trip Chat Routes - conditionally registered based on feature flag
 				chatRoutes := tripRoutes.Group("/:id/chat")
 				{
-					// Legacy WebSocket endpoints - only register if Supabase Realtime is not enabled
-					if !deps.FeatureFlags.EnableSupabaseRealtime {
-						chatRoutes.GET("/ws/events", deps.TripChatHandler.WSStreamEvents)   // Legacy WebSocket stream
-						chatRoutes.GET("/messages", deps.TripChatHandler.ListTripMessages)  // Legacy WebSocket endpoint
-						chatRoutes.PUT("/read", deps.TripChatHandler.UpdateLastReadMessage) // Legacy WebSocket endpoint
-					}
-
 					// New Supabase Realtime endpoints - only register if SupabaseRealtime is enabled
 					if deps.FeatureFlags.EnableSupabaseRealtime && deps.ChatHandlerSupabase != nil {
 						chatRoutes.POST("/messages", deps.ChatHandlerSupabase.SendMessage)

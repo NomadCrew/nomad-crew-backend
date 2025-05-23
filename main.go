@@ -51,7 +51,6 @@ import (
 	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	"github.com/supabase-community/supabase-go"
 )
@@ -164,7 +163,7 @@ func main() {
 	log.Info("JWT Validator initialized successfully")
 
 	// Initialize services
-	rateLimitService := services.NewRateLimitService(redisClient)
+	// rateLimitService := services.NewRateLimitService(redisClient) - removed as it's no longer used after WebSocket removal
 
 	// Create event service config based on application configuration
 	eventServiceConfig := events.Config{
@@ -228,11 +227,20 @@ func main() {
 		log.Desugar(),
 	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
-	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
 
 	// Initialize User Service and Handler
 	userService := userSvc.NewUserService(userDB)
 	userHandler := handlers.NewUserHandler(userService)
+
+	// Initialize Supabase Realtime handlers if enabled
+	var chatHandlerSupabase *handlers.ChatHandlerSupabase
+	var locationHandlerSupabase *handlers.LocationHandlerSupabase
+
+	// Commented out until proper implementation is available
+	// if featureFlags.EnableSupabaseRealtime {
+	// 	chatHandlerSupabase = handlers.NewChatHandlerSupabase(...)
+	// 	locationHandlerSupabase = handlers.NewLocationHandlerSupabase(...)
+	// }
 
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
@@ -243,38 +251,20 @@ func main() {
 		HealthHandler:       healthHandler,
 		LocationHandler:     locationHandler,
 		NotificationHandler: notificationHandler,
-		WSHandler:           wsHandler,
 		ChatHandler:         chatHandler,
 		UserHandler:         userHandler,
 		Logger:              log,
 		SupabaseService:     supabaseService,
+		FeatureFlags:        featureFlags,
+		// Supabase Realtime handlers
+		ChatHandlerSupabase:     chatHandlerSupabase,
+		LocationHandlerSupabase: locationHandlerSupabase,
 	}
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)
 
 	log.Info("Router setup complete")
-
-	// Initialize WebSocket metrics (if still needed here, or move to where WS handler/manager is initialized)
-	wsMetrics := &middleware.WSMetrics{
-		ConnectionsActive: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "websocket_active_connections",
-			Help: "Current active WebSocket connections",
-		}),
-		MessagesReceived: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "websocket_messages_received_total",
-			Help: "Total number of WebSocket messages received.",
-		}),
-		MessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "websocket_messages_sent_total",
-			Help: "Total number of WebSocket messages sent.",
-		}),
-		ErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "websocket_errors_total",
-			Help: "Total number of WebSocket errors.",
-		}, []string{"trip_id", "type"}),
-	}
-	prometheus.MustRegister(wsMetrics.ConnectionsActive, wsMetrics.MessagesReceived, wsMetrics.MessagesSent, wsMetrics.ErrorsTotal)
 
 	// Start the server
 	srv := &http.Server{
