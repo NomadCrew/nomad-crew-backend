@@ -1,3 +1,6 @@
+-- Ensure pgcrypto extension is available for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Supabase Realtime Test Migration
 -- This is a modified version of 000002_supabase_realtime.up.sql for tests
 -- The main change is replacing auth.users references with users table references

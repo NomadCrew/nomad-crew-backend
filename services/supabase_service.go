@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -170,10 +171,15 @@ func (s *SupabaseService) RemoveChatReaction(ctx context.Context, reaction ChatR
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/rest/v1/supabase_chat_reactions?message_id=eq.%s&user_id=eq.%s&emoji=eq.%s",
-		s.supabaseURL, reaction.MessageID, reaction.UserID, reaction.Emoji)
+	// Properly escape URL parameters to prevent injection and handle special characters
+	messageID := url.QueryEscape(reaction.MessageID)
+	userID := url.QueryEscape(reaction.UserID)
+	emoji := url.QueryEscape(reaction.Emoji)
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	deleteURL := fmt.Sprintf("%s/rest/v1/supabase_chat_reactions?message_id=eq.%s&user_id=eq.%s&emoji=eq.%s",
+		s.supabaseURL, messageID, userID, emoji)
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create DELETE request: %w", err)
 	}
@@ -249,7 +255,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	req.Header.Set("apikey", s.supabaseKey)
 	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Prefer", "return=minimal")
+	req.Header.Set("Prefer", "resolution=merge-duplicates,return=minimal")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -290,8 +296,12 @@ func (s *SupabaseService) AddReaction(
 	ctx context.Context,
 	messageID, userID, emoji string,
 ) error {
-	// Implementation depends on the actual Supabase client
-	return nil
+	// Delegate to the implemented AddChatReaction method
+	return s.AddChatReaction(ctx, ChatReaction{
+		MessageID: messageID,
+		UserID:    userID,
+		Emoji:     emoji,
+	})
 }
 
 // RemoveReaction removes a reaction from a message
@@ -299,8 +309,12 @@ func (s *SupabaseService) RemoveReaction(
 	ctx context.Context,
 	messageID, userID, emoji string,
 ) error {
-	// Implementation depends on the actual Supabase client
-	return nil
+	// Delegate to the implemented RemoveChatReaction method
+	return s.RemoveChatReaction(ctx, ChatReaction{
+		MessageID: messageID,
+		UserID:    userID,
+		Emoji:     emoji,
+	})
 }
 
 // GetTripMemberLocations fetches locations for members of a trip

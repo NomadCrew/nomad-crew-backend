@@ -168,7 +168,7 @@ func main() {
 	supabaseService := services.NewSupabaseService(services.SupabaseServiceConfig{
 		IsEnabled:   featureFlags.EnableSupabaseRealtime,
 		SupabaseURL: cfg.ExternalServices.SupabaseURL,
-		SupabaseKey: cfg.ExternalServices.SupabaseAnonKey,
+		SupabaseKey: supabaseServiceKey,
 	})
 	log.Info("Supabase service initialized successfully")
 
@@ -249,14 +249,23 @@ func main() {
 	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
 
-
-	// Initialize User Service and Handler
-	userService := userSvc.NewUserService(userDB)
-	userHandler := handlers.NewUserHandler(userService)
-
 	// Initialize Supabase Realtime handlers
 	var chatHandlerSupabase *handlers.ChatHandlerSupabase
 	var locationHandlerSupabase *handlers.LocationHandlerSupabase
+
+	// Initialize Supabase handlers when feature flag is enabled
+	if featureFlags.EnableSupabaseRealtime {
+		chatHandlerSupabase = handlers.NewChatHandlerSupabase(
+			tripMemberService,
+			supabaseService,
+			featureFlags,
+		)
+		locationHandlerSupabase = handlers.NewLocationHandlerSupabase(
+			tripMemberService,
+			supabaseService,
+			featureFlags,
+		)
+	}
 
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{

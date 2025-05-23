@@ -18,5 +18,4 @@ func TestTripIntegration(t *testing.T) {
 
 	// See the migration documentation in:
 	// 1. docs/SUPABASE_MIGRATION_GUIDE.md
-	// 2. .cursor/websocket-to-supabase-migration-doc.md
 }
