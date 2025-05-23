@@ -6,19 +6,25 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/service"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 // TripServiceInterface defines the trip service methods needed by ChatHandler
 type TripServiceInterface interface {
 	IsTripMember(ctx context.Context, tripID, userID string) (bool, error)
+	GetTripMember(ctx context.Context, tripID, userID string) (*types.TripMembership, error)
 }
 
 // ChatHandler encapsulates dependencies and methods for handling chat-related HTTP requests.
@@ -27,6 +33,8 @@ type ChatHandler struct {
 	tripService    TripServiceInterface
 	eventPublisher types.EventPublisher
 	logger         *zap.Logger
+	supabase       *services.SupabaseService
+	limiter        *rate.Limiter
 }
 
 // NewChatHandler creates a new instance of ChatHandler with required dependencies.
@@ -35,12 +43,15 @@ func NewChatHandler(
 	tripService TripServiceInterface,
 	eventPublisher types.EventPublisher,
 	logger *zap.Logger,
+	supabase *services.SupabaseService,
 ) *ChatHandler {
 	return &ChatHandler{
 		chatService:    chatService,
 		tripService:    tripService,
 		eventPublisher: eventPublisher,
 		logger:         logger,
+		supabase:       supabase,
+		limiter:        rate.NewLimiter(rate.Every(time.Second), 10), // 10 msgs/sec
 	}
 }
 
@@ -696,4 +707,244 @@ func (h *ChatHandler) ListMembers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, members)
+}
+
+// SendMessage handles POST /api/v1/trips/:tripID/messages
+func (h *ChatHandler) SendMessageSupabase(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+	tripID := c.Param("tripID")
+
+	// Rate limiting
+	if !h.limiter.Allow() {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error": "Rate limit exceeded. Please slow down.",
+		})
+		return
+	}
+
+	// Verify membership
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil || member.DeletedAt != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not an active member of this trip",
+		})
+		return
+	}
+
+	var req struct {
+		Message   string  `json:"message" binding:"required"`
+		ReplyToID *string `json:"reply_to_id,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// Validate message
+	req.Message = strings.TrimSpace(req.Message)
+	if len(req.Message) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Message cannot be empty",
+		})
+		return
+	}
+
+	if len(req.Message) > 1000 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Message too long (max 1000 characters)",
+		})
+		return
+	}
+
+	// Send message via Supabase
+	err = h.supabase.SendChatMessage(
+		c.Request.Context(),
+		services.ChatMessage{
+			ID:        uuid.New().String(), // Generate a new UUID
+			TripID:    tripID,
+			UserID:    userID,
+			Message:   req.Message,
+			ReplyToID: req.ReplyToID,
+			CreatedAt: time.Now(),
+		},
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to send message", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to send message",
+		})
+		return
+	}
+
+	// Log for audit trail
+	h.logger.Info("Message sent",
+		zap.String("user_id", userID),
+		zap.String("trip_id", tripID),
+		zap.String("message_length", fmt.Sprintf("%d", len(req.Message))),
+	)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Message sent successfully",
+	})
+}
+
+// GetMessages handles GET /api/v1/trips/:tripID/messages
+func (h *ChatHandler) GetMessages(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+	tripID := c.Param("tripID")
+
+	// Verify membership
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil || member.DeletedAt != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not an active member of this trip",
+		})
+		return
+	}
+
+	// Parse query params
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	var before *time.Time
+	if b := c.Query("before"); b != "" {
+		if parsed, err := time.Parse(time.RFC3339, b); err == nil {
+			before = &parsed
+		}
+	}
+
+	// Fetch messages
+	messages, err := h.supabase.GetChatHistory(
+		c.Request.Context(),
+		tripID,
+		limit,
+		before,
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to fetch messages", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch messages",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"messages": messages,
+		"count":    len(messages),
+	})
+}
+
+// MarkAsRead handles PUT /api/v1/trips/:tripID/messages/read
+func (h *ChatHandler) MarkAsRead(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+	tripID := c.Param("tripID")
+
+	var req struct {
+		LastMessageID string `json:"last_message_id" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	err := h.supabase.MarkMessagesAsRead(
+		c.Request.Context(),
+		tripID,
+		userID,
+		req.LastMessageID,
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to update read receipt", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to update read receipt",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "updated",
+	})
+}
+
+// AddReactionSupabase handles POST /api/v1/trips/:tripID/messages/:messageID/reactions
+func (h *ChatHandler) AddReactionSupabase(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+	messageID := c.Param("messageID")
+
+	var req struct {
+		Emoji string `json:"emoji" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// Validate emoji (basic check)
+	if len(req.Emoji) > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid emoji",
+		})
+		return
+	}
+
+	err := h.supabase.AddReaction(
+		c.Request.Context(),
+		messageID,
+		userID,
+		req.Emoji,
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to add reaction", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to add reaction",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "added",
+	})
+}
+
+// RemoveReactionSupabase handles DELETE /api/v1/trips/:tripID/messages/:messageID/reactions/:emoji
+func (h *ChatHandler) RemoveReactionSupabase(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+	messageID := c.Param("messageID")
+	emoji := c.Param("emoji")
+
+	err := h.supabase.RemoveReaction(
+		c.Request.Context(),
+		messageID,
+		userID,
+		emoji,
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to remove reaction", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to remove reaction",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "removed",
+	})
 }

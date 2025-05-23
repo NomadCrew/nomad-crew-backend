@@ -8,6 +8,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	locationService "github.com/NomadCrew/nomad-crew-backend/models/location/service"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -17,13 +18,22 @@ import (
 // LocationHandler handles location-related API requests
 type LocationHandler struct {
 	locationService locationService.LocationManagementServiceInterface
+	tripService     TripServiceInterface
+	supabase        *services.SupabaseService
 	logger          *zap.Logger
 }
 
 // NewLocationHandler creates a new LocationHandler
-func NewLocationHandler(locService locationService.LocationManagementServiceInterface, logger *zap.Logger) *LocationHandler {
+func NewLocationHandler(
+	locService locationService.LocationManagementServiceInterface,
+	tripService TripServiceInterface,
+	supabase *services.SupabaseService,
+	logger *zap.Logger,
+) *LocationHandler {
 	return &LocationHandler{
 		locationService: locService,
+		tripService:     tripService,
+		supabase:        supabase,
 		logger:          logger,
 	}
 }
@@ -139,5 +149,100 @@ func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"locations": recentLocations,
+	})
+}
+
+// UpdateLocation handles PUT /api/v1/locations
+func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+
+	var req struct {
+		TripID           string        `json:"trip_id,omitempty"`
+		Latitude         float64       `json:"latitude" binding:"required,min=-90,max=90"`
+		Longitude        float64       `json:"longitude" binding:"required,min=-180,max=180"`
+		Accuracy         float32       `json:"accuracy" binding:"required,min=0"`
+		SharingEnabled   bool          `json:"sharing_enabled"`
+		SharingExpiresIn time.Duration `json:"sharing_expires_in,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// If trip specified, verify membership
+	if req.TripID != "" {
+		member, err := h.tripService.GetTripMember(c.Request.Context(), req.TripID, userID)
+		if err != nil || member == nil || member.DeletedAt != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "You are not an active member of this trip",
+			})
+			return
+		}
+	}
+
+	// Validate sharing duration
+	if req.SharingExpiresIn > 24*time.Hour {
+		req.SharingExpiresIn = 24 * time.Hour // Max 24 hours
+	}
+
+	err := h.supabase.UpdateLocation(
+		c.Request.Context(),
+		userID,
+		services.LocationUpdate{
+			TripID:           req.TripID,
+			Latitude:         req.Latitude,
+			Longitude:        req.Longitude,
+			Accuracy:         req.Accuracy,
+			SharingEnabled:   req.SharingEnabled,
+			SharingExpiresIn: req.SharingExpiresIn,
+		},
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to update location", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to update location",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "updated",
+	})
+}
+
+// GetTripMemberLocations handles GET /api/v1/trips/:tripID/locations
+func (h *LocationHandler) GetTripMemberLocationsSupabase(c *gin.Context) {
+	userID := c.GetString(string(middleware.UserIDKey))
+	tripID := c.Param("tripID")
+
+	// Verify membership
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil || member.DeletedAt != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not an active member of this trip",
+		})
+		return
+	}
+
+	// Locations are filtered by RLS in Supabase
+	locations, err := h.supabase.GetTripMemberLocations(
+		c.Request.Context(),
+		tripID,
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to fetch locations", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch locations",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"locations": locations,
 	})
 }

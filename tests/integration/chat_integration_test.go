@@ -36,7 +36,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// MockTripService implements TripServiceInterface for testing
+// MockTripService implements handlers.TripServiceInterface for testing
 type MockTripService struct {
 	tripMembers map[string]bool
 }
@@ -50,15 +50,21 @@ func NewMockTripService(tripID, userID string) *MockTripService {
 }
 
 func (m *MockTripService) IsTripMember(ctx context.Context, tripID, userID string) (bool, error) {
-	// Debug log to check context
-	if ctxUserID, ok := ctx.Value(middleware.UserIDKey).(string); ok && ctxUserID != "" {
-		fmt.Printf("MockTripService.IsTripMember: Found userID in context: %s (param userID: %s)\n",
-			ctxUserID, userID)
-	} else {
-		fmt.Printf("MockTripService.IsTripMember: No userID in context! (param userID: %s)\n", userID)
+	return m.tripMembers[tripID+":"+userID], nil
+}
+
+// GetTripMember implements handlers.TripServiceInterface
+func (m *MockTripService) GetTripMember(ctx context.Context, tripID, userID string) (*types.TripMembership, error) {
+	isMember := m.tripMembers[tripID+":"+userID]
+	if !isMember {
+		return nil, nil
 	}
 
-	return m.tripMembers[tripID+":"+userID], nil
+	return &types.TripMembership{
+		TripID: tripID,
+		UserID: userID,
+		Role:   types.MemberRoleOwner, // Default to owner role for testing
+	}, nil
 }
 
 // MockJWTValidator implements middleware.Validator for testing
@@ -194,6 +200,7 @@ func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
 		mockTripService,
 		suite.eventService,
 		logger,
+		nil, // Add nil Supabase service for testing
 	)
 
 	// TEMPORARY TEST SOLUTION:
@@ -610,10 +617,8 @@ func (suite *ChatIntegrationTestSuite) TestChatMessagePagination() {
 	assert.Len(t, thirdPageResponse.Messages, 5, "Third page should have 5 messages")
 }
 
-// Skip WebSocketIntegration test as it requires a more complex setup
-func (suite *ChatIntegrationTestSuite) TestWebSocketIntegration() {
-	suite.T().Skip("WebSocket testing requires a more complex setup with WebSocket client")
-}
+// Note: WebSocket functionality has been removed and migrated to Supabase Realtime
+// See docs/SUPABASE_MIGRATION_GUIDE.md and .cursor/websocket-to-supabase-migration-doc.md for details
 
 // Ensure the test suite is run
 func TestChatIntegrationSuite(t *testing.T) {
