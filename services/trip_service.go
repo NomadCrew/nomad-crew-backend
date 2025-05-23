@@ -12,7 +12,7 @@ type TripService struct {
 	tripStore store.TripStore
 }
 
-// NewTripService creates a new TripService
+// NewTripService returns a new TripService initialized with the provided TripStore.
 func NewTripService(tripStore store.TripStore) *TripService {
 	return &TripService{
 		tripStore: tripStore,

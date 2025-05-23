@@ -37,7 +37,7 @@ type ChatHandler struct {
 	limiter        *rate.Limiter
 }
 
-// NewChatHandler creates a new instance of ChatHandler with required dependencies.
+// NewChatHandler returns a ChatHandler initialized with the provided services and a rate limiter for message sending.
 func NewChatHandler(
 	chatService service.ChatService,
 	tripService TripServiceInterface,

@@ -119,7 +119,8 @@ func (c *Config) IsProduction() bool {
 
 // LoadConfig loads configuration from environment variables using Viper,
 // sets default values, binds environment variables to config struct fields,
-// unmarshals the configuration, and validates it.
+// LoadConfig loads application configuration from environment variables and defaults, unmarshals it into a Config struct, and validates all configuration sections.
+// Returns the validated configuration or an error if loading or validation fails.
 func LoadConfig() (*Config, error) {
 	v := viper.New()
 	log := logger.GetLogger()
@@ -285,7 +286,8 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// validateConfig checks if the loaded configuration values are valid.
+// validateConfig verifies that all required configuration fields in cfg are present and meet minimum requirements.
+// Returns an error if any configuration value is missing or invalid.
 func validateConfig(cfg *Config) error {
 	log := logger.GetLogger()
 
@@ -360,7 +362,8 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
-// validateExternalServices checks the configuration for external services.
+// validateExternalServices validates that all required external service configuration fields are present and meet minimum requirements.
+// Returns an error if any required field is missing or invalid.
 func validateExternalServices(services *ExternalServices) error {
 	if services.GeoapifyKey == "" {
 		return fmt.Errorf("geoapify key is required")
@@ -380,7 +383,7 @@ func validateExternalServices(services *ExternalServices) error {
 	return nil
 }
 
-// validateSupabase checks that the Supabase configuration is valid
+// validateSupabase returns an error if the Supabase URL or Service Key is missing from the configuration.
 func validateSupabase(s *SupabaseConfig) error {
 	if s.URL == "" {
 		return fmt.Errorf("Supabase URL is required")
@@ -391,7 +394,7 @@ func validateSupabase(s *SupabaseConfig) error {
 	return nil
 }
 
-// containsWildcard checks if the list of allowed origins contains the wildcard "*".
+// containsWildcard returns true if the origins slice contains the wildcard string "*".
 func containsWildcard(origins []string) bool {
 	for _, origin := range origins {
 		if origin == "*" {

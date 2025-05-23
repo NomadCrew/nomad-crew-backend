@@ -34,7 +34,7 @@ type Dependencies struct {
 	// Add any other handlers or dependencies needed for routes
 }
 
-// SetupRouter configures and returns the main Gin engine with all routes defined.
+// SetupRouter initializes and returns a Gin engine with all API routes, middleware, and conditional feature endpoints configured based on the provided dependencies and feature flags.
 func SetupRouter(deps Dependencies) *gin.Engine {
 	r := gin.Default()
 

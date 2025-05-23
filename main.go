@@ -59,7 +59,7 @@ import (
 // It sets up logging, configuration, database connections (PostgreSQL, Redis),
 // Supabase client, JWT validation, various application services and handlers,
 // configures the Gin router, starts the HTTP server, and manages graceful shutdown
-// upon receiving SIGINT or SIGTERM signals.
+// main is the entry point for the NomadCrew backend application, handling initialization, configuration, service setup, HTTP server startup, and graceful shutdown on termination signals.
 func main() {
 	// Initialize logger
 	logger.InitLogger()

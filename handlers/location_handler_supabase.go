@@ -21,7 +21,7 @@ type LocationHandlerSupabase struct {
 	featureFlags    config.FeatureFlags
 }
 
-// NewLocationHandlerSupabase creates a new instance of LocationHandlerSupabase
+// NewLocationHandlerSupabase returns a new LocationHandlerSupabase configured with the provided trip service, Supabase service, and feature flags.
 func NewLocationHandlerSupabase(
 	tripService TripServiceInterface,
 	supabaseService *services.SupabaseService,

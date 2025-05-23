@@ -23,7 +23,7 @@ type LocationHandler struct {
 	logger          *zap.Logger
 }
 
-// NewLocationHandler creates a new LocationHandler
+// NewLocationHandler returns a new LocationHandler initialized with the provided services and logger.
 func NewLocationHandler(
 	locService locationService.LocationManagementServiceInterface,
 	tripService TripServiceInterface,

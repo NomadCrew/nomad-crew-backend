@@ -81,7 +81,7 @@ type SupabaseServiceConfig struct {
 	SupabaseKey string
 }
 
-// NewSupabaseService creates a new Supabase service instance
+// NewSupabaseService returns a new SupabaseService configured with the provided settings.
 func NewSupabaseService(config SupabaseServiceConfig) *SupabaseService {
 	return &SupabaseService{
 		supabaseURL: config.SupabaseURL,

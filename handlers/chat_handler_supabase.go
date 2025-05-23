@@ -21,7 +21,7 @@ type ChatHandlerSupabase struct {
 	featureFlags    config.FeatureFlags
 }
 
-// NewChatHandlerSupabase creates a new instance of ChatHandlerSupabase
+// NewChatHandlerSupabase returns a new ChatHandlerSupabase configured with the provided trip service, Supabase service, and feature flags.
 func NewChatHandlerSupabase(
 	tripService TripServiceInterface,
 	supabaseService *services.SupabaseService,

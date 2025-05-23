@@ -11,14 +11,14 @@ type FeatureFlags struct {
 	EnableSupabaseRealtime bool // Controls whether to use Supabase Realtime
 }
 
-// GetFeatureFlags loads feature flags from environment variables
+// GetFeatureFlags returns the application's feature flags as configured by environment variables.
 func GetFeatureFlags() FeatureFlags {
 	return FeatureFlags{
 		EnableSupabaseRealtime: getBoolEnv("ENABLE_SUPABASE_REALTIME", false),
 	}
 }
 
-// getBoolEnv retrieves a boolean environment variable with a default value
+// getBoolEnv returns the boolean value of an environment variable, interpreting common truthy strings and nonzero integers as true, or a default value if the variable is unset.
 func getBoolEnv(key string, defaultVal bool) bool {
 	val, exists := os.LookupEnv(key)
 	if !exists {
