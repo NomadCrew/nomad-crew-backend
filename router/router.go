@@ -4,6 +4,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
@@ -27,6 +28,11 @@ type Dependencies struct {
 	MemberHandler       *handlers.MemberHandler
 	InvitationHandler   *handlers.InvitationHandler
 	TripChatHandler     *handlers.TripChatHandler
+	SupabaseService     *services.SupabaseService
+	FeatureFlags        config.FeatureFlags
+	// Supabase Realtime handlers
+	ChatHandlerSupabase     *handlers.ChatHandlerSupabase
+	LocationHandlerSupabase *handlers.LocationHandlerSupabase
 	// Add any other handlers or dependencies needed for routes
 }
 
@@ -59,8 +65,10 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	// Versioned API Group (v1)
 	v1 := r.Group("/v1")
 	{
-		// WebSocket Route
-		v1.GET("/ws", deps.WSHandler.HandleWebSocketConnection)
+		// WebSocket Route - only register if Supabase Realtime is not enabled
+		if !deps.FeatureFlags.EnableSupabaseRealtime {
+			v1.GET("/ws", deps.WSHandler.HandleWebSocketConnection)
+		}
 
 		// Public Invitation routes (actions that don't require user to be logged in *yet*)
 		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink) // For deep links from emails
@@ -121,32 +129,43 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					locationRoutes.GET("", deps.LocationHandler.GetTripMemberLocationsHandler)
 				}
 
-				// Trip Chat Routes
+				// Trip Chat Routes - conditionally registered based on feature flag
 				chatRoutes := tripRoutes.Group("/:id/chat")
 				{
-					chatRoutes.GET("/ws/events", deps.TripChatHandler.WSStreamEvents)  // Added WebSocket stream
-					chatRoutes.GET("/messages", deps.TripChatHandler.ListTripMessages) // Updated to TripChatHandler
-					// chatRoutes.POST("/messages", deps.ChatHandler.SendMessage) // To be mapped to TripChatHandler.SendChatMessageViaHTTP (needs creating)
-					// chatRoutes.PUT("/messages/:messageId", deps.ChatHandler.UpdateMessage) // To be mapped to TripChatHandler.UpdateChatMessageViaHTTP (needs creating)
-					// chatRoutes.DELETE("/messages/:messageId", deps.ChatHandler.DeleteMessage) // To be mapped to TripChatHandler.DeleteChatMessageViaHTTP (needs creating)
+					// Legacy WebSocket endpoints - only register if Supabase Realtime is not enabled
+					if !deps.FeatureFlags.EnableSupabaseRealtime {
+						chatRoutes.GET("/ws/events", deps.TripChatHandler.WSStreamEvents)   // Legacy WebSocket stream
+						chatRoutes.GET("/messages", deps.TripChatHandler.ListTripMessages)  // Legacy WebSocket endpoint
+						chatRoutes.PUT("/read", deps.TripChatHandler.UpdateLastReadMessage) // Legacy WebSocket endpoint
+					}
 
-					// Chat reaction routes
-					// chatRoutes.GET("/messages/:messageId/reactions", deps.ChatHandler.ListReactions) // To be mapped to TripChatHandler (needs creating)
-					// chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandler.AddReaction) // To be mapped to TripChatHandler (needs creating)
-					// chatRoutes.DELETE("/messages/:messageId/reactions/:reactionType", deps.ChatHandler.RemoveReaction) // To be mapped to TripChatHandler (needs creating)
-
-					// Chat read status route
-					chatRoutes.PUT("/read", deps.TripChatHandler.UpdateLastReadMessage) // Updated to TripChatHandler
-
-					// Chat members route
-					// chatRoutes.GET("/members", deps.ChatHandler.ListMembers) // To be mapped to TripChatHandler (needs creating)
+					// New Supabase Realtime endpoints - only register if SupabaseRealtime is enabled
+					if deps.FeatureFlags.EnableSupabaseRealtime && deps.ChatHandlerSupabase != nil {
+						chatRoutes.POST("/messages", deps.ChatHandlerSupabase.SendMessage)
+						chatRoutes.GET("/messages", deps.ChatHandlerSupabase.GetMessages)
+						chatRoutes.PUT("/messages/read", deps.ChatHandlerSupabase.UpdateReadStatus)
+						chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandlerSupabase.AddReaction)
+						chatRoutes.DELETE("/messages/:messageId/reactions/:emoji", deps.ChatHandlerSupabase.RemoveReaction)
+					}
 				}
 			}
 
-			// Location Routes
+			// Location Routes - conditionally registered based on feature flag
 			locationRoutes := authRoutes.Group("/location")
 			{
-				locationRoutes.POST("/update", deps.LocationHandler.UpdateLocationHandler)
+				// Legacy endpoint - only register if Supabase Realtime is not enabled
+				if !deps.FeatureFlags.EnableSupabaseRealtime {
+					locationRoutes.POST("/update", deps.LocationHandler.UpdateLocationHandler)
+				}
+			}
+
+			// New Supabase Location routes - only register if SupabaseRealtime is enabled
+			if deps.FeatureFlags.EnableSupabaseRealtime && deps.LocationHandlerSupabase != nil {
+				supabaseLocationRoutes := authRoutes.Group("/locations")
+				{
+					supabaseLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)
+					supabaseLocationRoutes.GET("/trips/:tripId", deps.LocationHandlerSupabase.GetTripMemberLocations)
+				}
 			}
 
 			// Notification Routes

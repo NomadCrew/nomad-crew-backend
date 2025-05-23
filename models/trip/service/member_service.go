@@ -136,6 +136,23 @@ func (s *TripMemberService) IsTripMember(ctx context.Context, tripID, userID str
 	return true, nil
 }
 
+// GetTripMember retrieves a trip membership record for a user
+// This is also needed to satisfy the handlers.TripServiceInterface
+func (s *TripMemberService) GetTripMember(ctx context.Context, tripID, userID string) (*types.TripMembership, error) {
+	// Get user role
+	role, err := s.store.GetUserRole(ctx, tripID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create and return a membership object
+	return &types.TripMembership{
+		TripID: tripID,
+		UserID: userID,
+		Role:   role,
+	}, nil
+}
+
 // Helper method to publish events using the centralized helper
 func (s *TripMemberService) publishEvent(ctx context.Context, eventType string, tripID string, userID string, data map[string]interface{}) {
 	log := logger.GetLogger()

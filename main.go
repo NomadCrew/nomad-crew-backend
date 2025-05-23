@@ -145,6 +145,17 @@ func main() {
 		"url", cfg.ExternalServices.SupabaseURL,
 		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
 
+	// Get feature flags
+	featureFlags := config.GetFeatureFlags()
+
+	// Initialize Supabase service for Realtime
+	supabaseService := services.NewSupabaseService(services.SupabaseServiceConfig{
+		IsEnabled:   featureFlags.EnableSupabaseRealtime,
+		SupabaseURL: cfg.ExternalServices.SupabaseURL,
+		SupabaseKey: cfg.ExternalServices.SupabaseAnonKey,
+	})
+	log.Info("Supabase service initialized successfully")
+
 	// Initialize JWT Validator
 	jwtValidator, err := middleware.NewJWTValidator(cfg)
 	if err != nil {
@@ -190,6 +201,7 @@ func main() {
 		tripMemberService,
 		eventService,
 		log.Desugar(),
+		supabaseService,
 	)
 
 	// Initialize trip model with new store
@@ -209,7 +221,12 @@ func main() {
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
-	locationHandler := handlers.NewLocationHandler(locationManagementService, log.Desugar())
+	locationHandler := handlers.NewLocationHandler(
+		locationManagementService,
+		tripMemberService,
+		supabaseService,
+		log.Desugar(),
+	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
 	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
 
@@ -230,6 +247,7 @@ func main() {
 		ChatHandler:         chatHandler,
 		UserHandler:         userHandler,
 		Logger:              log,
+		SupabaseService:     supabaseService,
 	}
 
 	// Setup Router using the new package

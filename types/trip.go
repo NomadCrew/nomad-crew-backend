@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type TripStatus string
 
@@ -138,4 +141,10 @@ func (s InvitationStatus) IsValid() bool {
 		return true
 	}
 	return false
+}
+
+// TripServiceInterface defines the trip service methods needed by handlers
+type TripServiceInterface interface {
+	IsTripMember(ctx context.Context, tripID, userID string) (bool, error)
+	GetTripMember(ctx context.Context, tripID, userID string) (*TripMembership, error)
 }
