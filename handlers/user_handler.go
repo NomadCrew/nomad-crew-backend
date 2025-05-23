@@ -59,42 +59,35 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Security BearerAuth
 // GetCurrentUser returns the currently authenticated user's profile
 func (h *UserHandler) GetCurrentUser(c *gin.Context) {
-	// Get the user ID from context (set by auth middleware)
+	// Get the Supabase user ID from context (set by auth middleware)
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
-	// Parse the UUID
-	id, err := uuid.Parse(userID.(string))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+	supabaseID := userID.(string)
+
+	// Get the user by Supabase ID
+	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
-	// Update last seen timestamp
-	go func(ctx context.Context, userID uuid.UUID) {
-		if err := h.userService.UpdateLastSeen(ctx, userID); err != nil {
+	// Update last seen timestamp (non-blocking)
+	go func(userID uuid.UUID) {
+		// Create a new background context for this self-contained task
+		bgCtx := context.Background()
+		if err := h.userService.UpdateLastSeen(bgCtx, userID); err != nil {
 			logger.GetLogger().Warnw("Failed to update last seen", "error", err, "userID", userID)
 		}
-	}(c.Request.Context(), id)
+	}(user.ID)
 
-	// Get the user profile
-	profile, err := h.userService.GetUserProfile(c.Request.Context(), id)
+	// Get the user profile (now includes supabase_id)
+	profile, err := h.userService.GetUserProfile(c.Request.Context(), user.ID)
 	if err != nil {
-		var status int
-		var message string
-
-		if appErr, ok := err.(*apperrors.AppError); ok {
-			status = appErr.GetHTTPStatus()
-			message = appErr.Error()
-		} else {
-			status = http.StatusInternalServerError
-			message = "Failed to get user profile"
-		}
-
-		c.JSON(status, gin.H{"error": message})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user profile"})
 		return
 	}
 
@@ -519,4 +512,61 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 	// This would typically be admin-only and requires an admin check middleware.
 	// Placeholder: Not implemented as route is disabled.
 	c.JSON(http.StatusNotImplemented, gin.H{"message": "DeleteUser endpoint is not active"})
+}
+
+// OnboardUser handles idempotent user onboarding from Supabase JWT
+// @Summary Onboard or upsert user from Supabase JWT
+// @Description Upserts the user into the backend users table using info from the Supabase JWT
+// @Tags user
+// @Accept json
+// @Produce json
+// @Success 200 {object} types.UserProfile "User profile"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid or missing JWT"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - Invalid token"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /users/onboard [post]
+// @Security BearerAuth
+func (h *UserHandler) OnboardUser(c *gin.Context) {
+	// Extract JWT from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid Authorization header"})
+		return
+	}
+	tokenString := authHeader[7:]
+
+	// Parse optional username from JSON body
+	var req struct {
+		Username string `json:"username"`
+	}
+	_ = c.ShouldBindJSON(&req) // Ignore error, username is optional
+
+	// Validate and parse JWT
+	claims, err := h.userService.ValidateAndExtractClaims(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token: " + err.Error()})
+		return
+	}
+
+	// If username is provided in the request, override claims.Username
+	if req.Username != "" {
+		claims.Username = req.Username
+	}
+
+	// Onboard (upsert) user using claims (with username)
+	profile, err := h.userService.OnboardUserFromJWTClaims(c.Request.Context(), claims)
+	if err != nil {
+		if strings.Contains(err.Error(), "username is already taken") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+			return
+		}
+		if strings.Contains(err.Error(), "username is required") || strings.Contains(err.Error(), "cannot be empty") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required and cannot be empty"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to onboard user: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
 }

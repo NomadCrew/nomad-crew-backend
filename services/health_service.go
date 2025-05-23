@@ -66,25 +66,91 @@ func (h *HealthService) CheckHealth(ctx context.Context) types.HealthCheck {
 }
 
 func (h *HealthService) checkDatabase(ctx context.Context) types.HealthComponent {
-	if err := h.dbPool.Ping(ctx); err != nil {
-		h.log.Errorw("Database health check failed", "error", err)
-		return types.HealthComponent{
-			Status:  types.HealthStatusDown,
-			Details: "Database connection failed",
+	// Add retry logic for database ping with a timeout
+	maxRetries := 3
+	retryDelay := 500 * time.Millisecond
+	var lastErr error
+
+	for i := 0; i < maxRetries; i++ {
+		// Create a timeout context for each attempt
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		err := h.dbPool.Ping(pingCtx)
+		cancel()
+
+		if err == nil {
+			// Successfully pinged database
+			if i > 0 {
+				h.log.Infow("Database connection restored after retries", "attempts", i+1)
+			}
+
+			// Check connection pool metrics with adjusted thresholds for serverless
+			stat := h.dbPool.Stat()
+			totalConns := stat.TotalConns()
+			acquireCount := stat.AcquireCount()
+
+			// Only check pool capacity if we have connections
+			if totalConns > 0 {
+				// Calculate pool capacity properly
+				// The original formula "AcquireCount/TotalConns" is incorrect
+				// as AcquireCount is cumulative over time and can exceed TotalConns
+				// Instead, look at current vs max connections
+
+				// Check current connections against max connections
+				maxConns := h.dbPool.Config().MaxConns
+				currentConns := stat.AcquiredConns()
+
+				h.log.Debugw("Database pool stats",
+					"total_conns", totalConns,
+					"current_conns", currentConns,
+					"max_conns", maxConns,
+					"acquire_count", acquireCount)
+
+				// Calculate usage percentage
+				usageRatio := float64(currentConns) / float64(maxConns)
+				usagePercent := usageRatio * 100
+
+				// For recently started instances, use a higher threshold
+				uptime := time.Since(h.startTime)
+				threshold := 0.9 // More lenient threshold for serverless
+
+				// If service has been up for a while, use stricter threshold
+				if uptime > 5*time.Minute {
+					threshold = 0.8
+				}
+
+				if usageRatio > threshold {
+					return types.HealthComponent{
+						Status:  types.HealthStatusDegraded,
+						Details: fmt.Sprintf("Connection pool near capacity (%.1f%%)", usagePercent),
+					}
+				}
+			}
+
+			return types.HealthComponent{
+				Status: types.HealthStatusUp,
+			}
+		}
+
+		lastErr = err
+
+		// If we have more retries left, wait and try again
+		if i < maxRetries-1 {
+			h.log.Warnw("Database ping failed, retrying",
+				"error", err,
+				"attempt", i+1,
+				"max_attempts", maxRetries)
+			time.Sleep(retryDelay)
+			// Increase retry delay for next attempt (simple backoff)
+			retryDelay *= 2
 		}
 	}
 
-	// Check connection pool metrics
-	stat := h.dbPool.Stat()
-	if float64(stat.AcquireCount())/float64(stat.TotalConns()) > 0.8 {
-		return types.HealthComponent{
-			Status:  types.HealthStatusDegraded,
-			Details: "Connection pool near capacity",
-		}
-	}
-
+	h.log.Errorw("Database health check failed after retries",
+		"error", lastErr,
+		"attempts", maxRetries)
 	return types.HealthComponent{
-		Status: types.HealthStatusUp,
+		Status:  types.HealthStatusDown,
+		Details: "Database connection failed after multiple attempts",
 	}
 }
 

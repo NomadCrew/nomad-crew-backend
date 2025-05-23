@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/supabase-community/supabase-go"
@@ -21,6 +23,7 @@ type TripHandler struct {
 	supabaseClient *supabase.Client
 	serverConfig   *config.ServerConfig
 	weatherService types.WeatherServiceInterface
+	userService    userservice.UserServiceInterface
 }
 
 // NewTripHandler creates a new TripHandler with the given dependencies.
@@ -30,6 +33,7 @@ func NewTripHandler(
 	supabaseClient *supabase.Client,
 	serverConfig *config.ServerConfig,
 	weatherService types.WeatherServiceInterface,
+	userService userservice.UserServiceInterface,
 ) *TripHandler {
 	return &TripHandler{
 		tripModel:      tripModel,
@@ -37,6 +41,7 @@ func NewTripHandler(
 		supabaseClient: supabaseClient,
 		serverConfig:   serverConfig,
 		weatherService: weatherService,
+		userService:    userService,
 	}
 }
 
@@ -59,6 +64,33 @@ type CreateTripRequest struct {
 	BackgroundImageURL   string           `json:"backgroundImageUrl,omitempty"`
 }
 
+// TripWithMembersAndInvitationsResponse is the response for trip creation
+// matching the FE's expected shape
+// (Consider moving to a shared types or docs file if reused)
+type TripWithMembersAndInvitationsResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Destination struct {
+		Address     string `json:"address"`
+		Coordinates struct {
+			Lat float64 `json:"lat"`
+			Lng float64 `json:"lng"`
+		} `json:"coordinates"`
+		PlaceID string `json:"placeId"`
+		Name    string `json:"name,omitempty"`
+	} `json:"destination"`
+	StartDate          time.Time               `json:"startDate"`
+	EndDate            time.Time               `json:"endDate"`
+	Status             string                  `json:"status"`
+	CreatedBy          string                  `json:"createdBy"`
+	CreatedAt          time.Time               `json:"createdAt"`
+	UpdatedAt          time.Time               `json:"updatedAt"`
+	BackgroundImageURL string                  `json:"backgroundImageUrl"`
+	Members            []*types.TripMembership `json:"members"`
+	Invitations        []*types.TripInvitation `json:"invitations"`
+}
+
 // CreateTripHandler godoc
 // @Summary Create a new trip
 // @Description Creates a new trip with the given details
@@ -73,17 +105,37 @@ type CreateTripRequest struct {
 // @Router /trips [post]
 // @Security BearerAuth
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	log.Infow("Received CreateTrip request")
+
 	var req CreateTripRequest // Use the redefined CreateTripRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log := logger.GetLogger()
 		log.Errorw("Invalid request for CreateTripHandler", "error", err)
 		if bindErr := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); bindErr != nil {
 			log.Errorw("Failed to set error in context for CreateTripHandler", "error", bindErr)
 		}
 		return
 	}
+	log.Infow("Parsed CreateTripRequest", "request", req)
 
-	userIDStr := c.GetString(string(middleware.UserIDKey))
+	// Extract Supabase user ID from context
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
+	log.Infow("[DEBUG] Supabase user ID from context", "supabaseUserID", supabaseUserID)
+	if supabaseUserID == "" {
+		log.Errorw("No user ID found in context for CreateTripHandler")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
+		return
+	}
+
+	// Map Supabase user ID to internal UUID
+	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseUserID)
+	if err != nil || user == nil {
+		log.Errorw("Failed to map Supabase user ID to internal UUID", "supabaseUserID", supabaseUserID, "error", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or not onboarded"})
+		return
+	}
+	userIDStr := user.ID.String()
+	log.Infow("[DEBUG] Mapped internal user UUID", "internalUUID", userIDStr)
 
 	// Map CreateTripRequest to types.Trip
 	tripToCreate := types.Trip{
@@ -98,8 +150,9 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		EndDate:              req.EndDate,
 		Status:               req.Status, // Will be 'PLANNING' by default if empty due to omitempty and DB default
 		BackgroundImageURL:   req.BackgroundImageURL,
-		CreatedBy:            &userIDStr, // Correctly assign pointer
+		CreatedBy:            &userIDStr, // Use internal UUID
 	}
+	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 
 	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
 		tripToCreate.Status = types.TripStatusPlanning
@@ -107,11 +160,83 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
 	if err != nil {
+		log.Errorw("Failed to create trip", "error", err, "tripToCreate", tripToCreate, "internalUUID", userIDStr, "supabaseUserID", supabaseUserID)
 		h.handleModelError(c, err)
 		return
 	}
+	log.Infow("Successfully created trip", "trip", createdTrip)
 
-	c.JSON(http.StatusCreated, createdTrip)
+	// Fetch members (should include the creator as owner)
+	membersRaw, err := h.tripModel.GetTripMembers(c.Request.Context(), createdTrip.ID)
+	if err != nil {
+		log.Errorw("Failed to fetch trip members after creation", "tripID", createdTrip.ID, "error", err)
+		membersRaw = []types.TripMembership{} // fallback to empty
+	}
+	members := make([]*types.TripMembership, len(membersRaw))
+	for i := range membersRaw {
+		members[i] = &membersRaw[i]
+	}
+
+	// Fetch invitations (if any)
+	invitations := []*types.TripInvitation{}
+	if h.tripModel != nil {
+		if invGetter, ok := h.tripModel.(interface {
+			GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
+		}); ok {
+			invitations, _ = invGetter.GetInvitationsByTripID(c.Request.Context(), createdTrip.ID)
+		}
+	}
+
+	// Compose destination object
+	dest := struct {
+		Address     string `json:"address"`
+		Coordinates struct {
+			Lat float64 `json:"lat"`
+			Lng float64 `json:"lng"`
+		} `json:"coordinates"`
+		PlaceID string `json:"placeId"`
+		Name    string `json:"name,omitempty"`
+	}{}
+	dest.Address = ""
+	if createdTrip.DestinationAddress != nil {
+		dest.Address = *createdTrip.DestinationAddress
+	}
+	dest.Coordinates.Lat = createdTrip.DestinationLatitude
+	dest.Coordinates.Lng = createdTrip.DestinationLongitude
+	dest.PlaceID = ""
+	if createdTrip.DestinationPlaceID != nil {
+		dest.PlaceID = *createdTrip.DestinationPlaceID
+	}
+	dest.Name = ""
+	if createdTrip.DestinationName != nil {
+		dest.Name = *createdTrip.DestinationName
+	}
+
+	resp := TripWithMembersAndInvitationsResponse{
+		ID:                 createdTrip.ID,
+		Name:               createdTrip.Name,
+		Description:        createdTrip.Description,
+		Destination:        dest,
+		StartDate:          createdTrip.StartDate,
+		EndDate:            createdTrip.EndDate,
+		Status:             string(createdTrip.Status),
+		CreatedBy:          derefString(createdTrip.CreatedBy),
+		CreatedAt:          createdTrip.CreatedAt,
+		UpdatedAt:          createdTrip.UpdatedAt,
+		BackgroundImageURL: createdTrip.BackgroundImageURL,
+		Members:            members,
+		Invitations:        invitations,
+	}
+
+	c.JSON(http.StatusCreated, resp)
+}
+
+// derefString returns the value of a *string or "" if nil
+func derefString(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
 }
 
 // GetTripHandler godoc

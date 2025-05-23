@@ -458,15 +458,17 @@ func (s *UserStore) GetSupabaseUser(ctx context.Context, userID string) (*types.
 func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.UserProfile, error) {
 	query := `
 		SELECT 
-			id, username, first_name, last_name, email, profile_picture_url,
+			id, supabase_id, username, first_name, last_name, email, profile_picture_url,
 			last_seen_at, is_online
 		FROM users
 		WHERE id = $1`
 
 	row := s.queryRow(ctx, query, userID)
 	profile := &types.UserProfile{}
+	var supabaseID string
 	err := row.Scan(
 		&profile.ID,
+		&supabaseID,
 		&profile.Username,
 		&profile.FirstName,
 		&profile.LastName,
@@ -475,6 +477,7 @@ func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.U
 		&profile.LastSeenAt,
 		&profile.IsOnline,
 	)
+	profile.SupabaseID = supabaseID
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -516,8 +519,10 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 	profiles := make(map[string]*types.UserProfile)
 	for rows.Next() {
 		profile := &types.UserProfile{}
+		var supabaseID string
 		err := rows.Scan(
 			&profile.ID,
+			&supabaseID,
 			&profile.Username,
 			&profile.FirstName,
 			&profile.LastName,
@@ -526,6 +531,7 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 			&profile.LastSeenAt,
 			&profile.IsOnline,
 		)
+		profile.SupabaseID = supabaseID
 		if err != nil {
 			return nil, fmt.Errorf("error scanning user profile row: %w", err)
 		}
@@ -730,4 +736,58 @@ func (s *UserStore) ConvertToUserResponse(user *types.User) (types.UserResponse,
 		AvatarURL:   user.ProfilePictureURL,
 		DisplayName: user.GetDisplayName(),
 	}, nil
+}
+
+// GetUserByUsername retrieves a user by their username
+func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*types.User, error) {
+	query := `
+		SELECT 
+			id, supabase_id, username, first_name, last_name, email, 
+			created_at, updated_at, profile_picture_url, raw_user_meta_data,
+			last_seen_at, is_online, preferences
+		FROM users
+		WHERE username = $1`
+
+	user := &types.User{}
+	var rawMetaData json.RawMessage
+	var preferencesJSON json.RawMessage
+
+	row := s.queryRow(ctx, query, username)
+	err := row.Scan(
+		&user.ID,
+		&user.SupabaseID,
+		&user.Username,
+		&user.FirstName,
+		&user.LastName,
+		&user.Email,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.ProfilePictureURL,
+		&rawMetaData,
+		&user.LastSeenAt,
+		&user.IsOnline,
+		&preferencesJSON,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil // Not found is not an error
+		}
+		return nil, fmt.Errorf("error getting user by username: %w", err)
+	}
+
+	// Unmarshal raw user metadata
+	if len(rawMetaData) > 0 {
+		user.RawUserMetaData = rawMetaData
+	}
+
+	// Unmarshal preferences if available
+	if len(preferencesJSON) > 0 {
+		var prefs map[string]interface{}
+		if err := json.Unmarshal(preferencesJSON, &prefs); err == nil {
+			user.Preferences = prefs
+		}
+	}
+
+	return user, nil
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models"
@@ -16,18 +17,17 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Ensure UserService implements UserServiceInterface
-var _ UserServiceInterface = (*UserService)(nil)
-
 // UserService manages user operations
 type UserService struct {
 	userStore istore.UserStore
+	jwtSecret string
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userStore istore.UserStore) UserServiceInterface {
+func NewUserService(userStore istore.UserStore, jwtSecret string) *UserService {
 	return &UserService{
 		userStore: userStore,
+		jwtSecret: jwtSecret,
 	}
 }
 
@@ -506,6 +506,7 @@ func (s *UserService) GetUserProfile(ctx context.Context, id uuid.UUID) (*types.
 
 	profile := &types.UserProfile{
 		ID:          user.ID.String(),
+		SupabaseID:  user.SupabaseID,
 		Email:       user.Email,
 		Username:    user.Username,
 		FirstName:   user.FirstName,
@@ -662,4 +663,61 @@ func generateUsernameFromEmail(email string) string {
 		username = fmt.Sprintf("%s_%d", username, time.Now().Unix()%10000)
 	}
 	return username
+}
+
+func (s *UserService) ValidateAndExtractClaims(tokenString string) (*types.JWTClaims, error) {
+	return auth.ValidateAccessToken(tokenString, s.jwtSecret)
+}
+
+func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *types.JWTClaims) (*types.UserProfile, error) {
+	if claims == nil || claims.UserID == "" || claims.Email == "" {
+		return nil, errors.New("missing required user info in JWT claims")
+	}
+
+	username := strings.TrimSpace(claims.Username)
+	if username == "" {
+		return nil, errors.New("username is required and cannot be empty")
+	}
+
+	// Check if username is already taken by another user
+	existingByUsername, err := s.userStore.GetUserByUsername(ctx, username)
+	if err == nil && existingByUsername != nil && existingByUsername.SupabaseID != claims.UserID {
+		return nil, errors.New("username is already taken")
+	}
+
+	// Try to get user by SupabaseID (UserID in claims)
+	typesUser, err := s.userStore.GetUserBySupabaseID(ctx, claims.UserID)
+	if err != nil && err.Error() != "user not found: no rows in result set" {
+		return nil, err
+	}
+
+	if typesUser == nil {
+		// User does not exist, create
+		user := &models.User{
+			SupabaseID: claims.UserID,
+			Email:      claims.Email,
+			Username:   username,
+		}
+		id, err := s.CreateUser(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+		return s.GetUserProfile(ctx, id)
+	}
+
+	// User exists, update if needed
+	updates := make(map[string]interface{})
+	if typesUser.Email != claims.Email {
+		updates["email"] = claims.Email
+	}
+	if typesUser.Username != username {
+		updates["username"] = username
+	}
+	if len(updates) > 0 {
+		_, err := s.userStore.UpdateUser(ctx, typesUser.ID, updates)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return s.GetUserProfile(ctx, uuid.MustParse(typesUser.ID))
 }

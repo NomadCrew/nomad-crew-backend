@@ -135,6 +135,9 @@ jobs:
             DB_USER=${{ secrets.DB_USER }}
             DB_NAME=${{ secrets.DB_NAME }}
             DB_SSL_MODE=require
+            DB_MAX_OPEN_CONNS=7
+            DB_MAX_IDLE_CONNS=3
+            DB_CONN_MAX_LIFE=5m
             REDIS_ADDRESS=${{ secrets.REDIS_ADDRESS }}
             REDIS_DB=0
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}

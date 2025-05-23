@@ -43,6 +43,13 @@ func (s *pgTripStore) CreateTrip(ctx context.Context, trip types.Trip) (string, 
 	log := logger.GetLogger()
 	var tripID string
 
+	// Log the type and value of CreatedBy before the insert
+	if trip.CreatedBy != nil {
+		log.Infow("[DEBUG] Type and value of trip.CreatedBy before insert", "type", fmt.Sprintf("%T", trip.CreatedBy), "value", *trip.CreatedBy)
+	} else {
+		log.Infow("[DEBUG] trip.CreatedBy is nil before insert")
+	}
+
 	// Use the WithTx helper (assuming it's moved or accessible)
 	err := WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 		// Create trip

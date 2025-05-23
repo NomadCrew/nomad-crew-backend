@@ -45,16 +45,18 @@ var _ Validator = (*JWTValidator)(nil)
 
 // NewJWTValidator creates a validator instance using application configuration.
 func NewJWTValidator(cfg *config.Config) (Validator, error) {
-	log := logger.GetLogger()
 	var staticSecret []byte
 	var jwksCache *JWKSCache
 
 	// Configure static secret (HS256) if provided
 	if cfg.ExternalServices.SupabaseJWTSecret != "" {
 		staticSecret = []byte(cfg.ExternalServices.SupabaseJWTSecret)
-		log.Info("JWT Validator: HS256 validation enabled.")
+		logger.GetLogger().Infof("HS256 JWT secret: %s...%s (len=%d)",
+			cfg.ExternalServices.SupabaseJWTSecret[:5],
+			cfg.ExternalServices.SupabaseJWTSecret[len(cfg.ExternalServices.SupabaseJWTSecret)-5:],
+			len(cfg.ExternalServices.SupabaseJWTSecret))
 	} else {
-		log.Warn("JWT Validator: SUPABASE_JWT_SECRET not set, HS256 validation disabled.")
+		logger.GetLogger().Warn("JWT Validator: SUPABASE_JWT_SECRET not set, HS256 validation disabled.")
 	}
 
 	// Configure JWKS if URL and Anon key are provided
@@ -62,9 +64,9 @@ func NewJWTValidator(cfg *config.Config) (Validator, error) {
 		jwksURL := fmt.Sprintf("%s/auth/v1/jwks", cfg.ExternalServices.SupabaseURL)
 		// Default TTL can be configurable too, e.g., via cfg.Server.JWKSCacheTTL
 		jwksCache = GetJWKSCache(jwksURL, cfg.ExternalServices.SupabaseAnonKey, 15*time.Minute)
-		log.Infow("JWT Validator: JWKS validation enabled.", "url", jwksURL)
+		logger.GetLogger().Info("JWT Validator: JWKS validation enabled.")
 	} else {
-		log.Warn("JWT Validator: SUPABASE_URL or SUPABASE_ANON_KEY not set, JWKS validation disabled.")
+		logger.GetLogger().Warn("JWT Validator: SUPABASE_URL or SUPABASE_ANON_KEY not set, JWKS validation disabled.")
 	}
 
 	if staticSecret == nil && jwksCache == nil {
@@ -84,19 +86,12 @@ func NewJWTValidator(cfg *config.Config) (Validator, error) {
 // It tries HS256 first (if configured), then JWKS (if configured and 'kid' is present).
 // Returns userID (subject claim) and a specific error (ErrTokenExpired, ErrTokenInvalid, etc.).
 func (v *JWTValidator) Validate(tokenString string) (string, error) {
-	log := logger.GetLogger()
-
 	// 1. Try HS256 validation if secret is available
 	var staticErr error
 	if len(v.staticSecret) > 0 {
 		userID, err := v.validateHS256(tokenString)
 		if err == nil {
-			log.Debug("JWT validation successful using HS256")
 			return userID, nil // Success!
-		}
-		// Don't return ErrTokenExpired immediately from HS256 if JWKS is also possible
-		if !errors.Is(err, ErrTokenExpired) {
-			log.Debugw("HS256 validation failed (non-expiry)", "error", err)
 		}
 		staticErr = err // Store HS256 error
 	}
@@ -107,7 +102,6 @@ func (v *JWTValidator) Validate(tokenString string) (string, error) {
 		// Extract kid without full validation first
 		kid, alg, err := v.extractKIDAndAlg(tokenString)
 		if err != nil {
-			log.Warnw("Could not extract kid/alg from token header for JWKS check", "error", err)
 			// If HS256 also failed, return its error or a generic invalid token error
 			if staticErr != nil {
 				return "", staticErr // Return the HS256 error if it occurred
@@ -116,24 +110,17 @@ func (v *JWTValidator) Validate(tokenString string) (string, error) {
 		}
 
 		if kid != "" {
-			log.Debugw("Attempting JWKS validation", "kid", kid, "alg", alg)
 			userID, err := v.validateJWKS(tokenString, kid, alg)
 			if err == nil {
-				log.Debug("JWT validation successful using JWKS")
 				return userID, nil // Success!
 			}
 			jwksErr = err // Store JWKS error
-			log.Debugw("JWKS validation failed", "kid", kid, "error", jwksErr)
 		} else {
-			log.Debug("No 'kid' found in token header, skipping JWKS validation.")
 			jwksErr = errors.New("no kid in header for jwks") // Mark as skipped
 		}
 	}
 
 	// 3. Determine final outcome
-	log.Warnw("All JWT validation methods failed or were skipped", "static_error", staticErr, "jwks_error", jwksErr)
-
-	// Prioritize returning expiry error if either method reported it
 	if errors.Is(staticErr, ErrTokenExpired) || errors.Is(jwksErr, ErrTokenExpired) {
 		return "", ErrTokenExpired
 	}
@@ -186,6 +173,11 @@ func (v *JWTValidator) extractKIDAndAlg(tokenString string) (kid string, alg str
 
 // validateHS256 attempts validation using the static secret.
 func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.GetLogger().Errorw("Panic during HS256 JWT validation", "recover", r, "token", tokenString)
+		}
+	}()
 	token, err := jwt.Parse([]byte(tokenString),
 		jwt.WithKey(jwa.HS256, v.staticSecret),
 		jwt.WithValidate(true), // Enable clock skew etc.
@@ -209,8 +201,6 @@ func (v *JWTValidator) validateHS256(tokenString string) (string, error) {
 
 // validateJWKS attempts validation using a key fetched from the JWKS cache.
 func (v *JWTValidator) validateJWKS(tokenString string, kid string, alg string) (string, error) {
-	log := logger.GetLogger()
-
 	// Fetch key from cache
 	key, err := v.jwksCache.GetKey(kid)
 	if err != nil {
@@ -235,7 +225,7 @@ func (v *JWTValidator) validateJWKS(tokenString string, kid string, alg string) 
 
 	// Compare string representations directly in the 'if' condition
 	if alg != "" && keyAlg != jwa.NoSignature && headerAlg.String() != keyAlg.String() { // Compare strings
-		log.Warnw("Token 'alg' header mismatches JWK algorithm",
+		logger.GetLogger().Warnw("Token 'alg' header mismatches JWK algorithm",
 			"header_alg", headerAlg.String(),
 			"key_alg", keyAlg.String(),
 			"kid", kid)

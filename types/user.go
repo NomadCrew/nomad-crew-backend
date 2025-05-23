@@ -35,6 +35,7 @@ type UserResponse struct {
 // UserProfile represents the user profile information in the system
 type UserProfile struct {
 	ID          string    `json:"id"`
+	SupabaseID  string    `json:"supabase_id"`
 	Email       string    `json:"email"`
 	Username    string    `json:"username"`
 	FirstName   string    `json:"firstName,omitempty"`

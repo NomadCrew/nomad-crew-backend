@@ -54,4 +54,8 @@ type UserServiceInterface interface {
 
 	// ValidateUserUpdateRequest validates a user update request
 	ValidateUserUpdateRequest(update models.UserUpdateRequest) error
+
+	// Add JWT onboarding methods for handler compatibility
+	ValidateAndExtractClaims(tokenString string) (*types.JWTClaims, error)
+	OnboardUserFromJWTClaims(ctx context.Context, claims *types.JWTClaims) (*types.UserProfile, error)
 }
