@@ -4,8 +4,18 @@ import (
 	"testing"
 )
 
+// TestTripIntegration is a placeholder for testing trip functionality
+// with Supabase Realtime integration
 func TestTripIntegration(t *testing.T) {
-	// This is a placeholder for the actual trip integration test
-	// The test will be expanded with actual implementation later
-	t.Skip("Trip integration test is not implemented yet")
+	t.Skip("This test needs to be implemented with Supabase Realtime integration")
+
+	// TODO: Implement integration tests for trips with Supabase Realtime
+	// Consider testing:
+	// 1. Trip creation and updates being reflected in Supabase
+	// 2. Trip member management with proper permissions
+	// 3. Trip status changes being published to Supabase Realtime
+	// 4. Trip deletion with cascade effects
+
+	// See the migration documentation in:
+	// 1. docs/SUPABASE_MIGRATION_GUIDE.md
 }

@@ -8,7 +8,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgconn v1.14.3
 	github.com/jackc/pgtype v1.14.0
 	github.com/jackc/pgx/v4 v4.18.2
@@ -25,10 +24,12 @@ require (
 	github.com/supabase-community/supabase-go v0.0.4
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
+	github.com/swaggo/swag v1.16.4
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/time v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -134,7 +135,6 @@ require (
 	github.com/supabase-community/gotrue-go v1.2.0 // indirect
 	github.com/supabase-community/postgrest-go v0.0.11 // indirect
 	github.com/supabase-community/storage-go v0.7.0 // indirect
-	github.com/swaggo/swag v1.16.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect

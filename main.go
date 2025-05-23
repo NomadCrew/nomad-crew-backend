@@ -51,7 +51,6 @@ import (
 	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	"github.com/supabase-community/supabase-go"
 )
@@ -162,6 +161,17 @@ func main() {
 		"url", cfg.ExternalServices.SupabaseURL,
 		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
 
+	// Get feature flags
+	featureFlags := config.GetFeatureFlags()
+
+	// Initialize Supabase service for Realtime
+	supabaseService := services.NewSupabaseService(services.SupabaseServiceConfig{
+		IsEnabled:   featureFlags.EnableSupabaseRealtime,
+		SupabaseURL: cfg.ExternalServices.SupabaseURL,
+		SupabaseKey: supabaseServiceKey,
+	})
+	log.Info("Supabase service initialized successfully")
+
 	// Initialize JWT Validator
 	jwtValidator, err := middleware.NewJWTValidator(cfg)
 	if err != nil {
@@ -170,7 +180,7 @@ func main() {
 	log.Info("JWT Validator initialized successfully")
 
 	// Initialize services
-	rateLimitService := services.NewRateLimitService(redisClient)
+	// rateLimitService := services.NewRateLimitService(redisClient) - removed as it's no longer used after WebSocket removal
 
 	// Create event service config based on application configuration
 	eventServiceConfig := events.Config{
@@ -207,6 +217,7 @@ func main() {
 		tripMemberService,
 		eventService,
 		log.Desugar(),
+		supabaseService,
 	)
 
 	// Initialize trip model with new store
@@ -230,9 +241,31 @@ func main() {
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService, userService)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
-	locationHandler := handlers.NewLocationHandler(locationManagementService, log.Desugar())
+	locationHandler := handlers.NewLocationHandler(
+		locationManagementService,
+		tripMemberService,
+		supabaseService,
+		log.Desugar(),
+	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
-	wsHandler := handlers.NewWSHandler(rateLimitService, eventService, tripStore)
+
+	// Initialize Supabase Realtime handlers
+	var chatHandlerSupabase *handlers.ChatHandlerSupabase
+	var locationHandlerSupabase *handlers.LocationHandlerSupabase
+
+	// Initialize Supabase handlers when feature flag is enabled
+	if featureFlags.EnableSupabaseRealtime {
+		chatHandlerSupabase = handlers.NewChatHandlerSupabase(
+			tripMemberService,
+			supabaseService,
+			featureFlags,
+		)
+		locationHandlerSupabase = handlers.NewLocationHandlerSupabase(
+			tripMemberService,
+			supabaseService,
+			featureFlags,
+		)
+	}
 
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
@@ -243,37 +276,20 @@ func main() {
 		HealthHandler:       healthHandler,
 		LocationHandler:     locationHandler,
 		NotificationHandler: notificationHandler,
-		WSHandler:           wsHandler,
 		ChatHandler:         chatHandler,
 		UserHandler:         userHandler,
 		Logger:              log,
+		SupabaseService:     supabaseService,
+		FeatureFlags:        featureFlags,
+		// Supabase Realtime handlers
+		ChatHandlerSupabase:     chatHandlerSupabase,
+		LocationHandlerSupabase: locationHandlerSupabase,
 	}
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)
 
 	log.Info("Router setup complete")
-
-	// Initialize WebSocket metrics (if still needed here, or move to where WS handler/manager is initialized)
-	wsMetrics := &middleware.WSMetrics{
-		ConnectionsActive: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "websocket_active_connections",
-			Help: "Current active WebSocket connections",
-		}),
-		MessagesReceived: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "websocket_messages_received_total",
-			Help: "Total number of WebSocket messages received.",
-		}),
-		MessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "websocket_messages_sent_total",
-			Help: "Total number of WebSocket messages sent.",
-		}),
-		ErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "websocket_errors_total",
-			Help: "Total number of WebSocket errors.",
-		}, []string{"trip_id", "type"}),
-	}
-	prometheus.MustRegister(wsMetrics.ConnectionsActive, wsMetrics.MessagesReceived, wsMetrics.MessagesSent, wsMetrics.ErrorsTotal)
 
 	// Start the server
 	srv := &http.Server{

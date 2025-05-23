@@ -136,6 +136,30 @@ func (s *TripMemberService) IsTripMember(ctx context.Context, tripID, userID str
 	return true, nil
 }
 
+// GetTripMember retrieves a trip membership record for a user
+// This is also needed to satisfy the handlers.TripServiceInterface
+func (s *TripMemberService) GetTripMember(ctx context.Context, tripID, userID string) (*types.TripMembership, error) {
+	// Get all members from the trip
+	members, err := s.store.GetTripMembers(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to find the specific member
+	for _, membership := range members {
+		if membership.UserID == userID {
+			// Return a copy to avoid any potential issues with the slice being modified
+			membershipCopy := membership
+			return &membershipCopy, nil
+		}
+	}
+
+	// If we get here, the user is not a member of this trip
+	// Try to get their role which will return the appropriate "not found" error
+	_, err = s.store.GetUserRole(ctx, tripID, userID)
+	return nil, err
+}
+
 // Helper method to publish events using the centralized helper
 func (s *TripMemberService) publishEvent(ctx context.Context, eventType string, tripID string, userID string, data map[string]interface{}) {
 	log := logger.GetLogger()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -78,6 +79,10 @@ func teardownTestDB(t *testing.T) {
 }
 
 func TestTripStore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping integration test on Windows due to Docker limitations")
+	}
+
 	setupTestDB(t)
 	defer teardownTestDB(t)
 

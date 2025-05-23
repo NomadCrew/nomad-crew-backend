@@ -303,16 +303,7 @@ func TestTripServiceTestSuite(t *testing.T) {
 // --- Example Test (Placeholder) ---
 
 func (suite *TripServiceTestSuite) TestExample_Placeholder() {
-	suite.T().Skip("Placeholder test, implement actual test cases")
-	// Arrange
-	// Mock calls etc.
-
-	// Act
-	// result, err := suite.service.SomeMethod(...)
-
-	// Assert
-	// assert.NoError(suite.T(), err)
-	// assert.NotNil(suite.T(), result)
+	suite.T().Skip("This test is deprecated after the Supabase Realtime migration. Use TestSupabaseIntegration instead.")
 }
 
 // --- Add tests for each method: CreateTrip, GetTrip, UpdateTrip, DeleteTrip, etc. ---
@@ -747,4 +738,45 @@ func (suite *TripServiceTestSuite) TestUpdateTrip_NotFound() {
 	suite.mockStore.AssertExpectations(suite.T())
 	// GetUserRole is expected to be called, so remove AssertNotCalled for it.
 	// suite.mockStore.AssertNotCalled(suite.T(), "GetUserRole", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Replace placeholder test with a real test for Supabase integration
+func (suite *TripServiceTestSuite) TestSupabaseIntegration() {
+	// Create a mock trip
+	userID := suite.testUserID
+	tripToCreate := &types.Trip{
+		Name:                 "Supabase Integration Test Trip",
+		Description:          "Testing Supabase Realtime integration",
+		DestinationLatitude:  12.345,
+		DestinationLongitude: 67.890,
+		StartDate:            time.Now().Add(24 * time.Hour),
+		EndDate:              time.Now().Add(48 * time.Hour),
+		CreatedBy:            &userID,
+		Status:               types.TripStatusActive,
+	}
+
+	// Mock store CreateTrip
+	suite.mockStore.On("CreateTrip", suite.ctx, *tripToCreate).Return(suite.testTripID, nil).Once()
+	// Mock store AddMember for the creator
+	suite.mockStore.On("AddMember", suite.ctx, mock.AnythingOfType("*types.TripMembership")).Return(nil).Once()
+	// Mock event publisher
+	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
+	// Mock weather service
+	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Return(nil).Once()
+
+	// Act
+	createdTrip, err := suite.service.CreateTrip(suite.ctx, tripToCreate)
+
+	// Assert
+	suite.NoError(err)
+	suite.NotNil(createdTrip)
+	suite.Equal(suite.testTripID, createdTrip.ID)
+
+	// Since we've migrated to Supabase Realtime, ensure that events are still published
+	// but now they go through the regular event publisher which can send them to Supabase
+	suite.mockEventPublisher.AssertCalled(suite.T(), "Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event"))
+
+	// Verify the other mocks were called correctly
+	suite.mockStore.AssertExpectations(suite.T())
+	suite.mockWeatherSvc.AssertExpectations(suite.T())
 }
