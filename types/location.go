@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"time"
 )
 
@@ -42,7 +43,7 @@ type LocationUpdate struct {
 	Timestamp        int64            `json:"timestamp" binding:"required"` // Unix timestamp in milliseconds
 	Privacy          *LocationPrivacy `json:"privacy,omitempty"`
 	IsSharingEnabled *bool            `json:"isSharingEnabled,omitempty"`
-	SharingExpiresIn *time.Duration   `json:"sharingExpiresIn,omitempty"` // How long to share location
+	SharingExpiresIn *int64           `json:"sharingExpiresIn,omitempty"` // Duration in seconds for how long to share location
 }
 
 // MemberLocation represents a trip member's location with additional user information
@@ -54,6 +55,6 @@ type MemberLocation struct {
 
 // LocationServiceInterface defines the interface for location-related operations
 type LocationServiceInterface interface {
-	UpdateLocation(ctx interface{}, userID string, update LocationUpdate) (*Location, error)
-	GetTripMemberLocations(ctx interface{}, tripID string) ([]MemberLocation, error)
+	UpdateLocation(ctx context.Context, userID string, update LocationUpdate) (*Location, error)
+	GetTripMemberLocations(ctx context.Context, tripID string) ([]MemberLocation, error)
 }

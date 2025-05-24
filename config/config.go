@@ -147,7 +147,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", 10)
 	v.SetDefault("EVENT_SERVICE.EVENT_BUFFER_SIZE", 100)
 	// Supabase defaults
-	v.SetDefault("SUPABASE.URL", "https://project-url.supabase.co")
+	// Don’t set a default; force explicit configuration
+    v.SetDefault("SUPABASE.URL", "")
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

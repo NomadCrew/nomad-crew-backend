@@ -107,7 +107,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 
 		var sharingExpiresIn time.Duration
 		if locationUpdate.SharingExpiresIn != nil {
-			sharingExpiresIn = *locationUpdate.SharingExpiresIn
+			sharingExpiresIn = time.Duration(*locationUpdate.SharingExpiresIn) * time.Second // Convert seconds to Duration
 			// Cap at 24 hours for safety
 			if sharingExpiresIn > 24*time.Hour {
 				sharingExpiresIn = 24 * time.Hour

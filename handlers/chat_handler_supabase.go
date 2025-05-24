@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
@@ -78,6 +79,15 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid message data: " + err.Error(),
+		})
+		return
+	}
+
+	// Trim whitespace and validate message is not empty
+	req.Message = strings.TrimSpace(req.Message)
+	if req.Message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Message cannot be empty",
 		})
 		return
 	}

@@ -281,9 +281,12 @@ func main() {
 		Logger:              log,
 		SupabaseService:     supabaseService,
 		FeatureFlags:        featureFlags,
-		// Supabase Realtime handlers
-		ChatHandlerSupabase:     chatHandlerSupabase,
-		LocationHandlerSupabase: locationHandlerSupabase,
+	}
+
+	// Only add Supabase Realtime handlers when the feature flag is enabled
+	if featureFlags.EnableSupabaseRealtime {
+		routerDeps.ChatHandlerSupabase = chatHandlerSupabase
+		routerDeps.LocationHandlerSupabase = locationHandlerSupabase
 	}
 
 	// Setup Router using the new package

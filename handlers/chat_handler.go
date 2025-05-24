@@ -51,7 +51,7 @@ func NewChatHandler(
 		eventPublisher: eventPublisher,
 		logger:         logger,
 		supabase:       supabase,
-		limiter:        rate.NewLimiter(rate.Every(time.Second), 10), // 10 msgs/sec
+		limiter:        rate.NewLimiter(rate.Limit(10), 10), // 10 msgs/sec
 	}
 }
 
@@ -712,7 +712,7 @@ func (h *ChatHandler) ListMembers(c *gin.Context) {
 // SendMessage handles POST /api/v1/trips/:tripID/messages
 func (h *ChatHandler) SendMessageSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
-	tripID := c.Param("tripID")
+	tripID := c.Param("id")
 
 	// Rate limiting
 	if !h.limiter.Allow() {
@@ -795,7 +795,7 @@ func (h *ChatHandler) SendMessageSupabase(c *gin.Context) {
 // GetMessages handles GET /api/v1/trips/:tripID/messages
 func (h *ChatHandler) GetMessages(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
-	tripID := c.Param("tripID")
+	tripID := c.Param("id")
 
 	// Verify membership
 	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
@@ -846,7 +846,7 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 // MarkAsRead handles PUT /api/v1/trips/:tripID/messages/read
 func (h *ChatHandler) MarkAsRead(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
-	tripID := c.Param("tripID")
+	tripID := c.Param("id")
 
 	var req struct {
 		LastMessageID string `json:"last_message_id" binding:"required"`
@@ -882,7 +882,17 @@ func (h *ChatHandler) MarkAsRead(c *gin.Context) {
 // AddReactionSupabase handles POST /api/v1/trips/:tripID/messages/:messageID/reactions
 func (h *ChatHandler) AddReactionSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
-	messageID := c.Param("messageID")
+	messageID := c.Param("messageId")
+	tripID := c.Param("id")
+
+	// Verify user is a member of the trip
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil || member.DeletedAt != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not an active member of this trip",
+		})
+		return
+	}
 
 	var req struct {
 		Emoji string `json:"emoji" binding:"required"`
@@ -903,7 +913,7 @@ func (h *ChatHandler) AddReactionSupabase(c *gin.Context) {
 		return
 	}
 
-	err := h.supabase.AddReaction(
+	err = h.supabase.AddReaction(
 		c.Request.Context(),
 		messageID,
 		userID,
@@ -926,10 +936,20 @@ func (h *ChatHandler) AddReactionSupabase(c *gin.Context) {
 // RemoveReactionSupabase handles DELETE /api/v1/trips/:tripID/messages/:messageID/reactions/:emoji
 func (h *ChatHandler) RemoveReactionSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
-	messageID := c.Param("messageID")
+	messageID := c.Param("messageId")
 	emoji := c.Param("emoji")
+	tripID := c.Param("tripId")
 
-	err := h.supabase.RemoveReaction(
+	// Verify user is a member of the trip
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil || member.DeletedAt != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not an active member of this trip",
+		})
+		return
+	}
+
+	err = h.supabase.RemoveReaction(
 		c.Request.Context(),
 		messageID,
 		userID,
