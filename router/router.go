@@ -123,7 +123,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				}
 
 				// Trip Chat Routes - conditionally registered based on feature flag
-				chatRoutes := tripRoutes.Group("/:id/chat")
+				chatRoutes := tripRoutes.Group("/:tripId/chat")
 				{
 					// New Supabase Realtime endpoints - only register if SupabaseRealtime is enabled
 					if deps.FeatureFlags.EnableSupabaseRealtime && deps.ChatHandlerSupabase != nil {

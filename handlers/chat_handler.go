@@ -1,4 +1,3 @@
-// Package handlers contains the HTTP handlers for the application's API endpoints.
 package handlers
 
 import (
@@ -848,6 +847,15 @@ func (h *ChatHandler) MarkAsRead(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
 	tripID := c.Param("id")
 
+	// Verify membership
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil || member.DeletedAt != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not an active member of this trip",
+		})
+		return
+	}
+
 	var req struct {
 		LastMessageID string `json:"last_message_id" binding:"required"`
 	}
@@ -859,7 +867,7 @@ func (h *ChatHandler) MarkAsRead(c *gin.Context) {
 		return
 	}
 
-	err := h.supabase.MarkMessagesAsRead(
+	err = h.supabase.MarkMessagesAsRead(
 		c.Request.Context(),
 		tripID,
 		userID,
@@ -936,9 +944,9 @@ func (h *ChatHandler) AddReactionSupabase(c *gin.Context) {
 // RemoveReactionSupabase handles DELETE /api/v1/trips/:tripID/messages/:messageID/reactions/:emoji
 func (h *ChatHandler) RemoveReactionSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
-	messageID := c.Param("messageId")
+	messageID := c.Param("messageID")
 	emoji := c.Param("emoji")
-	tripID := c.Param("tripId")
+	tripID := c.Param("tripID")
 
 	// Verify user is a member of the trip
 	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)

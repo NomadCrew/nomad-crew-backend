@@ -18,7 +18,7 @@ import (
 // LocationHandler handles location-related API requests
 type LocationHandler struct {
 	locationService locationService.LocationManagementServiceInterface
-	tripService     TripServiceInterface
+	tripService     types.TripServiceInterface
 	supabase        *services.SupabaseService
 	logger          *zap.Logger
 }

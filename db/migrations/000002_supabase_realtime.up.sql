@@ -203,7 +203,7 @@ USING (
     )
 );
 
-CREATE POLICY "Users can update their own presence"
+CREATE POLICY "Users can insert their own presence" ON supabase_user_presence FOR INSERT
 ON supabase_user_presence FOR INSERT
 TO authenticated
 WITH CHECK (auth.uid() = user_id);

@@ -134,7 +134,7 @@ func main() {
 	notificationDB := dbStore.NewPgNotificationStore(dbClient.GetPool())
 
 	// Get Supabase service key from config
-	supabaseServiceKey := cfg.Supabase.ServiceKey
+	supabaseServiceKey := cfg.ExternalServices.SupabaseJWTSecret
 	userDB := internalPgStore.NewUserStore(dbClient.GetPool(), cfg.ExternalServices.SupabaseURL, supabaseServiceKey)
 
 	// Initialize Redis client with TLS in production

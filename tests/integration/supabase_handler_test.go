@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,6 +102,11 @@ func (h *ChatHandlerStub) SendMessage(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if strings.TrimSpace(req.Message) == "" || len(req.Message) > 1_000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "message must be non-empty and ≤ 1 000 chars"})
 		return
 	}
 

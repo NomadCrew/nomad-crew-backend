@@ -18,7 +18,7 @@ import (
 type ChatHandlerSupabase struct {
 	tripService     TripServiceInterface
 	supabaseService *services.SupabaseService
-	logger          *zap.SugaredLogger
+	logger          *zap.Logger
 	featureFlags    config.FeatureFlags
 }
 
@@ -31,7 +31,7 @@ func NewChatHandlerSupabase(
 	return &ChatHandlerSupabase{
 		tripService:     tripService,
 		supabaseService: supabaseService,
-		logger:          logger.GetLogger(),
+		logger:          logger.GetLogger().Desugar(),
 		featureFlags:    featureFlags,
 	}
 }

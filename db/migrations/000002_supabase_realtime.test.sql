@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS supabase_chat_messages (
     trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id), -- Changed from auth.users
     message TEXT NOT NULL,
-    reply_to_id UUID REFERENCES supabase_chat_messages(id),
+    reply_to_id UUID REFERENCES supabase_chat_messages(id) ON DELETE SET NULL,
     edited_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
