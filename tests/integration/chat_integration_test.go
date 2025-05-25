@@ -203,9 +203,9 @@ func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
 		nil, // Add nil Supabase service for testing
 	)
 
-	// TEMPORARY TEST SOLUTION:
-	// Set the user ID using the standard key defined in middleware package
-	// This matches what the real middleware uses
+	// ENHANCED TEST MIDDLEWARE:
+	// Set all context keys that the enhanced middleware provides
+	// This matches what the real enhanced middleware sets
 	authTestMiddleware := func(c *gin.Context) {
 		// First check if the userID was passed in the request context
 		userID := ""
@@ -217,14 +217,28 @@ func (suite *ChatIntegrationTestSuite) setupTestRouter() *gin.Engine {
 			fmt.Printf("Test middleware using default suite.testUserID: %s\n", userID)
 		}
 
-		// Set the key that middleware.AuthMiddleware sets
-		c.Set(string(middleware.UserIDKey), userID)
+		// Set all three context keys that enhanced middleware provides:
+		// 1. UserIDKey - Supabase User ID (backward compatibility)
+		c.Set(string(middleware.UserIDKey), "supabase|"+userID)
+
+		// 2. InternalUserIDKey - Internal UUID string (for database operations)
+		c.Set(string(middleware.InternalUserIDKey), userID)
+
+		// 3. AuthenticatedUserKey - Full user object (for direct access)
+		testUser := &types.User{
+			ID:       userID,
+			Email:    fmt.Sprintf("test-%s@example.com", userID),
+			Username: fmt.Sprintf("testuser-%s", userID),
+		}
+		c.Set(string(middleware.AuthenticatedUserKey), testUser)
 
 		// Set directly in request context too
-		newCtx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+		newCtx := context.WithValue(c.Request.Context(), middleware.UserIDKey, "supabase|"+userID)
+		newCtx = context.WithValue(newCtx, middleware.InternalUserIDKey, userID)
+		newCtx = context.WithValue(newCtx, middleware.AuthenticatedUserKey, testUser)
 		c.Request = c.Request.WithContext(newCtx)
 
-		fmt.Printf("Auth middleware set userID '%s' in Gin context and Request context\n", userID)
+		fmt.Printf("Enhanced test middleware set userID '%s' in all context keys\n", userID)
 		c.Next()
 	}
 

@@ -256,7 +256,8 @@ func derefString(s *string) string {
 // @Security BearerAuth
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Use internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -286,7 +287,8 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Use internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	var update types.TripUpdate
 	if err := c.ShouldBindJSON(&update); err != nil {
@@ -345,7 +347,8 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 		return
 	}
 
-	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.UserIDKey)))
+	// Use internal user ID from enhanced middleware
+	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.InternalUserIDKey)))
 	if err != nil {
 		log.Errorw("Failed to fetch updated trip after status change", "tripID", tripID, "error", err)
 		c.JSON(http.StatusOK, gin.H{"message": "Trip status updated successfully"})
@@ -393,9 +396,28 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 // @Router /trips [get]
 // @Security BearerAuth
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
-	userID := c.GetString(string(middleware.UserIDKey))
+	log := logger.GetLogger()
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userID)
+	if supabaseUserID == "" {
+		log.Errorw("No user ID found in context for ListUserTripsHandler")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
+		return
+	}
+
+	// Map Supabase user ID to internal UUID
+	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseUserID)
+	if err != nil || user == nil {
+		log.Errorw("Failed to map Supabase user ID to internal UUID for ListUserTripsHandler", "supabaseUserID", supabaseUserID, "error", err)
+		// Decide if this is a 401 or 404, or if GetUserBySupabaseID already handles it.
+		// For now, mirroring CreateTripHandler's response for consistency.
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or not onboarded"})
+		return
+	}
+	internalUserID := user.ID.String()
+	log.Infow("Successfully mapped Supabase ID to internal ID for ListUserTrips", "supabaseUserID", supabaseUserID, "internalUserID", internalUserID)
+
+	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), internalUserID) // Use internalUserID here
 	if err != nil {
 		h.handleModelError(c, err)
 		return
@@ -481,7 +503,8 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Use internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	tripWithMembers, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -510,7 +533,8 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Use internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	// Fetch the trip to ensure it exists and to get destination details
 	// Use GetTripByID which includes membership check implicitly via the model layer

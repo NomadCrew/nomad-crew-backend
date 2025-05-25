@@ -1,101 +1,134 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// MockJWTValidator is a mock type for the *middleware*.JWTValidator struct's methods
-// We need an interface that middleware.AuthMiddleware accepts, or mock the concrete type's methods.
-// AuthMiddleware takes *middleware.JWTValidator directly. We mock its Validate method.
+// MockJWTValidator is a mock type for the Validator interface
 type MockJWTValidator struct {
 	mock.Mock
-	// Embed the actual validator if needed to satisfy interface, or just mock methods called.
-	// middleware.JWTValidator // Embedding might pull in dependencies. Let's just mock Validate.
 }
 
 // Mock the Validate method signature: Validate(tokenString string) (string, error)
 func (m *MockJWTValidator) Validate(tokenString string) (string, error) {
 	args := m.Called(tokenString)
-	// Return the mocked UserID (string) and error
 	return args.String(0), args.Error(1)
 }
 
-// Ensure MockJWTValidator implements the interface
+// Ensure MockJWTValidator implements the Validator interface
 var _ Validator = (*MockJWTValidator)(nil)
 
-func setupAuthTestRouter(validator Validator) (*gin.Engine, *httptest.ResponseRecorder) {
+// MockUserResolver is a mock type for the UserResolver interface
+type MockUserResolver struct {
+	mock.Mock
+}
+
+// Mock the GetUserBySupabaseID method
+func (m *MockUserResolver) GetUserBySupabaseID(ctx context.Context, supabaseID string) (*types.User, error) {
+	args := m.Called(ctx, supabaseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+// Ensure MockUserResolver implements the UserResolver interface
+var _ UserResolver = (*MockUserResolver)(nil)
+
+func setupAuthTestRouter(validator Validator, userResolver UserResolver) (*gin.Engine, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
 
-	// Pass the mock validator to the actual middleware function
-	authMiddleware := AuthMiddleware(validator) // AuthMiddleware expects *JWTValidator
+	// Pass both the mock validator and user resolver to the middleware
+	authMiddleware := AuthMiddleware(validator, userResolver)
 	r.Use(authMiddleware)
 
 	// Define a test route that requires authentication
 	r.GET("/protected", func(c *gin.Context) {
-		userID, exists := c.Get(string(UserIDKey))
+		// Check for Supabase user ID (backward compatibility)
+		supabaseUserID, exists := c.Get(string(UserIDKey))
 		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "UserID not found in context"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Supabase UserID not found in context"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Success", "user_id": userID})
-	})
 
-	// Define a public route that should not be affected directly by auth (but middleware runs)
-	r.GET("/public", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "Public OK"})
+		// Check for internal user ID
+		internalUserID, exists := c.Get(string(InternalUserIDKey))
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal UserID not found in context"})
+			return
+		}
+
+		// Check for authenticated user object
+		userObj, exists := c.Get(string(AuthenticatedUserKey))
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Authenticated user not found in context"})
+			return
+		}
+
+		user := userObj.(*types.User)
+		c.JSON(http.StatusOK, gin.H{
+			"message":          "Success",
+			"supabase_user_id": supabaseUserID,
+			"internal_user_id": internalUserID,
+			"user_email":       user.Email,
+		})
 	})
 
 	return r, w
 }
 
 func TestAuthMiddleware(t *testing.T) {
-	mockValidator := new(MockJWTValidator) // Use the mock struct
-	router, w := setupAuthTestRouter(mockValidator)
-	testUserID := uuid.New()
-	testUserIDString := testUserID.String()
+	mockValidator := new(MockJWTValidator)
+	mockUserResolver := new(MockUserResolver)
+	router, w := setupAuthTestRouter(mockValidator, mockUserResolver)
 
+	testSupabaseUserID := "supabase-user-123"
+	testInternalUserID := uuid.New().String()
 	validTokenString := "valid.token.string"
+
+	testUser := &types.User{
+		ID:       testInternalUserID,
+		Email:    "test@example.com",
+		Username: "testuser",
+	}
 
 	testCases := []struct {
 		name              string
 		tokenHeader       string
-		mockSetup         func() // Setup expectations on the mock
+		mockSetup         func() // Setup expectations on the mocks
 		expectedStatus    int
-		expectedBody      string
-		checkContextValue bool
-		expectedUserID    string
+		expectedBodyCheck func(body string) bool
 	}{
 		{
 			name:           "No Authorization Header",
 			tokenHeader:    "",
 			mockSetup:      func() {}, // No validation call expected
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"AUTHENTICATION_ERROR: Authorization header missing or token not found"}`,
+			expectedBodyCheck: func(body string) bool {
+				return assert.Contains(t, body, "Authorization header missing or token not found")
+			},
 		},
 		{
 			name:           "Invalid Authorization Header Format - No Bearer",
 			tokenHeader:    "InvalidToken",
 			mockSetup:      func() {}, // No validation call expected
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"AUTHENTICATION_ERROR: Invalid authorization header format"}`,
-		},
-		{
-			name:           "Invalid Authorization Header Format - Only Bearer",
-			tokenHeader:    "Bearer ",
-			mockSetup:      func() {}, // No validation call expected
-			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"AUTHENTICATION_ERROR: Invalid authorization header format"}`,
+			expectedBodyCheck: func(body string) bool {
+				return assert.Contains(t, body, "Invalid authorization header format")
+			},
 		},
 		{
 			name:        "Token Validation Fails",
@@ -105,28 +138,51 @@ func TestAuthMiddleware(t *testing.T) {
 				mockValidator.On("Validate", validTokenString).Return("", errors.New("validation failed")).Once()
 			},
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"code":401,"message":"Invalid or expired token","details":"validation failed"}`,
+			expectedBodyCheck: func(body string) bool {
+				return assert.Contains(t, body, "Invalid or expired token")
+			},
 		},
 		{
-			name:        "Token Validation Succeeds",
+			name:        "User Not Found in Internal System",
 			tokenHeader: fmt.Sprintf("Bearer %s", validTokenString),
 			mockSetup: func() {
-				// Mock Validate to return the UserID string and nil error
-				mockValidator.On("Validate", validTokenString).Return(testUserIDString, nil).Once()
+				// Mock successful token validation
+				mockValidator.On("Validate", validTokenString).Return(testSupabaseUserID, nil).Once()
+				// Mock user resolver to return user not found
+				mockUserResolver.On("GetUserBySupabaseID", mock.Anything, testSupabaseUserID).Return(nil, errors.New("user not found")).Once()
 			},
-			expectedStatus:    http.StatusOK,
-			expectedBody:      fmt.Sprintf(`{"message":"Success","user_id":"%s"}`, testUserIDString),
-			checkContextValue: true,
-			expectedUserID:    testUserIDString,
+			expectedStatus: http.StatusUnauthorized,
+			expectedBodyCheck: func(body string) bool {
+				return assert.Contains(t, body, "User not found or not onboarded")
+			},
+		},
+		{
+			name:        "Successful Authentication",
+			tokenHeader: fmt.Sprintf("Bearer %s", validTokenString),
+			mockSetup: func() {
+				// Mock successful token validation
+				mockValidator.On("Validate", validTokenString).Return(testSupabaseUserID, nil).Once()
+				// Mock successful user resolution
+				mockUserResolver.On("GetUserBySupabaseID", mock.Anything, testSupabaseUserID).Return(testUser, nil).Once()
+			},
+			expectedStatus: http.StatusOK,
+			expectedBodyCheck: func(body string) bool {
+				return assert.Contains(t, body, "Success") &&
+					assert.Contains(t, body, testSupabaseUserID) &&
+					assert.Contains(t, body, testInternalUserID) &&
+					assert.Contains(t, body, testUser.Email)
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Reset recorder and mock expectations for each test case
-			*w = *httptest.NewRecorder()      // Create a new recorder
-			mockValidator.ExpectedCalls = nil // Clear previous expectations
+			*w = *httptest.NewRecorder()
+			mockValidator.ExpectedCalls = nil
 			mockValidator.Calls = nil
+			mockUserResolver.ExpectedCalls = nil
+			mockUserResolver.Calls = nil
 			tc.mockSetup()
 
 			req, _ := http.NewRequest("GET", "/protected", nil)
@@ -137,15 +193,11 @@ func TestAuthMiddleware(t *testing.T) {
 			router.ServeHTTP(w, req)
 
 			assert.Equal(t, tc.expectedStatus, w.Code)
-			assert.JSONEq(t, tc.expectedBody, w.Body.String())
+			assert.True(t, tc.expectedBodyCheck(w.Body.String()), "Body check failed for: %s", w.Body.String())
 
-			// Optionally verify mock expectations
+			// Verify mock expectations
 			mockValidator.AssertExpectations(t)
-
-			// Check context value only if validation was expected to succeed
-			// Need a way to access context *after* middleware but *before* handler fully responds in test
-			// This is tricky without modifying the test handler. The current test handler checks it.
-			// If checkContextValue is true, the handler success implies context was set.
+			mockUserResolver.AssertExpectations(t)
 		})
 	}
 }

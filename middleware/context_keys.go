@@ -5,10 +5,15 @@ type contextKey string
 
 // Defines context keys used within the application middleware and handlers.
 const (
-	// UserIDKey is the context key for the authenticated user's ID (string).
+	// UserIDKey is the context key for the authenticated user's Supabase ID (string).
+	// This is kept for any legacy compatibility during transition.
 	UserIDKey contextKey = "userID"
-	// UserRolesKey could be added here if roles are extracted during auth.
-	// UserRolesKey contextKey = "userRoles"
-	// AuthenticatedUserKey could hold the full user model.
-	// AuthenticatedUserKey contextKey = "authenticatedUser"
+
+	// InternalUserIDKey is the context key for the authenticated user's internal UUID (string).
+	// This is what most handlers should use for database operations.
+	InternalUserIDKey contextKey = "internalUserID"
+
+	// AuthenticatedUserKey is the context key for the full authenticated user object (*models.User).
+	// This provides access to the complete user information when needed.
+	AuthenticatedUserKey contextKey = "authenticatedUser"
 )
