@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -24,7 +25,7 @@ func main() {
 
 	// Initialize Pexels client
 	pexelsClient := pexels.NewClient(cfg.ExternalServices.PexelsAPIKey)
-	fmt.Printf("✅ Pexels client initialized with API key: %s...\n", cfg.ExternalServices.PexelsAPIKey[:8])
+	fmt.Printf("✅ Pexels client initialized successfully\n")
 
 	// Test scenarios
 	testScenarios := []struct {
@@ -87,7 +88,7 @@ func main() {
 		fmt.Printf("   Trip: %s\n", scenario.trip.Name)
 
 		// Test buildPexelsSearchQuery
-		searchQuery := buildPexelsSearchQuery(scenario.trip)
+		searchQuery := pexels.BuildSearchQuery(scenario.trip)
 		fmt.Printf("   Search Query: '%s'\n", searchQuery)
 
 		if searchQuery == "" {
@@ -95,8 +96,10 @@ func main() {
 			continue
 		}
 
-		// Test actual Pexels API call
-		imageURL, err := pexelsClient.SearchDestinationImage(searchQuery)
+		// Test actual Pexels API call with context timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		imageURL, err := pexelsClient.SearchDestinationImage(ctx, searchQuery)
+		cancel()
 
 		if err != nil {
 			fmt.Printf("   ❌ Error: %v\n", err)
@@ -120,21 +123,4 @@ func main() {
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
-}
-
-// Copy of the buildPexelsSearchQuery logic for testing
-func buildPexelsSearchQuery(trip *types.Trip) string {
-	if trip.DestinationName != nil && *trip.DestinationName != "" {
-		return *trip.DestinationName
-	}
-
-	if trip.DestinationAddress != nil && *trip.DestinationAddress != "" {
-		return *trip.DestinationAddress
-	}
-
-	if trip.Name != "" {
-		return trip.Name
-	}
-
-	return ""
 }

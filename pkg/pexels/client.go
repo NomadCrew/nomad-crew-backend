@@ -1,6 +1,7 @@
 package pexels
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,7 +37,7 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
-func (c *Client) SearchDestinationImage(query string) (string, error) {
+func (c *Client) SearchDestinationImage(ctx context.Context, query string) (string, error) {
 	logger.GetLogger().Debugw("Starting Pexels image search", "query", query)
 
 	endpoint := fmt.Sprintf("%s/search", pexelsAPIBaseURL)
@@ -50,7 +51,7 @@ func (c *Client) SearchDestinationImage(query string) (string, error) {
 	finalURL := fmt.Sprintf("%s?%s", endpoint, params.Encode())
 	logger.GetLogger().Debugw("Constructed Pexels search URL", "url", finalURL)
 
-	req, err := http.NewRequest("GET", finalURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", finalURL, nil)
 	if err != nil {
 		logger.GetLogger().Errorw("Failed to create Pexels request", "error", err)
 		return "", fmt.Errorf("failed to create request: %w", err)

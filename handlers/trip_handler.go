@@ -661,7 +661,7 @@ func (h *TripHandler) fetchBackgroundImage(ctx context.Context, trip *types.Trip
 	log := logger.GetLogger()
 
 	// Build search query from destination information
-	searchQuery := h.buildPexelsSearchQuery(trip)
+	searchQuery := pexels.BuildSearchQuery(trip)
 	if searchQuery == "" {
 		log.Debugw("No suitable search query could be built for Pexels", "tripName", trip.Name)
 		return ""
@@ -670,7 +670,7 @@ func (h *TripHandler) fetchBackgroundImage(ctx context.Context, trip *types.Trip
 	log.Infow("Attempting to fetch background image from Pexels", "searchQuery", searchQuery, "tripName", trip.Name)
 
 	// Fetch image URL from Pexels (with timeout context)
-	imageURL, err := h.pexelsClient.SearchDestinationImage(searchQuery)
+	imageURL, err := h.pexelsClient.SearchDestinationImage(ctx, searchQuery)
 	if err != nil {
 		log.Warnw("Failed to fetch background image from Pexels", "error", err, "searchQuery", searchQuery, "tripName", trip.Name)
 		return ""
@@ -682,28 +682,4 @@ func (h *TripHandler) fetchBackgroundImage(ctx context.Context, trip *types.Trip
 	}
 
 	return imageURL
-}
-
-// buildPexelsSearchQuery creates an intelligent search query for Pexels based on trip destination
-func (h *TripHandler) buildPexelsSearchQuery(trip *types.Trip) string {
-	// Priority order for building search query:
-	// 1. DestinationName (most specific)
-	// 2. DestinationAddress (fallback)
-	// 3. Trip Name (last resort if it contains location info)
-
-	if trip.DestinationName != nil && *trip.DestinationName != "" {
-		return *trip.DestinationName
-	}
-
-	if trip.DestinationAddress != nil && *trip.DestinationAddress != "" {
-		return *trip.DestinationAddress
-	}
-
-	// As a last resort, use trip name if it might contain location information
-	// This is a simple heuristic - in a production system, you might want more sophisticated parsing
-	if trip.Name != "" {
-		return trip.Name
-	}
-
-	return ""
 }
