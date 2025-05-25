@@ -115,6 +115,9 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink) // For deep links from emails
 		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)  // To get details using a token (public potentially)
 
+		// Public User routes (onboarding - creates user, so can't require existing user)
+		v1.POST("/users/onboard", deps.UserHandler.OnboardUser)
+
 		// --- Authenticated Routes ---
 		// Create user resolver adapter
 		userResolver := &userServiceAdapter{userService: deps.UserService}
@@ -222,8 +225,6 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				userRoutes.PUT("/:id/preferences", deps.UserHandler.UpdateUserPreferences)
 				// Add SyncWithSupabase as a special endpoint
 				userRoutes.POST("/sync", deps.UserHandler.SyncWithSupabase)
-				// Register the onboarding endpoint
-				userRoutes.POST("/onboard", deps.UserHandler.OnboardUser)
 			}
 		}
 	}
