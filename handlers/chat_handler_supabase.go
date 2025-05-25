@@ -51,7 +51,7 @@ func NewChatHandlerSupabase(
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages [post]
 func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -149,7 +149,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages [get]
 func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -189,7 +189,7 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions [post]
 func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	messageID := c.Param("messageId")
 	userID := c.GetString(string(middleware.UserIDKey))
 
@@ -268,7 +268,7 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions/{emoji} [delete]
 func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	messageID := c.Param("messageId")
 	emoji := c.Param("emoji")
 	userID := c.GetString(string(middleware.UserIDKey))
@@ -334,7 +334,7 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/read-status [put]
 func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {

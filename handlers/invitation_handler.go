@@ -76,7 +76,7 @@ type DeclineInvitationRequest struct {
 // @Security BearerAuth
 func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	inviterID := c.GetString(string(middleware.UserIDKey))
 
 	var req InviteMemberRequest

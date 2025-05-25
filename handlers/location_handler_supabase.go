@@ -50,7 +50,7 @@ func NewLocationHandlerSupabase(
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -162,7 +162,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {

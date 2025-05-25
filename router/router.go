@@ -115,15 +115,22 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					todoRoutes.DELETE("/:todoId", deps.TodoHandler.DeleteTodoHandler)
 				}
 
-				// Location Routes
-				locationRoutes := tripRoutes.Group("/:id/locations")
+				// Location Routes for a specific trip :id
+				tripLocationRoutes := tripRoutes.Group("/:id/locations")
 				{
-					locationRoutes.POST("", deps.LocationHandler.UpdateLocationHandler)
-					locationRoutes.GET("", deps.LocationHandler.GetTripMemberLocationsHandler)
+					if deps.FeatureFlags.EnableSupabaseRealtime && deps.LocationHandlerSupabase != nil {
+						// Supabase versions
+						tripLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)         // Handles PUT for location updates
+						tripLocationRoutes.GET("", deps.LocationHandlerSupabase.GetTripMemberLocations) // Handles GET for member locations
+					} else if deps.LocationHandler != nil {
+						// Non-Supabase versions
+						tripLocationRoutes.POST("", deps.LocationHandler.UpdateLocationHandler)        // Handles POST for location updates
+						tripLocationRoutes.GET("", deps.LocationHandler.GetTripMemberLocationsHandler) // Handles GET for member locations
+					}
 				}
 
 				// Trip Chat Routes - conditionally registered based on feature flag
-				chatRoutes := tripRoutes.Group("/:tripId/chat")
+				chatRoutes := tripRoutes.Group("/:id/chat")
 				{
 					// New Supabase Realtime endpoints - only register if SupabaseRealtime is enabled
 					if deps.FeatureFlags.EnableSupabaseRealtime && deps.ChatHandlerSupabase != nil {
@@ -133,24 +140,6 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 						chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandlerSupabase.AddReaction)
 						chatRoutes.DELETE("/messages/:messageId/reactions/:emoji", deps.ChatHandlerSupabase.RemoveReaction)
 					}
-				}
-			}
-
-			// Location Routes - conditionally registered based on feature flag
-			locationRoutes := authRoutes.Group("/location")
-			{
-				// Legacy endpoint - only register if Supabase Realtime is not enabled
-				if !deps.FeatureFlags.EnableSupabaseRealtime {
-					locationRoutes.POST("/update", deps.LocationHandler.UpdateLocationHandler)
-				}
-			}
-
-			// New Supabase Location routes - only register if SupabaseRealtime is enabled
-			if deps.FeatureFlags.EnableSupabaseRealtime && deps.LocationHandlerSupabase != nil {
-				supabaseLocationRoutes := authRoutes.Group("/locations")
-				{
-					supabaseLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)
-					supabaseLocationRoutes.GET("/trips/:tripId", deps.LocationHandlerSupabase.GetTripMemberLocations)
 				}
 			}
 
