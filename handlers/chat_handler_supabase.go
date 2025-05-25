@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
@@ -17,7 +18,7 @@ import (
 type ChatHandlerSupabase struct {
 	tripService     TripServiceInterface
 	supabaseService *services.SupabaseService
-	logger          *zap.SugaredLogger
+	logger          *zap.Logger
 	featureFlags    config.FeatureFlags
 }
 
@@ -30,7 +31,7 @@ func NewChatHandlerSupabase(
 	return &ChatHandlerSupabase{
 		tripService:     tripService,
 		supabaseService: supabaseService,
-		logger:          logger.GetLogger(),
+		logger:          logger.GetLogger().Desugar(),
 		featureFlags:    featureFlags,
 	}
 }
@@ -50,7 +51,7 @@ func NewChatHandlerSupabase(
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages [post]
 func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -78,6 +79,15 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid message data: " + err.Error(),
+		})
+		return
+	}
+
+	// Trim whitespace and validate message is not empty
+	req.Message = strings.TrimSpace(req.Message)
+	if req.Message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Message cannot be empty",
 		})
 		return
 	}
@@ -139,7 +149,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages [get]
 func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -179,7 +189,7 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions [post]
 func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	messageID := c.Param("messageId")
 	userID := c.GetString(string(middleware.UserIDKey))
 
@@ -258,7 +268,7 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions/{emoji} [delete]
 func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	messageID := c.Param("messageId")
 	emoji := c.Param("emoji")
 	userID := c.GetString(string(middleware.UserIDKey))
@@ -324,7 +334,7 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/read-status [put]
 func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {

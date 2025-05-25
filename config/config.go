@@ -78,14 +78,6 @@ type EmailConfig struct {
 	ResendAPIKey string `mapstructure:"RESEND_API_KEY" yaml:"resend_api_key"`
 }
 
-// SupabaseConfig holds configuration for Supabase integration
-type SupabaseConfig struct {
-	URL        string `mapstructure:"URL" yaml:"url"`
-	AnonKey    string `mapstructure:"ANON_KEY" yaml:"anon_key"`
-	ServiceKey string `mapstructure:"SERVICE_KEY" yaml:"service_key"`
-	JWTSecret  string `mapstructure:"JWT_SECRET" yaml:"jwt_secret"`
-}
-
 // EventServiceConfig holds configuration for the Redis-based event service.
 type EventServiceConfig struct {
 	// Timeout for publishing a single event to Redis (in seconds)
@@ -104,7 +96,6 @@ type Config struct {
 	Email            EmailConfig        `mapstructure:"EMAIL" yaml:"email"`
 	ExternalServices ExternalServices   `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
 	EventService     EventServiceConfig `mapstructure:"EVENT_SERVICE" yaml:"event_service"`
-	Supabase         SupabaseConfig     `mapstructure:"SUPABASE" yaml:"supabase"`
 }
 
 // IsDevelopment returns true if the application is running in development environment.
@@ -146,8 +137,6 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", 5)
 	v.SetDefault("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", 10)
 	v.SetDefault("EVENT_SERVICE.EVENT_BUFFER_SIZE", 100)
-	// Supabase defaults
-	v.SetDefault("SUPABASE.URL", "https://project-url.supabase.co")
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -207,11 +196,11 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
 	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_JWT_SECRET: %w", err)
-	}
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
+	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_JWT_SECRET: %w", err)
 	}
 
 	if err := v.BindEnv("EMAIL.FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
@@ -224,7 +213,7 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
 	}
 
-	// +++ Bind EventService environment variables +++
+	// Bind EventService environment variables
 	if err := v.BindEnv("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", "EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS"); err != nil {
 		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS: %w", err)
 	}
@@ -234,20 +223,6 @@ func LoadConfig() (*Config, error) {
 	if err := v.BindEnv("EVENT_SERVICE.EVENT_BUFFER_SIZE", "EVENT_SERVICE_EVENT_BUFFER_SIZE"); err != nil {
 		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.EVENT_BUFFER_SIZE: %w", err)
 	}
-
-	// Note: We already bind Supabase environment variables to EXTERNAL_SERVICES above,
-	// so we don't need to duplicate bindings for the dedicated Supabase config.
-
-	resendAPIKey := v.GetString("EMAIL.RESEND_API_KEY")
-	log.Infow("RESEND_API_KEY check",
-		"present", resendAPIKey != "",
-		"length", len(resendAPIKey),
-		"first_chars", func() string {
-			if len(resendAPIKey) > 3 {
-				return resendAPIKey[:3] + "..."
-			}
-			return ""
-		}())
 
 	env := v.GetString("SERVER.ENVIRONMENT")
 	log.Infow("Configuration loaded",
@@ -341,11 +316,6 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("event service buffer size must be positive")
 	}
 
-	// Validate Supabase config
-	if err := validateSupabase(&cfg.Supabase); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -365,23 +335,6 @@ func validateExternalServices(services *ExternalServices) error {
 	}
 	if len(services.SupabaseJWTSecret) < minJWTLength {
 		return fmt.Errorf("supabase JWT secret must be at least %d characters long", minJWTLength)
-	}
-	return nil
-}
-
-// validateSupabase checks that the Supabase configuration is valid
-func validateSupabase(s *SupabaseConfig) error {
-	if s.URL == "" {
-		return fmt.Errorf("Supabase URL is required")
-	}
-	if s.ServiceKey == "" {
-		return fmt.Errorf("Supabase Service Key is required")
-	}
-	if s.AnonKey == "" {
-		return fmt.Errorf("Supabase Anon Key is required")
-	}
-	if len(s.JWTSecret) < minJWTLength {
-		return fmt.Errorf("Supabase JWT secret must be at least %d characters long", minJWTLength)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -57,7 +58,7 @@ type LocationUpdate struct {
 	Longitude        float64       `json:"longitude"`
 	Accuracy         float32       `json:"accuracy"`
 	SharingEnabled   bool          `json:"is_sharing_enabled"`
-	SharingExpiresIn time.Duration `json:"sharing_expires_in,omitempty"`
+	SharingExpiresIn time.Duration `json:"sharing_expires_in,omitempty"` // Duration in seconds, converted from client-provided value
 	Privacy          string        `json:"privacy,omitempty"`
 }
 
@@ -116,12 +117,16 @@ func (s *SupabaseService) UpdateLocation(ctx context.Context, userID string, upd
 	// Prepare data for Supabase
 	payload := map[string]interface{}{
 		"user_id":            userID,
-		"trip_id":            update.TripID,
 		"latitude":           update.Latitude,
 		"longitude":          update.Longitude,
 		"accuracy":           update.Accuracy,
 		"is_sharing_enabled": update.SharingEnabled,
 		"privacy":            update.Privacy,
+	}
+
+	// Only include trip_id if it's not empty
+	if update.TripID != "" {
+		payload["trip_id"] = update.TripID
 	}
 
 	if expiresAt != nil {
@@ -264,7 +269,23 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("Supabase returned status code %d", resp.StatusCode)
+		// Read response body with size limit to avoid huge payloads
+		// Create a limited reader to cap the response size at 8KB
+		limitedReader := &io.LimitedReader{R: resp.Body, N: 8192} // 8KB limit
+		bodyBytes, err := io.ReadAll(limitedReader)
+
+		errorDetails := "could not read response body"
+		if err == nil && len(bodyBytes) > 0 {
+			// Try to format as JSON if possible
+			var prettyJSON bytes.Buffer
+			if json.Indent(&prettyJSON, bodyBytes, "", "  ") == nil {
+				errorDetails = prettyJSON.String()
+			} else {
+				errorDetails = string(bodyBytes)
+			}
+		}
+
+		return fmt.Errorf("Supabase returned status code %d: %s", resp.StatusCode, errorDetails)
 	}
 
 	return nil

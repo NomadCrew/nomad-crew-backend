@@ -50,7 +50,7 @@ func NewLocationHandlerSupabase(
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -107,8 +107,12 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 
 		var sharingExpiresIn time.Duration
 		if locationUpdate.SharingExpiresIn != nil {
-			sharingExpiresIn = *locationUpdate.SharingExpiresIn
-			// Cap at 24 hours for safety
+			secs := *locationUpdate.SharingExpiresIn
+			if secs <= 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "sharingExpiresIn must be > 0"})
+				return
+			}
+			sharingExpiresIn = time.Duration(secs) * time.Second
 			if sharingExpiresIn > 24*time.Hour {
 				sharingExpiresIn = 24 * time.Hour
 			}
@@ -158,7 +162,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {

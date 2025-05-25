@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS supabase_chat_messages (
     trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES auth.users(id),
     message TEXT NOT NULL,
-    reply_to_id UUID REFERENCES supabase_chat_messages(id),
+    reply_to_id UUID REFERENCES supabase_chat_messages(id) ON DELETE SET NULL,
     edited_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -170,10 +170,18 @@ ON supabase_chat_read_receipts FOR SELECT
 TO authenticated
 USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can update their own read receipts"
+CREATE POLICY "Users can insert their own read receipts"
 ON supabase_chat_read_receipts FOR INSERT
 TO authenticated
-WITH CHECK (auth.uid() = user_id);
+WITH CHECK (
+    auth.uid() = user_id AND
+    EXISTS (
+        SELECT 1 FROM trip_memberships tm
+        WHERE tm.trip_id = supabase_chat_read_receipts.trip_id 
+        AND tm.user_id = auth.uid()
+        AND tm.deleted_at IS NULL
+    )
+);
 
 CREATE POLICY "Users can update their own read receipts"
 ON supabase_chat_read_receipts FOR UPDATE
@@ -195,7 +203,7 @@ USING (
     )
 );
 
-CREATE POLICY "Users can update their own presence"
+CREATE POLICY "Users can insert their own presence" ON supabase_user_presence FOR INSERT
 ON supabase_user_presence FOR INSERT
 TO authenticated
 WITH CHECK (auth.uid() = user_id);

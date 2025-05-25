@@ -69,7 +69,7 @@ type TripMemberResponse struct {
 // @Security BearerAuth
 func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -114,7 +114,7 @@ func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	memberUserID := c.Param("userId")
 
 	var req UpdateMemberRoleRequest
@@ -156,7 +156,7 @@ func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 // @Router /trips/{tripId}/members/{userId} [delete]
 // @Security BearerAuth
 func (h *MemberHandler) RemoveMemberHandler(c *gin.Context) {
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 	memberUserID := c.Param("userId")
 
 	err := h.tripModel.RemoveMember(c.Request.Context(), tripID, memberUserID)
@@ -184,7 +184,7 @@ func (h *MemberHandler) RemoveMemberHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	tripID := c.Param("tripId")
+	tripID := c.Param("id")
 
 	memberships, err := h.tripModel.GetTripMembers(c.Request.Context(), tripID)
 	if err != nil {

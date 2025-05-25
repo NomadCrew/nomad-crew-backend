@@ -133,8 +133,8 @@ func main() {
 	locationDB := db.NewLocationDB(dbClient)
 	notificationDB := dbStore.NewPgNotificationStore(dbClient.GetPool())
 
-	// Get Supabase service key from environment variable
-	supabaseServiceKey := os.Getenv("SUPABASE_SERVICE_KEY")
+	// Get Supabase service key from config
+	supabaseServiceKey := cfg.ExternalServices.SupabaseJWTSecret
 	userDB := internalPgStore.NewUserStore(dbClient.GetPool(), cfg.ExternalServices.SupabaseURL, supabaseServiceKey)
 
 	// Initialize Redis client with TLS in production
@@ -281,9 +281,12 @@ func main() {
 		Logger:              log,
 		SupabaseService:     supabaseService,
 		FeatureFlags:        featureFlags,
-		// Supabase Realtime handlers
-		ChatHandlerSupabase:     chatHandlerSupabase,
-		LocationHandlerSupabase: locationHandlerSupabase,
+	}
+
+	// Only add Supabase Realtime handlers when the feature flag is enabled
+	if featureFlags.EnableSupabaseRealtime {
+		routerDeps.ChatHandlerSupabase = chatHandlerSupabase
+		routerDeps.LocationHandlerSupabase = locationHandlerSupabase
 	}
 
 	// Setup Router using the new package

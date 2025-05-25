@@ -18,7 +18,7 @@ import (
 // LocationHandler handles location-related API requests
 type LocationHandler struct {
 	locationService locationService.LocationManagementServiceInterface
-	tripService     TripServiceInterface
+	tripService     types.TripServiceInterface
 	supabase        *services.SupabaseService
 	logger          *zap.Logger
 }
@@ -26,7 +26,7 @@ type LocationHandler struct {
 // NewLocationHandler creates a new LocationHandler
 func NewLocationHandler(
 	locService locationService.LocationManagementServiceInterface,
-	tripService TripServiceInterface,
+	tripService types.TripServiceInterface,
 	supabase *services.SupabaseService,
 	logger *zap.Logger,
 ) *LocationHandler {
@@ -157,12 +157,12 @@ func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
 
 	var req struct {
-		TripID           string        `json:"trip_id,omitempty"`
-		Latitude         float64       `json:"latitude" binding:"required,min=-90,max=90"`
-		Longitude        float64       `json:"longitude" binding:"required,min=-180,max=180"`
-		Accuracy         float32       `json:"accuracy" binding:"required,min=0"`
-		SharingEnabled   bool          `json:"sharing_enabled"`
-		SharingExpiresIn time.Duration `json:"sharing_expires_in,omitempty"`
+		TripID           string  `json:"trip_id,omitempty"`
+		Latitude         float64 `json:"latitude" binding:"required,min=-90,max=90"`
+		Longitude        float64 `json:"longitude" binding:"required,min=-180,max=180"`
+		Accuracy         float32 `json:"accuracy" binding:"required,min=0"`
+		SharingEnabled   bool    `json:"sharing_enabled"`
+		SharingExpiresIn int64   `json:"sharing_expires_in,omitempty"` // Duration in seconds
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -183,10 +183,13 @@ func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
 		}
 	}
 
-	// Validate sharing duration
-	if req.SharingExpiresIn > 24*time.Hour {
-		req.SharingExpiresIn = 24 * time.Hour // Max 24 hours
+	// Validate sharing duration (max 24 hours in seconds)
+	if req.SharingExpiresIn > 86400 { // 24*60*60 seconds
+		req.SharingExpiresIn = 86400 // Max 24 hours
 	}
+
+	// Convert seconds to time.Duration for the service
+	sharingDuration := time.Duration(req.SharingExpiresIn) * time.Second
 
 	err := h.supabase.UpdateLocation(
 		c.Request.Context(),
@@ -197,7 +200,7 @@ func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
 			Longitude:        req.Longitude,
 			Accuracy:         req.Accuracy,
 			SharingEnabled:   req.SharingEnabled,
-			SharingExpiresIn: req.SharingExpiresIn,
+			SharingExpiresIn: sharingDuration,
 		},
 	)
 

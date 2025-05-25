@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -227,8 +228,7 @@ func SetupInvitationTest(t *testing.T) {
 	}
 
 	// Sort files to ensure they run in order (important if names dictate order)
-	// sort.Strings(migrationFiles) // Assuming lexical order is correct (e.g., 001_..., 002_...)
-	// Note: Simple sort might not be robust for complex versioning. Consider a library if needed.
+	sort.Strings(migrationFiles)
 
 	for _, migrationFile := range migrationFiles {
 		baseFileName := filepath.Base(migrationFile)
@@ -326,7 +326,7 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 		Logger:              logger.GetLogger(),
 		MemberHandler:       nil,
 		InvitationHandler:   invitationHandler,
-		FeatureFlags:        config.FeatureFlags{},
+		FeatureFlags:        config.FeatureFlags{EnableSupabaseRealtime: true},
 	}
 
 	jwtVal, err := middleware.NewJWTValidator(testCFG)
