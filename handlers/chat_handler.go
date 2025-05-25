@@ -91,8 +91,8 @@ func (h *ChatHandler) verifyTripMembership(ctx context.Context, tripID, userID s
 func (h *ChatHandler) ListMessages(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get user ID from context
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Get internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	if userID == "" {
 		log.Warn("ListMessages: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -133,8 +133,8 @@ func (h *ChatHandler) ListMessages(c *gin.Context) {
 		Offset: offset,
 	}
 
-	// Create a new context with the userID to ensure it's propagated to service calls
-	ctx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+	// Create a new context with the internal userID to ensure it's propagated to service calls
+	ctx := context.WithValue(c.Request.Context(), middleware.InternalUserIDKey, userID)
 
 	// Get messages from the service - we need to get the first group for the trip
 	// In a real implementation, we would have a more robust way to get the correct group
@@ -185,8 +185,8 @@ func (h *ChatHandler) ListMessages(c *gin.Context) {
 func (h *ChatHandler) SendMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get user ID from context
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Get internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	if userID == "" {
 		log.Warn("SendMessage: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -217,8 +217,8 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	// Get the chat group for this trip
-	// Create a new context with the userID to ensure it's propagated to service calls
-	ctx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+	// Create a new context with the internal userID to ensure it's propagated to service calls
+	ctx := context.WithValue(c.Request.Context(), middleware.InternalUserIDKey, userID)
 
 	groups, err := h.chatService.ListTripGroups(ctx, tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})
 	if err != nil {
@@ -273,8 +273,8 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 func (h *ChatHandler) UpdateMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get user ID from context
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Get internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	if userID == "" {
 		log.Warn("UpdateMessage: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -311,8 +311,8 @@ func (h *ChatHandler) UpdateMessage(c *gin.Context) {
 		return
 	}
 
-	// Create a new context with the userID to ensure it's propagated to service calls
-	ctx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+	// Create a new context with the internal userID to ensure it's propagated to service calls
+	ctx := context.WithValue(c.Request.Context(), middleware.InternalUserIDKey, userID)
 
 	// Update message via service
 	message, err := h.chatService.UpdateMessage(ctx, messageID, userID, req.Content)
@@ -344,8 +344,8 @@ func (h *ChatHandler) UpdateMessage(c *gin.Context) {
 func (h *ChatHandler) DeleteMessage(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get user ID from context
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Get internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	if userID == "" {
 		log.Warn("DeleteMessage: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -374,8 +374,8 @@ func (h *ChatHandler) DeleteMessage(c *gin.Context) {
 		return
 	}
 
-	// Create a new context with the userID to ensure it's propagated to service calls
-	ctx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+	// Create a new context with the internal userID to ensure it's propagated to service calls
+	ctx := context.WithValue(c.Request.Context(), middleware.InternalUserIDKey, userID)
 
 	// Delete message via service
 	err := h.chatService.DeleteMessage(ctx, messageID, userID)
@@ -571,8 +571,8 @@ func (h *ChatHandler) ListReactions(c *gin.Context) {
 func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get user ID from context
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Get internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	if userID == "" {
 		log.Warn("UpdateLastRead: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -608,8 +608,8 @@ func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
 		return
 	}
 
-	// Create a new context with the userID to ensure it's propagated to service calls
-	ctx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+	// Create a new context with the internal userID to ensure it's propagated to service calls
+	ctx := context.WithValue(c.Request.Context(), middleware.InternalUserIDKey, userID)
 
 	// Get the chat group for this trip
 	groups, err := h.chatService.ListTripGroups(ctx, tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})
@@ -655,8 +655,8 @@ func (h *ChatHandler) UpdateLastRead(c *gin.Context) {
 func (h *ChatHandler) ListMembers(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get user ID from context
-	userID := c.GetString(string(middleware.UserIDKey))
+	// Get internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	if userID == "" {
 		log.Warn("ListMembers: User ID not found in context")
 		_ = c.Error(errors.Unauthorized("unauthorized", "User ID missing from context"))
@@ -678,8 +678,8 @@ func (h *ChatHandler) ListMembers(c *gin.Context) {
 		return
 	}
 
-	// Create a new context with the userID to ensure it's propagated to service calls
-	ctx := context.WithValue(c.Request.Context(), middleware.UserIDKey, userID)
+	// Create a new context with the internal userID to ensure it's propagated to service calls
+	ctx := context.WithValue(c.Request.Context(), middleware.InternalUserIDKey, userID)
 
 	// Get the chat group for this trip
 	groups, err := h.chatService.ListTripGroups(ctx, tripID, userID, types.PaginationParams{Limit: 1, Offset: 0})

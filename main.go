@@ -248,6 +248,8 @@ func main() {
 		log.Desugar(),
 	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
+	memberHandler := handlers.NewMemberHandler(tripModel, userDB, eventService)
+	invitationHandler := handlers.NewInvitationHandler(tripModel, userDB, eventService, &cfg.Server)
 
 	// Initialize Supabase Realtime handlers
 	var chatHandlerSupabase *handlers.ChatHandlerSupabase
@@ -271,6 +273,7 @@ func main() {
 	routerDeps := router.Dependencies{
 		Config:              cfg,
 		JWTValidator:        jwtValidator,
+		UserService:         userService, // Add UserService for enhanced auth middleware
 		TripHandler:         tripHandler,
 		TodoHandler:         todoHandler,
 		HealthHandler:       healthHandler,
@@ -278,6 +281,8 @@ func main() {
 		NotificationHandler: notificationHandler,
 		ChatHandler:         chatHandler,
 		UserHandler:         userHandler,
+		MemberHandler:       memberHandler,
+		InvitationHandler:   invitationHandler,
 		Logger:              log,
 		SupabaseService:     supabaseService,
 		FeatureFlags:        featureFlags,

@@ -8,6 +8,7 @@ import (
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -59,19 +60,19 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Security BearerAuth
 // GetCurrentUser returns the currently authenticated user's profile
 func (h *UserHandler) GetCurrentUser(c *gin.Context) {
-	// Get the Supabase user ID from context (set by auth middleware)
-	userID, exists := c.Get("userID")
+	// Get the authenticated user object from enhanced middleware
+	userObj, exists := c.Get(string(middleware.AuthenticatedUserKey))
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
-	supabaseID := userID.(string)
+	user := userObj.(*types.User)
 
-	// Get the user by Supabase ID
-	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseID)
-	if err != nil || user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	// Convert types.User ID to UUID for service compatibility
+	userUUID, err := uuid.Parse(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
 		return
 	}
 
@@ -82,10 +83,10 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 		if err := h.userService.UpdateLastSeen(bgCtx, userID); err != nil {
 			logger.GetLogger().Warnw("Failed to update last seen", "error", err, "userID", userID)
 		}
-	}(user.ID)
+	}(userUUID)
 
 	// Get the user profile (now includes supabase_id)
-	profile, err := h.userService.GetUserProfile(c.Request.Context(), user.ID)
+	profile, err := h.userService.GetUserProfile(c.Request.Context(), userUUID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user profile"})
 		return
@@ -239,15 +240,15 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// Get the user ID from context (set by auth middleware)
-	currentUserID, exists := c.Get("userID")
-	if !exists {
+	// Get the internal user ID from enhanced middleware
+	currentUserID := c.GetString(string(middleware.InternalUserIDKey))
+	if currentUserID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
 	// Parse the current user ID
-	currentID, err := uuid.Parse(currentUserID.(string))
+	currentID, err := uuid.Parse(currentUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid authenticated user ID format"})
 		return
@@ -322,15 +323,15 @@ func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
 		return
 	}
 
-	// Get the user ID from context (set by auth middleware)
-	currentUserID, exists := c.Get("userID")
-	if !exists {
+	// Get the internal user ID from enhanced middleware
+	currentUserID := c.GetString(string(middleware.InternalUserIDKey))
+	if currentUserID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
 	// Parse the current user ID
-	currentID, err := uuid.Parse(currentUserID.(string))
+	currentID, err := uuid.Parse(currentUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid authenticated user ID format"})
 		return
@@ -438,15 +439,15 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 // SyncWithSupabase syncs the current user's local data with Supabase (Route currently disabled)
 func (h *UserHandler) SyncWithSupabase(c *gin.Context) {
-	// Get the user ID from context (set by auth middleware)
-	userID, exists := c.Get("userID")
-	if !exists {
+	// Get the internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.InternalUserIDKey))
+	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
 	// Parse the UUID
-	id, err := uuid.Parse(userID.(string))
+	id, err := uuid.Parse(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
 		return
