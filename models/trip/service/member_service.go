@@ -8,23 +8,27 @@ import (
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 // TripMemberService handles operations related to trip members
 type TripMemberService struct {
-	store          istore.TripStore
-	eventPublisher types.EventPublisher
+	store           istore.TripStore
+	eventPublisher  types.EventPublisher
+	supabaseService *services.SupabaseService
 }
 
 // NewTripMemberService creates a new trip member service
 func NewTripMemberService(
 	store istore.TripStore,
 	eventPublisher types.EventPublisher,
+	supabaseService *services.SupabaseService,
 ) *TripMemberService {
 	return &TripMemberService{
-		store:          store,
-		eventPublisher: eventPublisher,
+		store:           store,
+		eventPublisher:  eventPublisher,
+		supabaseService: supabaseService,
 	}
 }
 
@@ -32,6 +36,28 @@ func NewTripMemberService(
 func (s *TripMemberService) AddMember(ctx context.Context, membership *types.TripMembership) error {
 	if err := s.store.AddMember(ctx, membership); err != nil {
 		return err
+	}
+
+	// Sync membership to Supabase for RLS validation
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		syncData := services.MembershipSyncData{
+			TripID: membership.TripID,
+			UserID: membership.UserID,
+			Role:   string(membership.Role),
+			Status: string(membership.Status),
+		}
+
+		// Sync asynchronously to avoid blocking member addition
+		go func() {
+			syncCtx := context.Background()
+			if err := s.supabaseService.SyncMembership(syncCtx, syncData); err != nil {
+				log := logger.GetLogger()
+				log.Errorw("Failed to sync trip membership to Supabase", "error", err, "tripID", membership.TripID, "userID", membership.UserID)
+			} else {
+				log := logger.GetLogger()
+				log.Infow("Successfully synced trip membership to Supabase", "tripID", membership.TripID, "userID", membership.UserID)
+			}
+		}()
 	}
 
 	// Publish event for member added
@@ -62,6 +88,28 @@ func (s *TripMemberService) UpdateMemberRole(ctx context.Context, tripID, member
 		return nil, err
 	}
 
+	// Sync updated membership to Supabase for RLS validation
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		syncData := services.MembershipSyncData{
+			TripID: tripID,
+			UserID: memberID,
+			Role:   string(newRole),
+			Status: "active", // Assume active status for role updates
+		}
+
+		// Sync asynchronously to avoid blocking role update
+		go func() {
+			syncCtx := context.Background()
+			if err := s.supabaseService.SyncMembership(syncCtx, syncData); err != nil {
+				log := logger.GetLogger()
+				log.Errorw("Failed to sync updated trip membership to Supabase", "error", err, "tripID", tripID, "userID", memberID)
+			} else {
+				log := logger.GetLogger()
+				log.Infow("Successfully synced updated trip membership to Supabase", "tripID", tripID, "userID", memberID)
+			}
+		}()
+	}
+
 	// Publish event for role change
 	s.publishEvent(ctx, EventTypeMemberRoleChanged, tripID, memberID, map[string]interface{}{
 		"old_role": oldRole,
@@ -90,6 +138,21 @@ func (s *TripMemberService) RemoveMember(ctx context.Context, tripID, userID str
 	// Remove the member
 	if err := s.store.RemoveMember(ctx, tripID, userID); err != nil {
 		return err
+	}
+
+	// Remove membership from Supabase
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		// Sync asynchronously to avoid blocking member removal
+		go func() {
+			syncCtx := context.Background()
+			if err := s.supabaseService.DeleteMembership(syncCtx, tripID, userID); err != nil {
+				log := logger.GetLogger()
+				log.Errorw("Failed to delete trip membership from Supabase", "error", err, "tripID", tripID, "userID", userID)
+			} else {
+				log := logger.GetLogger()
+				log.Infow("Successfully deleted trip membership from Supabase", "tripID", tripID, "userID", userID)
+			}
+		}()
 	}
 
 	// Publish event for member removed

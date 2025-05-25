@@ -9,14 +9,16 @@ import (
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
 // TripManagementService handles core trip operations
 type TripManagementService struct {
-	store          istore.TripStore
-	eventPublisher types.EventPublisher
-	weatherSvc     types.WeatherServiceInterface
+	store           istore.TripStore
+	eventPublisher  types.EventPublisher
+	weatherSvc      types.WeatherServiceInterface
+	supabaseService *services.SupabaseService
 }
 
 // NewTripManagementService creates a new trip management service
@@ -24,11 +26,13 @@ func NewTripManagementService(
 	store istore.TripStore,
 	eventPublisher types.EventPublisher,
 	weatherSvc types.WeatherServiceInterface,
+	supabaseService *services.SupabaseService,
 ) *TripManagementService {
 	return &TripManagementService{
-		store:          store,
-		eventPublisher: eventPublisher,
-		weatherSvc:     weatherSvc,
+		store:           store,
+		eventPublisher:  eventPublisher,
+		weatherSvc:      weatherSvc,
+		supabaseService: supabaseService,
 	}
 }
 
@@ -99,6 +103,32 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 			log.Errorw("Failed to trigger weather update during trip creation", "error", err, "tripID", trip.ID)
 			// Decide if this error should be returned or just logged. For now, just logging.
 		}
+	}
+
+	// Sync trip data to Supabase for RLS validation
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		syncData := services.TripSyncData{
+			ID:   trip.ID,
+			Name: trip.Name,
+			CreatedBy: func() string {
+				if trip.CreatedBy != nil {
+					return *trip.CreatedBy
+				}
+				return ""
+			}(),
+		}
+
+		// Sync asynchronously to avoid blocking trip creation
+		go func() {
+			syncCtx := context.Background()
+			if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
+				log := logger.GetLogger()
+				log.Errorw("Failed to sync trip to Supabase", "error", err, "tripID", trip.ID)
+			} else {
+				log := logger.GetLogger()
+				log.Infow("Successfully synced trip to Supabase", "tripID", trip.ID)
+			}
+		}()
 	}
 
 	// Return the created trip object
@@ -235,6 +265,32 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 		}
 	}
 
+	// Sync trip data to Supabase if name changed
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() && updateData.Name != nil {
+		syncData := services.TripSyncData{
+			ID:   updatedTrip.ID,
+			Name: updatedTrip.Name,
+			CreatedBy: func() string {
+				if updatedTrip.CreatedBy != nil {
+					return *updatedTrip.CreatedBy
+				}
+				return ""
+			}(),
+		}
+
+		// Sync asynchronously to avoid blocking trip update
+		go func() {
+			syncCtx := context.Background()
+			if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
+				log := logger.GetLogger()
+				log.Errorw("Failed to sync updated trip to Supabase", "error", err, "tripID", id)
+			} else {
+				log := logger.GetLogger()
+				log.Infow("Successfully synced updated trip to Supabase", "tripID", id)
+			}
+		}()
+	}
+
 	// Publish event
 	// Use the userID from the parameter for the event
 	err = events.PublishEventWithContext(
@@ -267,6 +323,21 @@ func (s *TripManagementService) DeleteTrip(ctx context.Context, id string) error
 	// Delete the trip (using soft delete)
 	if err := s.store.SoftDeleteTrip(ctx, id); err != nil {
 		return err
+	}
+
+	// Remove trip from Supabase
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		// Sync asynchronously to avoid blocking trip deletion
+		go func() {
+			syncCtx := context.Background()
+			if err := s.supabaseService.DeleteTrip(syncCtx, id); err != nil {
+				log := logger.GetLogger()
+				log.Errorw("Failed to delete trip from Supabase", "error", err, "tripID", id)
+			} else {
+				log := logger.GetLogger()
+				log.Infow("Successfully deleted trip from Supabase", "tripID", id)
+			}
+		}()
 	}
 
 	// Publish event

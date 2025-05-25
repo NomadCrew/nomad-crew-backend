@@ -212,7 +212,7 @@ func main() {
 	// Use the internal service package's ChatService implementation
 	chatService := internalService.NewChatService(chatStore, tripStore, eventService)
 
-	tripMemberService := trip_service.NewTripMemberService(tripStore, eventService)
+	tripMemberService := trip_service.NewTripMemberService(tripStore, eventService, supabaseService)
 	chatHandler := handlers.NewChatHandler(
 		chatService,
 		tripMemberService,
@@ -231,11 +231,12 @@ func main() {
 		supabaseClient,
 		&cfg.Server,
 		emailService,
+		supabaseService,
 	)
 	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
 
 	// Initialize User Service and Handler
-	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret)
+	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret, supabaseService)
 	userHandler := handlers.NewUserHandler(userService)
 
 	// Initialize Pexels client

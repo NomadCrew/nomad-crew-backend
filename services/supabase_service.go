@@ -62,6 +62,34 @@ type LocationUpdate struct {
 	Privacy          string        `json:"privacy,omitempty"`
 }
 
+// Sync data structures for minimal data synchronization
+type UserSyncData struct {
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+}
+
+type TripSyncData struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedBy string `json:"created_by"`
+}
+
+// TripMembershipSyncData represents the minimal membership data needed for Supabase RLS
+type TripMembershipSyncData struct {
+	TripID string `json:"trip_id"`
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	Status string `json:"status"`
+}
+
+type MembershipSyncData struct {
+	TripID string `json:"trip_id"`
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	Status string `json:"status"`
+}
+
 // OrderOpts contains options for ordering query results
 type OrderOpts struct {
 	Ascending bool
@@ -99,6 +127,192 @@ func NewSupabaseService(config SupabaseServiceConfig) *SupabaseService {
 // IsEnabled returns whether the Supabase integration is enabled
 func (s *SupabaseService) IsEnabled() bool {
 	return s.isEnabled
+}
+
+// Sync Methods for RLS Support
+
+// SyncUser syncs minimal user data to Supabase for RLS validation
+func (s *SupabaseService) SyncUser(ctx context.Context, userData UserSyncData) error {
+	if !s.isEnabled {
+		s.logger.Debug("Supabase sync disabled, skipping user sync")
+		return nil
+	}
+
+	s.logger.Infow("Syncing user to Supabase", "userID", userData.ID, "username", userData.Username)
+
+	payload := map[string]interface{}{
+		"id":       userData.ID,
+		"email":    userData.Email,
+		"username": userData.Username,
+	}
+
+	return s.upsertToSupabase(ctx, "users", payload, "id")
+}
+
+// SyncTrip syncs minimal trip data to Supabase for RLS validation
+func (s *SupabaseService) SyncTrip(ctx context.Context, tripData TripSyncData) error {
+	if !s.isEnabled {
+		s.logger.Debug("Supabase sync disabled, skipping trip sync")
+		return nil
+	}
+
+	s.logger.Infow("Syncing trip to Supabase", "tripID", tripData.ID, "name", tripData.Name)
+
+	payload := map[string]interface{}{
+		"id":         tripData.ID,
+		"name":       tripData.Name,
+		"created_by": tripData.CreatedBy,
+	}
+
+	return s.upsertToSupabase(ctx, "trips", payload, "id")
+}
+
+// SyncMembership syncs trip membership data to Supabase for RLS validation
+func (s *SupabaseService) SyncMembership(ctx context.Context, membershipData MembershipSyncData) error {
+	if !s.isEnabled {
+		s.logger.Debug("Supabase sync disabled, skipping membership sync")
+		return nil
+	}
+
+	s.logger.Infow("Syncing membership to Supabase",
+		"tripID", membershipData.TripID,
+		"userID", membershipData.UserID,
+		"role", membershipData.Role)
+
+	payload := map[string]interface{}{
+		"trip_id": membershipData.TripID,
+		"user_id": membershipData.UserID,
+		"role":    membershipData.Role,
+		"status":  membershipData.Status,
+	}
+
+	return s.upsertToSupabase(ctx, "trip_memberships", payload, "trip_id,user_id")
+}
+
+// DeleteTrip removes trip data from Supabase
+func (s *SupabaseService) DeleteTrip(ctx context.Context, tripID string) error {
+	if !s.isEnabled {
+		s.logger.Debug("Supabase sync disabled, skipping trip deletion")
+		return nil
+	}
+
+	s.logger.Infow("Deleting trip from Supabase", "tripID", tripID)
+
+	return s.deleteFromSupabase(ctx, "trips", "id", tripID)
+}
+
+// DeleteMembership removes membership data from Supabase
+func (s *SupabaseService) DeleteMembership(ctx context.Context, tripID, userID string) error {
+	if !s.isEnabled {
+		s.logger.Debug("Supabase sync disabled, skipping membership deletion")
+		return nil
+	}
+
+	s.logger.Infow("Deleting membership from Supabase", "tripID", tripID, "userID", userID)
+
+	deleteURL := fmt.Sprintf("%s/rest/v1/trip_memberships?trip_id=eq.%s&user_id=eq.%s",
+		s.supabaseURL, url.QueryEscape(tripID), url.QueryEscape(userID))
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create DELETE request: %w", err)
+	}
+
+	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send DELETE request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		s.logger.Errorw("Failed to delete membership from Supabase",
+			"status", resp.StatusCode,
+			"response", string(body),
+			"tripID", tripID,
+			"userID", userID)
+		return fmt.Errorf("failed to delete membership: status %d", resp.StatusCode)
+	}
+
+	s.logger.Infow("Successfully deleted membership from Supabase", "tripID", tripID, "userID", userID)
+	return nil
+}
+
+// Helper method for upsert operations
+func (s *SupabaseService) upsertToSupabase(ctx context.Context, table string, data map[string]interface{}, onConflict string) error {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %w", err)
+	}
+
+	upsertURL := fmt.Sprintf("%s/rest/v1/%s", s.supabaseURL, table)
+	req, err := http.NewRequestWithContext(ctx, "POST", upsertURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Prefer", "resolution=merge-duplicates")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		s.logger.Errorw("Failed to upsert to Supabase",
+			"table", table,
+			"status", resp.StatusCode,
+			"response", string(body),
+			"data", string(jsonData))
+		return fmt.Errorf("failed to upsert to %s: status %d", table, resp.StatusCode)
+	}
+
+	s.logger.Debugw("Successfully synced to Supabase", "table", table, "data", string(jsonData))
+	return nil
+}
+
+// Helper method for delete operations
+func (s *SupabaseService) deleteFromSupabase(ctx context.Context, table, column, value string) error {
+	deleteURL := fmt.Sprintf("%s/rest/v1/%s?%s=eq.%s",
+		s.supabaseURL, table, column, url.QueryEscape(value))
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create DELETE request: %w", err)
+	}
+
+	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send DELETE request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		s.logger.Errorw("Failed to delete from Supabase",
+			"table", table,
+			"status", resp.StatusCode,
+			"response", string(body),
+			"column", column,
+			"value", value)
+		return fmt.Errorf("failed to delete from %s: status %d", table, resp.StatusCode)
+	}
+
+	s.logger.Debugw("Successfully deleted from Supabase", "table", table, "column", column, "value", value)
+	return nil
 }
 
 // UpdateLocation updates a user's location in Supabase
