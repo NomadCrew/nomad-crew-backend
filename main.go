@@ -256,23 +256,17 @@ func main() {
 	memberHandler := handlers.NewMemberHandler(tripModel, userDB, eventService)
 	invitationHandler := handlers.NewInvitationHandler(tripModel, userDB, eventService, &cfg.Server)
 
-	// Initialize Supabase Realtime handlers
-	var chatHandlerSupabase *handlers.ChatHandlerSupabase
-	var locationHandlerSupabase *handlers.LocationHandlerSupabase
-
-	// Initialize Supabase handlers when feature flag is enabled
-	if featureFlags.EnableSupabaseRealtime {
-		chatHandlerSupabase = handlers.NewChatHandlerSupabase(
-			tripMemberService,
-			supabaseService,
-			featureFlags,
-		)
-		locationHandlerSupabase = handlers.NewLocationHandlerSupabase(
-			tripMemberService,
-			supabaseService,
-			featureFlags,
-		)
-	}
+	// Initialize Supabase Realtime handlers (always enabled in development)
+	chatHandlerSupabase := handlers.NewChatHandlerSupabase(
+		tripMemberService,
+		supabaseService,
+		featureFlags,
+	)
+	locationHandlerSupabase := handlers.NewLocationHandlerSupabase(
+		tripMemberService,
+		supabaseService,
+		featureFlags,
+	)
 
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
@@ -290,14 +284,11 @@ func main() {
 		InvitationHandler:   invitationHandler,
 		Logger:              log,
 		SupabaseService:     supabaseService,
-		FeatureFlags:        featureFlags,
 	}
 
-	// Only add Supabase Realtime handlers when the feature flag is enabled
-	if featureFlags.EnableSupabaseRealtime {
-		routerDeps.ChatHandlerSupabase = chatHandlerSupabase
-		routerDeps.LocationHandlerSupabase = locationHandlerSupabase
-	}
+	// Add Supabase Realtime handlers (always enabled in development)
+	routerDeps.ChatHandlerSupabase = chatHandlerSupabase
+	routerDeps.LocationHandlerSupabase = locationHandlerSupabase
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)

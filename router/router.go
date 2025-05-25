@@ -32,7 +32,6 @@ type Dependencies struct {
 	MemberHandler       *handlers.MemberHandler
 	InvitationHandler   *handlers.InvitationHandler
 	SupabaseService     *services.SupabaseService
-	FeatureFlags        config.FeatureFlags
 	// Supabase Realtime handlers
 	ChatHandlerSupabase     *handlers.ChatHandlerSupabase
 	LocationHandlerSupabase *handlers.LocationHandlerSupabase
@@ -164,30 +163,42 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					// invitationRoutes.DELETE("/:invitationId", deps.InvitationHandler.DeleteInvitationHandler)
 				}
 
-				// Trip Location Routes - conditionally registered based on feature flag
+				// Trip Location Routes
 				tripLocationRoutes := tripRoutes.Group("/:id/locations")
 				{
-					if deps.FeatureFlags.EnableSupabaseRealtime && deps.LocationHandlerSupabase != nil {
-						// Supabase versions
+					if deps.LocationHandlerSupabase != nil {
+						// Supabase versions (default)
 						tripLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)         // Handles PUT for location updates
 						tripLocationRoutes.GET("", deps.LocationHandlerSupabase.GetTripMemberLocations) // Handles GET for member locations
 					} else if deps.LocationHandler != nil {
-						// Non-Supabase versions
+						// Fallback to non-Supabase versions
 						tripLocationRoutes.POST("", deps.LocationHandler.UpdateLocationHandler)        // Handles POST for location updates
 						tripLocationRoutes.GET("", deps.LocationHandler.GetTripMemberLocationsHandler) // Handles GET for member locations
 					}
 				}
 
-				// Trip Chat Routes - conditionally registered based on feature flag
+				// Trip Chat Routes
 				chatRoutes := tripRoutes.Group("/:id/chat")
 				{
-					// New Supabase Realtime endpoints - only register if SupabaseRealtime is enabled
-					if deps.FeatureFlags.EnableSupabaseRealtime && deps.ChatHandlerSupabase != nil {
+					// Supabase Realtime endpoints (default)
+					if deps.ChatHandlerSupabase != nil {
 						chatRoutes.POST("/messages", deps.ChatHandlerSupabase.SendMessage)
 						chatRoutes.GET("/messages", deps.ChatHandlerSupabase.GetMessages)
 						chatRoutes.PUT("/messages/read", deps.ChatHandlerSupabase.UpdateReadStatus)
 						chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandlerSupabase.AddReaction)
 						chatRoutes.DELETE("/messages/:messageId/reactions/:emoji", deps.ChatHandlerSupabase.RemoveReaction)
+					}
+				}
+
+				// Trip Todo Routes
+				todoRoutes := tripRoutes.Group("/:id/todos")
+				{
+					if deps.TodoHandler != nil {
+						todoRoutes.GET("", deps.TodoHandler.ListTodosHandler)
+						todoRoutes.POST("", deps.TodoHandler.CreateTodoHandler)
+						todoRoutes.GET("/:todoID", deps.TodoHandler.GetTodoHandler)
+						todoRoutes.PUT("/:todoID", deps.TodoHandler.UpdateTodoHandler)
+						todoRoutes.DELETE("/:todoID", deps.TodoHandler.DeleteTodoHandler)
 					}
 				}
 			}

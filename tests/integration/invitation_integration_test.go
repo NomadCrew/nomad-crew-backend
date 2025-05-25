@@ -326,7 +326,6 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 		Logger:              logger.GetLogger(),
 		MemberHandler:       nil,
 		InvitationHandler:   invitationHandler,
-		FeatureFlags:        config.FeatureFlags{EnableSupabaseRealtime: true},
 	}
 
 	jwtVal, err := middleware.NewJWTValidator(testCFG)
