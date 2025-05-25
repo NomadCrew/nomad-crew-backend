@@ -7,6 +7,7 @@ import (
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/service"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	appstore "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
@@ -32,6 +33,7 @@ func NewTripModel(
 	supabaseClient *supabase.Client,
 	config *config.ServerConfig,
 	emailSvc types.EmailService,
+	supabaseService *services.SupabaseService,
 ) *TripModel {
 	// Create the coordinator
 	var internalTripStore istore.TripStore = tripStoreApp
@@ -46,6 +48,7 @@ func NewTripModel(
 		supabaseClient,
 		config,
 		emailSvc,
+		supabaseService,
 	)
 
 	return &TripModel{

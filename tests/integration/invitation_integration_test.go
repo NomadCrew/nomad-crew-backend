@@ -304,11 +304,12 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 		supaClient,
 		&testCFG.Server,
 		emailService,
+		nil, // supabaseService - not needed for integration tests
 	)
 
 	// UserHandler expects user_service.UserServiceInterface
 	// Create an actual user service instance for integration tests
-	userService := user_service.NewUserService(userStore, testCFG.ExternalServices.SupabaseJWTSecret)
+	userService := user_service.NewUserService(userStore, testCFG.ExternalServices.SupabaseJWTSecret, nil)
 
 	invitationHandler := handlers.NewInvitationHandler(tripModel, userStore, eventService, &testCFG.Server)
 	userHandler := handlers.NewUserHandler(userService) // Corrected: Pass UserService

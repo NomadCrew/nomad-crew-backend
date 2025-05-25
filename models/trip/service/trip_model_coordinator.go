@@ -8,6 +8,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
 )
@@ -38,6 +39,7 @@ func NewTripModelCoordinator(
 	supabaseClient *supabase.Client,
 	config *config.ServerConfig,
 	emailSvc types.EmailService, // Assuming EmailService is an interface
+	supabaseService *services.SupabaseService,
 ) *TripModelCoordinator {
 	// Create the command context for backward compatibility
 	cmdCtx := &interfaces.CommandContext{
@@ -53,8 +55,8 @@ func NewTripModelCoordinator(
 	}
 
 	// Create the concrete service instances
-	tripServiceInstance := NewTripManagementService(tripStore, eventBus, weatherSvc)
-	memberServiceInstance := NewTripMemberService(tripStore, eventBus)
+	tripServiceInstance := NewTripManagementService(tripStore, eventBus, weatherSvc, supabaseService)
+	memberServiceInstance := NewTripMemberService(tripStore, eventBus, supabaseService)
 	invitationServiceInstance := NewInvitationService(tripStore, emailSvc, supabaseClient, config.FrontendURL, eventBus)
 	chatServiceInstance := NewTripChatService(chatStore, tripStore, eventBus)
 

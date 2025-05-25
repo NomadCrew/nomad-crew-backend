@@ -274,6 +274,7 @@ func (suite *TripServiceTestSuite) SetupTest() {
 		suite.mockStore,
 		suite.mockEventPublisher,
 		suite.mockWeatherSvc,
+		nil, // supabaseService - not needed for unit tests
 	)
 
 	suite.ctx = context.Background()

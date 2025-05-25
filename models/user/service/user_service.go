@@ -11,6 +11,7 @@ import (
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	appstore "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
@@ -19,15 +20,17 @@ import (
 
 // UserService manages user operations
 type UserService struct {
-	userStore istore.UserStore
-	jwtSecret string
+	userStore       istore.UserStore
+	jwtSecret       string
+	supabaseService *services.SupabaseService
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userStore istore.UserStore, jwtSecret string) *UserService {
+func NewUserService(userStore istore.UserStore, jwtSecret string, supabaseService *services.SupabaseService) *UserService {
 	return &UserService{
-		userStore: userStore,
-		jwtSecret: jwtSecret,
+		userStore:       userStore,
+		jwtSecret:       jwtSecret,
+		supabaseService: supabaseService,
 	}
 }
 
@@ -258,6 +261,26 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 	}
 
 	log.Infow("User created successfully in store", "userID", createdUUID)
+
+	// Sync user data to Supabase for RLS validation
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		syncData := services.UserSyncData{
+			ID:       user.SupabaseID, // Use Supabase ID for sync
+			Email:    user.Email,
+			Username: user.Username,
+		}
+
+		// Sync asynchronously to avoid blocking user creation
+		go func() {
+			syncCtx := context.Background() // Use background context for async operation
+			if err := s.supabaseService.SyncUser(syncCtx, syncData); err != nil {
+				log.Errorw("Failed to sync user to Supabase", "error", err, "userID", createdUUID, "supabaseID", user.SupabaseID)
+			} else {
+				log.Infow("Successfully synced user to Supabase", "userID", createdUUID, "supabaseID", user.SupabaseID)
+			}
+		}()
+	}
+
 	return createdUUID, nil
 }
 
@@ -325,6 +348,33 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, updates mode
 	}
 
 	log.Infow("User updated successfully via store", "userID", id)
+
+	// Sync user data to Supabase if email or username changed
+	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		shouldSync := false
+		if updates.Username != nil || updates.FirstName != nil || updates.LastName != nil {
+			shouldSync = true
+		}
+
+		if shouldSync && updatedModelUser.SupabaseID != "" {
+			syncData := services.UserSyncData{
+				ID:       updatedModelUser.SupabaseID,
+				Email:    updatedModelUser.Email,
+				Username: updatedModelUser.Username,
+			}
+
+			// Sync asynchronously to avoid blocking user update
+			go func() {
+				syncCtx := context.Background()
+				if err := s.supabaseService.SyncUser(syncCtx, syncData); err != nil {
+					log.Errorw("Failed to sync updated user to Supabase", "error", err, "userID", id, "supabaseID", updatedModelUser.SupabaseID)
+				} else {
+					log.Infow("Successfully synced updated user to Supabase", "userID", id, "supabaseID", updatedModelUser.SupabaseID)
+				}
+			}()
+		}
+	}
+
 	return updatedModelUser, nil
 }
 
@@ -702,6 +752,7 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 		if err != nil {
 			return nil, err
 		}
+		// CreateUser already handles sync, so just return the profile
 		return s.GetUserProfile(ctx, id)
 	}
 
@@ -717,6 +768,27 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 		_, err := s.userStore.UpdateUser(ctx, typesUser.ID, updates)
 		if err != nil {
 			return nil, err
+		}
+
+		// Sync updated user data to Supabase for RLS validation
+		if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+			syncData := services.UserSyncData{
+				ID:       claims.UserID,
+				Email:    claims.Email,
+				Username: username,
+			}
+
+			// Sync asynchronously to avoid blocking onboarding
+			go func() {
+				syncCtx := context.Background()
+				if err := s.supabaseService.SyncUser(syncCtx, syncData); err != nil {
+					log := logger.GetLogger()
+					log.Errorw("Failed to sync onboarded user to Supabase", "error", err, "supabaseID", claims.UserID)
+				} else {
+					log := logger.GetLogger()
+					log.Infow("Successfully synced onboarded user to Supabase", "supabaseID", claims.UserID)
+				}
+			}()
 		}
 	}
 	return s.GetUserProfile(ctx, uuid.MustParse(typesUser.ID))
