@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
@@ -265,8 +266,13 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 		}
 	}
 
-	// Sync trip data to Supabase if name changed
-	if s.supabaseService != nil && s.supabaseService.IsEnabled() && updateData.Name != nil {
+	// Sync trip data to Supabase if relevant fields changed
+	shouldSync := s.supabaseService != nil && s.supabaseService.IsEnabled() &&
+		(updateData.Name != nil || updateData.Status != nil ||
+			updateData.DestinationLatitude != nil || updateData.DestinationLongitude != nil ||
+			updateData.DestinationAddress != nil)
+
+	if shouldSync {
 		syncData := services.TripSyncData{
 			ID:   updatedTrip.ID,
 			Name: updatedTrip.Name,
@@ -279,8 +285,11 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 		}
 
 		// Sync asynchronously to avoid blocking trip update
+		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx := context.Background()
+			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
 			if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
 				log := logger.GetLogger()
 				log.Errorw("Failed to sync updated trip to Supabase", "error", err, "tripID", id)
@@ -328,8 +337,11 @@ func (s *TripManagementService) DeleteTrip(ctx context.Context, id string) error
 	// Remove trip from Supabase
 	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
 		// Sync asynchronously to avoid blocking trip deletion
+		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx := context.Background()
+			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
 			if err := s.supabaseService.DeleteTrip(syncCtx, id); err != nil {
 				log := logger.GetLogger()
 				log.Errorw("Failed to delete trip from Supabase", "error", err, "tripID", id)

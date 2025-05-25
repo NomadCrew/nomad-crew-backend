@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
@@ -48,8 +49,11 @@ func (s *TripMemberService) AddMember(ctx context.Context, membership *types.Tri
 		}
 
 		// Sync asynchronously to avoid blocking member addition
+		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx := context.Background()
+			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
 			if err := s.supabaseService.SyncMembership(syncCtx, syncData); err != nil {
 				log := logger.GetLogger()
 				log.Errorw("Failed to sync trip membership to Supabase", "error", err, "tripID", membership.TripID, "userID", membership.UserID)
@@ -90,16 +94,26 @@ func (s *TripMemberService) UpdateMemberRole(ctx context.Context, tripID, member
 
 	// Sync updated membership to Supabase for RLS validation
 	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
+		// Get current membership to retrieve the actual status
+		currentMembership, err := s.GetTripMember(ctx, tripID, memberID)
+		membershipStatus := string(types.MembershipStatusActive) // Default fallback
+		if err == nil && currentMembership != nil {
+			membershipStatus = string(currentMembership.Status)
+		}
+
 		syncData := services.MembershipSyncData{
 			TripID: tripID,
 			UserID: memberID,
 			Role:   string(newRole),
-			Status: "active", // Assume active status for role updates
+			Status: membershipStatus,
 		}
 
 		// Sync asynchronously to avoid blocking role update
+		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx := context.Background()
+			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
 			if err := s.supabaseService.SyncMembership(syncCtx, syncData); err != nil {
 				log := logger.GetLogger()
 				log.Errorw("Failed to sync updated trip membership to Supabase", "error", err, "tripID", tripID, "userID", memberID)
@@ -143,8 +157,11 @@ func (s *TripMemberService) RemoveMember(ctx context.Context, tripID, userID str
 	// Remove membership from Supabase
 	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
 		// Sync asynchronously to avoid blocking member removal
+		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx := context.Background()
+			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
 			if err := s.supabaseService.DeleteMembership(syncCtx, tripID, userID); err != nil {
 				log := logger.GetLogger()
 				log.Errorw("Failed to delete trip membership from Supabase", "error", err, "tripID", tripID, "userID", userID)

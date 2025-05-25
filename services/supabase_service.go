@@ -210,36 +210,11 @@ func (s *SupabaseService) DeleteMembership(ctx context.Context, tripID, userID s
 
 	s.logger.Infow("Deleting membership from Supabase", "tripID", tripID, "userID", userID)
 
-	deleteURL := fmt.Sprintf("%s/rest/v1/trip_memberships?trip_id=eq.%s&user_id=eq.%s",
-		s.supabaseURL, url.QueryEscape(tripID), url.QueryEscape(userID))
-
-	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create DELETE request: %w", err)
-	}
-
-	req.Header.Set("apikey", s.supabaseKey)
-	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send DELETE request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		s.logger.Errorw("Failed to delete membership from Supabase",
-			"status", resp.StatusCode,
-			"response", string(body),
-			"tripID", tripID,
-			"userID", userID)
-		return fmt.Errorf("failed to delete membership: status %d", resp.StatusCode)
-	}
-
-	s.logger.Infow("Successfully deleted membership from Supabase", "tripID", tripID, "userID", userID)
-	return nil
+	// Use the enhanced deleteFromSupabase method with multiple filters
+	return s.deleteFromSupabaseWithFilters(ctx, "trip_memberships", map[string]string{
+		"trip_id": tripID,
+		"user_id": userID,
+	})
 }
 
 // Helper method for upsert operations
@@ -249,7 +224,14 @@ func (s *SupabaseService) upsertToSupabase(ctx context.Context, table string, da
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
+	// Build URL with on_conflict parameter if provided
 	upsertURL := fmt.Sprintf("%s/rest/v1/%s", s.supabaseURL, table)
+	if onConflict != "" {
+		params := url.Values{}
+		params.Add("on_conflict", onConflict)
+		upsertURL += "?" + params.Encode()
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", upsertURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -272,18 +254,31 @@ func (s *SupabaseService) upsertToSupabase(ctx context.Context, table string, da
 			"table", table,
 			"status", resp.StatusCode,
 			"response", string(body),
-			"data", string(jsonData))
+			"data", string(jsonData),
+			"onConflict", onConflict)
 		return fmt.Errorf("failed to upsert to %s: status %d", table, resp.StatusCode)
 	}
 
-	s.logger.Debugw("Successfully synced to Supabase", "table", table, "data", string(jsonData))
+	s.logger.Debugw("Successfully synced to Supabase", "table", table, "data", string(jsonData), "onConflict", onConflict)
 	return nil
 }
 
 // Helper method for delete operations
 func (s *SupabaseService) deleteFromSupabase(ctx context.Context, table, column, value string) error {
-	deleteURL := fmt.Sprintf("%s/rest/v1/%s?%s=eq.%s",
-		s.supabaseURL, table, column, url.QueryEscape(value))
+	return s.deleteFromSupabaseWithFilters(ctx, table, map[string]string{
+		column: value,
+	})
+}
+
+// Helper method for delete operations with multiple filters
+func (s *SupabaseService) deleteFromSupabaseWithFilters(ctx context.Context, table string, filters map[string]string) error {
+	// Build query parameters
+	params := url.Values{}
+	for column, value := range filters {
+		params.Add(column, "eq."+value)
+	}
+
+	deleteURL := fmt.Sprintf("%s/rest/v1/%s?%s", s.supabaseURL, table, params.Encode())
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
 	if err != nil {
@@ -306,12 +301,11 @@ func (s *SupabaseService) deleteFromSupabase(ctx context.Context, table, column,
 			"table", table,
 			"status", resp.StatusCode,
 			"response", string(body),
-			"column", column,
-			"value", value)
+			"filters", filters)
 		return fmt.Errorf("failed to delete from %s: status %d", table, resp.StatusCode)
 	}
 
-	s.logger.Debugw("Successfully deleted from Supabase", "table", table, "column", column, "value", value)
+	s.logger.Debugw("Successfully deleted from Supabase", "table", table, "filters", filters)
 	return nil
 }
 
