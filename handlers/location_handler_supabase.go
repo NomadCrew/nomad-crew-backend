@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/services"
@@ -18,20 +17,17 @@ type LocationHandlerSupabase struct {
 	tripService     TripServiceInterface
 	supabaseService *services.SupabaseService
 	logger          *zap.SugaredLogger
-	featureFlags    config.FeatureFlags
 }
 
 // NewLocationHandlerSupabase creates a new instance of LocationHandlerSupabase
 func NewLocationHandlerSupabase(
 	tripService TripServiceInterface,
 	supabaseService *services.SupabaseService,
-	featureFlags config.FeatureFlags,
 ) *LocationHandlerSupabase {
 	return &LocationHandlerSupabase{
 		tripService:     tripService,
 		supabaseService: supabaseService,
 		logger:          logger.GetLogger(),
-		featureFlags:    featureFlags,
 	}
 }
 
@@ -92,60 +88,51 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 		return
 	}
 
-	// Check if we should use Supabase
-	if h.featureFlags.EnableSupabaseRealtime && h.supabaseService != nil {
-		// Set default values for optional fields
-		privacy := string(types.LocationPrivacyApproximate)
-		if locationUpdate.Privacy != nil {
-			privacy = string(*locationUpdate.Privacy)
-		}
+	// Set default values for optional fields
+	privacy := string(types.LocationPrivacyApproximate)
+	if locationUpdate.Privacy != nil {
+		privacy = string(*locationUpdate.Privacy)
+	}
 
-		isSharingEnabled := true // default to sharing
-		if locationUpdate.IsSharingEnabled != nil {
-			isSharingEnabled = *locationUpdate.IsSharingEnabled
-		}
+	isSharingEnabled := true // default to sharing
+	if locationUpdate.IsSharingEnabled != nil {
+		isSharingEnabled = *locationUpdate.IsSharingEnabled
+	}
 
-		var sharingExpiresIn time.Duration
-		if locationUpdate.SharingExpiresIn != nil {
-			secs := *locationUpdate.SharingExpiresIn
-			if secs <= 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "sharingExpiresIn must be > 0"})
-				return
-			}
-			sharingExpiresIn = time.Duration(secs) * time.Second
-			if sharingExpiresIn > 24*time.Hour {
-				sharingExpiresIn = 24 * time.Hour
-			}
-		}
-
-		// Send to Supabase
-		err = h.supabaseService.UpdateLocation(c.Request.Context(), userID, services.LocationUpdate{
-			TripID:           tripID,
-			Latitude:         locationUpdate.Latitude,
-			Longitude:        locationUpdate.Longitude,
-			Accuracy:         float32(locationUpdate.Accuracy),
-			SharingEnabled:   isSharingEnabled,
-			SharingExpiresIn: sharingExpiresIn,
-			Privacy:          privacy,
-		})
-
-		if err != nil {
-			h.logger.Errorw("Failed to update location in Supabase", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to update location",
-			})
+	var sharingExpiresIn time.Duration
+	if locationUpdate.SharingExpiresIn != nil {
+		secs := *locationUpdate.SharingExpiresIn
+		if secs <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "sharingExpiresIn must be > 0"})
 			return
 		}
+		sharingExpiresIn = time.Duration(secs) * time.Second
+		if sharingExpiresIn > 24*time.Hour {
+			sharingExpiresIn = 24 * time.Hour
+		}
+	}
 
-		c.JSON(http.StatusOK, gin.H{
-			"status": "Location updated via Supabase",
+	// Send to Supabase
+	err = h.supabaseService.UpdateLocation(c.Request.Context(), userID, services.LocationUpdate{
+		TripID:           tripID,
+		Latitude:         locationUpdate.Latitude,
+		Longitude:        locationUpdate.Longitude,
+		Accuracy:         float32(locationUpdate.Accuracy),
+		SharingEnabled:   isSharingEnabled,
+		SharingExpiresIn: sharingExpiresIn,
+		Privacy:          privacy,
+	})
+
+	if err != nil {
+		h.logger.Errorw("Failed to update location in Supabase", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to update location",
 		})
 		return
 	}
 
-	// If Supabase is not enabled, respond with an error
-	c.JSON(http.StatusServiceUnavailable, gin.H{
-		"error": "Location updates via Supabase are not enabled",
+	c.JSON(http.StatusOK, gin.H{
+		"status": "Location updated via Supabase",
 	})
 }
 

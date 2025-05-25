@@ -162,16 +162,13 @@ func main() {
 		"url", cfg.ExternalServices.SupabaseURL,
 		"key", logger.MaskSensitiveString(cfg.ExternalServices.SupabaseAnonKey, 3, 0))
 
-	// Get feature flags
-	featureFlags := config.GetFeatureFlags()
-
-	// Initialize Supabase service for Realtime
+	// Initialize Supabase service for Realtime (always enabled)
 	supabaseService := services.NewSupabaseService(services.SupabaseServiceConfig{
-		IsEnabled:   featureFlags.EnableSupabaseRealtime,
+		IsEnabled:   true, // Always enabled - no feature flag dependency
 		SupabaseURL: cfg.ExternalServices.SupabaseURL,
 		SupabaseKey: supabaseServiceKey,
 	})
-	log.Info("Supabase service initialized successfully")
+	log.Info("Supabase service initialized successfully (sync always enabled)")
 
 	// Initialize JWT Validator
 	jwtValidator, err := middleware.NewJWTValidator(cfg)
@@ -257,16 +254,14 @@ func main() {
 	memberHandler := handlers.NewMemberHandler(tripModel, userDB, eventService)
 	invitationHandler := handlers.NewInvitationHandler(tripModel, userDB, eventService, &cfg.Server)
 
-	// Initialize Supabase Realtime handlers (always enabled in development)
+	// Initialize Supabase Realtime handlers (always enabled)
 	chatHandlerSupabase := handlers.NewChatHandlerSupabase(
 		tripMemberService,
 		supabaseService,
-		featureFlags,
 	)
 	locationHandlerSupabase := handlers.NewLocationHandlerSupabase(
 		tripMemberService,
 		supabaseService,
-		featureFlags,
 	)
 
 	// Prepare Router Dependencies

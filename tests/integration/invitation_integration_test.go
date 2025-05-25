@@ -596,4 +596,3 @@ func getInvitationFromDB(ctx context.Context, pool *pgxpool.Pool, invitationID s
 	return &inv, nil
 }
 
-// func loadTestConfig() *config.Config { /* ... load test config ... */ return &config.Config{} }

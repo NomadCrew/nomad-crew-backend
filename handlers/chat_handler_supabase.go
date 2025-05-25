@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/services"
@@ -19,20 +18,17 @@ type ChatHandlerSupabase struct {
 	tripService     TripServiceInterface
 	supabaseService *services.SupabaseService
 	logger          *zap.Logger
-	featureFlags    config.FeatureFlags
 }
 
 // NewChatHandlerSupabase creates a new instance of ChatHandlerSupabase
 func NewChatHandlerSupabase(
 	tripService TripServiceInterface,
 	supabaseService *services.SupabaseService,
-	featureFlags config.FeatureFlags,
 ) *ChatHandlerSupabase {
 	return &ChatHandlerSupabase{
 		tripService:     tripService,
 		supabaseService: supabaseService,
 		logger:          logger.GetLogger().Desugar(),
-		featureFlags:    featureFlags,
 	}
 }
 
@@ -95,42 +91,33 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	// Generate a new UUID for the message
 	messageID := uuid.New().String()
 
-	// Check if we should use Supabase
-	if h.featureFlags.EnableSupabaseRealtime && h.supabaseService != nil {
-		// Send to Supabase
-		now := time.Now()
-		err := h.supabaseService.SendChatMessage(c.Request.Context(), services.ChatMessage{
-			ID:        messageID,
-			TripID:    tripID,
-			UserID:    userID,
-			Message:   req.Message,
-			ReplyToID: req.ReplyToID,
-			CreatedAt: now,
-		})
+	// Send to Supabase
+	now := time.Now()
+	err = h.supabaseService.SendChatMessage(c.Request.Context(), services.ChatMessage{
+		ID:        messageID,
+		TripID:    tripID,
+		UserID:    userID,
+		Message:   req.Message,
+		ReplyToID: req.ReplyToID,
+		CreatedAt: now,
+	})
 
-		if err != nil {
-			h.logger.Error("Failed to send message to Supabase", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to send message",
-			})
-			return
-		}
-
-		// Return success
-		c.JSON(http.StatusCreated, gin.H{
-			"id":        messageID,
-			"tripId":    tripID,
-			"userId":    userID,
-			"message":   req.Message,
-			"replyToId": req.ReplyToID,
-			"createdAt": now,
+	if err != nil {
+		h.logger.Error("Failed to send message to Supabase", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to send message",
 		})
 		return
 	}
 
-	// If Supabase is not enabled, respond with an error
-	c.JSON(http.StatusServiceUnavailable, gin.H{
-		"error": "Chat via Supabase is not enabled",
+	// Return success
+	c.JSON(http.StatusCreated, gin.H{
+		"id":        messageID,
+		"tripId":    tripID,
+		"userId":    userID,
+		"message":   req.Message,
+		"replyToId": req.ReplyToID,
+		"createdAt": now,
 	})
 }
 
@@ -221,35 +208,26 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 		return
 	}
 
-	// Check if we should use Supabase
-	if h.featureFlags.EnableSupabaseRealtime && h.supabaseService != nil {
-		// Send to Supabase
-		err := h.supabaseService.AddChatReaction(c.Request.Context(), services.ChatReaction{
-			MessageID: messageID,
-			UserID:    userID,
-			Emoji:     req.Emoji,
-		})
+	// Send to Supabase
+	err = h.supabaseService.AddChatReaction(c.Request.Context(), services.ChatReaction{
+		MessageID: messageID,
+		UserID:    userID,
+		Emoji:     req.Emoji,
+	})
 
-		if err != nil {
-			h.logger.Error("Failed to add reaction in Supabase", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to add reaction",
-			})
-			return
-		}
-
-		// Return success
-		c.JSON(http.StatusCreated, gin.H{
-			"messageId": messageID,
-			"userId":    userID,
-			"emoji":     req.Emoji,
+	if err != nil {
+		h.logger.Error("Failed to add reaction in Supabase", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to add reaction",
 		})
 		return
 	}
 
-	// If Supabase is not enabled, respond with an error
-	c.JSON(http.StatusServiceUnavailable, gin.H{
-		"error": "Chat reactions via Supabase are not enabled",
+	// Return success
+	c.JSON(http.StatusCreated, gin.H{
+		"messageId": messageID,
+		"userId":    userID,
+		"emoji":     req.Emoji,
 	})
 }
 
@@ -289,33 +267,24 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 		return
 	}
 
-	// Check if we should use Supabase
-	if h.featureFlags.EnableSupabaseRealtime && h.supabaseService != nil {
-		// Remove from Supabase
-		err := h.supabaseService.RemoveChatReaction(c.Request.Context(), services.ChatReaction{
-			MessageID: messageID,
-			UserID:    userID,
-			Emoji:     emoji,
-		})
+	// Remove from Supabase
+	err = h.supabaseService.RemoveChatReaction(c.Request.Context(), services.ChatReaction{
+		MessageID: messageID,
+		UserID:    userID,
+		Emoji:     emoji,
+	})
 
-		if err != nil {
-			h.logger.Error("Failed to remove reaction from Supabase", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to remove reaction",
-			})
-			return
-		}
-
-		// Return success
-		c.JSON(http.StatusOK, gin.H{
-			"status": "Reaction removed",
+	if err != nil {
+		h.logger.Error("Failed to remove reaction from Supabase", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to remove reaction",
 		})
 		return
 	}
 
-	// If Supabase is not enabled, respond with an error
-	c.JSON(http.StatusServiceUnavailable, gin.H{
-		"error": "Chat reactions via Supabase are not enabled",
+	// Return success
+	c.JSON(http.StatusOK, gin.H{
+		"status": "Reaction removed",
 	})
 }
 
