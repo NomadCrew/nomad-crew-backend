@@ -11,6 +11,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
+	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/supabase-community/supabase-go"
@@ -24,6 +25,7 @@ type TripHandler struct {
 	serverConfig   *config.ServerConfig
 	weatherService types.WeatherServiceInterface
 	userService    userservice.UserServiceInterface
+	pexelsClient   *pexels.Client
 }
 
 // NewTripHandler creates a new TripHandler with the given dependencies.
@@ -34,6 +36,7 @@ func NewTripHandler(
 	serverConfig *config.ServerConfig,
 	weatherService types.WeatherServiceInterface,
 	userService userservice.UserServiceInterface,
+	pexelsClient *pexels.Client,
 ) *TripHandler {
 	return &TripHandler{
 		tripModel:      tripModel,
@@ -42,6 +45,7 @@ func NewTripHandler(
 		serverConfig:   serverConfig,
 		weatherService: weatherService,
 		userService:    userService,
+		pexelsClient:   pexelsClient,
 	}
 }
 
@@ -156,6 +160,14 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
 		tripToCreate.Status = types.TripStatusPlanning
+	}
+
+	// Fetch background image from Pexels if not provided by frontend
+	if tripToCreate.BackgroundImageURL == "" && h.pexelsClient != nil {
+		if imageURL := h.fetchBackgroundImage(c.Request.Context(), &tripToCreate); imageURL != "" {
+			tripToCreate.BackgroundImageURL = imageURL
+			log.Infow("Successfully fetched background image from Pexels", "imageURL", imageURL, "tripName", tripToCreate.Name)
+		}
 	}
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
@@ -641,4 +653,33 @@ func (h *TripHandler) ListTripImages(c *gin.Context) {
 func (h *TripHandler) DeleteTripImage(c *gin.Context) {
 	// Implementation needed
 	c.JSON(http.StatusNotImplemented, gin.H{"message": "Not implemented"})
+}
+
+// fetchBackgroundImage attempts to fetch a background image from Pexels based on trip destination
+// Returns empty string if no image is found or if an error occurs (non-blocking)
+func (h *TripHandler) fetchBackgroundImage(ctx context.Context, trip *types.Trip) string {
+	log := logger.GetLogger()
+
+	// Build search query from destination information
+	searchQuery := pexels.BuildSearchQuery(trip)
+	if searchQuery == "" {
+		log.Debugw("No suitable search query could be built for Pexels", "tripName", trip.Name)
+		return ""
+	}
+
+	log.Infow("Attempting to fetch background image from Pexels", "searchQuery", searchQuery, "tripName", trip.Name)
+
+	// Fetch image URL from Pexels (with timeout context)
+	imageURL, err := h.pexelsClient.SearchDestinationImage(ctx, searchQuery)
+	if err != nil {
+		log.Warnw("Failed to fetch background image from Pexels", "error", err, "searchQuery", searchQuery, "tripName", trip.Name)
+		return ""
+	}
+
+	if imageURL == "" {
+		log.Infow("No background image found on Pexels", "searchQuery", searchQuery, "tripName", trip.Name)
+		return ""
+	}
+
+	return imageURL
 }

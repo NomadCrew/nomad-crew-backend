@@ -45,6 +45,7 @@ import (
 	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	userSvc "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	weatherSvc "github.com/NomadCrew/nomad-crew-backend/models/weather/service"
+	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/router"
 	"github.com/NomadCrew/nomad-crew-backend/service"
 	services "github.com/NomadCrew/nomad-crew-backend/services"
@@ -237,8 +238,12 @@ func main() {
 	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret)
 	userHandler := handlers.NewUserHandler(userService)
 
+	// Initialize Pexels client
+	pexelsClient := pexels.NewClient(cfg.ExternalServices.PexelsAPIKey)
+	log.Infow("Initialized Pexels client", "hasAPIKey", cfg.ExternalServices.PexelsAPIKey != "")
+
 	// Initialize Handlers
-	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService, userService)
+	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService, userService, pexelsClient)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
 	locationHandler := handlers.NewLocationHandler(
