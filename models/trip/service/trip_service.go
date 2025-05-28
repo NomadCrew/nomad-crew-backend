@@ -48,7 +48,7 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 		}
 	}())
 
-	// Create the trip
+	// Create the trip (this already includes adding the creator as owner in the store transaction)
 	tripID, err := s.store.CreateTrip(ctx, *trip)
 	if err != nil {
 		return nil, err
@@ -57,23 +57,8 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	// Update the trip ID
 	trip.ID = tripID
 
-	// Add creator as an owner
-	membership := &types.TripMembership{
-		TripID: trip.ID,
-		UserID: func() string {
-			if trip.CreatedBy != nil {
-				return *trip.CreatedBy
-			} else {
-				return ""
-			}
-		}(),
-		Role:   types.MemberRoleOwner,
-		Status: types.MembershipStatusActive,
-	}
-	if err := s.store.AddMember(ctx, membership); err != nil {
-		// Consider potential rollback/cleanup here if needed
-		return nil, err
-	}
+	// NOTE: Removed redundant AddMember call - the store.CreateTrip() already adds creator as owner in the store transaction
+	// This was causing unique constraint violations due to duplicate membership insertion
 
 	// Publish event
 	var createdByUserID string
