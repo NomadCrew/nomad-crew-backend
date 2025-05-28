@@ -43,11 +43,6 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 				_ = c.Error(apperrors.Unauthorized("token_missing", "Authorization required"))
 			}
 
-			// Set appropriate HTTP status and response in context
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    http.StatusUnauthorized,
-				"message": err.Error(),
-			})
 			c.Abort()
 			return
 		}
@@ -58,27 +53,14 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 			// Determine appropriate error response based on validation error type
 			log.Warnw("Authentication failed: Token validation error", "error", err, "path", requestPath)
 
-			var statusCode = http.StatusUnauthorized
-			var errorMsg = "Invalid or expired token"
-			var errorDetails = err.Error()
-
 			if stderrors.Is(err, auth.ErrTokenExpired) {
 				_ = c.Error(apperrors.Unauthorized("token_expired", "Token has expired"))
 			} else if stderrors.Is(err, auth.ErrTokenInvalid) {
-				if err := c.Error(apperrors.AuthenticationFailed("invalid_token")); err != nil {
-					log.Errorw("Failed to set error in context", "error", err)
-				}
+				_ = c.Error(apperrors.AuthenticationFailed("invalid_token"))
 			} else {
 				_ = c.Error(apperrors.Unauthorized("auth_failed", "Authentication failed")) // Generic fallback
 			}
 
-			// Set appropriate HTTP status and response in context
-			response := gin.H{
-				"code":    statusCode,
-				"message": errorMsg,
-				"details": errorDetails,
-			}
-			c.JSON(statusCode, response)
 			c.Abort()
 			return
 		}
@@ -86,13 +68,7 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 		// Step 3: Validate Supabase User ID
 		if supabaseUserID == "" {
 			log.Errorw("Authentication failed: Valid token resulted in empty UserID", "path", requestPath)
-			if err := c.Error(apperrors.InternalServerError("internal_error")); err != nil {
-				log.Errorw("Failed to set error in context", "error", err)
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"code":    http.StatusInternalServerError,
-				"message": "Internal server error",
-			})
+			_ = c.Error(apperrors.InternalServerError("internal_error"))
 			c.Abort()
 			return
 		}
@@ -103,10 +79,6 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 			log.Warnw("Valid JWT but user not found in internal system",
 				"supabaseUserID", supabaseUserID, "error", err, "path", requestPath)
 			_ = c.Error(apperrors.Unauthorized("user_not_onboarded", "User not found or not onboarded"))
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    http.StatusUnauthorized,
-				"message": "User not found or not onboarded",
-			})
 			c.Abort()
 			return
 		}

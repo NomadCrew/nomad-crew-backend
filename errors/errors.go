@@ -200,8 +200,10 @@ func NewConflictError(code string, message string) *AppError {
 // Unauthorized creates a new authentication error
 func Unauthorized(code string, message string) *AppError {
 	return &AppError{
-		Type:    AuthError,
-		Message: message,
-		Details: code,
+		Type:       AuthError,
+		Message:    message,
+		Details:    code,
+		Detail:     code,
+		HTTPStatus: http.StatusUnauthorized,
 	}
 }
