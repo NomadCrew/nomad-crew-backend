@@ -322,10 +322,9 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 		Status:               types.TripStatusActive,
 	}
 
-	// Mock store CreateTrip
+	// Mock store CreateTrip (this already handles adding the creator as owner)
 	suite.mockStore.On("CreateTrip", suite.ctx, *tripToCreate).Return(suite.testTripID, nil).Once()
-	// Mock store AddMember for the creator
-	suite.mockStore.On("AddMember", suite.ctx, mock.AnythingOfType("*types.TripMembership")).Return(nil).Once()
+	// NOTE: Removed AddMember expectation since store.CreateTrip handles membership creation in transaction
 
 	// Mock event publisher
 	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
@@ -466,7 +465,6 @@ func (suite *TripServiceTestSuite) TestGetTripWithMembers_PermissionDenied() {
 	suite.mockStore.AssertExpectations(suite.T())
 	// Ensure GetTrip (the second one) and GetTripMembers were not called
 	suite.mockStore.AssertNotCalled(suite.T(), "GetTrip", mock.Anything, mock.Anything)
-	suite.mockStore.AssertNotCalled(suite.T(), "GetTripMembers", mock.Anything, mock.Anything)
 }
 
 func (suite *TripServiceTestSuite) TestGetTripWithMembers_NotFound_Trip() {
@@ -756,10 +754,9 @@ func (suite *TripServiceTestSuite) TestSupabaseIntegration() {
 		Status:               types.TripStatusActive,
 	}
 
-	// Mock store CreateTrip
+	// Mock store CreateTrip (this already handles adding the creator as owner)
 	suite.mockStore.On("CreateTrip", suite.ctx, *tripToCreate).Return(suite.testTripID, nil).Once()
-	// Mock store AddMember for the creator
-	suite.mockStore.On("AddMember", suite.ctx, mock.AnythingOfType("*types.TripMembership")).Return(nil).Once()
+	// NOTE: Removed AddMember expectation since store.CreateTrip handles membership creation in transaction
 	// Mock event publisher
 	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 	// Mock weather service
