@@ -315,14 +315,12 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 	userHandler := handlers.NewUserHandler(userService) // Corrected: Pass UserService
 
 	deps := approuter.Dependencies{
-		Config: testCFG,
-		// JWTValidator:      middleware.NewNoOpValidator(), // Replace with real validator
+		Config:              testCFG,
 		TripHandler:         nil,
 		TodoHandler:         nil,
 		HealthHandler:       nil,
 		LocationHandler:     nil,
 		NotificationHandler: nil,
-		ChatHandler:         nil,
 		UserHandler:         userHandler,
 		Logger:              logger.GetLogger(),
 		MemberHandler:       nil,
@@ -595,4 +593,3 @@ func getInvitationFromDB(ctx context.Context, pool *pgxpool.Pool, invitationID s
 	}
 	return &inv, nil
 }
-

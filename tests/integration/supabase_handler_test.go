@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -60,16 +59,14 @@ type MockStorage struct {
 
 // ChatHandlerStub implements a minimal handler for testing
 type ChatHandlerStub struct {
-	tripService  types.TripServiceInterface
-	storage      *MockStorage
-	featureFlags config.FeatureFlags
+	tripService types.TripServiceInterface
+	storage     *MockStorage
 }
 
 // LocationHandlerStub implements a minimal handler for testing
 type LocationHandlerStub struct {
-	tripService  types.TripServiceInterface
-	storage      *MockStorage
-	featureFlags config.FeatureFlags
+	tripService types.TripServiceInterface
+	storage     *MockStorage
 }
 
 // SupabaseHandlerTestSuite defines the test suite for Supabase handlers
@@ -227,22 +224,15 @@ func (suite *SupabaseHandlerTestSuite) SetupSuite() {
 	// Create trip service
 	suite.tripService = NewSupabaseTripService(suite.testTripID, suite.testUserID)
 
-	// Set up feature flags
-	featureFlags := config.FeatureFlags{
-		EnableSupabaseRealtime: true,
-	}
-
-	// Create handlers
+	// Create handlers (no feature flags needed)
 	suite.chatHandler = &ChatHandlerStub{
-		tripService:  suite.tripService,
-		storage:      suite.storage,
-		featureFlags: featureFlags,
+		tripService: suite.tripService,
+		storage:     suite.storage,
 	}
 
 	suite.locationHandler = &LocationHandlerStub{
-		tripService:  suite.tripService,
-		storage:      suite.storage,
-		featureFlags: featureFlags,
+		tripService: suite.tripService,
+		storage:     suite.storage,
 	}
 
 	// Set up Gin router
