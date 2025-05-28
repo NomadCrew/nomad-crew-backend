@@ -35,7 +35,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
-	internalService "github.com/NomadCrew/nomad-crew-backend/internal/service"
 	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
@@ -203,25 +202,12 @@ func main() {
 		eventService,
 	)
 
-	// Initialize Chat Store and Service
-	chatStore := internalPgStore.NewChatStore(dbClient.GetPool())
-
-	// Use the internal service package's ChatService implementation
-	chatService := internalService.NewChatService(chatStore, tripStore, eventService)
-
 	tripMemberService := trip_service.NewTripMemberService(tripStore, eventService, supabaseService)
-	chatHandler := handlers.NewChatHandler(
-		chatService,
-		tripMemberService,
-		eventService,
-		log.Desugar(),
-		supabaseService,
-	)
 
-	// Initialize trip model with new store
+	// Initialize trip model with new store (removed chatStore dependency)
 	tripModel := trip.NewTripModel(
 		tripStore,
-		chatStore,
+		nil, // chatStore removed - using Supabase for chat
 		userDB,
 		eventService,
 		weatherService,
@@ -274,7 +260,6 @@ func main() {
 		HealthHandler:       healthHandler,
 		LocationHandler:     locationHandler,
 		NotificationHandler: notificationHandler,
-		ChatHandler:         chatHandler,
 		UserHandler:         userHandler,
 		MemberHandler:       memberHandler,
 		InvitationHandler:   invitationHandler,

@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Dependencies struct holds all dependencies required for setting up routes.
+// Dependencies contains all the dependencies needed to set up the router.
 type Dependencies struct {
 	Config              *config.Config
 	JWTValidator        middleware.Validator
@@ -26,16 +26,14 @@ type Dependencies struct {
 	HealthHandler       *handlers.HealthHandler
 	LocationHandler     *handlers.LocationHandler
 	NotificationHandler *handlers.NotificationHandler
-	ChatHandler         *handlers.ChatHandler
 	UserHandler         *handlers.UserHandler
 	Logger              *zap.SugaredLogger
 	MemberHandler       *handlers.MemberHandler
 	InvitationHandler   *handlers.InvitationHandler
 	SupabaseService     *services.SupabaseService
-	// Supabase Realtime handlers
+	// Supabase Realtime handlers (only ones we use now)
 	ChatHandlerSupabase     *handlers.ChatHandlerSupabase
 	LocationHandlerSupabase *handlers.LocationHandlerSupabase
-	// Add any other handlers or dependencies needed for routes
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -169,28 +167,20 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				// Trip Location Routes
 				tripLocationRoutes := tripRoutes.Group("/:id/locations")
 				{
-					if deps.LocationHandlerSupabase != nil {
-						// Supabase versions (default)
-						tripLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)         // Handles PUT for location updates
-						tripLocationRoutes.GET("", deps.LocationHandlerSupabase.GetTripMemberLocations) // Handles GET for member locations
-					} else if deps.LocationHandler != nil {
-						// Fallback to non-Supabase versions
-						tripLocationRoutes.POST("", deps.LocationHandler.UpdateLocationHandler)        // Handles POST for location updates
-						tripLocationRoutes.GET("", deps.LocationHandler.GetTripMemberLocationsHandler) // Handles GET for member locations
-					}
+					// Supabase versions (only version now)
+					tripLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)         // Handles PUT for location updates
+					tripLocationRoutes.GET("", deps.LocationHandlerSupabase.GetTripMemberLocations) // Handles GET for member locations
 				}
 
 				// Trip Chat Routes
 				chatRoutes := tripRoutes.Group("/:id/chat")
 				{
-					// Supabase Realtime endpoints (default)
-					if deps.ChatHandlerSupabase != nil {
-						chatRoutes.POST("/messages", deps.ChatHandlerSupabase.SendMessage)
-						chatRoutes.GET("/messages", deps.ChatHandlerSupabase.GetMessages)
-						chatRoutes.PUT("/messages/read", deps.ChatHandlerSupabase.UpdateReadStatus)
-						chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandlerSupabase.AddReaction)
-						chatRoutes.DELETE("/messages/:messageId/reactions/:emoji", deps.ChatHandlerSupabase.RemoveReaction)
-					}
+					// Supabase Realtime endpoints (only version now)
+					chatRoutes.POST("/messages", deps.ChatHandlerSupabase.SendMessage)
+					chatRoutes.GET("/messages", deps.ChatHandlerSupabase.GetMessages)
+					chatRoutes.PUT("/messages/read", deps.ChatHandlerSupabase.UpdateReadStatus)
+					chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandlerSupabase.AddReaction)
+					chatRoutes.DELETE("/messages/:messageId/reactions/:emoji", deps.ChatHandlerSupabase.RemoveReaction)
 				}
 
 				// Trip Todo Routes

@@ -47,7 +47,7 @@ func NewLocationHandlerSupabase(
 // @Router /api/v1/trips/{tripId}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	if tripID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -150,7 +150,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Router /api/v1/trips/{tripId}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	if tripID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
