@@ -129,7 +129,7 @@ func main() {
 
 	// Other store initializations using the database pool
 	tripStore := dbStore.NewPgTripStore(dbClient.GetPool())
-	todoStore := db.NewTodoDB(dbClient)
+	todoStore := internalPgStore.NewTodoStore(dbClient.GetPool())
 	locationDB := db.NewLocationDB(dbClient)
 	notificationDB := dbStore.NewPgNotificationStore(dbClient.GetPool())
 
