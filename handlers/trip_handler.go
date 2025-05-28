@@ -122,24 +122,14 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	}
 	log.Infow("Parsed CreateTripRequest", "request", req)
 
-	// Extract Supabase user ID from context
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
-	log.Infow("[DEBUG] Supabase user ID from context", "supabaseUserID", supabaseUserID)
-	if supabaseUserID == "" {
-		log.Errorw("No user ID found in context for CreateTripHandler")
+	// Use internal user ID directly from enhanced middleware (consistent with other handlers)
+	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	log.Infow("[DEBUG] Internal user ID from context", "internalUserID", internalUserID)
+	if internalUserID == "" {
+		log.Errorw("No internal user ID found in context for CreateTripHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
-
-	// Map Supabase user ID to internal UUID
-	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseUserID)
-	if err != nil || user == nil {
-		log.Errorw("Failed to map Supabase user ID to internal UUID", "supabaseUserID", supabaseUserID, "error", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or not onboarded"})
-		return
-	}
-	userIDStr := user.ID.String()
-	log.Infow("[DEBUG] Mapped internal user UUID", "internalUUID", userIDStr)
 
 	// Map CreateTripRequest to types.Trip
 	tripToCreate := types.Trip{
@@ -154,7 +144,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		EndDate:              req.EndDate,
 		Status:               req.Status, // Will be 'PLANNING' by default if empty due to omitempty and DB default
 		BackgroundImageURL:   req.BackgroundImageURL,
-		CreatedBy:            &userIDStr, // Use internal UUID
+		CreatedBy:            &internalUserID, // Use internal UUID directly
 	}
 	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 
@@ -172,7 +162,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
 	if err != nil {
-		log.Errorw("Failed to create trip", "error", err, "tripToCreate", tripToCreate, "internalUUID", userIDStr, "supabaseUserID", supabaseUserID)
+		log.Errorw("Failed to create trip", "error", err, "tripToCreate", tripToCreate, "internalUserID", internalUserID)
 		h.handleModelError(c, err)
 		return
 	}
@@ -409,27 +399,18 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 // @Security BearerAuth
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
+	// Use internal user ID directly from enhanced middleware (consistent with other handlers)
+	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
 
-	if supabaseUserID == "" {
-		log.Errorw("No user ID found in context for ListUserTripsHandler")
+	if internalUserID == "" {
+		log.Errorw("No internal user ID found in context for ListUserTripsHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
-	// Map Supabase user ID to internal UUID
-	user, err := h.userService.GetUserBySupabaseID(c.Request.Context(), supabaseUserID)
-	if err != nil || user == nil {
-		log.Errorw("Failed to map Supabase user ID to internal UUID for ListUserTripsHandler", "supabaseUserID", supabaseUserID, "error", err)
-		// Decide if this is a 401 or 404, or if GetUserBySupabaseID already handles it.
-		// For now, mirroring CreateTripHandler's response for consistency.
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or not onboarded"})
-		return
-	}
-	internalUserID := user.ID.String()
-	log.Infow("Successfully mapped Supabase ID to internal ID for ListUserTrips", "supabaseUserID", supabaseUserID, "internalUserID", internalUserID)
+	log.Infow("Listing trips for user", "internalUserID", internalUserID)
 
-	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), internalUserID) // Use internalUserID here
+	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), internalUserID) // Use internalUserID directly
 	if err != nil {
 		h.handleModelError(c, err)
 		return
