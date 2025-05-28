@@ -60,14 +60,15 @@ type RedisConfig struct {
 
 // ExternalServices holds API keys and URLs for external services.
 type ExternalServices struct {
-	GeoapifyKey       string `mapstructure:"GEOAPIFY_KEY"`
-	PexelsAPIKey      string `mapstructure:"PEXELS_API_KEY"`
-	SupabaseAnonKey   string `mapstructure:"SUPABASE_ANON_KEY"`
-	SupabaseURL       string `mapstructure:"SUPABASE_URL"`
-	SupabaseJWTSecret string `mapstructure:"SUPABASE_JWT_SECRET"`
-	EmailFromAddress  string `mapstructure:"EMAIL_FROM_ADDRESS"`
-	EmailFromName     string `mapstructure:"EMAIL_FROM_NAME"`
-	EmailBaseURL      string `mapstructure:"EMAIL_BASE_URL" default:"https://api.mailchannels.net"`
+	GeoapifyKey        string `mapstructure:"GEOAPIFY_KEY"`
+	PexelsAPIKey       string `mapstructure:"PEXELS_API_KEY"`
+	SupabaseAnonKey    string `mapstructure:"SUPABASE_ANON_KEY"`
+	SupabaseServiceKey string `mapstructure:"SUPABASE_SERVICE_KEY"`
+	SupabaseURL        string `mapstructure:"SUPABASE_URL"`
+	SupabaseJWTSecret  string `mapstructure:"SUPABASE_JWT_SECRET"`
+	EmailFromAddress   string `mapstructure:"EMAIL_FROM_ADDRESS"`
+	EmailFromName      string `mapstructure:"EMAIL_FROM_NAME"`
+	EmailBaseURL       string `mapstructure:"EMAIL_BASE_URL" default:"https://api.mailchannels.net"`
 }
 
 // EmailConfig holds configuration for sending emails.
@@ -195,6 +196,9 @@ func LoadConfig() (*Config, error) {
 	}
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
+	}
+	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_KEY"); err != nil {
+		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_SERVICE_KEY: %w", err)
 	}
 	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
 		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
@@ -329,6 +333,12 @@ func validateExternalServices(services *ExternalServices) error {
 	}
 	if services.SupabaseAnonKey == "" {
 		return fmt.Errorf("supabase anon key is required")
+	}
+	if services.SupabaseServiceKey == "" {
+		return fmt.Errorf("supabase service key is required")
+	}
+	if len(services.SupabaseServiceKey) < minJWTLength {
+		return fmt.Errorf("supabase service key must be at least %d characters long", minJWTLength)
 	}
 	if services.SupabaseURL == "" {
 		return fmt.Errorf("supabase URL is required")
