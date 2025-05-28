@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
 	stderrors "errors"
@@ -32,17 +31,9 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 		// Step 1: Extract Token
 		token, err := extractToken(c)
 		if err != nil {
-			// If extractToken returns a specific type of error (like BadRequest), handle it
-			var appErr *apperrors.AppError
-			if stderrors.As(err, &appErr) && appErr.GetHTTPStatus() == http.StatusBadRequest {
-				log.Infow("Bad request during token extraction", "error", err, "path", requestPath)
-				_ = c.Error(err) // Pass the original bad request error
-			} else {
-				// Handle other extraction errors (like token_missing) as Unauthorized
-				log.Warnw("Authentication failed: Token extraction error", "error", err, "path", requestPath)
-				_ = c.Error(apperrors.Unauthorized("token_missing", "Authorization required"))
-			}
-
+			// Pass through the original error from extractToken which already has the correct message and status
+			log.Warnw("Authentication failed: Token extraction error", "error", err, "path", requestPath)
+			_ = c.Error(err) // Pass the original error with its specific message
 			c.Abort()
 			return
 		}
@@ -54,11 +45,11 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 			log.Warnw("Authentication failed: Token validation error", "error", err, "path", requestPath)
 
 			if stderrors.Is(err, auth.ErrTokenExpired) {
-				_ = c.Error(apperrors.Unauthorized("token_expired", "Token has expired"))
+				_ = c.Error(apperrors.Unauthorized("token_expired", "Invalid or expired token"))
 			} else if stderrors.Is(err, auth.ErrTokenInvalid) {
-				_ = c.Error(apperrors.AuthenticationFailed("invalid_token"))
+				_ = c.Error(apperrors.Unauthorized("invalid_token", "Invalid or expired token"))
 			} else {
-				_ = c.Error(apperrors.Unauthorized("auth_failed", "Authentication failed")) // Generic fallback
+				_ = c.Error(apperrors.Unauthorized("auth_failed", "Invalid or expired token")) // Generic fallback
 			}
 
 			c.Abort()

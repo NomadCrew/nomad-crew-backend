@@ -51,6 +51,9 @@ func setupAuthTestRouter(validator Validator, userResolver UserResolver) (*gin.E
 	w := httptest.NewRecorder()
 	r := gin.New()
 
+	// Add the ErrorHandler middleware to process errors added by AuthMiddleware
+	r.Use(ErrorHandler())
+
 	// Pass both the mock validator and user resolver to the middleware
 	authMiddleware := AuthMiddleware(validator, userResolver)
 	r.Use(authMiddleware)
