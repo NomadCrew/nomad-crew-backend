@@ -128,6 +128,9 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			authRoutes.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)
 			authRoutes.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler)
 
+			// Legacy Location Routes (global location updates)
+			authRoutes.POST("/location/update", deps.LocationHandlerSupabase.LegacyUpdateLocation)
+
 			// Trip Routes
 			tripRoutes := authRoutes.Group("/trips")
 			{
@@ -168,6 +171,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				tripLocationRoutes := tripRoutes.Group("/:id/locations")
 				{
 					// Supabase versions (only version now)
+					tripLocationRoutes.POST("", deps.LocationHandlerSupabase.CreateLocation)        // Handles POST for location creation
 					tripLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)         // Handles PUT for location updates
 					tripLocationRoutes.GET("", deps.LocationHandlerSupabase.GetTripMemberLocations) // Handles GET for member locations
 				}
