@@ -707,7 +707,7 @@ func (s *PostgresChatStore) GetUserByID(ctx context.Context, userID string) (*ty
 		return nil, apperrors.NewExternalServiceError(err)
 	}
 
-	req.Header.Set("apikey", s.supabaseAPIKey)
+	req.Header.Set("Apikey", s.supabaseAPIKey)
 	req.Header.Set("Authorization", "Bearer "+s.supabaseAPIKey)
 
 	client := &http.Client{}

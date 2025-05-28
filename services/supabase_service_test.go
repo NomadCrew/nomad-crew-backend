@@ -101,8 +101,8 @@ func TestSupabaseService_UpdateLocation(t *testing.T) {
 		if r.URL.Path != "/rest/v1/locations" {
 			errCh <- "Expected path /rest/v1/locations, got " + r.URL.Path
 		}
-		if r.Header.Get("apikey") != "test-key" {
-			errCh <- "Expected apikey header test-key, got " + r.Header.Get("apikey")
+		if r.Header.Get("Apikey") != "test-key" {
+			errCh <- "Expected Apikey header test-key, got " + r.Header.Get("Apikey")
 		}
 
 		// Verify request body
@@ -194,8 +194,8 @@ func TestSupabaseService_SendChatMessage(t *testing.T) {
 		if r.URL.Path != "/rest/v1/supabase_chat_messages" {
 			errCh <- "Expected path /rest/v1/supabase_chat_messages, got " + r.URL.Path
 		}
-		if r.Header.Get("apikey") != "test-key" {
-			errCh <- "Expected apikey header test-key, got " + r.Header.Get("apikey")
+		if r.Header.Get("Apikey") != "test-key" {
+			errCh <- "Expected Apikey header test-key, got " + r.Header.Get("Apikey")
 		}
 
 		// Verify request body

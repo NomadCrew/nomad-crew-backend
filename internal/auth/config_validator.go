@@ -77,9 +77,9 @@ func (v *ConfigValidator) checkEndpointAvailability(endpoint string) error {
 	}
 
 	// Add Supabase key header if it's a Supabase endpoint
-	if v.config.ExternalServices.SupabaseAnonKey != "" && 
-	   endpoint == fmt.Sprintf("%s/auth/v1/jwks", v.config.ExternalServices.SupabaseURL) {
-		req.Header.Add("apikey", v.config.ExternalServices.SupabaseAnonKey)
+	if v.config.ExternalServices.SupabaseAnonKey != "" &&
+		endpoint == fmt.Sprintf("%s/auth/v1/jwks", v.config.ExternalServices.SupabaseURL) {
+		req.Header.Add("Apikey", v.config.ExternalServices.SupabaseAnonKey)
 	}
 
 	resp, err := v.client.Do(req)
@@ -98,7 +98,7 @@ func (v *ConfigValidator) checkEndpointAvailability(endpoint string) error {
 // PrintValidationResults logs all validation results
 func (v *ConfigValidator) PrintValidationResults(errors []error) {
 	log := logger.GetLogger()
-	
+
 	if len(errors) == 0 {
 		log.Info("Auth configuration validation passed successfully")
 		return
@@ -108,4 +108,4 @@ func (v *ConfigValidator) PrintValidationResults(errors []error) {
 	for i, err := range errors {
 		log.Errorw("Validation error", "index", i+1, "error", err.Error())
 	}
-} 
+}

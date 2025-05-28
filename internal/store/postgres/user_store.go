@@ -617,7 +617,7 @@ func (s *UserStore) getSupabaseUserByID(ctx context.Context, supabaseID string) 
 	}
 
 	// Add headers
-	req.Header.Add("apikey", s.supabaseKey)
+	req.Header.Add("Apikey", s.supabaseKey)
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.supabaseKey))
 
 	// Make the request

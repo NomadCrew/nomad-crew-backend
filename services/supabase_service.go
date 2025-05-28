@@ -237,7 +237,7 @@ func (s *SupabaseService) upsertToSupabase(ctx context.Context, table string, da
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Apikey", s.supabaseKey)
 	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Prefer", "resolution=merge-duplicates")
@@ -285,7 +285,7 @@ func (s *SupabaseService) deleteFromSupabaseWithFilters(ctx context.Context, tab
 		return fmt.Errorf("failed to create DELETE request: %w", err)
 	}
 
-	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Apikey", s.supabaseKey)
 	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -397,7 +397,7 @@ func (s *SupabaseService) RemoveChatReaction(ctx context.Context, reaction ChatR
 		return fmt.Errorf("failed to create DELETE request: %w", err)
 	}
 
-	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Apikey", s.supabaseKey)
 	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -465,7 +465,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("apikey", s.supabaseKey)
+	req.Header.Set("Apikey", s.supabaseKey)
 	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Prefer", "resolution=merge-duplicates,return=minimal")

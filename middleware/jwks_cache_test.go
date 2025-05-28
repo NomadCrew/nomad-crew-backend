@@ -100,7 +100,7 @@ func TestJWKSCache_GetKey(t *testing.T) {
 				mrt.On("RoundTrip", mock.MatchedBy(func(req *http.Request) bool {
 					return req.Method == http.MethodGet &&
 						req.URL.String() == jwksURL &&
-						req.Header.Get("apikey") == anonKey && // Check headers
+						req.Header.Get("Apikey") == anonKey && // Check headers
 						req.Header.Get("Authorization") == "Bearer "+anonKey
 				})).Return(resp, nil).Once()
 			},

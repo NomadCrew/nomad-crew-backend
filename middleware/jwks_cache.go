@@ -156,7 +156,7 @@ func (c *JWKSCache) refreshCache(targetKid string) (jwk.Key, error) {
 	}
 
 	// Add required headers for Supabase JWKS endpoint
-	req.Header.Set("apikey", c.anonKey)
+	req.Header.Set("Apikey", c.anonKey)
 	req.Header.Set("Authorization", "Bearer "+c.anonKey)
 
 	log.Debugw("Sending JWKS request", "url", c.jwksURL)
