@@ -81,13 +81,14 @@ classDiagram
                 +UpdateInvitationStatus(...)
                 +BeginTx(...)
             }
-            class db_TodoDB["db.TodoDB"] {
-                +db: *DatabaseClient
-                +ListTodos(...)
+            class internalPgStore_TodoStore["internal/store/postgres.TodoStore"] {
+                +pool: *pgxpool.Pool
                 +CreateTodo(...)
-                +GetTodoByID(...)
+                +GetTodo(...)
+                +ListTodos(...)
                 +UpdateTodo(...)
                 +DeleteTodo(...)
+                +BeginTx(...)
             }
             class db_LocationDB["db.LocationDB"] {
                 +db: *DatabaseClient
@@ -127,14 +128,14 @@ classDiagram
         end
         Main --> PostgreSQL_DB
         Main -.-> dbStore_PgTripStore %% initializes
-        Main -.-> db_TodoDB  %% initializes
+        Main -.-> internalPgStore_TodoStore %% initializes
         Main -.-> db_LocationDB  %% initializes
         Main -.-> dbStore_PgNotificationStore %% initializes
         Main -.-> dbStore_PgUserStore %% initializes
         Main -.-> db_PostgresChatStore %% initializes
 
         dbStore_PgTripStore --> PostgreSQL_DB
-        db_TodoDB --> PostgreSQL_DB
+        internalPgStore_TodoStore --> PostgreSQL_DB
         db_LocationDB --> PostgreSQL_DB
         dbStore_PgNotificationStore --> PostgreSQL_DB
         dbStore_PgUserStore --> PostgreSQL_DB
@@ -276,13 +277,17 @@ classDiagram
                +GetTripStore() store.TripStore
             }
             class models_TodoModel["models.TodoModel"] {
-               +TodoDB: *db.TodoDB
-               +TripChecker: models.TripMembershipChecker
+               +store: store.TodoStore
+               +tripModel: TripModelInterface
+               +eventPublisher: EventPublisherInterface
                +CreateTodo(...)
-               +ListTodos(...)
+               +ListTripTodos(...)
                +GetTodo(...)
                +UpdateTodo(...)
                +DeleteTodo(...)
+               +CreateTodoWithEvent(...)
+               +UpdateTodoWithEvent(...)
+               +DeleteTodoWithEvent(...)
             }
             %% Model Implementations & Dependencies
              models_TripMembershipChecker <|.. trip_TripModel
@@ -296,7 +301,7 @@ classDiagram
         trip_TripModel --> Supabase
         trip_TripModel --> services_EmailService
         trip_TripModel --> db_PostgresChatStore
-        models_TodoModel --> db_TodoDB
+        models_TodoModel --> internalPgStore_TodoStore
         models_TodoModel --> models_TripMembershipChecker
 
         %% Handlers Package

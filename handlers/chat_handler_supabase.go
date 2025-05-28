@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -129,7 +130,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Param tripId path string true "Trip ID"
 // @Param limit query int false "Maximum number of messages to return" default(50)
 // @Param before query string false "Return messages before this message ID (for pagination)"
-// @Success 200 {array} ChatMessageResponse
+// @Success 200 {object} ChatMessagesResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
@@ -155,9 +156,30 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 		return
 	}
 
-	// For the Supabase implementation, we simply return an empty array
+	// Parse pagination parameters
+	limit := 50 // default
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	before := c.Query("before") // cursor for pagination
+
+	// For the Supabase implementation, return proper structure with pagination
 	// The actual chat messages will be retrieved by the client directly from Supabase
-	c.JSON(http.StatusOK, []gin.H{})
+	// But we need to return the expected structure to prevent frontend crashes
+	response := gin.H{
+		"messages": []gin.H{}, // Empty array of messages
+		"pagination": gin.H{
+			"has_more":    false,          // No more pages since we're returning empty
+			"next_cursor": (*string)(nil), // No next cursor
+			"limit":       limit,          // Echo back the limit parameter
+			"before":      before,         // Echo back the before parameter if provided
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // AddReaction handles adding a reaction to a message

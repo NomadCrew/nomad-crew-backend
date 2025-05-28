@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -142,7 +143,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Tags locations
 // @Produce json
 // @Param tripId path string true "Trip ID"
-// @Success 200 {array} types.MemberLocation
+// @Success 200 {object} LocationsResponse
 // @Failure 400 {object} types.ErrorResponse
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 403 {object} types.ErrorResponse
@@ -168,7 +169,33 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 		return
 	}
 
-	// For the Supabase implementation, we simply return an empty array
+	// Parse pagination parameters
+	limit := 50 // default
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0 // default
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	// For the Supabase implementation, return proper structure with pagination
 	// The actual location data will be retrieved by the client directly from Supabase
-	c.JSON(http.StatusOK, []types.MemberLocation{})
+	// But we need to return the expected structure to prevent frontend crashes
+	response := gin.H{
+		"locations": []types.MemberLocation{}, // Empty array of locations
+		"pagination": gin.H{
+			"has_more": false,  // No more pages since we're returning empty
+			"total":    0,      // Total count is 0
+			"limit":    limit,  // Echo back the limit parameter
+			"offset":   offset, // Echo back the offset parameter
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
 }
