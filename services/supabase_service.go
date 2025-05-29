@@ -467,58 +467,72 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	}
 
 	// PRODUCTION DIAGNOSTIC: Force ERROR level logging to appear in production logs
-	s.logger.Errorw("DIAGNOSTIC: Starting Supabase request validation",
-		"table", table,
-		"url", url,
-		"supabaseKey_length", len(s.supabaseKey),
-		"supabaseKey_first_10", func() string {
-			if len(s.supabaseKey) >= 10 {
-				return s.supabaseKey[:10] + "..."
-			}
-			return s.supabaseKey
-		}())
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: Starting Supabase request validation",
+			"table", table,
+			"url", url,
+			"supabaseKey_length", len(s.supabaseKey),
+			"supabaseKey_first_10", func() string {
+				if len(s.supabaseKey) >= 10 {
+					return s.supabaseKey[:10] + "..."
+				}
+				return s.supabaseKey
+			}())
+	}
 
 	// Validate and clean the API key value
 	cleanedKey := strings.TrimSpace(s.supabaseKey)
 	if cleanedKey != s.supabaseKey {
-		s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED",
-			"original_length", len(s.supabaseKey),
-			"cleaned_length", len(cleanedKey))
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED",
+				"original_length", len(s.supabaseKey),
+				"cleaned_length", len(cleanedKey))
+		}
 	}
 
 	// Check for invalid characters that would cause header validation to fail
 	for i, r := range cleanedKey {
 		if r < 32 || r > 126 { // ASCII printable characters only
-			s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key",
-				"position", i,
-				"character_code", int(r),
-				"character", string(r))
+			if s.logger != nil {
+				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key",
+					"position", i,
+					"character_code", int(r),
+					"character", string(r))
+			}
 			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
 		}
 	}
 
-	s.logger.Errorw("DIAGNOSTIC: Supabase key validation passed, setting headers",
-		"cleaned_key_length", len(cleanedKey))
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: Supabase key validation passed, setting headers",
+			"cleaned_key_length", len(cleanedKey))
+	}
 
 	req.Header.Set("Apikey", cleanedKey)
 	req.Header.Set("Authorization", "Bearer "+cleanedKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Prefer", "resolution=merge-duplicates,return=minimal")
 
-	s.logger.Errorw("DIAGNOSTIC: Headers set, making HTTP request to Supabase")
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: Headers set, making HTTP request to Supabase")
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Errorw("DIAGNOSTIC: HTTP request failed",
-			"error", err.Error(),
-			"error_type", fmt.Sprintf("%T", err))
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: HTTP request failed",
+				"error", err.Error(),
+				"error_type", fmt.Sprintf("%T", err))
+		}
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	s.logger.Errorw("DIAGNOSTIC: HTTP request completed",
-		"status_code", resp.StatusCode,
-		"status", resp.Status)
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: HTTP request completed",
+			"status_code", resp.StatusCode,
+			"status", resp.Status)
+	}
 
 	if resp.StatusCode >= 300 {
 		// Read response body with size limit to avoid huge payloads
@@ -537,14 +551,18 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 			}
 		}
 
-		s.logger.Errorw("DIAGNOSTIC: Supabase returned error status",
-			"status_code", resp.StatusCode,
-			"response_body", errorDetails)
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: Supabase returned error status",
+				"status_code", resp.StatusCode,
+				"response_body", errorDetails)
+		}
 
 		return fmt.Errorf("Supabase returned status code %d: %s", resp.StatusCode, errorDetails)
 	}
 
-	s.logger.Errorw("DIAGNOSTIC: Supabase request completed successfully")
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: Supabase request completed successfully")
+	}
 	return nil
 }
 
