@@ -137,8 +137,8 @@ func TestSupabaseService_UpdateLocation(t *testing.T) {
 			}
 
 			// Check privacy
-			if privacy, ok := payload["privacy"].(string); !ok || privacy != expectedLocation.Privacy {
-				errCh <- "Expected privacy " + expectedLocation.Privacy + ", got " + privacy
+			if privacy, ok := payload["privacy_level"].(string); !ok || privacy != expectedLocation.Privacy {
+				errCh <- "Expected privacy_level " + expectedLocation.Privacy + ", got " + privacy
 			}
 		}
 
