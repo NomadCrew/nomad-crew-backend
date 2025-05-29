@@ -239,46 +239,9 @@ func (s *SupabaseService) upsertToSupabase(ctx context.Context, table string, da
 	}
 
 	// Validate and clean the API key value (same logic as postToSupabase)
-	cleanedKey := strings.TrimSpace(s.supabaseKey)
-	if cleanedKey != s.supabaseKey {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED in upsertToSupabase",
-				"original_length", len(s.supabaseKey),
-				"cleaned_length", len(cleanedKey))
-		}
-	}
-
-	// Check for invalid characters that would cause header validation to fail
-	for i, r := range cleanedKey {
-		if r < 32 || r > 126 { // ASCII printable characters only
-			if s.logger != nil {
-				// Log more context around the invalid character
-				contextStart := i - 5
-				if contextStart < 0 {
-					contextStart = 0
-				}
-				contextEnd := i + 6
-				if contextEnd > len(cleanedKey) {
-					contextEnd = len(cleanedKey)
-				}
-				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key in upsertToSupabase",
-					"position", i,
-					"character_code", int(r),
-					"character", string(r),
-					"context_before", cleanedKey[contextStart:i],
-					"context_after", cleanedKey[i+1:contextEnd],
-					"total_key_length", len(cleanedKey))
-			}
-			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
-		}
-	}
-
-	// Add validation for empty key after cleaning
-	if len(cleanedKey) == 0 {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning in upsertToSupabase")
-		}
-		return fmt.Errorf("Supabase key is empty after cleaning")
+	cleanedKey, err := s.validateAndCleanAPIKey("upsertToSupabase")
+	if err != nil {
+		return err
 	}
 
 	req.Header.Set("Apikey", cleanedKey)
@@ -330,33 +293,9 @@ func (s *SupabaseService) deleteFromSupabaseWithFilters(ctx context.Context, tab
 	}
 
 	// Validate and clean the API key value (same logic as postToSupabase)
-	cleanedKey := strings.TrimSpace(s.supabaseKey)
-	if cleanedKey != s.supabaseKey {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED in deleteFromSupabaseWithFilters",
-				"original_length", len(s.supabaseKey),
-				"cleaned_length", len(cleanedKey))
-		}
-	}
-
-	// Check for invalid characters that would cause header validation to fail
-	for i, r := range cleanedKey {
-		if r < 32 || r > 126 { // ASCII printable characters only
-			if s.logger != nil {
-				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key in deleteFromSupabaseWithFilters",
-					"position", i,
-					"character_code", int(r))
-			}
-			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
-		}
-	}
-
-	// Add validation for empty key after cleaning
-	if len(cleanedKey) == 0 {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning in deleteFromSupabaseWithFilters")
-		}
-		return fmt.Errorf("Supabase key is empty after cleaning")
+	cleanedKey, err := s.validateAndCleanAPIKey("deleteFromSupabaseWithFilters")
+	if err != nil {
+		return err
 	}
 
 	req.Header.Set("Apikey", cleanedKey)
@@ -473,33 +412,9 @@ func (s *SupabaseService) RemoveChatReaction(ctx context.Context, reaction ChatR
 	}
 
 	// Validate and clean the API key value (same logic as postToSupabase)
-	cleanedKey := strings.TrimSpace(s.supabaseKey)
-	if cleanedKey != s.supabaseKey {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED in RemoveChatReaction",
-				"original_length", len(s.supabaseKey),
-				"cleaned_length", len(cleanedKey))
-		}
-	}
-
-	// Check for invalid characters that would cause header validation to fail
-	for i, r := range cleanedKey {
-		if r < 32 || r > 126 { // ASCII printable characters only
-			if s.logger != nil {
-				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key in RemoveChatReaction",
-					"position", i,
-					"character_code", int(r))
-			}
-			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
-		}
-	}
-
-	// Add validation for empty key after cleaning
-	if len(cleanedKey) == 0 {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning in RemoveChatReaction")
-		}
-		return fmt.Errorf("Supabase key is empty after cleaning")
+	cleanedKey, err := s.validateAndCleanAPIKey("RemoveChatReaction")
+	if err != nil {
+		return err
 	}
 
 	req.Header.Set("Apikey", cleanedKey)
@@ -616,79 +531,12 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	if s.logger != nil {
 		s.logger.Errorw("DIAGNOSTIC: Starting Supabase request validation",
 			"table", table,
-			"url", url,
-			"supabaseKey_length", len(s.supabaseKey),
-			"supabaseKey_first_10", func() string {
-				if len(s.supabaseKey) >= 10 {
-					return s.supabaseKey[:10] + "..."
-				}
-				return s.supabaseKey
-			}())
+			"url", url)
 	}
 
-	// Log raw key composition for debugging
-	if s.logger != nil {
-		hasLeadingSpace := len(s.supabaseKey) > 0 && s.supabaseKey[0] == ' '
-		hasTrailingSpace := len(s.supabaseKey) > 0 && s.supabaseKey[len(s.supabaseKey)-1] == ' '
-		s.logger.Errorw("DIAGNOSTIC: Raw Supabase key analysis",
-			"length", len(s.supabaseKey),
-			"has_leading_space", hasLeadingSpace,
-			"has_trailing_space", hasTrailingSpace,
-			"first_char_code", func() int {
-				if len(s.supabaseKey) > 0 {
-					return int(s.supabaseKey[0])
-				}
-				return 0
-			}(),
-			"last_char_code", func() int {
-				if len(s.supabaseKey) > 0 {
-					return int(s.supabaseKey[len(s.supabaseKey)-1])
-				}
-				return 0
-			}())
-	}
-
-	// Validate and clean the API key value
-	cleanedKey := strings.TrimSpace(s.supabaseKey)
-	if cleanedKey != s.supabaseKey {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED",
-				"original_length", len(s.supabaseKey),
-				"cleaned_length", len(cleanedKey))
-		}
-	}
-
-	// Check for invalid characters that would cause header validation to fail
-	for i, r := range cleanedKey {
-		if r < 32 || r > 126 { // ASCII printable characters only
-			if s.logger != nil {
-				// Log more context around the invalid character
-				contextStart := i - 5
-				if contextStart < 0 {
-					contextStart = 0
-				}
-				contextEnd := i + 6
-				if contextEnd > len(cleanedKey) {
-					contextEnd = len(cleanedKey)
-				}
-				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key",
-					"position", i,
-					"character_code", int(r),
-					"character", string(r),
-					"context_before", cleanedKey[contextStart:i],
-					"context_after", cleanedKey[i+1:contextEnd],
-					"total_key_length", len(cleanedKey))
-			}
-			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
-		}
-	}
-
-	// Add validation for empty key after cleaning
-	if len(cleanedKey) == 0 {
-		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning")
-		}
-		return fmt.Errorf("Supabase key is empty after cleaning")
+	cleanedKey, err := s.validateAndCleanAPIKey("postToSupabase")
+	if err != nil {
+		return err
 	}
 
 	if s.logger != nil {
@@ -817,4 +665,56 @@ func (s *SupabaseService) GetTripMemberPresence(
 ) ([]UserPresence, error) {
 	// Implementation depends on the actual Supabase client
 	return []UserPresence{}, nil
+}
+
+// validateAndCleanAPIKey validates and cleans the Supabase API key for HTTP headers
+// Returns the cleaned key or an error if validation fails
+func (s *SupabaseService) validateAndCleanAPIKey(methodName string) (string, error) {
+	// Validate and clean the API key value
+	cleanedKey := strings.TrimSpace(s.supabaseKey)
+	if cleanedKey != s.supabaseKey {
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED",
+				"method", methodName,
+				"original_length", len(s.supabaseKey),
+				"cleaned_length", len(cleanedKey))
+		}
+	}
+
+	// Check for invalid characters that would cause header validation to fail
+	for i, r := range cleanedKey {
+		if r < 32 || r > 126 { // ASCII printable characters only
+			if s.logger != nil {
+				// Log more context around the invalid character
+				contextStart := i - 5
+				if contextStart < 0 {
+					contextStart = 0
+				}
+				contextEnd := i + 6
+				if contextEnd > len(cleanedKey) {
+					contextEnd = len(cleanedKey)
+				}
+				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key",
+					"method", methodName,
+					"position", i,
+					"character_code", int(r),
+					"character", string(r),
+					"context_before", cleanedKey[contextStart:i],
+					"context_after", cleanedKey[i+1:contextEnd],
+					"total_key_length", len(cleanedKey))
+			}
+			return "", fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
+		}
+	}
+
+	// Add validation for empty key after cleaning
+	if len(cleanedKey) == 0 {
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning",
+				"method", methodName)
+		}
+		return "", fmt.Errorf("Supabase key is empty after cleaning")
+	}
+
+	return cleanedKey, nil
 }
