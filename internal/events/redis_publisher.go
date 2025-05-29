@@ -196,6 +196,9 @@ func (p *RedisPublisher) Subscribe(ctx context.Context, tripID string, userID st
 	p.wg.Add(1)
 	go p.processMessages(subCtx, pubsub, events, filters, subKey)
 
+	// Small delay to ensure subscription is established
+	time.Sleep(10 * time.Millisecond)
+
 	return events, nil
 }
 

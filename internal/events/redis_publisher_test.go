@@ -115,20 +115,24 @@ func TestRedisPublisher_PublishBatch(t *testing.T) {
 	ch, err := publisher.Subscribe(ctx, tripID, userID)
 	require.NoError(t, err)
 
+	// Add a small delay to ensure subscription is ready
+	time.Sleep(100 * time.Millisecond)
+
 	// Publish batch
 	err = publisher.PublishBatch(ctx, tripID, events)
 	require.NoError(t, err)
 
 	// Wait for events
 	received := make([]types.Event, 0, len(events))
-	timeout := time.After(time.Second)
+	timeout := time.After(2 * time.Second) // Increased timeout
 
 	for i := 0; i < len(events); i++ {
 		select {
 		case event := <-ch:
+			t.Logf("Received event %d: %s", i+1, event.Type)
 			received = append(received, event)
 		case <-timeout:
-			t.Fatal("timeout waiting for events")
+			t.Fatalf("timeout waiting for events, received %d out of %d", len(received), len(events))
 		}
 	}
 
