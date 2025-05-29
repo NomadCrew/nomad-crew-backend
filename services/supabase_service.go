@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -465,8 +466,27 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Apikey", s.supabaseKey)
-	req.Header.Set("Authorization", "Bearer "+s.supabaseKey)
+	// Validate and clean the API key value
+	cleanedKey := strings.TrimSpace(s.supabaseKey)
+	if cleanedKey != s.supabaseKey {
+		s.logger.Warnw("Supabase key had leading/trailing whitespace",
+			"original_length", len(s.supabaseKey),
+			"cleaned_length", len(cleanedKey))
+	}
+
+	// Check for invalid characters that would cause header validation to fail
+	for i, r := range cleanedKey {
+		if r < 32 || r > 126 { // ASCII printable characters only
+			s.logger.Errorw("Invalid character in Supabase key",
+				"position", i,
+				"character_code", int(r),
+				"character", string(r))
+			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
+		}
+	}
+
+	req.Header.Set("Apikey", cleanedKey)
+	req.Header.Set("Authorization", "Bearer "+cleanedKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Prefer", "resolution=merge-duplicates,return=minimal")
 
