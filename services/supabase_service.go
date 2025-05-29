@@ -455,15 +455,57 @@ func (s *SupabaseService) UpdateTypingStatus(ctx context.Context, userID string,
 
 // postToSupabase sends data to Supabase REST API
 func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data map[string]interface{}) error {
+	// Log function entry with payload data
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: postToSupabase function entry",
+			"table", table,
+			"data_keys", func() []string {
+				keys := make([]string, 0, len(data))
+				for k := range data {
+					keys = append(keys, k)
+				}
+				return keys
+			}(),
+			"payload_summary", func() string {
+				jsonBytes, err := json.Marshal(data)
+				if err != nil {
+					return fmt.Sprintf("JSON marshal error: %v", err)
+				}
+				if len(jsonBytes) > 200 {
+					return string(jsonBytes[:200]) + "..."
+				}
+				return string(jsonBytes)
+			}())
+	}
+
 	jsonData, err := json.Marshal(data)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: JSON marshal failed",
+				"error", err.Error(),
+				"data", data)
+		}
 		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: JSON marshal successful",
+			"json_length", len(jsonData))
 	}
 
 	url := fmt.Sprintf("%s/rest/v1/%s", s.supabaseURL, table)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: HTTP request creation failed",
+				"error", err.Error(),
+				"url", url)
+		}
 		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if s.logger != nil {
+		s.logger.Errorw("DIAGNOSTIC: HTTP request created successfully")
 	}
 
 	// PRODUCTION DIAGNOSTIC: Force ERROR level logging to appear in production logs
@@ -477,6 +519,28 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 					return s.supabaseKey[:10] + "..."
 				}
 				return s.supabaseKey
+			}())
+	}
+
+	// Log raw key composition for debugging
+	if s.logger != nil {
+		hasLeadingSpace := len(s.supabaseKey) > 0 && s.supabaseKey[0] == ' '
+		hasTrailingSpace := len(s.supabaseKey) > 0 && s.supabaseKey[len(s.supabaseKey)-1] == ' '
+		s.logger.Errorw("DIAGNOSTIC: Raw Supabase key analysis",
+			"length", len(s.supabaseKey),
+			"has_leading_space", hasLeadingSpace,
+			"has_trailing_space", hasTrailingSpace,
+			"first_char_code", func() int {
+				if len(s.supabaseKey) > 0 {
+					return int(s.supabaseKey[0])
+				}
+				return 0
+			}(),
+			"last_char_code", func() int {
+				if len(s.supabaseKey) > 0 {
+					return int(s.supabaseKey[len(s.supabaseKey)-1])
+				}
+				return 0
 			}())
 	}
 
@@ -494,13 +558,33 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	for i, r := range cleanedKey {
 		if r < 32 || r > 126 { // ASCII printable characters only
 			if s.logger != nil {
+				// Log more context around the invalid character
+				contextStart := i - 5
+				if contextStart < 0 {
+					contextStart = 0
+				}
+				contextEnd := i + 6
+				if contextEnd > len(cleanedKey) {
+					contextEnd = len(cleanedKey)
+				}
 				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key",
 					"position", i,
 					"character_code", int(r),
-					"character", string(r))
+					"character", string(r),
+					"context_before", cleanedKey[contextStart:i],
+					"context_after", cleanedKey[i+1:contextEnd],
+					"total_key_length", len(cleanedKey))
 			}
 			return fmt.Errorf("invalid character in Supabase key at position %d: character code %d", i, int(r))
 		}
+	}
+
+	// Add validation for empty key after cleaning
+	if len(cleanedKey) == 0 {
+		if s.logger != nil {
+			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning")
+		}
+		return fmt.Errorf("Supabase key is empty after cleaning")
 	}
 
 	if s.logger != nil {
