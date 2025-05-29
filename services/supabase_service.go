@@ -331,6 +331,7 @@ func (s *SupabaseService) UpdateLocation(ctx context.Context, userID string, upd
 		"accuracy":           update.Accuracy,
 		"is_sharing_enabled": update.SharingEnabled,
 		"privacy_level":      update.Privacy,
+		"timestamp":          time.Now(),
 	}
 
 	// Only include trip_id if it's not empty
