@@ -251,6 +251,124 @@ func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*ty
 	return args.Get(0).(*types.WeatherInfo), args.Error(1)
 }
 
+// --- Mock User Store ---
+type MockUserStore struct {
+	mock.Mock
+}
+
+func (m *MockUserStore) GetUserByID(ctx context.Context, userID string) (*types.User, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) GetUserByEmail(ctx context.Context, email string) (*types.User, error) {
+	args := m.Called(ctx, email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) (*types.User, error) {
+	args := m.Called(ctx, supabaseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) CreateUser(ctx context.Context, user *types.User) (string, error) {
+	args := m.Called(ctx, user)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockUserStore) UpdateUser(ctx context.Context, userID string, updates map[string]interface{}) (*types.User, error) {
+	args := m.Called(ctx, userID, updates)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) GetUserByUsername(ctx context.Context, username string) (*types.User, error) {
+	args := m.Called(ctx, username)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.User, int, error) {
+	args := m.Called(ctx, offset, limit)
+	if args.Get(0) == nil {
+		return nil, args.Int(1), args.Error(2)
+	}
+	return args.Get(0).([]*types.User), args.Int(1), args.Error(2)
+}
+
+func (m *MockUserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string) (*types.User, error) {
+	args := m.Called(ctx, supabaseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) GetSupabaseUser(ctx context.Context, userID string) (*types.SupabaseUser, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SupabaseUser), args.Error(1)
+}
+
+func (m *MockUserStore) ConvertToUserResponse(user *types.User) (types.UserResponse, error) {
+	args := m.Called(user)
+	return args.Get(0).(types.UserResponse), args.Error(1)
+}
+
+func (m *MockUserStore) GetUserProfile(ctx context.Context, userID string) (*types.UserProfile, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.UserProfile), args.Error(1)
+}
+
+func (m *MockUserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[string]*types.UserProfile, error) {
+	args := m.Called(ctx, userIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]*types.UserProfile), args.Error(1)
+}
+
+func (m *MockUserStore) UpdateLastSeen(ctx context.Context, userID string) error {
+	args := m.Called(ctx, userID)
+	return args.Error(0)
+}
+
+func (m *MockUserStore) SetOnlineStatus(ctx context.Context, userID string, isOnline bool) error {
+	args := m.Called(ctx, userID, isOnline)
+	return args.Error(0)
+}
+
+func (m *MockUserStore) UpdateUserPreferences(ctx context.Context, userID string, preferences map[string]interface{}) error {
+	args := m.Called(ctx, userID, preferences)
+	return args.Error(0)
+}
+
+func (m *MockUserStore) BeginTx(ctx context.Context) (types.DatabaseTransaction, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(types.DatabaseTransaction), args.Error(1)
+}
+
 // --- Test Suite ---
 
 type TripServiceTestSuite struct {
@@ -258,6 +376,7 @@ type TripServiceTestSuite struct {
 	mockStore          *MockTripStore
 	mockEventPublisher *MockEventPublisher
 	mockWeatherSvc     *MockWeatherService
+	mockUserStore      *MockUserStore
 	service            *tripservice.TripManagementService
 	ctx                context.Context
 	testUserID         string
@@ -269,9 +388,11 @@ func (suite *TripServiceTestSuite) SetupTest() {
 	suite.mockStore = new(MockTripStore)
 	suite.mockEventPublisher = new(MockEventPublisher)
 	suite.mockWeatherSvc = new(MockWeatherService)
+	suite.mockUserStore = new(MockUserStore)
 
 	suite.service = tripservice.NewTripManagementService(
 		suite.mockStore,
+		suite.mockUserStore,
 		suite.mockEventPublisher,
 		suite.mockWeatherSvc,
 		nil, // supabaseService - not needed for unit tests

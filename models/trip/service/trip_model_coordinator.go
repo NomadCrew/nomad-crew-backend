@@ -55,7 +55,7 @@ func NewTripModelCoordinator(
 	}
 
 	// Create the concrete service instances
-	tripServiceInstance := NewTripManagementService(tripStore, eventBus, weatherSvc, supabaseService)
+	tripServiceInstance := NewTripManagementService(tripStore, userStore, eventBus, weatherSvc, supabaseService)
 	memberServiceInstance := NewTripMemberService(tripStore, eventBus, supabaseService)
 	invitationServiceInstance := NewInvitationService(tripStore, emailSvc, supabaseClient, config.FrontendURL, eventBus)
 	chatServiceInstance := NewTripChatService(chatStore, tripStore, eventBus)
