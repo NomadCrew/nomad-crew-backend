@@ -71,9 +71,13 @@ type UserSyncData struct {
 }
 
 type TripSyncData struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedBy string `json:"created_by"`
+	ID                   string    `json:"id"`
+	Name                 string    `json:"name"`
+	CreatedBy            string    `json:"created_by"`
+	StartDate            time.Time `json:"start_date"`
+	EndDate              time.Time `json:"end_date"`
+	DestinationLatitude  float64   `json:"destination_latitude"`
+	DestinationLongitude float64   `json:"destination_longitude"`
 }
 
 // TripMembershipSyncData represents the minimal membership data needed for Supabase RLS
@@ -160,9 +164,13 @@ func (s *SupabaseService) SyncTrip(ctx context.Context, tripData TripSyncData) e
 	s.logger.Infow("Syncing trip to Supabase", "tripID", tripData.ID, "name", tripData.Name)
 
 	payload := map[string]interface{}{
-		"id":         tripData.ID,
-		"name":       tripData.Name,
-		"created_by": tripData.CreatedBy,
+		"id":                    tripData.ID,
+		"name":                  tripData.Name,
+		"created_by":            tripData.CreatedBy,
+		"start_date":            tripData.StartDate,
+		"end_date":              tripData.EndDate,
+		"destination_latitude":  tripData.DestinationLatitude,
+		"destination_longitude": tripData.DestinationLongitude,
 	}
 
 	return s.upsertToSupabase(ctx, "trips", payload, "id")

@@ -102,6 +102,10 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 				}
 				return ""
 			}(),
+			StartDate:            trip.StartDate,
+			EndDate:              trip.EndDate,
+			DestinationLatitude:  trip.DestinationLatitude,
+			DestinationLongitude: trip.DestinationLongitude,
 		}
 
 		// Sync asynchronously to avoid blocking trip creation
@@ -267,6 +271,10 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 				}
 				return ""
 			}(),
+			StartDate:            updatedTrip.StartDate,
+			EndDate:              updatedTrip.EndDate,
+			DestinationLatitude:  updatedTrip.DestinationLatitude,
+			DestinationLongitude: updatedTrip.DestinationLongitude,
 		}
 
 		// Sync asynchronously to avoid blocking trip update
