@@ -34,11 +34,11 @@ DROP POLICY IF EXISTS "Users can insert their own messages" ON supabase_chat_mes
 DROP POLICY IF EXISTS "Users can view messages in their trips" ON supabase_chat_messages;
 
 -- Disable RLS
-ALTER TABLE locations DISABLE ROW LEVEL SECURITY;
-ALTER TABLE supabase_user_presence DISABLE ROW LEVEL SECURITY;
-ALTER TABLE supabase_chat_read_receipts DISABLE ROW LEVEL SECURITY;
-ALTER TABLE supabase_chat_reactions DISABLE ROW LEVEL SECURITY;
-ALTER TABLE supabase_chat_messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS locations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS supabase_user_presence DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS supabase_chat_read_receipts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS supabase_chat_reactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS supabase_chat_messages DISABLE ROW LEVEL SECURITY;
 
 -- Drop all indexes
 DROP INDEX IF EXISTS idx_supabase_presence_last_seen;
@@ -110,6 +110,7 @@ DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 -- Drop all functions
 DROP FUNCTION IF EXISTS round_coordinates CASCADE;
 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+DROP FUNCTION IF EXISTS auth.uid CASCADE;
 
 -- Drop all tables in reverse order of dependency
 DROP TABLE IF EXISTS supabase_user_presence CASCADE;
@@ -131,6 +132,10 @@ DROP TABLE IF EXISTS expenses CASCADE;
 DROP TABLE IF EXISTS trips CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
+-- Drop mock auth schema and its contents
+DROP TABLE IF EXISTS auth.users CASCADE;
+DROP SCHEMA IF EXISTS auth CASCADE;
+
 -- Drop all ENUM types in reverse order
 DROP TYPE IF EXISTS location_privacy CASCADE;
 DROP TYPE IF EXISTS invitation_status CASCADE;
@@ -141,4 +146,5 @@ DROP TYPE IF EXISTS membership_role CASCADE;
 DROP TYPE IF EXISTS trip_status CASCADE;
 
 -- Drop extensions (usually not needed as they might be used by other schemas)
+-- DROP EXTENSION IF EXISTS "pgcrypto"; -- Comment out to avoid affecting other schemas
 -- DROP EXTENSION IF EXISTS "uuid-ossp"; -- Comment out to avoid affecting other schemas 
