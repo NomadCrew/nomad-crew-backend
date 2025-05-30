@@ -124,9 +124,11 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	// Use internal user ID directly from enhanced middleware (consistent with other handlers)
 	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
-	log.Infow("[DEBUG] Internal user ID from context", "internalUserID", internalUserID)
-	if internalUserID == "" {
-		log.Errorw("No internal user ID found in context for CreateTripHandler")
+	// Get Supabase user ID for foreign key references to auth.users
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
+	log.Infow("[DEBUG] User IDs from context", "internalUserID", internalUserID, "supabaseUserID", supabaseUserID)
+	if internalUserID == "" || supabaseUserID == "" {
+		log.Errorw("No user ID found in context for CreateTripHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
@@ -144,7 +146,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		EndDate:              req.EndDate,
 		Status:               req.Status, // Will be 'PLANNING' by default if empty due to omitempty and DB default
 		BackgroundImageURL:   req.BackgroundImageURL,
-		CreatedBy:            &internalUserID, // Use internal UUID directly
+		CreatedBy:            &supabaseUserID, // Use Supabase ID for foreign key reference to auth.users
 	}
 	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 

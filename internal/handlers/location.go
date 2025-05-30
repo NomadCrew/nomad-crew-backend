@@ -30,7 +30,7 @@ func NewLocationHandler(store store.LocationStore) *LocationHandler {
 // //@Router /location [put]
 // UpdateLocation handles updating a user's location
 func (h *LocationHandler) UpdateLocation(c *gin.Context) {
-	userID, exists := c.Get(string(middleware.InternalUserIDKey))
+	userID, exists := c.Get(string(middleware.UserIDKey))
 	if !exists || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
