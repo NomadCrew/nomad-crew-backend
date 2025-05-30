@@ -95,7 +95,9 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
 		// Sync asynchronously to avoid blocking trip creation
 		go func() {
-			syncCtx := context.Background()
+			// Use a context derived from the request context with timeout for proper cancellation support
+			syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
 
 			// Get the user's Supabase ID for the foreign key reference
 			var createdBySupabaseID string
@@ -294,7 +296,8 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 		// Sync asynchronously to avoid blocking trip update
 		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Use a context derived from the request context with timeout for proper cancellation support
+			syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 			defer cancel()
 
 			// Get the user's Supabase ID for the foreign key reference
@@ -385,7 +388,8 @@ func (s *TripManagementService) DeleteTrip(ctx context.Context, id string) error
 		// Sync asynchronously to avoid blocking trip deletion
 		// Use a context with timeout to ensure proper cancellation support
 		go func() {
-			syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Use a context derived from the request context with timeout for proper cancellation support
+			syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 			defer cancel()
 
 			if err := s.supabaseService.DeleteTrip(syncCtx, id); err != nil {
