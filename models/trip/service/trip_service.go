@@ -101,13 +101,16 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 
 			// Get the user's Supabase ID for the foreign key reference
 			var createdBySupabaseID string
+			var shouldSync bool
+
 			if trip.CreatedBy != nil && *trip.CreatedBy != "" {
 				// Get user data from local store to get the Supabase ID
 				if userStore, ok := s.store.(interface {
 					GetUser(ctx context.Context, userID string) (*types.User, error)
 				}); ok {
-					if user, err := userStore.GetUser(syncCtx, *trip.CreatedBy); err == nil && user != nil {
+					if user, err := userStore.GetUser(syncCtx, *trip.CreatedBy); err == nil && user != nil && user.SupabaseID != "" {
 						createdBySupabaseID = user.SupabaseID
+						shouldSync = true
 
 						// Also sync user to Supabase to ensure they exist
 						userSyncData := services.UserSyncData{
@@ -126,28 +129,44 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 						}
 					} else {
 						log := logger.GetLogger()
-						log.Warnw("Could not get user data for trip sync", "userID", *trip.CreatedBy, "error", err)
+						if err != nil {
+							log.Warnw("Could not get user data for trip sync", "userID", *trip.CreatedBy, "error", err)
+						} else if user == nil {
+							log.Warnw("User not found for trip sync", "userID", *trip.CreatedBy)
+						} else {
+							log.Warnw("User has no Supabase ID for trip sync", "userID", *trip.CreatedBy)
+						}
+						log.Infow("Skipping trip sync to Supabase due to missing or invalid user data", "tripID", trip.ID)
 					}
+				} else {
+					log := logger.GetLogger()
+					log.Warnw("User store does not support GetUser method, skipping trip sync", "tripID", trip.ID)
 				}
-			}
-
-			syncData := services.TripSyncData{
-				ID:                   trip.ID,
-				Name:                 trip.Name,
-				CreatedBy:            createdBySupabaseID, // Use Supabase ID instead of internal UUID
-				StartDate:            trip.StartDate,
-				EndDate:              trip.EndDate,
-				DestinationLatitude:  trip.DestinationLatitude,
-				DestinationLongitude: trip.DestinationLongitude,
-			}
-
-			// Now sync the trip
-			if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
-				log := logger.GetLogger()
-				log.Errorw("Failed to sync trip to Supabase", "error", err, "tripID", trip.ID)
 			} else {
 				log := logger.GetLogger()
-				log.Infow("Successfully synced trip to Supabase", "tripID", trip.ID)
+				log.Infow("Trip has no creator, skipping sync to Supabase", "tripID", trip.ID)
+			}
+
+			// Only sync if we have a valid Supabase user ID
+			if shouldSync {
+				syncData := services.TripSyncData{
+					ID:                   trip.ID,
+					Name:                 trip.Name,
+					CreatedBy:            createdBySupabaseID, // Use Supabase ID instead of internal UUID
+					StartDate:            trip.StartDate,
+					EndDate:              trip.EndDate,
+					DestinationLatitude:  trip.DestinationLatitude,
+					DestinationLongitude: trip.DestinationLongitude,
+				}
+
+				// Now sync the trip
+				if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
+					log := logger.GetLogger()
+					log.Errorw("Failed to sync trip to Supabase", "error", err, "tripID", trip.ID)
+				} else {
+					log := logger.GetLogger()
+					log.Infow("Successfully synced trip to Supabase", "tripID", trip.ID)
+				}
 			}
 		}()
 	}
@@ -302,13 +321,16 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 
 			// Get the user's Supabase ID for the foreign key reference
 			var createdBySupabaseID string
+			var canSync bool
+
 			if updatedTrip.CreatedBy != nil && *updatedTrip.CreatedBy != "" {
 				// Get user data from local store to get the Supabase ID
 				if userStore, ok := s.store.(interface {
 					GetUser(ctx context.Context, userID string) (*types.User, error)
 				}); ok {
-					if user, err := userStore.GetUser(syncCtx, *updatedTrip.CreatedBy); err == nil && user != nil {
+					if user, err := userStore.GetUser(syncCtx, *updatedTrip.CreatedBy); err == nil && user != nil && user.SupabaseID != "" {
 						createdBySupabaseID = user.SupabaseID
+						canSync = true
 
 						// Also sync user to Supabase to ensure they exist
 						userSyncData := services.UserSyncData{
@@ -324,27 +346,43 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 						}
 					} else {
 						log := logger.GetLogger()
-						log.Warnw("Could not get user data for trip update sync", "userID", *updatedTrip.CreatedBy, "error", err)
+						if err != nil {
+							log.Warnw("Could not get user data for trip update sync", "userID", *updatedTrip.CreatedBy, "error", err)
+						} else if user == nil {
+							log.Warnw("User not found for trip update sync", "userID", *updatedTrip.CreatedBy)
+						} else {
+							log.Warnw("User has no Supabase ID for trip update sync", "userID", *updatedTrip.CreatedBy)
+						}
+						log.Infow("Skipping trip update sync to Supabase due to missing or invalid user data", "tripID", id)
 					}
+				} else {
+					log := logger.GetLogger()
+					log.Warnw("User store does not support GetUser method, skipping trip update sync", "tripID", id)
 				}
-			}
-
-			syncData := services.TripSyncData{
-				ID:                   updatedTrip.ID,
-				Name:                 updatedTrip.Name,
-				CreatedBy:            createdBySupabaseID, // Use Supabase ID instead of internal UUID
-				StartDate:            updatedTrip.StartDate,
-				EndDate:              updatedTrip.EndDate,
-				DestinationLatitude:  updatedTrip.DestinationLatitude,
-				DestinationLongitude: updatedTrip.DestinationLongitude,
-			}
-
-			if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
-				log := logger.GetLogger()
-				log.Errorw("Failed to sync updated trip to Supabase", "error", err, "tripID", id)
 			} else {
 				log := logger.GetLogger()
-				log.Infow("Successfully synced updated trip to Supabase", "tripID", id)
+				log.Infow("Trip has no creator, skipping update sync to Supabase", "tripID", id)
+			}
+
+			// Only sync if we have a valid Supabase user ID
+			if canSync {
+				syncData := services.TripSyncData{
+					ID:                   updatedTrip.ID,
+					Name:                 updatedTrip.Name,
+					CreatedBy:            createdBySupabaseID, // Use Supabase ID instead of internal UUID
+					StartDate:            updatedTrip.StartDate,
+					EndDate:              updatedTrip.EndDate,
+					DestinationLatitude:  updatedTrip.DestinationLatitude,
+					DestinationLongitude: updatedTrip.DestinationLongitude,
+				}
+
+				if err := s.supabaseService.SyncTrip(syncCtx, syncData); err != nil {
+					log := logger.GetLogger()
+					log.Errorw("Failed to sync updated trip to Supabase", "error", err, "tripID", id)
+				} else {
+					log := logger.GetLogger()
+					log.Infow("Successfully synced updated trip to Supabase", "tripID", id)
+				}
 			}
 		}()
 	}
