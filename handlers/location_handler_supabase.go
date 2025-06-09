@@ -47,7 +47,7 @@ func NewLocationHandlerSupabase(
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	tripID := c.Param("id")
 
 	if tripID == "" {
@@ -150,7 +150,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	tripID := c.Param("id")
 
 	if tripID == "" {
@@ -215,7 +215,7 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [post]
 func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 	tripID := c.Param("id")
 
 	if tripID == "" {
@@ -331,7 +331,7 @@ func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/location/update [post]
 func (h *LocationHandlerSupabase) LegacyUpdateLocation(c *gin.Context) {
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := c.GetString(string(middleware.InternalUserIDKey))
 
 	var locationUpdate types.LocationUpdate
 	if err := c.ShouldBindJSON(&locationUpdate); err != nil {
