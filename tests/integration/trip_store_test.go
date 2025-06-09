@@ -89,10 +89,15 @@ func TestTripStore(t *testing.T) {
 	ctx := context.Background()
 	testUserID := uuid.New().String()
 
-	// Insert the test user before any trip operations
+	// Insert the test user into both users and auth.users tables before any trip operations
 	_, errUser := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
 		testUserID, uuid.New().String(), fmt.Sprintf("user-%s@example.com", testUserID), "testuser1", "Test User For TripStore")
 	require.NoError(t, errUser, "Failed to insert test user for TestTripStore")
+
+	// Insert into auth.users table for foreign key constraint satisfaction
+	_, errAuthUser := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+		testUserID, fmt.Sprintf("user-%s@example.com", testUserID))
+	require.NoError(t, errAuthUser, "Failed to insert test user into auth.users for TestTripStore")
 
 	// Defer cleanup of test data
 	defer func() {
@@ -212,10 +217,15 @@ func TestTripStore(t *testing.T) {
 	// Test ListUserTrips
 	t.Run("ListUserTrips", func(t *testing.T) {
 		listTestUserID := uuid.New().String()
-		// Insert the listTestUserID user
+		// Insert the listTestUserID user into both users and auth.users tables
 		_, errUserInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
 			listTestUserID, uuid.New().String(), fmt.Sprintf("listuser-%s@example.com", listTestUserID), "testuser2", "List Test User")
 		require.NoError(t, errUserInsert, "Failed to insert listTestUserID")
+
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthUserInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			listTestUserID, fmt.Sprintf("listuser-%s@example.com", listTestUserID))
+		require.NoError(t, errAuthUserInsert, "Failed to insert listTestUserID into auth.users")
 
 		trip := types.Trip{
 			Name:                 "Test Trip List",

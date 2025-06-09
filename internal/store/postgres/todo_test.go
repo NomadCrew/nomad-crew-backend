@@ -85,11 +85,20 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
 	userID := uuid.New()
 	tripID := uuid.New()
 
+	// Insert into both users and auth.users tables to satisfy foreign key constraints
 	_, err = testPool.Exec(ctx, `
 		INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at)
 		VALUES ($1, $2, 'test@example.com', 'testuser1', 'Test User', NOW(), NOW())`,
 		userID,
 		uuid.New().String(),
+	)
+	require.NoError(t, err)
+
+	// Insert into auth.users table for foreign key constraint satisfaction
+	_, err = testPool.Exec(ctx, `
+		INSERT INTO auth.users (id, email, created_at, updated_at)
+		VALUES ($1, 'test@example.com', NOW(), NOW())`,
+		userID,
 	)
 	require.NoError(t, err)
 

@@ -102,6 +102,7 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 	user1Meta := `{"username":"testuser","firstName":"Test","lastName":"User","avatar_url":"http://example.com/avatar1.png"}`
 	user2Meta := `{"username":"anotheruser","avatar_url":"http://example.com/avatar2.png"}`
 
+	// Insert into both users and auth.users tables to satisfy foreign key constraints
 	_, err = testPool.Exec(ctx, `
 		INSERT INTO users (id, supabase_id, email, username, name, raw_user_meta_data, created_at, updated_at)
 		VALUES ($1, $2, 'test@example.com', 'testuser1', 'testuser', $3::jsonb, NOW(), NOW()),
@@ -112,6 +113,16 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 		anotherUserID,
 		uuid.New().String(),
 		user2Meta,
+	)
+	require.NoError(t, err)
+
+	// Insert into auth.users table for foreign key constraint satisfaction
+	_, err = testPool.Exec(ctx, `
+		INSERT INTO auth.users (id, email, created_at, updated_at)
+		VALUES ($1, 'test@example.com', NOW(), NOW()),
+		       ($2, 'another@example.com', NOW(), NOW())`,
+		userID,
+		anotherUserID,
 	)
 	require.NoError(t, err)
 
