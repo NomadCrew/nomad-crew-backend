@@ -94,6 +94,11 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		testUserUUID, uuid.New().String(), "testuser@example.com", "testuser1", "Test User Integration")
 	require.NoError(t, err, "Failed to insert test user")
 
+	// Insert into auth.users table for foreign key constraint satisfaction
+	_, err = pool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+		testUserUUID, "testuser@example.com")
+	require.NoError(t, err, "Failed to insert test user into auth.users")
+
 	return pool, func() {
 		if err := container.Terminate(ctx); err != nil {
 			t.Logf("failed to terminate container: %s", err)
@@ -415,6 +420,11 @@ func TestPgTripStore_Integration(t *testing.T) {
 		_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
 			memberUUID, uuid.New().String(), "member@example.com", "member123", "Test Member")
 		require.NoError(t, err, "Failed to insert test member user")
+
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, err = pool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			memberUUID, "member@example.com")
+		require.NoError(t, err, "Failed to insert test member user into auth.users")
 
 		// Add member
 		membership := &types.TripMembership{

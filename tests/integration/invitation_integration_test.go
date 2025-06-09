@@ -471,6 +471,14 @@ func createUserInDB(ctx context.Context, pool *pgxpool.Pool, email, supabaseID, 
 	if err != nil {
 		return nil, fmt.Errorf("createUserInDB failed: %w", err)
 	}
+
+	// Insert into auth.users table for foreign key constraint satisfaction
+	_, err = pool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+		userID, email)
+	if err != nil {
+		return nil, fmt.Errorf("createUserInDB: failed to insert into auth.users: %w", err)
+	}
+
 	return &user, nil
 }
 

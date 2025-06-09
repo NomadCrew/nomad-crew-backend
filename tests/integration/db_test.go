@@ -115,6 +115,11 @@ func TestTripStore_Integration(t *testing.T) {
 		testUserUUID, uuid.New().String(), "integration-testuser@example.com", "testuser1", "Integration Test User")
 	require.NoError(t, err, "Failed to insert main test user for TestTripStore_Integration")
 
+	// Insert into auth.users table for foreign key constraint satisfaction
+	_, err = dbClient.GetPool().Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+		testUserUUID, "integration-testuser@example.com")
+	require.NoError(t, err, "Failed to insert main test user into auth.users for TestTripStore_Integration")
+
 	// Setup cleanup to run at the end
 	defer func() {
 		t.Run("Cleanup", func(t *testing.T) {

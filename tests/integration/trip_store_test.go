@@ -258,6 +258,11 @@ func TestTripStore(t *testing.T) {
 			searchUserID, uuid.New().String(), fmt.Sprintf("searchuser-%s@example.com", searchUserID), "testuser3", "Search Test User")
 		require.NoError(t, errUserInsert, "Failed to insert searchUserID")
 
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthUserInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			searchUserID, fmt.Sprintf("searchuser-%s@example.com", searchUserID))
+		require.NoError(t, errAuthUserInsert, "Failed to insert searchUserID into auth.users")
+
 		searchTrip := types.Trip{
 			Name:                 "Searchable Trip",
 			DestinationAddress:   stringPtr("Searchable Address"),
@@ -299,10 +304,20 @@ func TestTripStore(t *testing.T) {
 			addMemberUserID, uuid.New().String(), fmt.Sprintf("addmemberuser-%s@example.com", addMemberUserID), "testuser4", "AddMember Test User (Creator)")
 		require.NoError(t, errUserInsert, "Failed to insert addMemberUserID")
 
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthUserInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			addMemberUserID, fmt.Sprintf("addmemberuser-%s@example.com", addMemberUserID))
+		require.NoError(t, errAuthUserInsert, "Failed to insert addMemberUserID into auth.users")
+
 		// Insert the member user
 		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
 			memberID, uuid.New().String(), fmt.Sprintf("member-%s@example.com", memberID), "testuser5", "AddMember Test User (Member)")
 		require.NoError(t, errMemberInsert, "Failed to insert memberID for AddMember test")
+
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthMemberInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			memberID, fmt.Sprintf("member-%s@example.com", memberID))
+		require.NoError(t, errAuthMemberInsert, "Failed to insert memberID into auth.users")
 
 		trip := types.Trip{
 			Name:                 "Test Trip AddMember",
@@ -352,10 +367,20 @@ func TestTripStore(t *testing.T) {
 			updateRoleUserID, uuid.New().String(), fmt.Sprintf("updateroleuser-%s@example.com", updateRoleUserID), "testuser6", "UpdateRole Test User (Creator)")
 		require.NoError(t, errUserInsert, "Failed to insert updateRoleUserID")
 
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthUserInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			updateRoleUserID, fmt.Sprintf("updateroleuser-%s@example.com", updateRoleUserID))
+		require.NoError(t, errAuthUserInsert, "Failed to insert updateRoleUserID into auth.users")
+
 		// Insert the member user
 		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
 			memberID, uuid.New().String(), fmt.Sprintf("member-%s@example.com", memberID), "testuser7", "UpdateRole Test User (Member)")
 		require.NoError(t, errMemberInsert, "Failed to insert memberID for UpdateMemberRole test")
+
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthMemberInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			memberID, fmt.Sprintf("member-%s@example.com", memberID))
+		require.NoError(t, errAuthMemberInsert, "Failed to insert memberID into auth.users")
 
 		trip := types.Trip{
 			Name:                 "Test Trip UpdateMemberRole",
@@ -408,10 +433,20 @@ func TestTripStore(t *testing.T) {
 			removeMemberUserID, uuid.New().String(), fmt.Sprintf("removememberuser-%s@example.com", removeMemberUserID), "testuser8", "RemoveMember Test User (Creator)")
 		require.NoError(t, errUserInsert, "Failed to insert removeMemberUserID")
 
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthUserInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			removeMemberUserID, fmt.Sprintf("removememberuser-%s@example.com", removeMemberUserID))
+		require.NoError(t, errAuthUserInsert, "Failed to insert removeMemberUserID into auth.users")
+
 		// Insert the member user to be removed
 		_, errMemberInsert := testPool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
 			memberToRemoveID, uuid.New().String(), fmt.Sprintf("membertoremove-%s@example.com", memberToRemoveID), "testuser9", "RemoveMember Test User (To Remove)")
 		require.NoError(t, errMemberInsert, "Failed to insert memberToRemoveID")
+
+		// Insert into auth.users table for foreign key constraint satisfaction
+		_, errAuthMemberInsert := testPool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
+			memberToRemoveID, fmt.Sprintf("membertoremove-%s@example.com", memberToRemoveID))
+		require.NoError(t, errAuthMemberInsert, "Failed to insert memberToRemoveID into auth.users")
 
 		trip := types.Trip{
 			Name:                 "Test Trip RemoveMember",
