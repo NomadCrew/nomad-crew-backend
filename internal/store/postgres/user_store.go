@@ -208,7 +208,15 @@ func (s *UserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) 
 
 // CreateUser creates a new user
 func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, error) {
-	query := `
+	// Start a transaction to insert into both users and auth.users tables
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// First, insert into users table
+	userQuery := `
 		INSERT INTO users (
 			supabase_id, username, first_name, last_name, email, 
 			profile_picture_url, raw_user_meta_data,
@@ -227,7 +235,7 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 	}
 
 	var id string
-	err := s.queryRow(ctx, query,
+	err = tx.QueryRow(ctx, userQuery,
 		user.SupabaseID,
 		user.Username,
 		user.FirstName,
@@ -246,6 +254,22 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 			return "", fmt.Errorf("user already exists: %w", err)
 		}
 		return "", fmt.Errorf("error creating user: %w", err)
+	}
+
+	authQuery := `
+		INSERT INTO auth.users (id, email, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (id) DO NOTHING`
+
+	_, err = tx.Exec(ctx, authQuery, user.SupabaseID, user.Email)
+	if err != nil {
+		return "", fmt.Errorf("error creating auth user: %w", err)
+	}
+
+	// Commit the transaction
+	err = tx.Commit(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error committing transaction: %w", err)
 	}
 
 	return id, nil
@@ -287,11 +311,9 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 		}
 	}
 
-	// Always update the updated_at timestamp
 	setParts = append(setParts, "updated_at = NOW()")
 
 	if len(setParts) == 1 {
-		// Only updated_at would be updated, which means no actual changes
 		return s.GetUserByID(ctx, userID)
 	}
 
@@ -390,10 +412,8 @@ func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.
 
 // SyncUserFromSupabase fetches user data from Supabase and syncs it with the local database
 func (s *UserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string) (*types.User, error) {
-	// First, check if the user already exists in our database
 	existingUser, err := s.GetUserBySupabaseID(ctx, supabaseID)
 	if err == nil {
-		// User exists, just return it
 		return existingUser, nil
 	}
 
@@ -412,7 +432,7 @@ func (s *UserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string)
 		FirstName:         supabaseUser.UserMetadata.FirstName,
 		LastName:          supabaseUser.UserMetadata.LastName,
 		ProfilePictureURL: supabaseUser.UserMetadata.ProfilePicture,
-		LastSeenAt:        &now, // Corrected: assign address of time.Now()
+		LastSeenAt:        &now,
 		IsOnline:          true,
 	}
 
