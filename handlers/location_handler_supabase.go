@@ -288,14 +288,17 @@ func (h *LocationHandlerSupabase) generateLocationResponse(userID, tripID string
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use internal user ID for trip access validation
+	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for database operations (foreign key compatibility)
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	tripID, member, ok := h.validateTripAccess(c, userID)
+	tripID, member, ok := h.validateTripAccess(c, internalUserID)
 	if !ok {
 		return
 	}
 
-	if !h.checkTripExists(c, tripID, userID, member) {
+	if !h.checkTripExists(c, tripID, internalUserID, member) {
 		return
 	}
 
@@ -309,7 +312,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 		return
 	}
 
-	if !h.updateLocationInSupabase(c, userID, tripID, processedLocation, false) {
+	if !h.updateLocationInSupabase(c, supabaseUserID, tripID, processedLocation, false) {
 		return
 	}
 
@@ -331,9 +334,10 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use internal user ID for trip access validation
+	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
 
-	_, _, ok := h.validateTripAccess(c, userID)
+	_, _, ok := h.validateTripAccess(c, internalUserID)
 	if !ok {
 		return
 	}
@@ -384,14 +388,17 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [post]
 func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use internal user ID for trip access validation
+	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for database operations (foreign key compatibility)
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	tripID, member, ok := h.validateTripAccess(c, userID)
+	tripID, member, ok := h.validateTripAccess(c, internalUserID)
 	if !ok {
 		return
 	}
 
-	if !h.checkTripExists(c, tripID, userID, member) {
+	if !h.checkTripExists(c, tripID, internalUserID, member) {
 		return
 	}
 
@@ -405,11 +412,11 @@ func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
 		return
 	}
 
-	if !h.updateLocationInSupabase(c, userID, tripID, processedLocation, true) {
+	if !h.updateLocationInSupabase(c, supabaseUserID, tripID, processedLocation, true) {
 		return
 	}
 
-	response := h.generateLocationResponse(userID, tripID, &locationUpdate, processedLocation.Privacy)
+	response := h.generateLocationResponse(supabaseUserID, tripID, &locationUpdate, processedLocation.Privacy)
 	c.JSON(http.StatusCreated, response)
 }
 
@@ -426,7 +433,8 @@ func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/location/update [post]
 func (h *LocationHandlerSupabase) LegacyUpdateLocation(c *gin.Context) {
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for database operations (foreign key compatibility)
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	var locationUpdate types.LocationUpdate
 	if !h.validateLocationData(c, &locationUpdate) {
@@ -439,10 +447,10 @@ func (h *LocationHandlerSupabase) LegacyUpdateLocation(c *gin.Context) {
 	}
 
 	// For legacy endpoint, we update location globally (no specific trip)
-	if !h.updateLocationInSupabase(c, userID, "", processedLocation, false) {
+	if !h.updateLocationInSupabase(c, supabaseUserID, "", processedLocation, false) {
 		return
 	}
 
-	response := h.generateLocationResponse(userID, "", &locationUpdate, processedLocation.Privacy)
+	response := h.generateLocationResponse(supabaseUserID, "", &locationUpdate, processedLocation.Privacy)
 	c.JSON(http.StatusOK, response)
 }
