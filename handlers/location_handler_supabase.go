@@ -97,8 +97,35 @@ func (h *LocationHandlerSupabase) checkTripExists(c *gin.Context, tripID, userID
 		h.logger.Warnw("Trip not found in Supabase, attempting immediate sync",
 			"tripID", tripID, "userID", userID)
 
-		// Attempt to sync the trip immediately using cached trip data
-		err = h.supabaseService.SyncTripImmediate(c.Request.Context(), tripID, member)
+		// Fetch trip data for sync
+		trip, err := h.tripService.GetTripForSync(c.Request.Context(), tripID)
+		if err != nil {
+			h.logger.Errorw("Failed to fetch trip data for sync", "error", err, "tripID", tripID)
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "Trip synchronization required. Please retry in a moment.",
+				"code":  "TRIP_SYNC_REQUIRED",
+			})
+			return false
+		}
+
+		// Convert Trip to TripSyncData
+		createdBy := ""
+		if trip.CreatedBy != nil {
+			createdBy = *trip.CreatedBy
+		}
+
+		tripSyncData := services.TripSyncData{
+			ID:                   trip.ID,
+			Name:                 trip.Name,
+			CreatedBy:            createdBy,
+			StartDate:            trip.StartDate,
+			EndDate:              trip.EndDate,
+			DestinationLatitude:  trip.DestinationLatitude,
+			DestinationLongitude: trip.DestinationLongitude,
+		}
+
+		// Attempt to sync the trip immediately using the fetched trip data
+		err = h.supabaseService.SyncTripImmediate(c.Request.Context(), tripSyncData)
 		if err != nil {
 			h.logger.Errorw("Failed to sync trip to Supabase", "error", err, "tripID", tripID)
 			c.JSON(http.StatusConflict, gin.H{

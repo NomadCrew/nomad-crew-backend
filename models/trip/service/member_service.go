@@ -240,6 +240,12 @@ func (s *TripMemberService) GetTripMember(ctx context.Context, tripID, userID st
 	return nil, err
 }
 
+// GetTripForSync retrieves trip data for Supabase sync purposes
+// This method is needed to satisfy the handlers.TripServiceInterface
+func (s *TripMemberService) GetTripForSync(ctx context.Context, tripID string) (*types.Trip, error) {
+	return s.store.GetTrip(ctx, tripID)
+}
+
 // Helper method to publish events using the centralized helper
 func (s *TripMemberService) publishEvent(ctx context.Context, eventType string, tripID string, userID string, data map[string]interface{}) {
 	log := logger.GetLogger()
