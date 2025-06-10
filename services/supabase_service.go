@@ -675,6 +675,85 @@ func (s *SupabaseService) GetTripMemberPresence(
 	return []UserPresence{}, nil
 }
 
+// CheckTripExists verifies if a trip exists in Supabase trips table
+func (s *SupabaseService) CheckTripExists(ctx context.Context, tripID string) (bool, error) {
+	if !s.isEnabled {
+		// If Supabase is disabled, assume trip exists locally
+		return true, nil
+	}
+
+	if strings.TrimSpace(tripID) == "" {
+		return false, fmt.Errorf("trip ID cannot be empty")
+	}
+
+	// Query the trips table to check if the trip exists
+	queryURL := fmt.Sprintf("%s/rest/v1/trips?id=eq.%s&select=id", s.supabaseURL, url.QueryEscape(tripID))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	cleanedKey, err := s.validateAndCleanAPIKey("CheckTripExists")
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Apikey", cleanedKey)
+	req.Header.Set("Authorization", "Bearer "+cleanedKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("Supabase returned status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Parse JSON response - should be an array
+	var trips []map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &trips); err != nil {
+		return false, fmt.Errorf("failed to parse response JSON: %w", err)
+	}
+
+	exists := len(trips) > 0
+	if s.logger != nil {
+		s.logger.Infow("Trip existence check completed", "tripID", tripID, "exists", exists)
+	}
+
+	return exists, nil
+}
+
+// SyncTripImmediate performs immediate synchronous trip sync to Supabase
+// This is used when we need to ensure a trip exists in Supabase before dependent operations
+func (s *SupabaseService) SyncTripImmediate(ctx context.Context, tripData TripSyncData) error {
+	if !s.isEnabled {
+		return nil
+	}
+
+	if strings.TrimSpace(tripData.ID) == "" {
+		return fmt.Errorf("trip ID cannot be empty")
+	}
+
+	// Sync trip data directly using the provided data
+	if err := s.SyncTrip(ctx, tripData); err != nil {
+		return fmt.Errorf("failed to sync trip to Supabase: %w", err)
+	}
+
+	s.logger.Infow("Successfully completed immediate trip sync", "tripID", tripData.ID)
+	return nil
+}
+
 // validateAndCleanAPIKey validates and cleans the Supabase API key for HTTP headers
 // Returns the cleaned key or an error if validation fails
 func (s *SupabaseService) validateAndCleanAPIKey(methodName string) (string, error) {
