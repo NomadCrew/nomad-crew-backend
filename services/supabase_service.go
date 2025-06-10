@@ -60,7 +60,7 @@ type LocationUpdate struct {
 	Accuracy         float32       `json:"accuracy"`
 	SharingEnabled   bool          `json:"is_sharing_enabled"`
 	SharingExpiresIn time.Duration `json:"sharing_expires_in,omitempty"` // Duration in seconds, converted from client-provided value
-	Privacy          string        `json:"privacy_level,omitempty"`
+	Privacy          string        `json:"privacy,omitempty"`
 }
 
 // Sync data structures for minimal data synchronization
@@ -350,7 +350,7 @@ func (s *SupabaseService) UpdateLocation(ctx context.Context, userID string, upd
 		"longitude":          update.Longitude,
 		"accuracy":           update.Accuracy,
 		"is_sharing_enabled": update.SharingEnabled,
-		"privacy_level":      update.Privacy,
+		"privacy":            update.Privacy,
 		"timestamp":          time.Now(),
 	}
 
