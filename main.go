@@ -248,6 +248,7 @@ func main() {
 	locationHandlerSupabase := handlers.NewLocationHandlerSupabase(
 		tripMemberService,
 		supabaseService,
+		userDB,
 	)
 
 	// Prepare Router Dependencies
