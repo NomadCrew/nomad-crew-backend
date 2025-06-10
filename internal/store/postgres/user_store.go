@@ -213,7 +213,9 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 	if err != nil {
 		return "", fmt.Errorf("error starting transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx) // Ignore error - this is cleanup code
+	}()
 
 	// First, insert into users table
 	userQuery := `
