@@ -61,7 +61,7 @@ func (h *LocationHandlerSupabase) validateLocationData(c *gin.Context, locationU
 
 // validateTripAccess validates that the user has access to the trip and returns the trip ID
 func (h *LocationHandlerSupabase) validateTripAccess(c *gin.Context, userID string) (string, bool) {
-	tripID := c.Param("id")
+tripID := c.Param("tripId")
 	if tripID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Trip ID is required",
@@ -92,14 +92,18 @@ func (h *LocationHandlerSupabase) checkTripExists(c *gin.Context, tripID, userID
 		return false
 	}
 
-	// If trip doesn't exist in Supabase, we need trip data to sync it
+	// If trip doesn't exist in Supabase, attempt immediate sync
 	if !tripExists {
-		h.logger.Warnw("Trip not found in Supabase, sync required before location creation",
+		h.logger.Warnw("Trip not found in Supabase, attempting immediate sync",
 			"tripID", tripID, "userID", userID)
 
-		// Note: For now, we'll return an error indicating the trip sync is needed
-		// In a future improvement, we could get trip data from member.Trip if available
-		// and perform immediate sync using h.supabaseService.SyncTripImmediate()
+		// Attempt to get trip data and sync it immediately
+		if h.attemptTripSync(c, tripID, userID) {
+			h.logger.Infow("Successfully synced trip to Supabase", "tripID", tripID)
+			return true
+		}
+
+		// If sync failed, return the 409 error
 		c.JSON(http.StatusConflict, gin.H{
 			"error": "Trip synchronization required. Please retry in a moment.",
 			"code":  "TRIP_SYNC_REQUIRED",
@@ -109,6 +113,24 @@ func (h *LocationHandlerSupabase) checkTripExists(c *gin.Context, tripID, userID
 
 	h.logger.Debugw("Trip existence verified in Supabase", "tripID", tripID)
 	return true
+}
+
+// attemptTripSync attempts to sync trip data to Supabase immediately
+func (h *LocationHandlerSupabase) attemptTripSync(c *gin.Context, tripID, userID string) bool {
+	// For now, we need to get trip data through the tripService
+	// Since we already validated access, we can try to get the trip member to access trip data
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
+	if err != nil || member == nil {
+		h.logger.Errorw("Failed to get trip member for sync", "error", err, "tripID", tripID, "userID", userID)
+		return false
+	}
+
+	// Unfortunately, the current TripServiceInterface doesn't provide direct access to trip data
+	// We would need to extend the interface or use a different approach
+	// For now, return false to maintain the original behavior and avoid breaking changes
+	h.logger.Warnw("Trip sync not implemented - TripServiceInterface lacks trip data access",
+		"tripID", tripID, "userID", userID)
+	return false
 }
 
 // processLocationUpdate processes the location update data and sets defaults
@@ -174,9 +196,7 @@ func (h *LocationHandlerSupabase) generateLocationResponse(userID, tripID string
 	if tripID == "" {
 		idSuffix = "global"
 	}
-
-	response := gin.H{
-		"id":            userID + "_" + idSuffix + "_" + now.Format("20060102150405"),
+ "id": uuid.NewString(),
 		"user_id":       userID,
 		"latitude":      originalLocation.Latitude,
 		"longitude":     originalLocation.Longitude,
