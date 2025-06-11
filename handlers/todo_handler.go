@@ -72,8 +72,8 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	// Override the TripID from the request to ensure consistency.
 	req.TripID = tripID
 
-	// Set the UserID from the authenticated user in the context (use internal UUID)
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Set the UserID from the authenticated user in the context (use Supabase UUID for created_by FK)
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	todo := &types.Todo{
 		TripID:    req.TripID,
@@ -120,7 +120,7 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	if todoID == "" {
 		log.Error("Missing todo ID in URL parameters")
@@ -171,7 +171,7 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	if todoID == "" {
 		log.Error("Missing todo ID in URL parameters")
@@ -234,7 +234,7 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
 		log.Warn("ListTodosHandler: missing trip ID")

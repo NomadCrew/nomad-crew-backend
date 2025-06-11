@@ -55,8 +55,8 @@ func NewLocationHandler(
 func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get userID from context (use internal UUID)
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Get userID from context (use Supabase UUID for user_id FK)
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("UpdateLocationHandler: User ID not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID missing from context"})
@@ -109,8 +109,8 @@ func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
-	// Get userID from context (use internal UUID)
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	// Get userID from context (use Supabase UUID for user_id FK)
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		log.Warn("GetTripMemberLocationsHandler: User ID not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID missing from context"})
@@ -154,7 +154,7 @@ func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 
 // UpdateLocation handles PUT /api/v1/locations
 func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	var req struct {
 		TripID           string  `json:"trip_id,omitempty"`
@@ -219,7 +219,7 @@ func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
 
 // GetTripMemberLocations handles GET /api/v1/trips/:tripID/locations
 func (h *LocationHandler) GetTripMemberLocationsSupabase(c *gin.Context) {
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 	tripID := c.Param("tripID")
 
 	// Verify membership

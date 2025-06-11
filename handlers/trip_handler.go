@@ -401,18 +401,18 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 // @Security BearerAuth
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	// Use internal user ID directly from enhanced middleware (consistent with other handlers)
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for querying trips (consistent with trip creation)
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	if internalUserID == "" {
-		log.Errorw("No internal user ID found in context for ListUserTripsHandler")
+	if supabaseUserID == "" {
+		log.Errorw("No Supabase user ID found in context for ListUserTripsHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
-	log.Infow("Listing trips for user", "internalUserID", internalUserID)
+	log.Infow("Listing trips for user", "supabaseUserID", supabaseUserID)
 
-	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), internalUserID) // Use internalUserID directly
+	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), supabaseUserID) // Use supabaseUserID for consistency with created_by field
 	if err != nil {
 		h.handleModelError(c, err)
 		return
