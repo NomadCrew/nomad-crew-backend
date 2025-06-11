@@ -74,6 +74,11 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 
 	// Set the UserID from the authenticated user in the context (use Supabase UUID for created_by FK)
 	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("CreateTodoHandler: User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	todo := &types.Todo{
 		TripID:    req.TripID,
@@ -121,6 +126,11 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	todoID := c.Param("todoID")
 	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("UpdateTodoHandler: User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	if todoID == "" {
 		log.Error("Missing todo ID in URL parameters")
@@ -172,6 +182,11 @@ func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	todoID := c.Param("todoID")
 	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("DeleteTodoHandler: User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	if todoID == "" {
 		log.Error("Missing todo ID in URL parameters")
@@ -235,6 +250,11 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 
 	tripID := c.Param("id")
 	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("ListTodosHandler: User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	if tripID == "" {
 		log.Warn("ListTodosHandler: missing trip ID")

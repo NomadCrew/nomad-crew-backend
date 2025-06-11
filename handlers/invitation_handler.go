@@ -78,6 +78,11 @@ func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	inviterID := c.GetString(string(middleware.UserIDKey))
+	if inviterID == "" {
+		log.Warn("InviteMemberHandler: missing user ID in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	var req InviteMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -121,6 +126,11 @@ func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	acceptingUserID := c.GetString(string(middleware.UserIDKey))
+	if acceptingUserID == "" {
+		log.Warn("AcceptInvitationHandler: missing user ID in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	var req AcceptInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -193,6 +203,11 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("DeclineInvitationHandler: missing user ID in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
 	var req DeclineInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
