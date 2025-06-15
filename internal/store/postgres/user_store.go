@@ -259,7 +259,17 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 		_ = tx.Rollback(ctx) // Ignore error - this is cleanup code
 	}()
 
-	// First, insert into user_profiles table (id is the Supabase auth.users.id)
+	// 1. Ensure the auth.users record exists first to satisfy FK constraint on user_profiles.id
+	authQuery := `
+		INSERT INTO auth.users (id, email, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (id) DO NOTHING`
+
+	if _, err = tx.Exec(ctx, authQuery, user.ID, user.Email); err != nil {
+		return "", fmt.Errorf("error creating auth user: %w", err)
+	}
+
+	// 2. Insert the supplementary profile information
 	userQuery := `
 		INSERT INTO user_profiles (
 			id, username, first_name, last_name, email, avatar_url
@@ -268,31 +278,19 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 		RETURNING id`
 
 	var id string
-	err = tx.QueryRow(ctx, userQuery,
+	if err = tx.QueryRow(ctx, userQuery,
 		user.ID,
 		user.Username,
 		user.FirstName,
 		user.LastName,
 		user.Email,
 		user.ProfilePictureURL,
-	).Scan(&id)
-
-	if err != nil {
+	).Scan(&id); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return "", fmt.Errorf("user already exists: %w", err)
 		}
 		return "", fmt.Errorf("error creating user: %w", err)
-	}
-
-	authQuery := `
-		INSERT INTO auth.users (id, email, created_at, updated_at)
-		VALUES ($1, $2, NOW(), NOW())
-		ON CONFLICT (id) DO NOTHING`
-
-	_, err = tx.Exec(ctx, authQuery, user.ID, user.Email)
-	if err != nil {
-		return "", fmt.Errorf("error creating auth user: %w", err)
 	}
 
 	// Commit the transaction
