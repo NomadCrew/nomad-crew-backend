@@ -112,7 +112,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	log.Infow("Received CreateTrip request")
 
-	var req CreateTripRequest // Use the redefined CreateTripRequest
+	var req CreateTripRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Errorw("Invalid request for CreateTripHandler", "error", err)
 		if bindErr := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); bindErr != nil {
@@ -120,14 +120,11 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		}
 		return
 	}
-	log.Infow("Parsed CreateTripRequest", "request", req)
 
-	// Use internal user ID directly from enhanced middleware (consistent with other handlers)
-	internalUserID := c.GetString(string(middleware.UserIDKey))
-	// Get Supabase user ID for foreign key references to auth.users
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
-	log.Infow("[DEBUG] User IDs from context", "internalUserID", internalUserID, "supabaseUserID", supabaseUserID)
-	if internalUserID == "" || supabaseUserID == "" {
+	// Extract the authenticated user ID from Gin context
+	userID := c.GetString(string(middleware.UserIDKey))
+	log.Infow("[DEBUG] User ID from context", "userID", userID)
+	if userID == "" {
 		log.Errorw("No user ID found in context for CreateTripHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
@@ -144,13 +141,13 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		DestinationLongitude: req.DestinationLongitude,
 		StartDate:            req.StartDate,
 		EndDate:              req.EndDate,
-		Status:               req.Status, // Will be 'PLANNING' by default if empty due to omitempty and DB default
+		Status:               req.Status, // Will default to PLANNING if empty via logic below
 		BackgroundImageURL:   req.BackgroundImageURL,
-		CreatedBy:            &supabaseUserID, // Use Supabase ID for foreign key reference to auth.users
+		CreatedBy:            &userID,
 	}
 	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 
-	if tripToCreate.Status == "" { // Explicitly set to PLANNING if not provided by request
+	if tripToCreate.Status == "" {
 		tripToCreate.Status = types.TripStatusPlanning
 	}
 
@@ -164,7 +161,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 
 	createdTrip, err := h.tripModel.CreateTrip(c.Request.Context(), &tripToCreate)
 	if err != nil {
-		log.Errorw("Failed to create trip", "error", err, "tripToCreate", tripToCreate, "internalUserID", internalUserID)
+		log.Errorw("Failed to create trip", "error", err, "tripToCreate", tripToCreate)
 		h.handleModelError(c, err)
 		return
 	}
