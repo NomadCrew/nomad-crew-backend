@@ -96,7 +96,7 @@ func setupRedisContainer(t *testing.T) (*redis.Client, func()) {
 		t.Fatalf("failed to start redis container: %v", err)
 	}
 
-	mappedPort, err := redisC.MappedPort(ctx, "6379")
+	mappedPort, err := redisC.MappedPort(ctx, "6379/tcp")
 	if err != nil {
 		t.Fatalf("failed to get container external port: %v", err)
 	}

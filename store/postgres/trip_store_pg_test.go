@@ -67,7 +67,10 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	// Add a short delay to ensure the database is fully ready
 	time.Sleep(2 * time.Second)
 
-	pool, err := pgxpool.Connect(ctx, connectionString)
+	config, err := pgxpool.ParseConfig(connectionString)
+	require.NoError(t, err)
+	config.ConnConfig.PreferSimpleProtocol = true
+	pool, err := pgxpool.ConnectConfig(ctx, config)
 	if err != nil {
 		// Enhanced error logging
 		t.Logf("Database setup failed: %v", err)

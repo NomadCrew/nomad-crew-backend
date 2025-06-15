@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,15 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
 
+	// If Docker returned an IPv6 address (contains ':') replace with host override or localhost
+	if strings.Contains(host, ":") {
+		if h := os.Getenv("TESTCONTAINERS_HOST_OVERRIDE"); h != "" {
+			host = h
+		} else {
+			host = "localhost"
+		}
+	}
+
 	port, err := container.MappedPort(ctx, "5432")
 	require.NoError(t, err)
 
@@ -63,6 +73,8 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 
 	config, err := pgxpool.ParseConfig(connStr)
 	require.NoError(t, err)
+	// Allow execution of migration scripts containing multiple statements
+	config.ConnConfig.PreferSimpleProtocol = true
 
 	testPool, err = pgxpool.ConnectConfig(ctx, config)
 	require.NoError(t, err)
@@ -517,12 +529,11 @@ func TestChatStore(t *testing.T) {
 		require.NoError(t, err)
 
 		// 3. Verify it's marked as deleted in DB (check deleted_at)
-		var deletedAt pgtype.Timestamp
+		var deletedAt time.Time
 		selectQuery := `SELECT deleted_at FROM chat_messages WHERE id = $1`
 		err = pool.QueryRow(ctx, selectQuery, messageID).Scan(&deletedAt)
 		require.NoError(t, err)
-		assert.Equal(t, pgtype.Present, deletedAt.Status, "deleted_at should not be NULL")
-		assert.WithinDuration(t, time.Now().UTC(), deletedAt.Time, 5*time.Second)
+		assert.WithinDuration(t, time.Now().UTC(), deletedAt, 5*time.Second)
 
 		// 4. Try to get the message, should return ErrNotFound
 		_, err = store.GetChatMessageByID(ctx, messageID)

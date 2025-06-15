@@ -60,7 +60,7 @@ func (s *UserStore) GetUserByID(ctx context.Context, userID string) (*types.User
 			NULL::jsonb     AS raw_user_meta_data,
 			NULL::timestamptz AS last_seen_at,
 			FALSE           AS is_online,
-			NULL::jsonb     AS preferences
+			preferences
 		FROM user_profiles
 		WHERE id = $1`
 
@@ -128,7 +128,7 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*types.Us
 			NULL::jsonb     AS raw_user_meta_data,
 			NULL::timestamptz AS last_seen_at,
 			FALSE           AS is_online,
-			NULL::jsonb     AS preferences
+			preferences
 		FROM user_profiles
 		WHERE email = $1`
 
@@ -196,7 +196,7 @@ func (s *UserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) 
 			NULL::jsonb     AS raw_user_meta_data,
 			NULL::timestamptz AS last_seen_at,
 			FALSE           AS is_online,
-			NULL::jsonb     AS preferences
+			preferences
 		FROM user_profiles
 		WHERE id = $1`
 
@@ -312,11 +312,13 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 	argPos := 2                   // Start with $2 since $1 is the userID
 
 	validFields := map[string]string{
-		"username":   "username",
-		"first_name": "first_name",
-		"last_name":  "last_name",
-		"email":      "email",
-		"avatar_url": "avatar_url",
+		"username":           "username",
+		"first_name":         "first_name",
+		"last_name":          "last_name",
+		"email":              "email",
+		"avatar_url":         "avatar_url",
+		"preferences":        "preferences",        // allow JSON preferences update
+		"raw_user_meta_data": "raw_user_meta_data", // allow raw metadata update
 	}
 
 	for field, value := range updates {
@@ -328,7 +330,7 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 					return nil, fmt.Errorf("error marshalling JSON field %s: %w", field, err)
 				}
 				setParts = append(setParts, fmt.Sprintf("%s = $%d", dbField, argPos))
-				args = append(args, jsonData)
+				args = append(args, string(jsonData))
 			} else {
 				setParts = append(setParts, fmt.Sprintf("%s = $%d", dbField, argPos))
 				args = append(args, value)

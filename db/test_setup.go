@@ -49,7 +49,13 @@ func getSchemaPath() (string, error) {
 // Intended for use in integration tests, often with a containerized database.
 func SetupTestDB(connectionString string) (*DatabaseClient, error) {
 	ctx := context.Background()
-	pool, err := pgxpool.Connect(ctx, connectionString)
+	config, err := pgxpool.ParseConfig(connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse connection config: %w", err)
+	}
+	config.ConnConfig.PreferSimpleProtocol = true
+
+	pool, err := pgxpool.ConnectConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to test database: %w", err)
 	}

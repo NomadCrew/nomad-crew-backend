@@ -69,6 +69,19 @@ CREATE TABLE users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Compatibility table/user_profiles expected by older tests
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id UUID PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    avatar_url TEXT NOT NULL DEFAULT '',
+    preferences JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create trips table
 CREATE TABLE trips (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
