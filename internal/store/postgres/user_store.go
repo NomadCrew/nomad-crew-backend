@@ -329,7 +329,7 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 				if err != nil {
 					return nil, fmt.Errorf("error marshalling JSON field %s: %w", field, err)
 				}
-				setParts = append(setParts, fmt.Sprintf("%s = $%d", dbField, argPos))
+				setParts = append(setParts, fmt.Sprintf("%s = $%d::jsonb", dbField, argPos))
 				args = append(args, string(jsonData))
 			} else {
 				setParts = append(setParts, fmt.Sprintf("%s = $%d", dbField, argPos))

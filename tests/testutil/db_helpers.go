@@ -22,7 +22,9 @@ func InsertTestUser(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID, email
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx) // safe no-op on commit
+	defer func() {
+		_ = tx.Rollback(ctx) // ignore error: rollback is a no-op if tx already committed
+	}()
 
 	_, err = tx.Exec(ctx, `INSERT INTO auth.users(id,email) VALUES($1,$2) ON CONFLICT DO NOTHING`, id, email)
 	if err != nil {
