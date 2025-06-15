@@ -146,9 +146,10 @@ func (s *SupabaseService) SyncUser(ctx context.Context, userData UserSyncData) e
 	s.logger.Infow("Syncing user to Supabase", "userID", userData.ID, "username", userData.Username)
 
 	payload := map[string]interface{}{
-		"id":       userData.ID,
-		"email":    userData.Email,
-		"username": userData.Username,
+		"id":          userData.ID,
+		"supabase_id": userData.ID,
+		"email":       userData.Email,
+		"username":    userData.Username,
 	}
 
 	return s.upsertToSupabase(ctx, "users", payload, "id")
