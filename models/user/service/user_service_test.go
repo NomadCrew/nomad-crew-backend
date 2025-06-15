@@ -56,7 +56,11 @@ func (m *MockUserStore) ListUsers(ctx context.Context, offset, limit int) ([]*ty
 	panic("not implemented")
 }
 func (m *MockUserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string) (*types.User, error) {
-	panic("not implemented")
+	args := m.Called(ctx, supabaseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
 }
 func (m *MockUserStore) GetSupabaseUser(ctx context.Context, userID string) (*types.SupabaseUser, error) {
 	panic("not implemented")
@@ -113,6 +117,7 @@ func TestOnboardUserFromJWTClaims_Success(t *testing.T) {
 	mockStore.On("GetUserBySupabaseID", mock.Anything, "supabase-123").Return(nil, errors.New("user not found: no rows in result set"))
 	mockStore.On("CreateUser", mock.Anything, mock.Anything).Return("00000000-0000-0000-0000-000000000001", nil)
 	mockStore.On("GetUserByID", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(&types.User{ID: "00000000-0000-0000-0000-000000000001", Username: "uniqueuser", Email: "unique@example.com"}, nil)
+	mockStore.On("SyncUserFromSupabase", mock.Anything, mock.Anything).Return(&types.User{ID: "00000000-0000-0000-0000-000000000001", Username: "uniqueuser", Email: "test@example.com"}, nil)
 
 	profile, err := svc.OnboardUserFromJWTClaims(context.Background(), claims)
 	assert.NoError(t, err)
@@ -130,7 +135,7 @@ func TestOnboardUserFromJWTClaims_UsernameTaken(t *testing.T) {
 		Username: "takenuser",
 	}
 
-	mockStore.On("GetUserByUsername", mock.Anything, "takenuser").Return(&types.User{SupabaseID: "other-user"}, nil)
+	mockStore.On("GetUserByUsername", mock.Anything, "takenuser").Return(&types.User{ID: "other-user"}, nil)
 
 	profile, err := svc.OnboardUserFromJWTClaims(context.Background(), claims)
 	assert.Error(t, err)

@@ -56,7 +56,6 @@ func (a *userServiceAdapter) GetUserBySupabaseID(ctx context.Context, supabaseID
 	// Convert models.User to types.User
 	typesUser := &types.User{
 		ID:                modelUser.ID.String(),
-		SupabaseID:        modelUser.SupabaseID,
 		Username:          modelUser.Username,
 		FirstName:         modelUser.FirstName,
 		LastName:          modelUser.LastName,

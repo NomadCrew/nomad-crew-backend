@@ -10,7 +10,6 @@ import (
 // potentially distinct from external representations like SupabaseUser.
 type User struct {
 	ID                uuid.UUID  `json:"id" db:"id"`
-	SupabaseID        string     `json:"supabaseId" db:"supabase_id"`
 	Username          string     `json:"username" db:"username"`
 	FirstName         string     `json:"firstName,omitempty" db:"first_name"`
 	LastName          string     `json:"lastName,omitempty" db:"last_name"`
@@ -45,7 +44,7 @@ func (u *User) GetDisplayName() string {
 
 // IsComplete returns true if the user has all required fields populated
 func (u *User) IsComplete() bool {
-	return u.SupabaseID != "" && u.Email != "" && u.Username != ""
+	return u.ID != uuid.Nil && u.Email != "" && u.Username != ""
 }
 
 // ShouldSync returns true if this user should be synced with Supabase

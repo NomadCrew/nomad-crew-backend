@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgtype"
@@ -99,32 +100,9 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 	tripID := uuid.New()
 	anotherUserID := uuid.New() // For membership tests
 
-	user1Meta := `{"username":"testuser","firstName":"Test","lastName":"User","avatar_url":"http://example.com/avatar1.png"}`
-	user2Meta := `{"username":"anotheruser","avatar_url":"http://example.com/avatar2.png"}`
-
-	// Insert into both users and auth.users tables to satisfy foreign key constraints
-	_, err = testPool.Exec(ctx, `
-		INSERT INTO users (id, supabase_id, email, username, name, raw_user_meta_data, created_at, updated_at)
-		VALUES ($1, $2, 'test@example.com', 'testuser1', 'testuser', $3::jsonb, NOW(), NOW()),
-		       ($4, $5, 'another@example.com', 'testuser2', 'anotheruser', $6::jsonb, NOW(), NOW())`,
-		userID,
-		uuid.New().String(),
-		user1Meta,
-		anotherUserID,
-		uuid.New().String(),
-		user2Meta,
-	)
-	require.NoError(t, err)
-
-	// Insert into auth.users table for foreign key constraint satisfaction
-	_, err = testPool.Exec(ctx, `
-		INSERT INTO auth.users (id, email, created_at, updated_at)
-		VALUES ($1, 'test@example.com', NOW(), NOW()),
-		       ($2, 'another@example.com', NOW(), NOW())`,
-		userID,
-		anotherUserID,
-	)
-	require.NoError(t, err)
+	// Insert users into auth.users & user_profiles
+	require.NoError(t, testutil.InsertTestUser(ctx, testPool, userID, "test@example.com", "testuser1"))
+	require.NoError(t, testutil.InsertTestUser(ctx, testPool, anotherUserID, "another@example.com", "testuser2"))
 
 	_, err = testPool.Exec(ctx, `
 		INSERT INTO trips (id, name, description, start_date, end_date, status, created_by, created_at, updated_at, destination_latitude, destination_longitude)

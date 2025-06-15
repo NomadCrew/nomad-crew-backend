@@ -47,21 +47,32 @@ func (s *UserStore) GetPool() *pgxpool.Pool {
 // GetUserByID retrieves a user by their ID
 func (s *UserStore) GetUserByID(ctx context.Context, userID string) (*types.User, error) {
 	query := `
-		SELECT 
-			id, supabase_id, username, first_name, last_name, email, 
-			created_at, updated_at, profile_picture_url, raw_user_meta_data,
-			last_seen_at, is_online, preferences
-		FROM users
+		SELECT
+			id,
+			id              AS supabase_id, -- compatibility alias
+			username,
+			first_name,
+			last_name,
+			email,
+			created_at,
+			updated_at,
+			avatar_url      AS profile_picture_url,
+			NULL::jsonb     AS raw_user_meta_data,
+			NULL::timestamptz AS last_seen_at,
+			FALSE           AS is_online,
+			NULL::jsonb     AS preferences
+		FROM user_profiles
 		WHERE id = $1`
 
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
+	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, userID)
 	err := row.Scan(
 		&user.ID,
-		&user.SupabaseID,
+		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -82,6 +93,9 @@ func (s *UserStore) GetUserByID(ctx context.Context, userID string) (*types.User
 		return nil, fmt.Errorf("error getting user by ID: %w", err)
 	}
 
+	// Ensure SupabaseID always mirrors ID during migration period
+	// user.SupabaseID = user.ID
+
 	// Unmarshal raw user metadata
 	if len(rawMetaData) > 0 {
 		user.RawUserMetaData = rawMetaData
@@ -101,21 +115,32 @@ func (s *UserStore) GetUserByID(ctx context.Context, userID string) (*types.User
 // GetUserByEmail retrieves a user by their email address
 func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*types.User, error) {
 	query := `
-		SELECT 
-			id, supabase_id, username, first_name, last_name, email, 
-			created_at, updated_at, profile_picture_url, raw_user_meta_data,
-			last_seen_at, is_online, preferences
-		FROM users
+		SELECT
+			id,
+			id              AS supabase_id,
+			username,
+			first_name,
+			last_name,
+			email,
+			created_at,
+			updated_at,
+			avatar_url      AS profile_picture_url,
+			NULL::jsonb     AS raw_user_meta_data,
+			NULL::timestamptz AS last_seen_at,
+			FALSE           AS is_online,
+			NULL::jsonb     AS preferences
+		FROM user_profiles
 		WHERE email = $1`
 
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
+	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, email)
 	err := row.Scan(
 		&user.ID,
-		&user.SupabaseID,
+		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -136,6 +161,9 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*types.Us
 		return nil, fmt.Errorf("error getting user by email: %w", err)
 	}
 
+	// Ensure SupabaseID always mirrors ID during migration period
+	// user.SupabaseID = user.ID
+
 	// Unmarshal raw user metadata
 	if len(rawMetaData) > 0 {
 		user.RawUserMetaData = rawMetaData
@@ -155,21 +183,32 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*types.Us
 // GetUserBySupabaseID retrieves a user by their Supabase ID
 func (s *UserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) (*types.User, error) {
 	query := `
-		SELECT 
-			id, supabase_id, username, first_name, last_name, email, 
-			created_at, updated_at, profile_picture_url, raw_user_meta_data,
-			last_seen_at, is_online, preferences
-		FROM users
-		WHERE supabase_id = $1`
+		SELECT
+			id,
+			id              AS supabase_id,
+			username,
+			first_name,
+			last_name,
+			email,
+			created_at,
+			updated_at,
+			avatar_url      AS profile_picture_url,
+			NULL::jsonb     AS raw_user_meta_data,
+			NULL::timestamptz AS last_seen_at,
+			FALSE           AS is_online,
+			NULL::jsonb     AS preferences
+		FROM user_profiles
+		WHERE id = $1`
 
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
+	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, supabaseID)
 	err := row.Scan(
 		&user.ID,
-		&user.SupabaseID,
+		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -189,6 +228,9 @@ func (s *UserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) 
 		}
 		return nil, fmt.Errorf("error getting user by Supabase ID: %w", err)
 	}
+
+	// Ensure SupabaseID always mirrors ID during migration period
+	// user.SupabaseID = user.ID
 
 	// Unmarshal raw user metadata
 	if len(rawMetaData) > 0 {
@@ -217,37 +259,22 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 		_ = tx.Rollback(ctx) // Ignore error - this is cleanup code
 	}()
 
-	// First, insert into users table
+	// First, insert into user_profiles table (id is the Supabase auth.users.id)
 	userQuery := `
-		INSERT INTO users (
-			supabase_id, username, first_name, last_name, email, 
-			profile_picture_url, raw_user_meta_data,
-			last_seen_at, is_online, preferences
+		INSERT INTO user_profiles (
+			id, username, first_name, last_name, email, avatar_url
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`
-
-	var preferencesJSON json.RawMessage
-	if user.Preferences != nil {
-		data, err := json.Marshal(user.Preferences)
-		if err != nil {
-			return "", fmt.Errorf("error marshalling preferences: %w", err)
-		}
-		preferencesJSON = data
-	}
 
 	var id string
 	err = tx.QueryRow(ctx, userQuery,
-		user.SupabaseID,
+		user.ID,
 		user.Username,
 		user.FirstName,
 		user.LastName,
 		user.Email,
 		user.ProfilePictureURL,
-		user.RawUserMetaData,
-		user.LastSeenAt,
-		user.IsOnline,
-		preferencesJSON,
 	).Scan(&id)
 
 	if err != nil {
@@ -263,7 +290,7 @@ func (s *UserStore) CreateUser(ctx context.Context, user *types.User) (string, e
 		VALUES ($1, $2, NOW(), NOW())
 		ON CONFLICT (id) DO NOTHING`
 
-	_, err = tx.Exec(ctx, authQuery, user.SupabaseID, user.Email)
+	_, err = tx.Exec(ctx, authQuery, user.ID, user.Email)
 	if err != nil {
 		return "", fmt.Errorf("error creating auth user: %w", err)
 	}
@@ -285,14 +312,11 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 	argPos := 2                   // Start with $2 since $1 is the userID
 
 	validFields := map[string]string{
-		"username":            "username",
-		"first_name":          "first_name",
-		"last_name":           "last_name",
-		"email":               "email",
-		"profile_picture_url": "profile_picture_url",
-		"raw_user_meta_data":  "raw_user_meta_data",
-		"is_online":           "is_online",
-		"preferences":         "preferences",
+		"username":   "username",
+		"first_name": "first_name",
+		"last_name":  "last_name",
+		"email":      "email",
+		"avatar_url": "avatar_url",
 	}
 
 	for field, value := range updates {
@@ -320,7 +344,7 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 	}
 
 	query := fmt.Sprintf(`
-		UPDATE users
+		UPDATE user_profiles
 		SET %s
 		WHERE id = $1
 		RETURNING id`, strings.Join(setParts, ", "))
@@ -341,7 +365,7 @@ func (s *UserStore) UpdateUser(ctx context.Context, userID string, updates map[s
 // ListUsers retrieves a paginated list of users
 func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.User, int, error) {
 	// First, get the total count
-	countQuery := `SELECT COUNT(*) FROM users`
+	countQuery := `SELECT COUNT(*) FROM user_profiles`
 	var total int
 	err := s.queryRow(ctx, countQuery).Scan(&total)
 	if err != nil {
@@ -351,10 +375,13 @@ func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.
 	// Then, fetch the users
 	query := `
 		SELECT 
-			id, supabase_id, username, first_name, last_name, email, 
-			created_at, updated_at, profile_picture_url, raw_user_meta_data,
-			last_seen_at, is_online, preferences
-		FROM users
+			id,
+			id AS supabase_id,
+			username, first_name, last_name, email,
+			created_at, updated_at, avatar_url AS profile_picture_url,
+			NULL::jsonb AS raw_user_meta_data, NULL::timestamptz AS last_seen_at,
+			FALSE AS is_online, NULL::jsonb AS preferences
+		FROM user_profiles
 		ORDER BY username
 		LIMIT $1 OFFSET $2`
 
@@ -369,10 +396,11 @@ func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.
 		user := &types.User{}
 		var rawMetaData json.RawMessage
 		var preferencesJSON json.RawMessage
+		var supabaseAlias string // deprecated field placeholder
 
 		err := rows.Scan(
 			&user.ID,
-			&user.SupabaseID,
+			&supabaseAlias,
 			&user.Username,
 			&user.FirstName,
 			&user.LastName,
@@ -388,6 +416,9 @@ func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.
 		if err != nil {
 			return nil, 0, fmt.Errorf("error scanning user row: %w", err)
 		}
+
+		// Ensure SupabaseID always mirrors ID during migration period
+		// user.SupabaseID = user.ID
 
 		// Unmarshal raw user metadata
 		if len(rawMetaData) > 0 {
@@ -428,7 +459,7 @@ func (s *UserStore) SyncUserFromSupabase(ctx context.Context, supabaseID string)
 	// Convert to our user model
 	now := time.Now() // Helper for pointer
 	user := &types.User{
-		SupabaseID:        supabaseID,
+		ID:                supabaseID,
 		Email:             supabaseUser.Email,
 		Username:          supabaseUser.UserMetadata.Username,
 		FirstName:         supabaseUser.UserMetadata.FirstName,
@@ -487,10 +518,10 @@ func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.U
 
 	row := s.queryRow(ctx, query, userID)
 	profile := &types.UserProfile{}
-	var supabaseID string
+	var supabaseAlias string // deprecated field placeholder
 	err := row.Scan(
 		&profile.ID,
-		&supabaseID,
+		&supabaseAlias,
 		&profile.Username,
 		&profile.FirstName,
 		&profile.LastName,
@@ -499,7 +530,7 @@ func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.U
 		&profile.LastSeenAt,
 		&profile.IsOnline,
 	)
-	profile.SupabaseID = supabaseID
+	_ = supabaseAlias // SupabaseID deprecated; ignore
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -527,7 +558,7 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 
 	query := fmt.Sprintf(`
 		SELECT 
-			id, username, first_name, last_name, email, profile_picture_url,
+			id, supabase_id, username, first_name, last_name, email, profile_picture_url,
 			last_seen_at, is_online
 		FROM users
 		WHERE id IN (%s)`, strings.Join(placeholders, ", "))
@@ -541,10 +572,10 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 	profiles := make(map[string]*types.UserProfile)
 	for rows.Next() {
 		profile := &types.UserProfile{}
-		var supabaseID string
+		var supabaseAlias string // deprecated field placeholder
 		err := rows.Scan(
 			&profile.ID,
-			&supabaseID,
+			&supabaseAlias,
 			&profile.Username,
 			&profile.FirstName,
 			&profile.LastName,
@@ -553,7 +584,7 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 			&profile.LastSeenAt,
 			&profile.IsOnline,
 		)
-		profile.SupabaseID = supabaseID
+		_ = supabaseAlias // SupabaseID deprecated; ignore
 		if err != nil {
 			return nil, fmt.Errorf("error scanning user profile row: %w", err)
 		}
@@ -773,11 +804,12 @@ func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*ty
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
+	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, username)
 	err := row.Scan(
 		&user.ID,
-		&user.SupabaseID,
+		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -797,6 +829,9 @@ func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*ty
 		}
 		return nil, fmt.Errorf("error getting user by username: %w", err)
 	}
+
+	// Ensure SupabaseID always mirrors ID during migration period
+	// user.SupabaseID = user.ID
 
 	// Unmarshal raw user metadata
 	if len(rawMetaData) > 0 {

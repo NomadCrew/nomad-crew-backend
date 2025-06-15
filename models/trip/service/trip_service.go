@@ -108,24 +108,24 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 
 			if trip.CreatedBy != nil && *trip.CreatedBy != "" {
 				// Get user data from local store to get the Supabase ID
-				if user, err := s.userStore.GetUserByID(syncCtx, *trip.CreatedBy); err == nil && user != nil && user.SupabaseID != "" {
-					createdBySupabaseID = user.SupabaseID
+				if user, err := s.userStore.GetUserByID(syncCtx, *trip.CreatedBy); err == nil && user != nil && user.ID != "" {
+					createdBySupabaseID = user.ID
 					shouldSync = true
 
 					// Also sync user to Supabase to ensure they exist
 					userSyncData := services.UserSyncData{
-						ID:       user.SupabaseID,
+						ID:       user.ID,
 						Email:    user.Email,
 						Username: user.Username,
 					}
 
 					if err := s.supabaseService.SyncUser(syncCtx, userSyncData); err != nil {
 						log := logger.GetLogger()
-						log.Errorw("Failed to sync user to Supabase before trip sync", "error", err, "userID", *trip.CreatedBy, "supabaseID", user.SupabaseID)
+						log.Errorw("Failed to sync user to Supabase before trip sync", "error", err, "userID", *trip.CreatedBy, "supabaseID", user.ID)
 						// Continue with trip sync even if user sync fails
 					} else {
 						log := logger.GetLogger()
-						log.Infow("Successfully synced user to Supabase before trip sync", "userID", *trip.CreatedBy, "supabaseID", user.SupabaseID)
+						log.Infow("Successfully synced user to Supabase before trip sync", "userID", *trip.CreatedBy, "supabaseID", user.ID)
 					}
 				} else {
 					log := logger.GetLogger()
@@ -321,20 +321,20 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 
 			if updatedTrip.CreatedBy != nil && *updatedTrip.CreatedBy != "" {
 				// Get user data from local store to get the Supabase ID
-				if user, err := s.userStore.GetUserByID(syncCtx, *updatedTrip.CreatedBy); err == nil && user != nil && user.SupabaseID != "" {
-					createdBySupabaseID = user.SupabaseID
+				if user, err := s.userStore.GetUserByID(syncCtx, *updatedTrip.CreatedBy); err == nil && user != nil && user.ID != "" {
+					createdBySupabaseID = user.ID
 					canSync = true
 
 					// Also sync user to Supabase to ensure they exist
 					userSyncData := services.UserSyncData{
-						ID:       user.SupabaseID,
+						ID:       user.ID,
 						Email:    user.Email,
 						Username: user.Username,
 					}
 
 					if err := s.supabaseService.SyncUser(syncCtx, userSyncData); err != nil {
 						log := logger.GetLogger()
-						log.Errorw("Failed to sync user to Supabase before trip update sync", "error", err, "userID", *updatedTrip.CreatedBy, "supabaseID", user.SupabaseID)
+						log.Errorw("Failed to sync user to Supabase before trip update sync", "error", err, "userID", *updatedTrip.CreatedBy, "supabaseID", user.ID)
 						// Continue with trip sync even if user sync fails
 					}
 				} else {

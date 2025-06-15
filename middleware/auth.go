@@ -74,23 +74,19 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 			return
 		}
 
-		// Step 5: Store User Information in Context
-		internalUserID := user.ID // user.ID is already a string in types.User
-
+		// Step 5: Store User Information in Context (single-ID era)
+		// In the new schema user.ID === supabaseUserID; we no longer generate a second identifier.
 		log.Infow("Authentication successful",
 			"supabaseUserID", supabaseUserID,
-			"internalUserID", internalUserID,
 			"username", user.Username,
 			"path", requestPath)
 
-		// Store all user information in context
-		c.Set(string(UserIDKey), supabaseUserID)         // Keep for backward compatibility
-		c.Set(string(InternalUserIDKey), internalUserID) // Internal UUID string
-		c.Set(string(AuthenticatedUserKey), user)        // Full user object
+		// Store in Gin context
+		c.Set(string(UserIDKey), supabaseUserID)
+		c.Set(string(AuthenticatedUserKey), user)
 
-		// Also set in the standard Go context for downstream use
+		// Store in stdlib context
 		newCtx := context.WithValue(c.Request.Context(), UserIDKey, supabaseUserID)
-		newCtx = context.WithValue(newCtx, InternalUserIDKey, internalUserID)
 		newCtx = context.WithValue(newCtx, AuthenticatedUserKey, user)
 		c.Request = c.Request.WithContext(newCtx)
 

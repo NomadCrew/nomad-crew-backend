@@ -10,7 +10,6 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -60,17 +59,10 @@ func setupAuthTestRouter(validator Validator, userResolver UserResolver) (*gin.E
 
 	// Define a test route that requires authentication
 	r.GET("/protected", func(c *gin.Context) {
-		// Check for Supabase user ID (backward compatibility)
+		// Retrieve canonical user ID from context
 		supabaseUserID, exists := c.Get(string(UserIDKey))
 		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Supabase UserID not found in context"})
-			return
-		}
-
-		// Check for internal user ID
-		internalUserID, exists := c.Get(string(InternalUserIDKey))
-		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal UserID not found in context"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "UserID not found in context"})
 			return
 		}
 
@@ -85,7 +77,6 @@ func setupAuthTestRouter(validator Validator, userResolver UserResolver) (*gin.E
 		c.JSON(http.StatusOK, gin.H{
 			"message":          "Success",
 			"supabase_user_id": supabaseUserID,
-			"internal_user_id": internalUserID,
 			"user_email":       user.Email,
 		})
 	})
@@ -99,11 +90,10 @@ func TestAuthMiddleware(t *testing.T) {
 	router, w := setupAuthTestRouter(mockValidator, mockUserResolver)
 
 	testSupabaseUserID := "supabase-user-123"
-	testInternalUserID := uuid.New().String()
 	validTokenString := "valid.token.string"
 
 	testUser := &types.User{
-		ID:       testInternalUserID,
+		ID:       testSupabaseUserID,
 		Email:    "test@example.com",
 		Username: "testuser",
 	}
@@ -172,7 +162,6 @@ func TestAuthMiddleware(t *testing.T) {
 			expectedBodyCheck: func(body string) bool {
 				return assert.Contains(t, body, "Success") &&
 					assert.Contains(t, body, testSupabaseUserID) &&
-					assert.Contains(t, body, testInternalUserID) &&
 					assert.Contains(t, body, testUser.Email)
 			},
 		},

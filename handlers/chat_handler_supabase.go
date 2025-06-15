@@ -49,9 +49,7 @@ func NewChatHandlerSupabase(
 // @Router /api/v1/trips/{tripId}/chat/messages [post]
 func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	tripID := c.Param("tripId")
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
-	// Use Supabase user ID for database operations
+	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
@@ -62,7 +60,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, internalUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
 	if err != nil || member == nil || member.DeletedAt != nil {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "You are not an active member of this trip",
@@ -141,8 +139,8 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Router /api/v1/trips/{tripId}/chat/messages [get]
 func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 	tripID := c.Param("tripId")
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for trip access validation
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -152,7 +150,7 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, internalUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
 	if err != nil || member == nil || member.DeletedAt != nil {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "You are not an active member of this trip",
@@ -204,9 +202,7 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 	tripID := c.Param("tripId")
 	messageID := c.Param("messageId")
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
-	// Use Supabase user ID for database operations (foreign key compatibility)
+	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" || messageID == "" {
@@ -217,7 +213,7 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, internalUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
 	if err != nil || member == nil || member.DeletedAt != nil {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "You are not an active member of this trip",
@@ -278,9 +274,7 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 	tripID := c.Param("tripId")
 	messageID := c.Param("messageId")
 	emoji := c.Param("emoji")
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
-	// Use Supabase user ID for database operations (foreign key compatibility)
+	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" || messageID == "" || emoji == "" {
@@ -291,7 +285,7 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, internalUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
 	if err != nil || member == nil || member.DeletedAt != nil {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "You are not an active member of this trip",
@@ -336,8 +330,8 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Router /api/v1/trips/{tripId}/chat/read-status [put]
 func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
 	tripID := c.Param("tripId")
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for trip access validation
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -347,7 +341,7 @@ func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, internalUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
 	if err != nil || member == nil || member.DeletedAt != nil {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "You are not an active member of this trip",

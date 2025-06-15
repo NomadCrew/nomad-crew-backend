@@ -241,7 +241,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	}
 
 	// Get the internal user ID from enhanced middleware
-	currentUserID := c.GetString(string(middleware.InternalUserIDKey))
+	currentUserID := c.GetString(string(middleware.UserIDKey))
 	if currentUserID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
@@ -324,7 +324,7 @@ func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
 	}
 
 	// Get the internal user ID from enhanced middleware
-	currentUserID := c.GetString(string(middleware.InternalUserIDKey))
+	currentUserID := c.GetString(string(middleware.UserIDKey))
 	if currentUserID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
@@ -375,7 +375,6 @@ func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	// This would typically be admin-only
 	var userReq struct {
-		SupabaseID        string `json:"supabaseId" binding:"required"`
 		Email             string `json:"email" binding:"required,email"`
 		Username          string `json:"username" binding:"required"`
 		FirstName         string `json:"firstName"`
@@ -390,7 +389,6 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 	// Create user model
 	user := &models.User{
-		SupabaseID:        userReq.SupabaseID,
 		Email:             userReq.Email,
 		Username:          userReq.Username,
 		FirstName:         userReq.FirstName,
@@ -440,7 +438,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // SyncWithSupabase syncs the current user's local data with Supabase (Route currently disabled)
 func (h *UserHandler) SyncWithSupabase(c *gin.Context) {
 	// Get the internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
@@ -471,13 +469,8 @@ func (h *UserHandler) SyncWithSupabase(c *gin.Context) {
 		return
 	}
 
-	if user.SupabaseID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User has no Supabase ID"})
-		return
-	}
-
-	// Sync with Supabase
-	syncedUser, err := h.userService.SyncWithSupabase(c.Request.Context(), user.SupabaseID)
+	// Sync with Supabase using primary ID (Supabase user ID)
+	syncedUser, err := h.userService.SyncWithSupabase(c.Request.Context(), user.ID.String())
 	if err != nil {
 		var status int
 		var message string

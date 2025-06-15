@@ -9,10 +9,6 @@ const (
 	// This is kept for any legacy compatibility during transition.
 	UserIDKey contextKey = "userID"
 
-	// InternalUserIDKey is the context key for the authenticated user's internal UUID (string).
-	// This is what most handlers should use for database operations.
-	InternalUserIDKey contextKey = "internalUserID"
-
 	// AuthenticatedUserKey is the context key for the full authenticated user object (*models.User).
 	// This provides access to the complete user information when needed.
 	AuthenticatedUserKey contextKey = "authenticatedUser"

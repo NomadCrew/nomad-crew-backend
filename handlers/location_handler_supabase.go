@@ -118,22 +118,22 @@ func (h *LocationHandlerSupabase) checkTripExists(c *gin.Context, tripID, userID
 
 		if trip.CreatedBy != nil && *trip.CreatedBy != "" {
 			// Get user data from local store to get the Supabase ID
-			if user, err := h.userStore.GetUserByID(c.Request.Context(), *trip.CreatedBy); err == nil && user != nil && user.SupabaseID != "" {
-				createdBySupabaseID = user.SupabaseID
+			if user, err := h.userStore.GetUserByID(c.Request.Context(), *trip.CreatedBy); err == nil && user != nil && user.ID != "" {
+				createdBySupabaseID = user.ID
 				shouldSync = true
 
 				// Also sync user to Supabase to ensure they exist
 				userSyncData := services.UserSyncData{
-					ID:       user.SupabaseID,
+					ID:       user.ID,
 					Email:    user.Email,
 					Username: user.Username,
 				}
 
 				if err := h.supabaseService.SyncUser(c.Request.Context(), userSyncData); err != nil {
-					h.logger.Errorw("Failed to sync user to Supabase before trip sync", "error", err, "userID", *trip.CreatedBy, "supabaseID", user.SupabaseID)
+					h.logger.Errorw("Failed to sync user to Supabase before trip sync", "error", err, "userID", *trip.CreatedBy, "supabaseID", user.ID)
 					// Continue with trip sync even if user sync fails
 				} else {
-					h.logger.Infow("Successfully synced user to Supabase before trip sync", "userID", *trip.CreatedBy, "supabaseID", user.SupabaseID)
+					h.logger.Infow("Successfully synced user to Supabase before trip sync", "userID", *trip.CreatedBy, "supabaseID", user.ID)
 				}
 			} else {
 				h.logger.Errorw("Failed to get user data for trip creator", "error", err, "userID", *trip.CreatedBy, "tripID", tripID)
@@ -288,17 +288,15 @@ func (h *LocationHandlerSupabase) generateLocationResponse(userID, tripID string
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
-	// Use Supabase user ID for database operations (foreign key compatibility)
+	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	tripID, member, ok := h.validateTripAccess(c, internalUserID)
+	tripID, member, ok := h.validateTripAccess(c, supabaseUserID)
 	if !ok {
 		return
 	}
 
-	if !h.checkTripExists(c, tripID, internalUserID, member) {
+	if !h.checkTripExists(c, tripID, supabaseUserID, member) {
 		return
 	}
 
@@ -334,10 +332,10 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	// Use Supabase user ID for trip access validation
+	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	_, _, ok := h.validateTripAccess(c, internalUserID)
+	_, _, ok := h.validateTripAccess(c, supabaseUserID)
 	if !ok {
 		return
 	}
@@ -388,17 +386,15 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/locations [post]
 func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
-	// Use internal user ID for trip access validation
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
-	// Use Supabase user ID for database operations (foreign key compatibility)
+	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	tripID, member, ok := h.validateTripAccess(c, internalUserID)
+	tripID, member, ok := h.validateTripAccess(c, supabaseUserID)
 	if !ok {
 		return
 	}
 
-	if !h.checkTripExists(c, tripID, internalUserID, member) {
+	if !h.checkTripExists(c, tripID, supabaseUserID, member) {
 		return
 	}
 

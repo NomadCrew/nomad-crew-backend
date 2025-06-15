@@ -10,13 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/db"
-	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
-	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/NomadCrew/nomad-crew-backend/db"
+	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
+	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
+	"github.com/NomadCrew/nomad-crew-backend/types"
+	"github.com/google/uuid"
 )
 
 // Test constants and helpers
@@ -111,14 +113,8 @@ func TestTripStore_Integration(t *testing.T) {
 	testUserUUID := authIDtoUUID(testAuthID)
 
 	// Insert the main test user for this test suite
-	_, err := dbClient.GetPool().Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
-		testUserUUID, uuid.New().String(), "integration-testuser@example.com", "testuser1", "Integration Test User")
+	err := testutil.InsertTestUser(ctx, dbClient.GetPool(), uuid.MustParse(testUserUUID), "integration-testuser@example.com", "testuser1")
 	require.NoError(t, err, "Failed to insert main test user for TestTripStore_Integration")
-
-	// Insert into auth.users table for foreign key constraint satisfaction
-	_, err = dbClient.GetPool().Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
-		testUserUUID, "integration-testuser@example.com")
-	require.NoError(t, err, "Failed to insert main test user into auth.users for TestTripStore_Integration")
 
 	// Setup cleanup to run at the end
 	defer func() {
@@ -143,7 +139,8 @@ func TestTripStore_Integration(t *testing.T) {
 				"expenses",
 				"trips",
 				"categories",
-				"users",
+				"user_profiles",
+				"auth.users",
 			}
 			for _, table := range tables {
 				_, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))

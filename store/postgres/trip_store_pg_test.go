@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -89,15 +90,8 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	require.NoError(t, err, "Failed to apply migration")
 
 	// Insert a test user for trip foreign key constraints
-	testUserUUID := authIDtoUUID(testAuthID) // Ensure this is the same as used in tests
-	_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
-		testUserUUID, uuid.New().String(), "testuser@example.com", "testuser1", "Test User Integration")
-	require.NoError(t, err, "Failed to insert test user")
-
-	// Insert into auth.users table for foreign key constraint satisfaction
-	_, err = pool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
-		testUserUUID, "testuser@example.com")
-	require.NoError(t, err, "Failed to insert test user into auth.users")
+	testUserUUID := authIDtoUUID(testAuthID)
+	require.NoError(t, testutil.InsertTestUser(ctx, pool, uuid.MustParse(testUserUUID), "testuser@example.com", "testuser1"))
 
 	return pool, func() {
 		if err := container.Terminate(ctx); err != nil {
@@ -147,7 +141,8 @@ func TestPgTripStore_Integration(t *testing.T) {
 				"expenses",
 				"trips",
 				"categories",
-				"users", // Added users table for cleanup
+				"user_profiles",
+				"auth.users",
 			}
 			for _, table := range tables {
 				_, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table))
@@ -416,15 +411,9 @@ func TestPgTripStore_Integration(t *testing.T) {
 
 		memberUUID := authIDtoUUID("auth0|member123")
 
-		// Insert the member user into the users table first
-		_, err = pool.Exec(ctx, "INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
-			memberUUID, uuid.New().String(), "member@example.com", "member123", "Test Member")
+		// Insert the member user via helper
+		err = testutil.InsertTestUser(ctx, pool, uuid.MustParse(memberUUID), "member@example.com", "member123")
 		require.NoError(t, err, "Failed to insert test member user")
-
-		// Insert into auth.users table for foreign key constraint satisfaction
-		_, err = pool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
-			memberUUID, "member@example.com")
-		require.NoError(t, err, "Failed to insert test member user into auth.users")
 
 		// Add member
 		membership := &types.TripMembership{

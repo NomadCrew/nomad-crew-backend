@@ -30,6 +30,7 @@ import (
 	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
 	user_service "github.com/NomadCrew/nomad-crew-backend/models/user/service" // Added import
 	approuter "github.com/NomadCrew/nomad-crew-backend/router"                 // For mock email service
+	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -369,15 +370,15 @@ func TestDeclineInvitation_Success_InviteeIDKnown(t *testing.T) {
 	// 1. Setup:
 	// Create inviter user
 	inviterEmail := "inviter.decline.known@example.com"
-	inviterSupabaseID := "supa_inviter_" + uuid.NewString()
-	inviterUser, err := createUserInDB(context.Background(), testDBPool, inviterEmail, inviterSupabaseID, "Inviter User")
+	inviterID := "supa_inviter_" + uuid.NewString()
+	inviterUser, err := createUserInDB(context.Background(), testDBPool, inviterEmail, inviterID, "Inviter User")
 	require.NoError(t, err)
 	require.NotNil(t, inviterUser)
 
 	// Create invitee user
 	inviteeEmail := "invitee.decline.known@example.com"
-	inviteeSupabaseID := "supa_invitee_" + uuid.NewString()
-	inviteeUser, err := createUserInDB(context.Background(), testDBPool, inviteeEmail, inviteeSupabaseID, "Invitee User")
+	inviteeID := "supa_invitee_" + uuid.NewString()
+	inviteeUser, err := createUserInDB(context.Background(), testDBPool, inviteeEmail, inviteeID, "Invitee User")
 	require.NoError(t, err)
 	require.NotNil(t, inviteeUser)
 
@@ -399,7 +400,7 @@ func TestDeclineInvitation_Success_InviteeIDKnown(t *testing.T) {
 
 	// Generate JWT for invitee user (auth token for header)
 	// The UserID for JWT should be the one that your auth middleware extracts and BaseCommand uses.
-	// If BaseCommand.UserID is the Supabase Auth ID, use inviteeUser.SupabaseID.
+	// If BaseCommand.UserID is the Supabase Auth ID, use inviteeUser.ID.
 	// If BaseCommand.UserID is the internal DB User ID, use inviteeUser.ID.
 	// From user_handler.go, c.GetString("user_id") seems to be the internal DB ID.
 	inviteeAuthToken := generateTestUserToken(t, inviteeUser.ID, testCFG.Server.JwtSecretKey)
@@ -448,38 +449,25 @@ func TestDeclineInvitation_Success_InviteeIDKnown(t *testing.T) {
 // --- Helper functions for DB interaction (to be implemented or imported) ---
 
 func createUserInDB(ctx context.Context, pool *pgxpool.Pool, email, supabaseID, displayName string) (*types.User, error) {
-	userID := uuid.NewString()
-	hashedPassword := "" // Not strictly needed if not testing password login directly
-	profilePicURL := "http://example.com/avatar.png"
+	userID := uuid.New()
 
-	// Use the actual fields from types.User and the users table schema
-	// Check db/migrations/000001_init.up.sql for user table columns
-	query := `
-		INSERT INTO users (id, supabase_id, email, encrypted_password, username, first_name, last_name, profile_picture_url, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-		RETURNING id, supabase_id, email, username, first_name, last_name, profile_picture_url, created_at, updated_at
-	`
-	// For username, first_name, last_name, derive from displayName or set defaults
-	username := email // Or generate a unique username
-	firstName := displayName
-	lastName := ""
+	// Derive a simple username from email
+	username := email
 
-	var user types.User
-	err := pool.QueryRow(ctx, query, userID, supabaseID, email, hashedPassword, username, firstName, lastName, profilePicURL).Scan(
-		&user.ID, &user.SupabaseID, &user.Email, &user.Username, &user.FirstName, &user.LastName, &user.ProfilePictureURL, &user.CreatedAt, &user.UpdatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("createUserInDB failed: %w", err)
+	// Insert into auth.users and user_profiles using shared helper
+	if err := testutil.InsertTestUser(ctx, pool, userID, email, username); err != nil {
+		return nil, fmt.Errorf("createUserInDB failed inserting test user: %w", err)
 	}
 
-	// Insert into auth.users table for foreign key constraint satisfaction
-	_, err = pool.Exec(ctx, "INSERT INTO auth.users (id, email, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
-		userID, email)
-	if err != nil {
-		return nil, fmt.Errorf("createUserInDB: failed to insert into auth.users: %w", err)
+	now := time.Now()
+	user := &types.User{
+		ID:        userID.String(),
+		Email:     email,
+		Username:  username,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
-
-	return &user, nil
+	return user, nil
 }
 
 func createTripInDB(ctx context.Context, pool *pgxpool.Pool, name, ownerID string) (*types.Trip, error) {

@@ -35,7 +35,6 @@ type UserResponse struct {
 // UserProfile represents the user profile information in the system
 type UserProfile struct {
 	ID          string    `json:"id"`
-	SupabaseID  string    `json:"supabase_id"`
 	Email       string    `json:"email"`
 	Username    string    `json:"username"`
 	FirstName   string    `json:"firstName,omitempty"`
@@ -60,7 +59,6 @@ type JWTClaims struct {
 // User represents a user within the application
 type User struct {
 	ID                string                 `json:"id" db:"id"`
-	SupabaseID        string                 `json:"supabaseId" db:"supabase_id"`
 	Username          string                 `json:"username" db:"username"`
 	FirstName         string                 `json:"firstName,omitempty" db:"first_name"`
 	LastName          string                 `json:"lastName,omitempty" db:"last_name"`
@@ -95,7 +93,7 @@ func (u *User) GetDisplayName() string {
 
 // IsComplete returns true if the user has all required fields populated
 func (u *User) IsComplete() bool {
-	return u.SupabaseID != "" && u.Email != "" && u.Username != ""
+	return u.ID != "" && u.Email != "" && u.Username != ""
 }
 
 // ShouldSync returns true if this user should be synced with Supabase

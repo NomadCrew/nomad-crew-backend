@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -85,22 +86,8 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID) {
 	userID := uuid.New()
 	tripID := uuid.New()
 
-	// Insert into both users and auth.users tables to satisfy foreign key constraints
-	_, err = testPool.Exec(ctx, `
-		INSERT INTO users (id, supabase_id, email, username, name, created_at, updated_at)
-		VALUES ($1, $2, 'test@example.com', 'testuser1', 'Test User', NOW(), NOW())`,
-		userID,
-		uuid.New().String(),
-	)
-	require.NoError(t, err)
-
-	// Insert into auth.users table for foreign key constraint satisfaction
-	_, err = testPool.Exec(ctx, `
-		INSERT INTO auth.users (id, email, created_at, updated_at)
-		VALUES ($1, 'test@example.com', NOW(), NOW())`,
-		userID,
-	)
-	require.NoError(t, err)
+	// Insert test user into auth.users and user_profiles
+	require.NoError(t, testutil.InsertTestUser(ctx, testPool, userID, "test@example.com", "testuser1"))
 
 	_, err = testPool.Exec(ctx, `
 		INSERT INTO trips (id, name, description, start_date, end_date, status, created_by, created_at, updated_at, destination_latitude, destination_longitude)

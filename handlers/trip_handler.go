@@ -123,7 +123,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	log.Infow("Parsed CreateTripRequest", "request", req)
 
 	// Use internal user ID directly from enhanced middleware (consistent with other handlers)
-	internalUserID := c.GetString(string(middleware.InternalUserIDKey))
+	internalUserID := c.GetString(string(middleware.UserIDKey))
 	// Get Supabase user ID for foreign key references to auth.users
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 	log.Infow("[DEBUG] User IDs from context", "internalUserID", internalUserID, "supabaseUserID", supabaseUserID)
@@ -261,7 +261,7 @@ func derefString(s *string) string {
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -292,7 +292,7 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	var update types.TripUpdate
 	if err := c.ShouldBindJSON(&update); err != nil {
@@ -352,7 +352,7 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	}
 
 	// Use internal user ID from enhanced middleware
-	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.InternalUserIDKey)))
+	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.UserIDKey)))
 	if err != nil {
 		log.Errorw("Failed to fetch updated trip after status change", "tripID", tripID, "error", err)
 		c.JSON(http.StatusOK, gin.H{"message": "Trip status updated successfully"})
@@ -499,7 +499,7 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	tripID := c.Param("id")
 	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	tripWithMembers, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -529,7 +529,7 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
 	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.InternalUserIDKey))
+	userID := c.GetString(string(middleware.UserIDKey))
 
 	// Fetch the trip to ensure it exists and to get destination details
 	// Use GetTripByID which includes membership check implicitly via the model layer

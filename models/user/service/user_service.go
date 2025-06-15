@@ -63,7 +63,6 @@ func (s *UserService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.Us
 
 	modelUser := &models.User{
 		ID:                id, // Use the original uuid.UUID
-		SupabaseID:        typesUser.SupabaseID,
 		Username:          typesUser.Username,
 		FirstName:         typesUser.FirstName,
 		LastName:          typesUser.LastName,
@@ -78,10 +77,10 @@ func (s *UserService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.Us
 	}
 
 	// If the user data is stale, try to sync with Supabase
-	if modelUser.ShouldSync() && modelUser.SupabaseID != "" {
+	if modelUser.ShouldSync() {
 		log.Infow("User data is stale, syncing with Supabase", "userID", id)
 		// SyncWithSupabase internally calls store and handles conversion
-		syncedModelUser, syncErr := s.SyncWithSupabase(ctx, modelUser.SupabaseID)
+		syncedModelUser, syncErr := s.SyncWithSupabase(ctx, modelUser.ID.String())
 		if syncErr == nil {
 			return syncedModelUser, nil
 		}
@@ -120,7 +119,6 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models
 	}
 	modelUser := &models.User{
 		ID:                userID,
-		SupabaseID:        typesUser.SupabaseID,
 		Username:          typesUser.Username,
 		FirstName:         typesUser.FirstName,
 		LastName:          typesUser.LastName,
@@ -174,7 +172,6 @@ func (s *UserService) GetUserBySupabaseID(ctx context.Context, supabaseID string
 
 	modelUser := &models.User{
 		ID:                userID,
-		SupabaseID:        typesUser.SupabaseID,
 		Username:          typesUser.Username,
 		FirstName:         typesUser.FirstName,
 		LastName:          typesUser.LastName,
@@ -206,8 +203,8 @@ func (s *UserService) GetUserBySupabaseID(ctx context.Context, supabaseID string
 func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.UUID, error) {
 	log := logger.GetLogger()
 
-	if user.SupabaseID == "" {
-		return uuid.Nil, errors.New("Supabase ID is required for creating user")
+	if user.ID == uuid.Nil {
+		user.ID = uuid.New()
 	}
 	if user.Email == "" {
 		return uuid.Nil, errors.New("Email is required for creating user")
@@ -231,7 +228,6 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 
 	typesUser := &types.User{
 		ID:                user.ID.String(), // Store expects string ID, but CreateUser takes *types.User without ID usually
-		SupabaseID:        user.SupabaseID,
 		Username:          user.Username,
 		FirstName:         user.FirstName,
 		LastName:          user.LastName,
@@ -265,7 +261,7 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 	// Sync user data to Supabase for RLS validation
 	if s.supabaseService != nil && s.supabaseService.IsEnabled() {
 		syncData := services.UserSyncData{
-			ID:       user.SupabaseID, // Use Supabase ID for sync
+			ID:       user.ID.String(),
 			Email:    user.Email,
 			Username: user.Username,
 		}
@@ -274,9 +270,9 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 		go func() {
 			syncCtx := context.Background() // Use background context for async operation
 			if err := s.supabaseService.SyncUser(syncCtx, syncData); err != nil {
-				log.Errorw("Failed to sync user to Supabase", "error", err, "userID", createdUUID, "supabaseID", user.SupabaseID)
+				log.Errorw("Failed to sync user to Supabase", "error", err, "userID", createdUUID, "supabaseID", user.ID.String())
 			} else {
-				log.Infow("Successfully synced user to Supabase", "userID", createdUUID, "supabaseID", user.SupabaseID)
+				log.Infow("Successfully synced user to Supabase", "userID", createdUUID, "supabaseID", user.ID.String())
 			}
 		}()
 	}
@@ -333,7 +329,6 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, updates mode
 	// The ID from updatedTypesUser is string, we need the original uuid.UUID 'id'
 	updatedModelUser := &models.User{
 		ID:                id, // Use the original uuid.UUID
-		SupabaseID:        updatedTypesUser.SupabaseID,
 		Username:          updatedTypesUser.Username,
 		FirstName:         updatedTypesUser.FirstName,
 		LastName:          updatedTypesUser.LastName,
@@ -356,9 +351,9 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, updates mode
 			shouldSync = true
 		}
 
-		if shouldSync && updatedModelUser.SupabaseID != "" {
+		if shouldSync {
 			syncData := services.UserSyncData{
-				ID:       updatedModelUser.SupabaseID,
+				ID:       updatedModelUser.ID.String(),
 				Email:    updatedModelUser.Email,
 				Username: updatedModelUser.Username,
 			}
@@ -367,9 +362,9 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, updates mode
 			go func() {
 				syncCtx := context.Background()
 				if err := s.supabaseService.SyncUser(syncCtx, syncData); err != nil {
-					log.Errorw("Failed to sync updated user to Supabase", "error", err, "userID", id, "supabaseID", updatedModelUser.SupabaseID)
+					log.Errorw("Failed to sync updated user to Supabase", "error", err, "userID", id, "supabaseID", updatedModelUser.ID.String())
 				} else {
-					log.Infow("Successfully synced updated user to Supabase", "userID", id, "supabaseID", updatedModelUser.SupabaseID)
+					log.Infow("Successfully synced updated user to Supabase", "userID", id, "supabaseID", updatedModelUser.ID.String())
 				}
 			}()
 		}
@@ -473,7 +468,6 @@ func (s *UserService) ListUsers(ctx context.Context, offset, limit int) ([]*mode
 
 		modelUsers = append(modelUsers, &models.User{
 			ID:                userID,
-			SupabaseID:        typesUser.SupabaseID,
 			Username:          typesUser.Username,
 			FirstName:         typesUser.FirstName,
 			LastName:          typesUser.LastName,
@@ -527,7 +521,6 @@ func (s *UserService) SyncWithSupabase(ctx context.Context, supabaseID string) (
 
 	modelUser := &models.User{
 		ID:                userID,
-		SupabaseID:        typesUser.SupabaseID,
 		Username:          typesUser.Username,
 		FirstName:         typesUser.FirstName,
 		LastName:          typesUser.LastName,
@@ -556,7 +549,6 @@ func (s *UserService) GetUserProfile(ctx context.Context, id uuid.UUID) (*types.
 
 	profile := &types.UserProfile{
 		ID:          user.ID.String(),
-		SupabaseID:  user.SupabaseID,
 		Email:       user.Email,
 		Username:    user.Username,
 		FirstName:   user.FirstName,
@@ -731,7 +723,7 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 
 	// Check if username is already taken by another user
 	existingByUsername, err := s.userStore.GetUserByUsername(ctx, username)
-	if err == nil && existingByUsername != nil && existingByUsername.SupabaseID != claims.UserID {
+	if err == nil && existingByUsername != nil && existingByUsername.ID != claims.UserID {
 		return nil, errors.New("username is already taken")
 	}
 
@@ -743,10 +735,11 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 
 	if typesUser == nil {
 		// User does not exist, create
+		idUUID, _ := uuid.Parse(claims.UserID)
 		user := &models.User{
-			SupabaseID: claims.UserID,
-			Email:      claims.Email,
-			Username:   username,
+			ID:       idUUID,
+			Email:    claims.Email,
+			Username: username,
 		}
 		id, err := s.CreateUser(ctx, user)
 		if err != nil {
