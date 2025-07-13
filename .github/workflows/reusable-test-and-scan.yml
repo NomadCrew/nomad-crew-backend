@@ -1,0 +1,130 @@
+name: Reusable Test and Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.24'
+        required: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nomadcrew_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:latest
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run tests with coverage
+        env:
+          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
+          JWT_SECRET_KEY: test_secret
+          GOFLAGS: "-buildvcs=false"
+        run: |
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+          go tool cover -func=coverage.txt
+      
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.txt
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GOFLAGS: "-buildvcs=false"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: '-fmt sarif -out gosec-results.sarif ./...'
+      
+      - name: Upload Gosec results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'gosec-results.sarif'
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+      
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+      
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.2
+          args: --timeout=5m
+          working-directory: ./
+
+    env:
+      GOFLAGS: "-buildvcs=false"

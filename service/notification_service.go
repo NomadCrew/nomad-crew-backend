@@ -7,7 +7,6 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store" // Import for internal store types
-	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/store" // Keep for NotificationStore and TripStore (old)
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"

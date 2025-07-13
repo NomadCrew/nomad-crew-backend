@@ -932,3 +932,19 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn TxFn) error {
 
 	return nil
 }
+
+// Commit implements internal_store.TripStore.
+// Note: This implementation assumes transaction handling is done at a higher level.
+// If this store needs to manage its own transactions, this would need to be refactored.
+func (s *pgTripStore) Commit() error {
+	// Transaction management is handled in BeginTx and the returned transaction
+	return nil
+}
+
+// Rollback implements internal_store.TripStore.
+// Note: This implementation assumes transaction handling is done at a higher level.
+// If this store needs to manage its own transactions, this would need to be refactored.
+func (s *pgTripStore) Rollback() error {
+	// Transaction management is handled in BeginTx and the returned transaction
+	return nil
+}

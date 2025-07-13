@@ -110,3 +110,13 @@ type UserUpdateRequest struct {
 	LastName          *string `json:"lastName,omitempty"`
 	ProfilePictureURL *string `json:"profilePictureUrl,omitempty"`
 }
+
+// CreateUserRequest represents the request to create a new user
+type CreateUserRequest struct {
+	Username          string                 `json:"username" binding:"required"`
+	Email             string                 `json:"email" binding:"required,email"`
+	FirstName         string                 `json:"first_name"`
+	LastName          string                 `json:"last_name"`
+	ProfilePictureURL string                 `json:"profile_picture_url"`
+	Preferences       map[string]interface{} `json:"preferences"`
+}

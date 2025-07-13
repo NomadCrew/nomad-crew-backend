@@ -182,3 +182,12 @@ memory-bank/
 .cursorrules
 Makefile
 run-migrations.ps1
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Logs
+logs/
+*.log
+*.log.gz

@@ -18,7 +18,7 @@ jobs:
       pull-requests: write
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
-      SERVICE_NAME: nomadcrew-pr-${{ github.event.pull_request.number }}
+      SERVICE_NAME: preview-environment-pr-${{ github.event.pull_request.number }}
     
     steps:
       - name: Google Auth

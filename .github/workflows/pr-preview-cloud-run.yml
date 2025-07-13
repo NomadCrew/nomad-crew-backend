@@ -32,82 +32,16 @@ permissions:
   issues: write
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: nomadcrew_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:latest
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
-          cache: true
-      
-      - name: Install dependencies
-        run: go mod download
-      
-      - name: Run tests
-        env:
-          DB_CONNECTION_STRING: postgresql://test:test@localhost:5432/nomadcrew_test
-          JWT_SECRET_KEY: test_secret
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -buildvcs=false ./...
-
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    env:
-      GOFLAGS: "-buildvcs=false"
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
-        with:
-          args: ./...
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: './'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          ignore-unfixed: true
-          severity: 'CRITICAL,HIGH'
-      
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
+  test-and-scan:
+    name: Test and Security Scan
+    uses: ./.github/workflows/reusable-test-and-scan.yml
+    permissions:
+      contents: read
+      security-events: write
   
   deploy-preview:
     name: Deploy PR Preview
-    needs: [test, security-scan]
+    needs: [test-and-scan]
     runs-on: ubuntu-latest
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -128,13 +62,21 @@ jobs:
       - name: Authorize Docker push
         run: gcloud auth configure-docker us-east1-docker.pkg.dev
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
       - name: Build and Push Container
-        run: |-
-          docker build -t us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          --build-arg VERSION=pr-${{ env.PR_NUMBER }}-${{ github.sha }} \
-          --build-arg SERVER_ENVIRONMENT=staging \
-          .
-          docker push us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          build-args: |
+            VERSION=pr-${{ env.PR_NUMBER }}-${{ github.sha }}
+            SERVER_ENVIRONMENT=staging
+          cache-from: |
+            type=registry,ref=us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/nomadcrew-backend-cache:buildcache
+          cache-to: type=inline
       
       - name: Deploy to Cloud Run
         id: deploy

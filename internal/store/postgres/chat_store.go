@@ -88,7 +88,7 @@ func (s *ChatStore) GetChatGroup(ctx context.Context, groupID string) (*types.Ch
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Use the ErrNotFound defined in todo.go for now, or define a shared one
-			return nil, ErrNotFound
+			return nil, store.ErrNotFound
 		}
 		return nil, fmt.Errorf("error getting chat group: %w", err)
 	}
@@ -109,7 +109,7 @@ func (s *ChatStore) UpdateChatGroup(ctx context.Context, groupID string, update 
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return ErrNotFound // Group didn't exist or was already deleted
+		return store.ErrNotFound // Group didn't exist or was already deleted
 	}
 
 	return nil
@@ -127,7 +127,7 @@ func (s *ChatStore) DeleteChatGroup(ctx context.Context, groupID string) error {
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return ErrNotFound // Group didn't exist or was already deleted
+		return store.ErrNotFound // Group didn't exist or was already deleted
 	}
 
 	return nil
@@ -230,7 +230,7 @@ func (s *ChatStore) GetChatMessageByID(ctx context.Context, messageID string) (*
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, store.ErrNotFound
 		}
 		return nil, fmt.Errorf("error getting chat message: %w", err)
 	}
@@ -253,7 +253,7 @@ func (s *ChatStore) UpdateChatMessage(ctx context.Context, messageID string, con
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return ErrNotFound // Message didn't exist or was deleted
+		return store.ErrNotFound // Message didn't exist or was deleted
 	}
 
 	return nil
@@ -271,7 +271,7 @@ func (s *ChatStore) DeleteChatMessage(ctx context.Context, messageID string) err
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return ErrNotFound // Message didn't exist or was already deleted
+		return store.ErrNotFound // Message didn't exist or was already deleted
 	}
 
 	return nil
@@ -443,7 +443,7 @@ func (s *ChatStore) UpdateLastReadMessage(ctx context.Context, groupID, userID, 
 		// This means the user is not a member of the group.
 		// Return an error or handle as appropriate (e.g., log warning).
 		// For now, let's return a specific error or ErrNotFound.
-		return fmt.Errorf("user %s is not a member of group %s: %w", userID, groupID, ErrNotFound)
+		return fmt.Errorf("user %s is not a member of group %s: %w", userID, groupID, store.ErrNotFound)
 	}
 
 	return nil
@@ -537,7 +537,7 @@ func (s *ChatStore) GetUserByID(ctx context.Context, userID string) (*types.User
 	err := row.Scan(&id, &email, &dbName, &rawMetaData, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, store.ErrNotFound
 		}
 		return nil, fmt.Errorf("error getting user: %w", err)
 	}

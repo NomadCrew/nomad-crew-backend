@@ -9,7 +9,7 @@ import (
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors" // Added apperrors
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/internal/store" // Added store
+	"github.com/NomadCrew/nomad-crew-backend/store" // Changed from internal/store
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 

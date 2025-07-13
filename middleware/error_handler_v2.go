@@ -10,6 +10,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ErrorHandlerV2 provides standardized error handling using the new response format
@@ -50,10 +51,10 @@ func ErrorHandlerV2() gin.HandlerFunc {
 			}
 
 			// Add details for certain error types or in debug mode
-			if e.Details != nil && (gin.IsDebugging() ||
+			if e.Details != "" && (gin.IsDebugging() ||
 				e.Type == errors.ValidationError ||
 				e.Type == errors.NotFoundError) {
-				errorInfo.Details = e.Details
+				errorInfo.Details = map[string]interface{}{"detail": e.Details}
 			} else if e.Detail != "" && (gin.IsDebugging() ||
 				e.Type == errors.ValidationError ||
 				e.Type == errors.NotFoundError) {
@@ -138,7 +139,7 @@ func ErrorHandlerV2() gin.HandlerFunc {
 }
 
 // mapErrorTypeToCode maps legacy error types to new error codes
-func mapErrorTypeToCode(errorType errors.ErrorType) string {
+func mapErrorTypeToCode(errorType string) string {
 	switch errorType {
 	case errors.NotFoundError:
 		return types.ErrCodeNotFound
@@ -162,7 +163,7 @@ func mapErrorTypeToCode(errorType errors.ErrorType) string {
 }
 
 // handleAuthError provides special handling for authentication errors
-func handleAuthError(c *gin.Context, log *logger.Logger) {
+func handleAuthError(c *gin.Context, log *zap.SugaredLogger) {
 	// Try to load config for environment checks
 	cfg, err := config.LoadConfig()
 	if err == nil {

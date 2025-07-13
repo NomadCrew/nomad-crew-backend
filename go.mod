@@ -2,6 +2,8 @@ module github.com/NomadCrew/nomad-crew-backend
 
 go 1.24.0
 
+toolchain go1.24.5
+
 require (
 	github.com/gin-contrib/cors v1.7.3
 	github.com/gin-gonic/gin v1.10.0
@@ -26,15 +28,12 @@ require (
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.4
 	github.com/testcontainers/testcontainers-go v0.37.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.37.0
-	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/time v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/lib/pq v1.10.9
+	github.com/lib/pq v1.10.9 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 )
 
@@ -102,7 +101,6 @@ require (
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
-	github.com/mdelapenya/tlscert v0.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
@@ -154,6 +152,7 @@ require (
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	google.golang.org/grpc v1.70.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect

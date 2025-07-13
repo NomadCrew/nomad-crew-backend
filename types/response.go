@@ -1,13 +1,6 @@
 package types
 
-type PaginatedResponse struct {
-	Data       interface{} `json:"data"`
-	Pagination struct {
-		Limit  int `json:"limit"`
-		Offset int `json:"offset"`
-		Total  int `json:"total"`
-	} `json:"pagination"`
-}
+// Removed duplicate PaginatedResponse - using the one from api_response.go
 
 type ErrorResponse struct {
 	Error   string `json:"error"`

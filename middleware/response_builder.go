@@ -83,7 +83,7 @@ func (rb *ResponseBuilder) Error(c *gin.Context, err error) {
 		Error: &types.ErrorInfo{
 			Code:    appErr.Type,
 			Message: appErr.Message,
-			Details: appErr.Details,
+			Details: map[string]interface{}{"detail": appErr.Details},
 			TraceID: rb.requestID,
 		},
 		Meta: &types.MetaInfo{
@@ -124,7 +124,8 @@ func (rb *ResponseBuilder) processError(err error) (*errors.AppError, int) {
 	}
 	
 	// Convert to AppError
-	appErr := errors.InternalServerError("An unexpected error occurred", err)
+	appErr := errors.InternalServerError("An unexpected error occurred")
+	appErr.Raw = err
 	return appErr, http.StatusInternalServerError
 }
 

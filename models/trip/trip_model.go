@@ -5,6 +5,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
+	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/services"

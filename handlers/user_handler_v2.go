@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
+	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,16 +27,18 @@ func (h *UserHandler) GetCurrentUserV2(c *gin.Context) {
 	user := userObj.(*types.User)
 
 	// Convert types.User ID to UUID for service compatibility
-	userUUID, err := uuid.Parse(user.ID)
-	if err != nil {
-		rb.Error(c, errors.InternalServerError("Invalid user ID format", err))
+	userUUID, parseErr := uuid.Parse(user.ID)
+	if parseErr != nil {
+		appErr := errors.InternalServerError("Invalid user ID format")
+		appErr.Raw = parseErr
+		rb.Error(c, appErr)
 		return
 	}
 
 	// Update last seen timestamp (non-blocking)
 	go func() {
 		if err := h.userService.UpdateLastSeen(c.Request.Context(), userUUID); err != nil {
-			h.logger.Warnw("Failed to update last seen timestamp",
+			logger.GetLogger().Warnw("Failed to update last seen timestamp",
 				"user_id", userUUID,
 				"error", err)
 		}
@@ -78,7 +83,7 @@ func (h *UserHandler) ListUsersV2(c *gin.Context) {
 	// Convert to profiles
 	profiles := make([]types.UserProfile, len(users))
 	for i, user := range users {
-		profiles[i] = convertToUserProfile(&user)
+		profiles[i] = convertModelUserToProfile(user)
 	}
 	
 	// Calculate pagination info
@@ -90,7 +95,7 @@ func (h *UserHandler) ListUsersV2(c *gin.Context) {
 	pageInfo := &types.PageInfo{
 		Page:       page,
 		PerPage:    perPage,
-		Total:      total,
+		Total:      int64(total),
 		TotalPages: totalPages,
 		HasMore:    page < totalPages,
 	}
@@ -119,32 +124,70 @@ func (h *UserHandler) CreateUserV2(c *gin.Context) {
 	}
 	
 	// Create user
-	user, err := h.userService.CreateUser(c.Request.Context(), &req)
+	// Convert CreateUserRequest to models.User
+	newUser := &models.User{
+		Username:          req.Username,
+		Email:             req.Email,
+		FirstName:         req.FirstName,
+		LastName:          req.LastName,
+		ProfilePictureURL: req.ProfilePictureURL,
+	}
+	
+	userID, err := h.userService.CreateUser(c.Request.Context(), newUser)
+	if err != nil {
+		rb.Error(c, err)
+		return
+	}
+	
+	// Get the created user
+	createdUser, err := h.userService.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		rb.Error(c, err)
 		return
 	}
 	
 	// Convert to profile
-	profile := convertToUserProfile(user)
+	profile := convertModelUserToProfile(createdUser)
 	
 	rb.Created(c, profile)
 }
 
 // Example helper functions
-func convertToUserProfile(user *types.User) types.UserProfile {
+func convertModelUserToProfile(user *models.User) types.UserProfile {
+	lastSeenAt := time.Time{}
+	if user.LastSeenAt != nil {
+		lastSeenAt = *user.LastSeenAt
+	}
+	
 	return types.UserProfile{
-		ID:                user.ID,
-		Username:          user.Username,
-		FirstName:         user.FirstName,
-		LastName:          user.LastName,
-		Email:             user.Email,
-		ProfilePictureURL: user.ProfilePictureURL,
-		CreatedAt:         user.CreatedAt,
-		UpdatedAt:         user.UpdatedAt,
-		LastSeenAt:        user.LastSeenAt,
-		IsOnline:          user.IsOnline,
-		Preferences:       user.Preferences,
+		ID:          user.ID.String(),
+		Username:    user.Username,
+		FirstName:   user.FirstName,
+		LastName:    user.LastName,
+		Email:       user.Email,
+		AvatarURL:   user.ProfilePictureURL,
+		DisplayName: user.GetDisplayName(),
+		LastSeenAt:  lastSeenAt,
+		IsOnline:    user.IsOnline,
+	}
+}
+
+func convertToUserProfile(user *types.User) types.UserProfile {
+	lastSeenAt := time.Time{}
+	if user.LastSeenAt != nil {
+		lastSeenAt = *user.LastSeenAt
+	}
+	
+	return types.UserProfile{
+		ID:          user.ID,
+		Username:    user.Username,
+		FirstName:   user.FirstName,
+		LastName:    user.LastName,
+		Email:       user.Email,
+		AvatarURL:   user.ProfilePictureURL,
+		DisplayName: user.GetDisplayName(),
+		LastSeenAt:  lastSeenAt,
+		IsOnline:    user.IsOnline,
 	}
 }
 

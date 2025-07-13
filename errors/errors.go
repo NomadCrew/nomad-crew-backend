@@ -7,14 +7,16 @@ import (
 
 // Error types
 const (
-	NotFoundError      = "NOT_FOUND"
-	ValidationError    = "VALIDATION"
-	DatabaseError      = "DATABASE"
-	AuthError          = "AUTHENTICATION"
-	AuthorizationError = "AUTHORIZATION"
-	ServerError        = "SERVER"
-	ExternalAPIError   = "EXTERNAL_API"
-	TripNotFoundError  = "TRIP_NOT_FOUND"
+	NotFoundError         = "NOT_FOUND"
+	ValidationError       = "VALIDATION"
+	DatabaseError         = "DATABASE"
+	AuthError             = "AUTHENTICATION"
+	AuthorizationError    = "AUTHORIZATION"
+	ServerError           = "SERVER"
+	ExternalAPIError      = "EXTERNAL_API"
+	TripNotFoundError     = "TRIP_NOT_FOUND"
+	ConflictError         = "CONFLICT"
+	ExternalServiceError  = "EXTERNAL_SERVICE"
 )
 
 // AppError is a structured error type for the application

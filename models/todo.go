@@ -249,11 +249,13 @@ func (tm *TodoModel) ListTripTodos(ctx context.Context, tripID string, userID st
 	}
 
 	return &types.PaginatedResponse{
-		Data: pagedTodos, // Return the manually paginated slice
-		Pagination: types.Pagination{
-			Limit:  limit,
-			Offset: offset,
-			Total:  total, // Total is the count before pagination
+		Items: pagedTodos, // Return the manually paginated slice
+		Pagination: &types.PageInfo{
+			Page:       (offset / limit) + 1,
+			PerPage:    limit,
+			Total:      int64(total),
+			TotalPages: (total + limit - 1) / limit,
+			HasMore:    end < total,
 		},
 	}, nil
 }
