@@ -5,7 +5,6 @@ import "time"
 type MemberRole string
 
 const (
-	// MemberRoleNone   MemberRole = "NONE" // Removed as it's not in the DB ENUM
 	MemberRoleOwner  MemberRole = "OWNER"
 	MemberRoleMember MemberRole = "MEMBER"
 	MemberRoleAdmin  MemberRole = "ADMIN"
@@ -16,7 +15,6 @@ type MembershipStatus string
 const (
 	MembershipStatusActive   MembershipStatus = "ACTIVE"
 	MembershipStatusInactive MembershipStatus = "INACTIVE"
-	// MembershipStatusInvited  MembershipStatus = "INVITED" // Removed as it's not in the DB ENUM
 )
 
 type TripMembership struct {
@@ -32,7 +30,6 @@ type TripMembership struct {
 
 func (r MemberRole) IsAuthorizedFor(requiredRole MemberRole) bool {
 	roleHierarchy := map[MemberRole]int{
-		// MemberRoleNone:   0, // Removed
 		MemberRoleMember: 1,
 		MemberRoleAdmin:  2, // Assuming Admin has higher or equal privileges to Owner for some actions
 		MemberRoleOwner:  2, // Owner and Admin can be at the same level or adjusted as per logic

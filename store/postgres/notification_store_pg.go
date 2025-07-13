@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/store"
+	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -26,7 +26,7 @@ func NewPgNotificationStore(pool *pgxpool.Pool) store.NotificationStore {
 }
 
 // Create inserts a new notification into the database.
-func (s *pgNotificationStore) Create(ctx context.Context, n *models.Notification) error {
+func (s *pgNotificationStore) Create(ctx context.Context, n *types.Notification) error {
 	query := `INSERT INTO notifications (user_id, type, metadata, is_read, created_at, updated_at)
 	          VALUES ($1, $2, $3, $4, $5, $6)
 	          RETURNING id, created_at, updated_at`
@@ -56,12 +56,12 @@ func (s *pgNotificationStore) Create(ctx context.Context, n *models.Notification
 }
 
 // GetByID retrieves a notification by its ID.
-func (s *pgNotificationStore) GetByID(ctx context.Context, id uuid.UUID) (*models.Notification, error) {
+func (s *pgNotificationStore) GetByID(ctx context.Context, id uuid.UUID) (*types.Notification, error) {
 	query := `SELECT id, user_id, type, metadata, is_read, created_at, updated_at
 	          FROM notifications
 	          WHERE id = $1`
 
-	n := &models.Notification{}
+	n := &types.Notification{}
 	err := s.pool.QueryRow(ctx, query, id).Scan(
 		&n.ID, &n.UserID, &n.Type, &n.Metadata, &n.IsRead, &n.CreatedAt, &n.UpdatedAt,
 	)
@@ -76,7 +76,7 @@ func (s *pgNotificationStore) GetByID(ctx context.Context, id uuid.UUID) (*model
 }
 
 // GetByUser retrieves notifications for a user with pagination and status filtering.
-func (s *pgNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]models.Notification, error) {
+func (s *pgNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]types.Notification, error) {
 	baseQuery := `SELECT id, user_id, type, metadata, is_read, created_at, updated_at
 	              FROM notifications
 	              WHERE user_id = $1`
@@ -103,9 +103,9 @@ func (s *pgNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID, l
 	}
 	defer rows.Close()
 
-	notifications := []models.Notification{}
+	notifications := []types.Notification{}
 	for rows.Next() {
-		var n models.Notification
+		var n types.Notification
 		if err := rows.Scan(&n.ID, &n.UserID, &n.Type, &n.Metadata, &n.IsRead, &n.CreatedAt, &n.UpdatedAt); err != nil {
 			return nil, errors.Wrap(err, "failed to scan notification row")
 		}

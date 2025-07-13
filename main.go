@@ -177,7 +177,7 @@ func main() {
 	log.Info("JWT Validator initialized successfully")
 
 	// Initialize services
-	// rateLimitService := services.NewRateLimitService(redisClient) - removed as it's no longer used after WebSocket removal
+	rateLimitService := services.NewRateLimitService(redisClient)
 
 	// Create event service config based on application configuration
 	eventServiceConfig := events.Config{
@@ -266,6 +266,7 @@ func main() {
 		InvitationHandler:   invitationHandler,
 		Logger:              log,
 		SupabaseService:     supabaseService,
+		RateLimiter:         rateLimitService,
 	}
 
 	// Add Supabase Realtime handlers (always enabled in development)

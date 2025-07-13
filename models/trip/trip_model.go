@@ -4,11 +4,10 @@ import (
 	"context"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
-	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/services"
-	appstore "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
 )
@@ -17,7 +16,7 @@ import (
 // This maintains backward compatibility while using the new service architecture
 type TripModel struct {
 	coordinator *service.TripModelCoordinator
-	store       appstore.TripStore
+	store       store.TripStore
 	config      *config.ServerConfig
 }
 
@@ -25,9 +24,9 @@ var _ interfaces.TripModelInterface = (*TripModel)(nil)
 
 // NewTripModel creates a new TripModel using the coordinator
 func NewTripModel(
-	tripStoreApp appstore.TripStore,
-	chatStoreApp appstore.ChatStore,
-	userStoreInternal istore.UserStore,
+	tripStoreApp store.TripStore,
+	chatStoreApp store.ChatStore,
+	userStoreInternal store.UserStore,
 	eventBus types.EventPublisher,
 	weatherSvc types.WeatherServiceInterface,
 	supabaseClient *supabase.Client,
@@ -109,7 +108,7 @@ func (tm *TripModel) GetTripWithMembers(ctx context.Context, tripID string, user
 }
 
 // GetTripStore returns the trip store
-func (tm *TripModel) GetTripStore() appstore.TripStore {
+func (tm *TripModel) GetTripStore() store.TripStore {
 	return tm.store
 }
 

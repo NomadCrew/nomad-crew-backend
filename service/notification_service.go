@@ -18,8 +18,8 @@ import (
 // NotificationService defines the interface for notification business logic.
 type NotificationService interface {
 	// CreateAndPublishNotification creates a notification, saves it, and publishes an event.
-	CreateAndPublishNotification(ctx context.Context, userID uuid.UUID, notificationType string, metadataInput interface{}) (*models.Notification, error)
-	GetNotifications(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]models.Notification, error)
+	CreateAndPublishNotification(ctx context.Context, userID uuid.UUID, notificationType string, metadataInput interface{}) (*types.Notification, error)
+	GetNotifications(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]types.Notification, error)
 	MarkNotificationAsRead(ctx context.Context, userID, notificationID uuid.UUID) error
 	MarkAllNotificationsAsRead(ctx context.Context, userID uuid.UUID) (int64, error)
 	GetUnreadNotificationCount(ctx context.Context, userID uuid.UUID) (int64, error)
@@ -48,7 +48,7 @@ func NewNotificationService(ns store.NotificationStore, us istore.UserStore, ts 
 }
 
 // CreateAndPublishNotification constructs, saves, and publishes an event for a notification.
-func (s *notificationService) CreateAndPublishNotification(ctx context.Context, userID uuid.UUID, notificationType string, metadataInput interface{}) (*models.Notification, error) {
+func (s *notificationService) CreateAndPublishNotification(ctx context.Context, userID uuid.UUID, notificationType string, metadataInput interface{}) (*types.Notification, error) {
 	log := s.logger.With(zap.String("userID", userID.String()), zap.String("type", notificationType))
 
 	// 1. Marshal the specific metadata input to JSON
@@ -59,7 +59,7 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 	}
 
 	// 2. Create the notification model
-	notification := &models.Notification{
+	notification := &types.Notification{
 		UserID:    userID,
 		Type:      notificationType,
 		Metadata:  metadataJSON,
@@ -151,7 +151,7 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 // }
 
 // GetNotifications retrieves notifications for a user.
-func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]models.Notification, error) {
+func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]types.Notification, error) {
 	// Default limit if not provided or invalid
 	if limit <= 0 || limit > 100 { // Set a max limit
 		limit = 20

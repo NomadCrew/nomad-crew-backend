@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NomadCrew/nomad-crew-backend/store"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

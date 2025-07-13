@@ -286,7 +286,7 @@ func (h *LocationHandlerSupabase) generateLocationResponse(userID, tripID string
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 403 {object} types.ErrorResponse
 // @Failure 500 {object} types.ErrorResponse
-// @Router /api/v1/trips/{tripId}/locations [put]
+// @Router /v1/trips/{id}/locations [put]
 func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
@@ -330,7 +330,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 403 {object} types.ErrorResponse
 // @Failure 500 {object} types.ErrorResponse
-// @Router /api/v1/trips/{tripId}/locations [get]
+// @Router /v1/trips/{id}/locations [get]
 func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
@@ -384,7 +384,7 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 403 {object} types.ErrorResponse
 // @Failure 500 {object} types.ErrorResponse
-// @Router /api/v1/trips/{tripId}/locations [post]
+// @Router /v1/trips/{id}/locations [post]
 func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
 	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
@@ -427,7 +427,7 @@ func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
 // @Failure 400 {object} types.ErrorResponse
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 500 {object} types.ErrorResponse
-// @Router /api/v1/location/update [post]
+// @Router /v1/location/update [post]
 func (h *LocationHandlerSupabase) LegacyUpdateLocation(c *gin.Context) {
 	// Use Supabase user ID for database operations (foreign key compatibility)
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))

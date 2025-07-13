@@ -11,10 +11,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-var (
-	ErrNotFound = errors.New("record not found")
-)
-
 // TodoStore implements the store.TodoStore interface using PostgreSQL
 type TodoStore struct {
 	pool *pgxpool.Pool
@@ -88,7 +84,7 @@ func (s *TodoStore) GetTodo(ctx context.Context, id string) (*types.Todo, error)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, store.ErrNotFound
 		}
 		return nil, err
 	}
@@ -164,7 +160,7 @@ func (s *TodoStore) UpdateTodo(ctx context.Context, id string, update *types.Tod
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, store.ErrNotFound
 		}
 		return nil, err
 	}
@@ -185,7 +181,7 @@ func (s *TodoStore) DeleteTodo(ctx context.Context, id string) error {
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 
 	return nil

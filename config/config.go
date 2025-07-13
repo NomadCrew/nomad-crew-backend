@@ -120,9 +120,9 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.PORT", "8080")
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
-	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
-	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
-	v.SetDefault("DATABASE.CONN_MAX_LIFE", "1h")
+	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 25) // Optimized for better concurrency
+	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 10) // Reduced connection overhead
+	v.SetDefault("DATABASE.CONN_MAX_LIFE", "30m") // Shorter lifetime for better connection health
 	v.SetDefault("DATABASE.HOST", "ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech")
 	v.SetDefault("DATABASE.PORT", 5432)
 	v.SetDefault("DATABASE.USER", "neondb_owner")
@@ -131,8 +131,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("REDIS.DB", 0)
 	v.SetDefault("REDIS.ADDRESS", "actual-serval-57447.upstash.io:6379")
 	v.SetDefault("REDIS.USE_TLS", false) // Only enable TLS for Upstash
-	v.SetDefault("REDIS.POOL_SIZE", 3)   // Conservative for free tier
-	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
+	v.SetDefault("REDIS.POOL_SIZE", 15)   // Optimized for better performance
+	v.SetDefault("REDIS.MIN_IDLE_CONNS", 5) // Keep more connections ready
 	v.SetDefault("LOG_LEVEL", "info")
 	// +++ Set EventService defaults +++
 	v.SetDefault("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", 5)

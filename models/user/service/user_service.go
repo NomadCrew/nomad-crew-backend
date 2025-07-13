@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
-	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/services"
-	appstore "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -20,13 +19,13 @@ import (
 
 // UserService manages user operations
 type UserService struct {
-	userStore       istore.UserStore
+	userStore       store.UserStore
 	jwtSecret       string
 	supabaseService *services.SupabaseService
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userStore istore.UserStore, jwtSecret string, supabaseService *services.SupabaseService) *UserService {
+func NewUserService(userStore store.UserStore, jwtSecret string, supabaseService *services.SupabaseService) *UserService {
 	return &UserService{
 		userStore:       userStore,
 		jwtSecret:       jwtSecret,
@@ -142,7 +141,7 @@ func (s *UserService) GetUserBySupabaseID(ctx context.Context, supabaseID string
 	if err != nil {
 		log.Errorw("Failed to get user by Supabase ID from store", "error", err, "supabaseID", supabaseID)
 		// If not found, try to sync from Supabase (SyncWithSupabase returns *models.User)
-		if errors.Is(err, appstore.ErrNotFound) || (typesUser == nil && err.Error() == "user not found") { // Broaden check for not found
+		if errors.Is(err, store.ErrNotFound) || (typesUser == nil && err.Error() == "user not found") { // Broaden check for not found
 			log.Infow("User not found locally by SupabaseID, syncing from Supabase", "supabaseID", supabaseID)
 			return s.SyncWithSupabase(ctx, supabaseID)
 		}

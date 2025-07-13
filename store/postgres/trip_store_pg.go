@@ -895,19 +895,6 @@ func (s *pgTripStore) BeginTx(ctx context.Context) (internal_store.Transaction, 
 	return &txWrapper{tx: tx}, nil
 }
 
-// Commit implements internal_store.TripStore.
-// This method on the store itself is likely incorrect/deprecated, use the Transaction object.
-func (s *pgTripStore) Commit() error {
-	logger.GetLogger().Warn("pgTripStore.Commit called directly, this is likely an error. Use the Transaction object returned by BeginTx or use WithTx helper.")
-	return fmt.Errorf("Commit should be called on a Transaction object, not the store")
-}
-
-// Rollback implements internal_store.TripStore.
-// This method on the store itself is likely incorrect/deprecated, use the Transaction object.
-func (s *pgTripStore) Rollback() error {
-	logger.GetLogger().Warn("pgTripStore.Rollback called directly, this is likely an error. Use the Transaction object returned by BeginTx or use WithTx helper.")
-	return fmt.Errorf("Rollback should be called on a Transaction object, not the store")
-}
 
 // --- Transaction Helper ---
 // TODO: Move this to a shared utility package (e.g., dbutils) if used by other stores.
@@ -945,5 +932,3 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn TxFn) error {
 
 	return nil
 }
-
-// TODO: Remove BeginTx, Commit, Rollback methods if WithTx is the standard approach.

@@ -51,10 +51,7 @@ func NewJWTValidator(cfg *config.Config) (Validator, error) {
 	// Configure static secret (HS256) if provided
 	if cfg.ExternalServices.SupabaseJWTSecret != "" {
 		staticSecret = []byte(cfg.ExternalServices.SupabaseJWTSecret)
-		logger.GetLogger().Infof("HS256 JWT secret: %s...%s (len=%d)",
-			cfg.ExternalServices.SupabaseJWTSecret[:5],
-			cfg.ExternalServices.SupabaseJWTSecret[len(cfg.ExternalServices.SupabaseJWTSecret)-5:],
-			len(cfg.ExternalServices.SupabaseJWTSecret))
+		logger.GetLogger().Info("HS256 JWT secret configured successfully")
 	} else {
 		logger.GetLogger().Warn("JWT Validator: SUPABASE_JWT_SECRET not set, HS256 validation disabled.")
 	}

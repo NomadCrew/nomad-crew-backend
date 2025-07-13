@@ -46,7 +46,7 @@ func NewChatHandlerSupabase(
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /api/v1/trips/{tripId}/chat/messages [post]
+// @Router /v1/trips/{id}/chat/messages [post]
 func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	tripID := c.Param("id")
 	// Use Supabase user ID for trip access validation
@@ -136,7 +136,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /api/v1/trips/{tripId}/chat/messages [get]
+// @Router /v1/trips/{id}/chat/messages [get]
 func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 	tripID := c.Param("id")
 	// Use Supabase user ID for trip access validation
@@ -198,7 +198,7 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions [post]
+// @Router /v1/trips/{id}/chat/messages/{messageId}/reactions [post]
 func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 	tripID := c.Param("id")
 	messageID := c.Param("messageId")
@@ -269,7 +269,7 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions/{emoji} [delete]
+// @Router /v1/trips/{id}/chat/messages/{messageId}/reactions/{emoji} [delete]
 func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 	tripID := c.Param("id")
 	messageID := c.Param("messageId")
@@ -327,7 +327,7 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /api/v1/trips/{tripId}/chat/read-status [put]
+// @Router /v1/trips/{id}/chat/messages/read [put]
 func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
 	tripID := c.Param("id")
 	// Use Supabase user ID for trip access validation

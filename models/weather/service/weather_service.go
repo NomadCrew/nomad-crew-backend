@@ -12,8 +12,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	// Add store import if needed for permission checks
-	// "github.com/NomadCrew/nomad-crew-backend/store"
 )
 
 // Define interface (optional, but good practice if other services depend on it)

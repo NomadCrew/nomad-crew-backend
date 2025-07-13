@@ -49,7 +49,6 @@ func (s *UserStore) GetUserByID(ctx context.Context, userID string) (*types.User
 	query := `
 		SELECT
 			id,
-			id              AS supabase_id, -- compatibility alias
 			username,
 			first_name,
 			last_name,
@@ -67,12 +66,10 @@ func (s *UserStore) GetUserByID(ctx context.Context, userID string) (*types.User
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
-	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, userID)
 	err := row.Scan(
 		&user.ID,
-		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -117,7 +114,6 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*types.Us
 	query := `
 		SELECT
 			id,
-			id              AS supabase_id,
 			username,
 			first_name,
 			last_name,
@@ -135,12 +131,10 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*types.Us
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
-	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, email)
 	err := row.Scan(
 		&user.ID,
-		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -185,7 +179,6 @@ func (s *UserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) 
 	query := `
 		SELECT
 			id,
-			id              AS supabase_id,
 			username,
 			first_name,
 			last_name,
@@ -203,12 +196,10 @@ func (s *UserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) 
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
-	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, supabaseID)
 	err := row.Scan(
 		&user.ID,
-		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,
@@ -376,7 +367,6 @@ func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.
 	query := `
 		SELECT 
 			id,
-			id AS supabase_id,
 			username, first_name, last_name, email,
 			created_at, updated_at, avatar_url AS profile_picture_url,
 			NULL::jsonb AS raw_user_meta_data, NULL::timestamptz AS last_seen_at,
@@ -396,11 +386,9 @@ func (s *UserStore) ListUsers(ctx context.Context, offset, limit int) ([]*types.
 		user := &types.User{}
 		var rawMetaData json.RawMessage
 		var preferencesJSON json.RawMessage
-		var supabaseAlias string // deprecated field placeholder
 
 		err := rows.Scan(
 			&user.ID,
-			&supabaseAlias,
 			&user.Username,
 			&user.FirstName,
 			&user.LastName,
@@ -518,10 +506,8 @@ func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.U
 
 	row := s.queryRow(ctx, query, userID)
 	profile := &types.UserProfile{}
-	var supabaseAlias string // deprecated field placeholder
 	err := row.Scan(
 		&profile.ID,
-		&supabaseAlias,
 		&profile.Username,
 		&profile.FirstName,
 		&profile.LastName,
@@ -530,7 +516,6 @@ func (s *UserStore) GetUserProfile(ctx context.Context, userID string) (*types.U
 		&profile.LastSeenAt,
 		&profile.IsOnline,
 	)
-	_ = supabaseAlias // SupabaseID deprecated; ignore
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -572,10 +557,8 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 	profiles := make(map[string]*types.UserProfile)
 	for rows.Next() {
 		profile := &types.UserProfile{}
-		var supabaseAlias string // deprecated field placeholder
 		err := rows.Scan(
 			&profile.ID,
-			&supabaseAlias,
 			&profile.Username,
 			&profile.FirstName,
 			&profile.LastName,
@@ -584,7 +567,6 @@ func (s *UserStore) GetUserProfiles(ctx context.Context, userIDs []string) (map[
 			&profile.LastSeenAt,
 			&profile.IsOnline,
 		)
-		_ = supabaseAlias // SupabaseID deprecated; ignore
 		if err != nil {
 			return nil, fmt.Errorf("error scanning user profile row: %w", err)
 		}
@@ -804,12 +786,10 @@ func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*ty
 	user := &types.User{}
 	var rawMetaData json.RawMessage
 	var preferencesJSON json.RawMessage
-	var supabaseAlias string // deprecated field placeholder
 
 	row := s.queryRow(ctx, query, username)
 	err := row.Scan(
 		&user.ID,
-		&supabaseAlias,
 		&user.Username,
 		&user.FirstName,
 		&user.LastName,

@@ -31,6 +31,7 @@ type Dependencies struct {
 	MemberHandler       *handlers.MemberHandler
 	InvitationHandler   *handlers.InvitationHandler
 	SupabaseService     *services.SupabaseService
+	RateLimiter         services.RateLimiterInterface
 	// Supabase Realtime handlers (only ones we use now)
 	ChatHandlerSupabase     *handlers.ChatHandlerSupabase
 	LocationHandlerSupabase *handlers.LocationHandlerSupabase
@@ -85,9 +86,25 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 
 	// Global Middleware
 	r.Use(middleware.RequestIDMiddleware()) // Add RequestID middleware
+	r.Use(middleware.SecurityHeaders(&deps.Config.Server)) // Add security headers
 	r.Use(middleware.ErrorHandler())
 	// Pass pointer to ServerConfig for CORS middleware
 	r.Use(middleware.CORSMiddleware(&deps.Config.Server))
+	
+	// Add API rate limiting if rate limiter is provided
+	if deps.RateLimiter != nil {
+		rateLimitConfig := middleware.DefaultRateLimitConfig()
+		// Adjust rate limits based on environment
+		if deps.Config.IsProduction() {
+			rateLimitConfig.RequestsPerMinute = 60
+			rateLimitConfig.RequestsPerHour = 1000
+		} else {
+			// More lenient limits for development
+			rateLimitConfig.RequestsPerMinute = 300
+			rateLimitConfig.RequestsPerHour = 10000
+		}
+		r.Use(middleware.APIRateLimiter(deps.RateLimiter, rateLimitConfig))
+	}
 
 	// --- Define Routes Below ---
 

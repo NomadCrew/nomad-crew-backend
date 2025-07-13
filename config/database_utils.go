@@ -71,14 +71,14 @@ func ConfigureNeonPostgresPool(cfg *DatabaseConfig) (*pgxpool.Config, error) {
 	maxIdleConns := cfg.MaxIdleConns
 
 	if isServerless {
-		// More conservative settings for serverless
-		if maxOpenConns > 7 {
-			maxOpenConns = 7 // Limit max connections for serverless
+		// Optimized settings for serverless
+		if maxOpenConns > 10 {
+			maxOpenConns = 10 // Balanced for performance and resource usage
 		}
-		if maxIdleConns > 3 {
-			maxIdleConns = 3 // Keep fewer idle connections in serverless
+		if maxIdleConns > 5 {
+			maxIdleConns = 5 // Keep more connections ready
 		}
-		// Further reduce connection lifetime for serverless
+		// Keep connection lifetime at 5 minutes for serverless
 		if connMaxLife > 5*time.Minute {
 			connMaxLife = 5 * time.Minute
 		}

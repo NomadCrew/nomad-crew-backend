@@ -7,7 +7,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/store"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/supabase-community/supabase-go"
 )

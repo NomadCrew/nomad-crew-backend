@@ -5,7 +5,7 @@ import (
 
 	internal_errors "github.com/NomadCrew/nomad-crew-backend/internal/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
-	"github.com/NomadCrew/nomad-crew-backend/store"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 

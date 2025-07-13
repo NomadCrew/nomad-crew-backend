@@ -424,10 +424,6 @@ func TestTripServiceTestSuite(t *testing.T) {
 
 // --- Example Test (Placeholder) ---
 
-func (suite *TripServiceTestSuite) TestExample_Placeholder() {
-	suite.T().Skip("This test is deprecated after the Supabase Realtime migration. Use TestSupabaseIntegration instead.")
-}
-
 // --- Add tests for each method: CreateTrip, GetTrip, UpdateTrip, DeleteTrip, etc. ---
 
 func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
