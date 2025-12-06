@@ -281,6 +281,7 @@ func main() {
 		Logger:              log,
 		SupabaseService:     supabaseService,
 		RedisClient:         redisClient, // Add Redis client for rate limiting
+		TripModel:           tripModel,   // Add TripModel for RBAC middleware
 	}
 
 	// Add Supabase Realtime handlers (always enabled in development)

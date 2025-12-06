@@ -237,3 +237,672 @@ func TestRequireRole(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "User ID or Trip ID missing in request")
 	})
 }
+
+// =============================================================================
+// RequirePermission Tests - Permission Matrix Based Authorization
+// =============================================================================
+
+func TestRequirePermission_TripResource(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		action         types.Action
+		resource       types.Resource
+		userRole       types.MemberRole
+		expectedStatus int
+		expectAllowed  bool
+	}{
+		// Trip Read - Any member can read
+		{
+			name:           "OWNER can read trip",
+			action:         types.ActionRead,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+			expectAllowed:  true,
+		},
+		{
+			name:           "ADMIN can read trip",
+			action:         types.ActionRead,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusOK,
+			expectAllowed:  true,
+		},
+		{
+			name:           "MEMBER can read trip",
+			action:         types.ActionRead,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusOK,
+			expectAllowed:  true,
+		},
+		// Trip Update - ADMIN+ can update
+		{
+			name:           "OWNER can update trip",
+			action:         types.ActionUpdate,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+			expectAllowed:  true,
+		},
+		{
+			name:           "ADMIN can update trip",
+			action:         types.ActionUpdate,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusOK,
+			expectAllowed:  true,
+		},
+		{
+			name:           "MEMBER cannot update trip",
+			action:         types.ActionUpdate,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusForbidden,
+			expectAllowed:  false,
+		},
+		// Trip Delete - Only OWNER can delete
+		{
+			name:           "OWNER can delete trip",
+			action:         types.ActionDelete,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+			expectAllowed:  true,
+		},
+		{
+			name:           "ADMIN cannot delete trip",
+			action:         types.ActionDelete,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusForbidden,
+			expectAllowed:  false,
+		},
+		{
+			name:           "MEMBER cannot delete trip",
+			action:         types.ActionDelete,
+			resource:       types.ResourceTrip,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusForbidden,
+			expectAllowed:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTripModel := &MockTripModel{}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+			c.Request = req
+			c.Set("user_id", "user-123")
+			c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+			mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(tt.userRole, nil).Once()
+
+			middleware := RequirePermission(mockTripModel, tt.action, tt.resource, nil)
+			middleware(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Expected status %d, got %d", tt.expectedStatus, w.Code)
+			mockTripModel.AssertExpectations(t)
+
+			if tt.expectAllowed {
+				// Verify role was stored in context
+				role, exists := c.Get(ContextKeyUserRole)
+				assert.True(t, exists, "Role should be stored in context")
+				assert.Equal(t, tt.userRole, role.(types.MemberRole))
+			}
+		})
+	}
+}
+
+func TestRequirePermission_MemberResource(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		action         types.Action
+		userRole       types.MemberRole
+		expectedStatus int
+	}{
+		// Member Read - Any member can read member list
+		{
+			name:           "OWNER can read members",
+			action:         types.ActionRead,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN can read members",
+			action:         types.ActionRead,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER can read members",
+			action:         types.ActionRead,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusOK,
+		},
+		// Member Remove - Only OWNER can remove members
+		{
+			name:           "OWNER can remove members",
+			action:         types.ActionRemove,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN cannot remove members",
+			action:         types.ActionRemove,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "MEMBER cannot remove members",
+			action:         types.ActionRemove,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusForbidden,
+		},
+		// Member ChangeRole - ADMIN+ can change roles
+		{
+			name:           "OWNER can change roles",
+			action:         types.ActionChangeRole,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN can change roles",
+			action:         types.ActionChangeRole,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER cannot change roles",
+			action:         types.ActionChangeRole,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTripModel := &MockTripModel{}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123/members", nil)
+			c.Request = req
+			c.Set("user_id", "user-123")
+			c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+			mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(tt.userRole, nil).Once()
+
+			middleware := RequirePermission(mockTripModel, tt.action, types.ResourceMember, nil)
+			middleware(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			mockTripModel.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRequirePermission_InvitationResource(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		action         types.Action
+		userRole       types.MemberRole
+		expectedStatus int
+	}{
+		// Invitation Create - ADMIN+ can create invitations
+		{
+			name:           "OWNER can create invitations",
+			action:         types.ActionCreate,
+			userRole:       types.MemberRoleOwner,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN can create invitations",
+			action:         types.ActionCreate,
+			userRole:       types.MemberRoleAdmin,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER cannot create invitations",
+			action:         types.ActionCreate,
+			userRole:       types.MemberRoleMember,
+			expectedStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTripModel := &MockTripModel{}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			req, _ := http.NewRequest(http.MethodPost, "/v1/trips/trip-123/invitations", nil)
+			c.Request = req
+			c.Set("user_id", "user-123")
+			c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+			mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(tt.userRole, nil).Once()
+
+			middleware := RequirePermission(mockTripModel, tt.action, types.ResourceInvitation, nil)
+			middleware(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			mockTripModel.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRequirePermission_TodoResource_WithOwnership(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		action         types.Action
+		userRole       types.MemberRole
+		isOwner        bool
+		expectedStatus int
+	}{
+		// Todo Update - ADMIN+ can update any, MEMBER can update own
+		{
+			name:           "OWNER can update any todo",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleOwner,
+			isOwner:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN can update any todo",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleAdmin,
+			isOwner:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER can update own todo",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleMember,
+			isOwner:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER cannot update others todo",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleMember,
+			isOwner:        false,
+			expectedStatus: http.StatusForbidden,
+		},
+		// Todo Delete - ADMIN+ can delete any, MEMBER can delete own
+		{
+			name:           "OWNER can delete any todo",
+			action:         types.ActionDelete,
+			userRole:       types.MemberRoleOwner,
+			isOwner:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN can delete any todo",
+			action:         types.ActionDelete,
+			userRole:       types.MemberRoleAdmin,
+			isOwner:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER can delete own todo",
+			action:         types.ActionDelete,
+			userRole:       types.MemberRoleMember,
+			isOwner:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER cannot delete others todo",
+			action:         types.ActionDelete,
+			userRole:       types.MemberRoleMember,
+			isOwner:        false,
+			expectedStatus: http.StatusForbidden,
+		},
+		// Todo Create - Any member can create
+		{
+			name:           "MEMBER can create todo",
+			action:         types.ActionCreate,
+			userRole:       types.MemberRoleMember,
+			isOwner:        false,
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTripModel := &MockTripModel{}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			req, _ := http.NewRequest(http.MethodPut, "/v1/trips/trip-123/todos/todo-456", nil)
+			c.Request = req
+			c.Set("user_id", "user-123")
+			c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+			c.Params = append(c.Params, gin.Param{Key: "todoID", Value: "todo-456"})
+
+			mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(tt.userRole, nil).Once()
+
+			// Owner ID extractor - simulates fetching todo owner from context
+			var ownerExtractor OwnerIDExtractor
+			if tt.isOwner {
+				ownerExtractor = func(c *gin.Context) string {
+					return "user-123" // Same as user_id
+				}
+			} else {
+				ownerExtractor = func(c *gin.Context) string {
+					return "other-user-456" // Different from user_id
+				}
+			}
+
+			middleware := RequirePermission(mockTripModel, tt.action, types.ResourceTodo, ownerExtractor)
+			middleware(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Test: %s", tt.name)
+			mockTripModel.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRequirePermission_LocationResource_OwnerOnly(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		action         types.Action
+		userRole       types.MemberRole
+		isOwner        bool
+		expectedStatus int
+	}{
+		// Location Update - Only owner can update their own location
+		{
+			name:           "OWNER can update own location",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleOwner,
+			isOwner:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "ADMIN cannot update others location",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleAdmin,
+			isOwner:        false,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "MEMBER can update own location",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleMember,
+			isOwner:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "MEMBER cannot update others location",
+			action:         types.ActionUpdate,
+			userRole:       types.MemberRoleMember,
+			isOwner:        false,
+			expectedStatus: http.StatusForbidden,
+		},
+		// Location Read - Any member can read
+		{
+			name:           "MEMBER can read locations",
+			action:         types.ActionRead,
+			userRole:       types.MemberRoleMember,
+			isOwner:        false,
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTripModel := &MockTripModel{}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			req, _ := http.NewRequest(http.MethodPut, "/v1/trips/trip-123/locations", nil)
+			c.Request = req
+			c.Set("user_id", "user-123")
+			c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+			mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(tt.userRole, nil).Once()
+
+			// Owner ID extractor for location - returns current user ID
+			var ownerExtractor OwnerIDExtractor
+			if tt.isOwner {
+				ownerExtractor = func(c *gin.Context) string {
+					return c.GetString("user_id") // Same as current user
+				}
+			} else {
+				ownerExtractor = func(c *gin.Context) string {
+					return "other-user-456" // Different user
+				}
+			}
+
+			middleware := RequirePermission(mockTripModel, tt.action, types.ResourceLocation, ownerExtractor)
+			middleware(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Test: %s", tt.name)
+			mockTripModel.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRequirePermission_ErrorCases(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	t.Run("Missing trip ID returns BadRequest", func(t *testing.T) {
+		mockTripModel := &MockTripModel{}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips", nil)
+		c.Request = req
+		c.Set("user_id", "user-123")
+		// No trip ID param
+
+		middleware := RequirePermission(mockTripModel, types.ActionRead, types.ResourceTrip, nil)
+		middleware(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Trip ID is required")
+	})
+
+	t.Run("Missing user ID returns Unauthorized", func(t *testing.T) {
+		mockTripModel := &MockTripModel{}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+		c.Request = req
+		// No user_id set
+		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+		middleware := RequirePermission(mockTripModel, types.ActionRead, types.ResourceTrip, nil)
+		middleware(c)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.Contains(t, w.Body.String(), "Authentication required")
+	})
+
+	t.Run("Non-member returns Forbidden", func(t *testing.T) {
+		mockTripModel := &MockTripModel{}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123", nil)
+		c.Request = req
+		c.Set("user_id", "user-123")
+		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+		// Return error for non-member
+		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRole(""), assert.AnError).Once()
+
+		middleware := RequirePermission(mockTripModel, types.ActionRead, types.ResourceTrip, nil)
+		middleware(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Contains(t, w.Body.String(), "You are not a member of this trip")
+		mockTripModel.AssertExpectations(t)
+	})
+}
+
+// =============================================================================
+// RequireTripMembership Tests - Lightweight Membership Check
+// =============================================================================
+
+func TestRequireTripMembership(t *testing.T) {
+	logger.IsTest = true
+	logger.InitLogger()
+	defer logger.Close()
+
+	gin.SetMode(gin.TestMode)
+
+	t.Run("Member passes membership check", func(t *testing.T) {
+		mockTripModel := &MockTripModel{}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123/todos", nil)
+		c.Request = req
+		c.Set("user_id", "user-123")
+		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRoleMember, nil).Once()
+
+		middleware := RequireTripMembership(mockTripModel)
+		middleware(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		// Verify role is stored in context
+		role, exists := c.Get(ContextKeyUserRole)
+		assert.True(t, exists)
+		assert.Equal(t, types.MemberRoleMember, role.(types.MemberRole))
+		mockTripModel.AssertExpectations(t)
+	})
+
+	t.Run("Non-member fails membership check", func(t *testing.T) {
+		mockTripModel := &MockTripModel{}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/trip-123/todos", nil)
+		c.Request = req
+		c.Set("user_id", "user-123")
+		c.Params = append(c.Params, gin.Param{Key: "id", Value: "trip-123"})
+
+		mockTripModel.On("GetUserRole", mock.Anything, "trip-123", "user-123").Return(types.MemberRole(""), assert.AnError).Once()
+
+		middleware := RequireTripMembership(mockTripModel)
+		middleware(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Contains(t, w.Body.String(), "You are not a member of this trip")
+		mockTripModel.AssertExpectations(t)
+	})
+
+	t.Run("Missing trip ID or user ID returns BadRequest", func(t *testing.T) {
+		mockTripModel := &MockTripModel{}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		req, _ := http.NewRequest(http.MethodGet, "/v1/trips/todos", nil)
+		c.Request = req
+		// No user_id or trip ID
+
+		middleware := RequireTripMembership(mockTripModel)
+		middleware(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Trip ID and authentication required")
+	})
+}
+
+// =============================================================================
+// Helper Function Tests
+// =============================================================================
+
+func TestGetUserRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("Returns role when set", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(ContextKeyUserRole, types.MemberRoleAdmin)
+
+		role, exists := GetUserRole(c)
+
+		assert.True(t, exists)
+		assert.Equal(t, types.MemberRoleAdmin, role)
+	})
+
+	t.Run("Returns empty when not set", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		role, exists := GetUserRole(c)
+
+		assert.False(t, exists)
+		assert.Equal(t, types.MemberRole(""), role)
+	})
+}
+
+func TestIsResourceOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("Returns true when user is owner", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(ContextKeyIsResourceOwner, true)
+
+		assert.True(t, IsResourceOwner(c))
+	})
+
+	t.Run("Returns false when user is not owner", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(ContextKeyIsResourceOwner, false)
+
+		assert.False(t, IsResourceOwner(c))
+	})
+
+	t.Run("Returns false when not set", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		assert.False(t, IsResourceOwner(c))
+	})
+}

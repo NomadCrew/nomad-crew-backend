@@ -106,16 +106,23 @@ func (tm *TodoModel) CreateTodoWithEvent(ctx context.Context, todo *types.Todo) 
 func (tm *TodoModel) UpdateTodo(ctx context.Context, id string, userID string, update *types.TodoUpdate) error {
 	log := logger.GetLogger()
 
-	// Verify todo exists and user is creator
+	// Verify todo exists
 	todo, err := tm.store.GetTodo(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	if todo.CreatedBy != userID {
-		return errors.ValidationFailed(
+	// Check permission: ADMIN+ can update any, MEMBER can only update own
+	isOwner := todo.CreatedBy == userID
+	role, err := tm.tripModel.GetUserRole(ctx, todo.TripID, userID)
+	if err != nil {
+		return errors.Forbidden("unauthorized", "user is not a member of this trip")
+	}
+
+	if !types.CanPerformWithOwnership(role, types.ActionUpdate, types.ResourceTodo, isOwner) {
+		return errors.Forbidden(
 			"unauthorized",
-			"only creator can update todo",
+			"you don't have permission to update this todo",
 		)
 	}
 
@@ -173,17 +180,24 @@ func (tm *TodoModel) UpdateTodoWithEvent(ctx context.Context, id string, userID 
 }
 
 func (tm *TodoModel) DeleteTodo(ctx context.Context, id string, userID string) error {
-	// First, check if the user is the creator before allowing deletion
+	// First, get the todo to check permission
 	todo, err := tm.store.GetTodo(ctx, id)
 	if err != nil {
 		// Handle not found or other errors from GetTodo
 		return err
 	}
 
-	if todo.CreatedBy != userID {
-		return errors.ValidationFailed(
+	// Check permission: ADMIN+ can delete any, MEMBER can only delete own
+	isOwner := todo.CreatedBy == userID
+	role, err := tm.tripModel.GetUserRole(ctx, todo.TripID, userID)
+	if err != nil {
+		return errors.Forbidden("unauthorized", "user is not a member of this trip")
+	}
+
+	if !types.CanPerformWithOwnership(role, types.ActionDelete, types.ResourceTodo, isOwner) {
+		return errors.Forbidden(
 			"unauthorized",
-			"only creator can delete todo",
+			"you don't have permission to delete this todo",
 		)
 	}
 

@@ -30,25 +30,49 @@ type TripMembership struct {
 	DeletedAt *time.Time       `json:"deletedAt,omitempty"` // Added for soft delete
 }
 
-func (r MemberRole) IsAuthorizedFor(requiredRole MemberRole) bool {
+// RoleLevel returns the hierarchical level of a role.
+// Higher level = more permissions.
+// OWNER (3) > ADMIN (2) > MEMBER (1)
+func (r MemberRole) RoleLevel() int {
 	roleHierarchy := map[MemberRole]int{
-		// MemberRoleNone:   0, // Removed
 		MemberRoleMember: 1,
-		MemberRoleAdmin:  2, // Assuming Admin has higher or equal privileges to Owner for some actions
-		MemberRoleOwner:  2, // Owner and Admin can be at the same level or adjusted as per logic
+		MemberRoleAdmin:  2,
+		MemberRoleOwner:  3, // OWNER has highest privileges
 	}
 
-	currentLevel, ok := roleHierarchy[r]
+	level, ok := roleHierarchy[r]
 	if !ok {
-		return false
+		return 0 // Unknown role has no privileges
 	}
+	return level
+}
 
-	requiredLevel, ok := roleHierarchy[requiredRole]
-	if !ok {
-		return false // Or handle as an error, depending on desired behavior for unknown roles
+// IsAuthorizedFor checks if this role has sufficient privileges for the required role.
+// Returns true if the current role's level is >= the required role's level.
+func (r MemberRole) IsAuthorizedFor(requiredRole MemberRole) bool {
+	currentLevel := r.RoleLevel()
+	requiredLevel := requiredRole.RoleLevel()
+
+	if currentLevel == 0 || requiredLevel == 0 {
+		return false // Unknown role
 	}
 
 	return currentLevel >= requiredLevel
+}
+
+// IsOwner returns true if this role is OWNER.
+func (r MemberRole) IsOwner() bool {
+	return r == MemberRoleOwner
+}
+
+// IsAdmin returns true if this role is ADMIN or higher.
+func (r MemberRole) IsAdmin() bool {
+	return r == MemberRoleAdmin || r == MemberRoleOwner
+}
+
+// IsMember returns true if this role is a valid member role (any role).
+func (r MemberRole) IsMember() bool {
+	return r.IsValid()
 }
 
 func (r MemberRole) IsValid() bool {

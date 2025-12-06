@@ -8,6 +8,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/websocket"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
+	tripinterfaces "github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -35,6 +36,8 @@ type Dependencies struct {
 	InvitationHandler   *handlers.InvitationHandler
 	SupabaseService     *services.SupabaseService
 	RedisClient         *redis.Client
+	// TripModel for RBAC middleware
+	TripModel tripinterfaces.TripModelInterface
 	// Supabase Realtime handlers (only ones we use now)
 	ChatHandlerSupabase     *handlers.ChatHandlerSupabase
 	LocationHandlerSupabase *handlers.LocationHandlerSupabase
@@ -155,66 +158,135 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			{
 				tripRoutes.POST("", deps.TripHandler.CreateTripHandler)
 				tripRoutes.GET("", deps.TripHandler.ListUserTripsHandler)
-				tripRoutes.GET("/:id", deps.TripHandler.GetTripHandler)
-				tripRoutes.PUT("/:id", deps.TripHandler.UpdateTripHandler)
-				tripRoutes.DELETE("/:id", deps.TripHandler.DeleteTripHandler)
-				tripRoutes.PATCH("/:id/status", deps.TripHandler.UpdateTripStatusHandler)
-				tripRoutes.POST("/:id/search", deps.TripHandler.SearchTripsHandler)
-				tripRoutes.GET("/:id/details", deps.TripHandler.GetTripWithMembersHandler)
-				tripRoutes.POST("/:id/weather/trigger", deps.TripHandler.TriggerWeatherUpdateHandler)
+				// Trip-specific routes with RBAC
+				tripRoutes.GET("/:id",
+					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+					deps.TripHandler.GetTripHandler)
+				tripRoutes.PUT("/:id",
+					middleware.RequirePermission(deps.TripModel, types.ActionUpdate, types.ResourceTrip, nil),
+					deps.TripHandler.UpdateTripHandler)
+				tripRoutes.DELETE("/:id",
+					middleware.RequirePermission(deps.TripModel, types.ActionDelete, types.ResourceTrip, nil),
+					deps.TripHandler.DeleteTripHandler)
+				tripRoutes.PATCH("/:id/status",
+					middleware.RequirePermission(deps.TripModel, types.ActionUpdate, types.ResourceTrip, nil),
+					deps.TripHandler.UpdateTripStatusHandler)
+				tripRoutes.POST("/:id/search",
+					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+					deps.TripHandler.SearchTripsHandler)
+				tripRoutes.GET("/:id/details",
+					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+					deps.TripHandler.GetTripWithMembersHandler)
+				tripRoutes.POST("/:id/weather/trigger",
+					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+					deps.TripHandler.TriggerWeatherUpdateHandler)
 
-				// Trip Image Routes
-				tripRoutes.POST("/:id/images", deps.TripHandler.UploadTripImage)
-				tripRoutes.GET("/:id/images", deps.TripHandler.ListTripImages)
-				tripRoutes.DELETE("/:id/images/:imageId", deps.TripHandler.DeleteTripImage)
+				// Trip Image Routes - ADMIN+ can manage, MEMBER can view
+				tripRoutes.POST("/:id/images",
+					middleware.RequirePermission(deps.TripModel, types.ActionUpdate, types.ResourceTrip, nil),
+					deps.TripHandler.UploadTripImage)
+				tripRoutes.GET("/:id/images",
+					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+					deps.TripHandler.ListTripImages)
+				tripRoutes.DELETE("/:id/images/:imageId",
+					middleware.RequirePermission(deps.TripModel, types.ActionUpdate, types.ResourceTrip, nil),
+					deps.TripHandler.DeleteTripImage)
 
-				// Trip Member Routes
+				// Trip Member Routes - nested under trip, inherit trip membership check
 				memberRoutes := tripRoutes.Group("/:id/members")
 				{
-					memberRoutes.GET("", deps.MemberHandler.GetTripMembersHandler)
-					memberRoutes.POST("", deps.MemberHandler.AddMemberHandler)
-					memberRoutes.DELETE("/:memberId", deps.MemberHandler.RemoveMemberHandler)
-					memberRoutes.PUT("/:memberId/role", deps.MemberHandler.UpdateMemberRoleHandler)
+					memberRoutes.GET("",
+						middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceMember, nil),
+						deps.MemberHandler.GetTripMembersHandler)
+					memberRoutes.POST("",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceMember, nil),
+						deps.MemberHandler.AddMemberHandler)
+					memberRoutes.DELETE("/:memberId",
+						middleware.RequirePermission(deps.TripModel, types.ActionRemove, types.ResourceMember, nil),
+						deps.MemberHandler.RemoveMemberHandler)
+					memberRoutes.PUT("/:memberId/role",
+						middleware.RequirePermission(deps.TripModel, types.ActionChangeRole, types.ResourceMember, nil),
+						deps.MemberHandler.UpdateMemberRoleHandler)
 				}
 
-				// Trip Invitation Routes
+				// Trip Invitation Routes - ADMIN+ can manage invitations
 				invitationRoutes := tripRoutes.Group("/:id/invitations")
 				{
-					invitationRoutes.POST("", deps.InvitationHandler.InviteMemberHandler)
+					invitationRoutes.POST("",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceInvitation, nil),
+						deps.InvitationHandler.InviteMemberHandler)
 					// Note: Add other invitation routes as they are implemented
-					// invitationRoutes.GET("", deps.InvitationHandler.ListTripInvitationsHandler)
-					// invitationRoutes.DELETE("/:invitationId", deps.InvitationHandler.DeleteInvitationHandler)
+					// invitationRoutes.GET("",
+					//     middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceInvitation, nil),
+					//     deps.InvitationHandler.ListTripInvitationsHandler)
+					// invitationRoutes.DELETE("/:invitationId",
+					//     middleware.RequirePermission(deps.TripModel, types.ActionDelete, types.ResourceInvitation, nil),
+					//     deps.InvitationHandler.DeleteInvitationHandler)
 				}
 
-				// Trip Location Routes
+				// Trip Location Routes - users can only update/delete their own location
 				tripLocationRoutes := tripRoutes.Group("/:id/locations")
 				{
 					// Supabase versions (only version now)
-					tripLocationRoutes.POST("", deps.LocationHandlerSupabase.CreateLocation)        // Handles POST for location creation
-					tripLocationRoutes.PUT("", deps.LocationHandlerSupabase.UpdateLocation)         // Handles PUT for location updates
-					tripLocationRoutes.GET("", deps.LocationHandlerSupabase.GetTripMemberLocations) // Handles GET for member locations
+					// POST/PUT location: users manage their own location only (ownership implicit - user_id from context)
+					tripLocationRoutes.POST("",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceLocation, nil),
+						deps.LocationHandlerSupabase.CreateLocation)
+					tripLocationRoutes.PUT("",
+						middleware.RequirePermission(deps.TripModel, types.ActionUpdate, types.ResourceLocation, currentUserAsOwner),
+						deps.LocationHandlerSupabase.UpdateLocation)
+					tripLocationRoutes.GET("",
+						middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceLocation, nil),
+						deps.LocationHandlerSupabase.GetTripMemberLocations)
 				}
 
-				// Trip Chat Routes
+				// Trip Chat Routes - members can send/read, ownership checks for update/delete
 				chatRoutes := tripRoutes.Group("/:id/chat")
 				{
 					// Supabase Realtime endpoints (only version now)
-					chatRoutes.POST("/messages", deps.ChatHandlerSupabase.SendMessage)
-					chatRoutes.GET("/messages", deps.ChatHandlerSupabase.GetMessages)
-					chatRoutes.PUT("/messages/read", deps.ChatHandlerSupabase.UpdateReadStatus)
-					chatRoutes.POST("/messages/:messageId/reactions", deps.ChatHandlerSupabase.AddReaction)
-					chatRoutes.DELETE("/messages/:messageId/reactions/:emoji", deps.ChatHandlerSupabase.RemoveReaction)
+					// Any member can send and read messages
+					chatRoutes.POST("/messages",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceChat, nil),
+						deps.ChatHandlerSupabase.SendMessage)
+					chatRoutes.GET("/messages",
+						middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceChat, nil),
+						deps.ChatHandlerSupabase.GetMessages)
+					// Update read status - any member can mark messages as read
+					chatRoutes.PUT("/messages/read",
+						middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceChat, nil),
+						deps.ChatHandlerSupabase.UpdateReadStatus)
+					// Reactions - any member can add/remove reactions
+					chatRoutes.POST("/messages/:messageId/reactions",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceChat, nil),
+						deps.ChatHandlerSupabase.AddReaction)
+					chatRoutes.DELETE("/messages/:messageId/reactions/:emoji",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceChat, nil),
+						deps.ChatHandlerSupabase.RemoveReaction)
 				}
 
-				// Trip Todo Routes
+				// Trip Todo Routes - ADMIN+ can manage any, MEMBER can manage own
+				// Note: For update/delete, ownership check is done in the handler since
+				// it requires fetching the todo to get the owner_id
 				todoRoutes := tripRoutes.Group("/:id/todos")
 				{
 					if deps.TodoHandler != nil {
-						todoRoutes.GET("", deps.TodoHandler.ListTodosHandler)
-						todoRoutes.POST("", deps.TodoHandler.CreateTodoHandler)
-						todoRoutes.GET("/:todoID", deps.TodoHandler.GetTodoHandler)
-						todoRoutes.PUT("/:todoID", deps.TodoHandler.UpdateTodoHandler)
-						todoRoutes.DELETE("/:todoID", deps.TodoHandler.DeleteTodoHandler)
+						todoRoutes.GET("",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTodo, nil),
+							deps.TodoHandler.ListTodosHandler)
+						todoRoutes.POST("",
+							middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceTodo, nil),
+							deps.TodoHandler.CreateTodoHandler)
+						todoRoutes.GET("/:todoID",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTodo, nil),
+							deps.TodoHandler.GetTodoHandler)
+						// Update/Delete: Middleware checks basic membership, handler checks ownership
+						// ADMIN+ can update any, MEMBER can update own (verified in handler)
+						todoRoutes.PUT("/:todoID",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.TodoHandler.UpdateTodoHandler)
+						todoRoutes.DELETE("/:todoID",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.TodoHandler.DeleteTodoHandler)
 					}
 				}
 			}
@@ -243,4 +315,10 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	}
 
 	return r
+}
+
+// currentUserAsOwner is an ownership extractor that returns the current user's ID.
+// Use this when the resource is inherently owned by the logged-in user (e.g., their own location).
+func currentUserAsOwner(c *gin.Context) string {
+	return c.GetString("user_id")
 }
