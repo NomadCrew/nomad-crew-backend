@@ -316,3 +316,224 @@ func GetInvitationsByTripIDRowToInvitation(row *sqlc.GetInvitationsByTripIDRow) 
 		UpdatedAt:    PgTimestamptzToTime(row.UpdatedAt),
 	}
 }
+
+// TodoStatusToSqlc converts types.TodoStatus to sqlc.TodoStatus
+func TodoStatusToSqlc(s types.TodoStatus) sqlc.TodoStatus {
+	return sqlc.TodoStatus(s)
+}
+
+// SqlcTodoStatusToTypes converts sqlc.TodoStatus to types.TodoStatus
+func SqlcTodoStatusToTypes(s sqlc.TodoStatus) types.TodoStatus {
+	return types.TodoStatus(s)
+}
+
+// GetTodoRowToTodo converts sqlc.GetTodoRow to types.Todo
+func GetTodoRowToTodo(row *sqlc.GetTodoRow) *types.Todo {
+	if row == nil {
+		return nil
+	}
+	return &types.Todo{
+		ID:        row.ID,
+		TripID:    row.TripID,
+		Text:      row.Text,
+		Status:    SqlcTodoStatusToTypes(row.Status),
+		CreatedBy: row.CreatedBy,
+		CreatedAt: PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt: PgTimestamptzToTime(row.UpdatedAt),
+	}
+}
+
+// ListTodosByTripRowToTodo converts sqlc.ListTodosByTripRow to types.Todo
+func ListTodosByTripRowToTodo(row *sqlc.ListTodosByTripRow) *types.Todo {
+	if row == nil {
+		return nil
+	}
+	return &types.Todo{
+		ID:        row.ID,
+		TripID:    row.TripID,
+		Text:      row.Text,
+		Status:    SqlcTodoStatusToTypes(row.Status),
+		CreatedBy: row.CreatedBy,
+		CreatedAt: PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt: PgTimestamptzToTime(row.UpdatedAt),
+	}
+}
+
+// LocationPrivacyToSqlc converts types.LocationPrivacy to sqlc.LocationPrivacy
+func LocationPrivacyToSqlc(p types.LocationPrivacy) sqlc.LocationPrivacy {
+	return sqlc.LocationPrivacy(p)
+}
+
+// SqlcLocationPrivacyToTypes converts sqlc.LocationPrivacy to types.LocationPrivacy
+func SqlcLocationPrivacyToTypes(p sqlc.LocationPrivacy) types.LocationPrivacy {
+	return types.LocationPrivacy(p)
+}
+
+// Float64PtrToFloat64 converts *float64 to float64, returning 0 if nil
+func Float64PtrToFloat64(f *float64) float64 {
+	if f == nil {
+		return 0
+	}
+	return *f
+}
+
+// Float64ToFloat64Ptr converts float64 to *float64
+func Float64ToFloat64Ptr(f float64) *float64 {
+	return &f
+}
+
+// BoolPtrToBool converts *bool to bool, returning false if nil
+func BoolPtrToBool(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
+}
+
+// BoolToBoolPtr converts bool to *bool
+func BoolToBoolPtr(b bool) *bool {
+	return &b
+}
+
+// GetLocationRowToLocation converts sqlc.GetLocationRow to types.Location
+func GetLocationRowToLocation(row *sqlc.GetLocationRow) *types.Location {
+	if row == nil {
+		return nil
+	}
+	return &types.Location{
+		ID:               row.ID,
+		TripID:           row.TripID,
+		UserID:           row.UserID,
+		Latitude:         row.Latitude,
+		Longitude:        row.Longitude,
+		Accuracy:         Float64PtrToFloat64(row.Accuracy),
+		Timestamp:        PgTimestamptzToTime(row.Timestamp),
+		CreatedAt:        PgTimestampToTime(row.CreatedAt),
+		UpdatedAt:        PgTimestampToTime(row.UpdatedAt),
+		Privacy:          SqlcLocationPrivacyToTypes(row.Privacy),
+		IsSharingEnabled: BoolPtrToBool(row.IsSharingEnabled),
+		SharingExpiresAt: PgTimestamptzToTimePtr(row.SharingExpiresAt),
+	}
+}
+
+// GetTripMemberLocationsRowToMemberLocation converts sqlc.GetTripMemberLocationsRow to types.MemberLocation
+func GetTripMemberLocationsRowToMemberLocation(row *sqlc.GetTripMemberLocationsRow) *types.MemberLocation {
+	if row == nil {
+		return nil
+	}
+	return &types.MemberLocation{
+		Location: types.Location{
+			ID:               row.ID,
+			TripID:           row.TripID,
+			UserID:           row.UserID,
+			Latitude:         row.Latitude,
+			Longitude:        row.Longitude,
+			Accuracy:         Float64PtrToFloat64(row.Accuracy),
+			Timestamp:        PgTimestamptzToTime(row.Timestamp),
+			CreatedAt:        PgTimestampToTime(row.CreatedAt),
+			UpdatedAt:        PgTimestampToTime(row.UpdatedAt),
+			Privacy:          SqlcLocationPrivacyToTypes(row.Privacy),
+			IsSharingEnabled: BoolPtrToBool(row.IsSharingEnabled),
+			SharingExpiresAt: PgTimestamptzToTimePtr(row.SharingExpiresAt),
+		},
+		// UserName and UserRole will need to be populated from user data
+		UserName: "",
+		UserRole: "",
+	}
+}
+
+// NotificationTypeToSqlc converts types.NotificationType to sqlc.NotificationType
+func NotificationTypeToSqlc(t types.NotificationType) sqlc.NotificationType {
+	return sqlc.NotificationType(t)
+}
+
+// SqlcNotificationTypeToTypes converts sqlc.NotificationType to types.NotificationType
+func SqlcNotificationTypeToTypes(t sqlc.NotificationType) types.NotificationType {
+	return types.NotificationType(t)
+}
+
+// SqlcNotificationToTypes converts sqlc.Notification to types.Notification
+func SqlcNotificationToTypes(n *sqlc.Notification) *types.Notification {
+	if n == nil {
+		return nil
+	}
+	return &types.Notification{
+		ID:        n.ID,
+		UserID:    n.UserID,
+		Type:      SqlcNotificationTypeToTypes(n.Type),
+		Metadata:  n.Metadata,
+		IsRead:    n.IsRead,
+		CreatedAt: PgTimestamptzToTime(n.CreatedAt),
+		UpdatedAt: PgTimestamptzToTime(n.UpdatedAt),
+	}
+}
+
+// User converters
+
+// GetUserProfileByIDRowToUser converts sqlc.GetUserProfileByIDRow to types.User
+func GetUserProfileByIDRowToUser(row *sqlc.GetUserProfileByIDRow) *types.User {
+	if row == nil {
+		return nil
+	}
+	return &types.User{
+		ID:                row.ID,
+		Email:             row.Email,
+		Username:          row.Username,
+		FirstName:         row.FirstName,
+		LastName:          row.LastName,
+		ProfilePictureURL: row.AvatarUrl,
+		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
+	}
+}
+
+// GetUserProfileByEmailRowToUser converts sqlc.GetUserProfileByEmailRow to types.User
+func GetUserProfileByEmailRowToUser(row *sqlc.GetUserProfileByEmailRow) *types.User {
+	if row == nil {
+		return nil
+	}
+	return &types.User{
+		ID:                row.ID,
+		Email:             row.Email,
+		Username:          row.Username,
+		FirstName:         row.FirstName,
+		LastName:          row.LastName,
+		ProfilePictureURL: row.AvatarUrl,
+		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
+	}
+}
+
+// GetUserProfileByUsernameRowToUser converts sqlc.GetUserProfileByUsernameRow to types.User
+func GetUserProfileByUsernameRowToUser(row *sqlc.GetUserProfileByUsernameRow) *types.User {
+	if row == nil {
+		return nil
+	}
+	return &types.User{
+		ID:                row.ID,
+		Email:             row.Email,
+		Username:          row.Username,
+		FirstName:         row.FirstName,
+		LastName:          row.LastName,
+		ProfilePictureURL: row.AvatarUrl,
+		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
+	}
+}
+
+// ListUserProfilesRowToUser converts sqlc.ListUserProfilesRow to types.User
+func ListUserProfilesRowToUser(row *sqlc.ListUserProfilesRow) *types.User {
+	if row == nil {
+		return nil
+	}
+	return &types.User{
+		ID:                row.ID,
+		Email:             row.Email,
+		Username:          row.Username,
+		FirstName:         row.FirstName,
+		LastName:          row.LastName,
+		ProfilePictureURL: row.AvatarUrl,
+		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
+	}
+}

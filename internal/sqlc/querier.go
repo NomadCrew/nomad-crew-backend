@@ -64,7 +64,7 @@ type Querier interface {
 	GetTrip(ctx context.Context, id string) (*GetTripRow, error)
 	// Get a trip that a specific user is a member of
 	GetTripForMember(ctx context.Context, arg GetTripForMemberParams) (*GetTripForMemberRow, error)
-	// Get latest locations for all members of a trip
+	// Get latest locations for all members of a trip with user info
 	GetTripMemberLocations(ctx context.Context, tripID string) ([]*GetTripMemberLocationsRow, error)
 	GetTripMembers(ctx context.Context, tripID string) ([]*GetTripMembersRow, error)
 	GetTripStatus(ctx context.Context, id string) (*GetTripStatusRow, error)

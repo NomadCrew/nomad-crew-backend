@@ -35,8 +35,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
-	internal_store "github.com/NomadCrew/nomad-crew-backend/internal/store"
-	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store/sqlcadapter"
 	"github.com/NomadCrew/nomad-crew-backend/internal/websocket"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -51,7 +49,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/router"
 	services "github.com/NomadCrew/nomad-crew-backend/services"
-	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -130,24 +127,24 @@ func main() {
 		log.Info("Configured database client with serverless-optimized reconnection settings")
 	}
 
-	// Other store initializations using the database pool
-	// Use SQLC-based trip store (new implementation with type-safe queries)
-	// Can be toggled back to legacy store with USE_LEGACY_TRIP_STORE=true
-	var tripStore internal_store.TripStore
-	if os.Getenv("USE_LEGACY_TRIP_STORE") == "true" {
-		tripStore = dbStore.NewPgTripStore(dbClient.GetPool())
-		log.Info("Using legacy PostgreSQL trip store")
-	} else {
-		tripStore = sqlcadapter.NewSqlcTripStore(dbClient.GetPool())
-		log.Info("Using SQLC-based trip store")
-	}
-	todoStore := internalPgStore.NewTodoStore(dbClient.GetPool())
-	locationDB := db.NewLocationDB(dbClient)
-	notificationDB := dbStore.NewPgNotificationStore(dbClient.GetPool())
+	// Store initializations using SQLC-based implementations
+	// All stores now use the type-safe SQLC generated code
+	tripStore := sqlcadapter.NewSqlcTripStore(dbClient.GetPool())
+	log.Info("Using SQLC-based trip store")
+
+	todoStore := sqlcadapter.NewSqlcTodoStore(dbClient.GetPool())
+	log.Info("Using SQLC-based todo store")
+
+	locationDB := sqlcadapter.NewSqlcLocationStore(dbClient.GetPool())
+	log.Info("Using SQLC-based location store")
+
+	notificationDB := sqlcadapter.NewSqlcNotificationStore(dbClient.GetPool())
+	log.Info("Using SQLC-based notification store")
 
 	// Get Supabase service key from config
 	supabaseServiceKey := cfg.ExternalServices.SupabaseServiceKey
-	userDB := internalPgStore.NewUserStore(dbClient.GetPool(), cfg.ExternalServices.SupabaseURL, cfg.ExternalServices.SupabaseJWTSecret)
+	userDB := sqlcadapter.NewSqlcUserStore(dbClient.GetPool(), cfg.ExternalServices.SupabaseURL, cfg.ExternalServices.SupabaseJWTSecret)
+	log.Info("Using SQLC-based user store")
 
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)

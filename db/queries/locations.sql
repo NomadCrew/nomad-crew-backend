@@ -37,7 +37,7 @@ ORDER BY timestamp DESC
 LIMIT 1;
 
 -- name: GetTripMemberLocations :many
--- Get latest locations for all members of a trip
+-- Get latest locations for all members of a trip with user info
 SELECT DISTINCT ON (l.user_id)
     l.id, l.trip_id, l.user_id, l.latitude, l.longitude, l.accuracy, l.timestamp,
     COALESCE(l.location_name, '') as location_name,
@@ -45,9 +45,12 @@ SELECT DISTINCT ON (l.user_id)
     COALESCE(l.notes, '') as notes,
     COALESCE(l.status, 'planned') as status,
     l.is_sharing_enabled, l.sharing_expires_at, l.privacy,
-    l.created_at, l.updated_at
+    l.created_at, l.updated_at,
+    COALESCE(up.first_name || ' ' || up.last_name, up.username, '') as user_name,
+    tm.role as user_role
 FROM locations l
 INNER JOIN trip_memberships tm ON l.trip_id = tm.trip_id AND l.user_id = tm.user_id
+LEFT JOIN user_profiles up ON l.user_id = up.id
 WHERE l.trip_id = $1
     AND tm.status = 'ACTIVE'
     AND l.deleted_at IS NULL

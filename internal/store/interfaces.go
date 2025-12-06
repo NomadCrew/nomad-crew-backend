@@ -14,6 +14,7 @@ type Store interface {
 	Todo() TodoStore
 	Chat() ChatStore
 	User() UserStore
+	Notification() NotificationStore
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
@@ -165,4 +166,30 @@ type LocationStore interface {
 
 	// BeginTx starts a new database transaction
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
+}
+
+// NotificationStore defines the interface for notification operations
+type NotificationStore interface {
+	// Create inserts a new notification into the database
+	Create(ctx context.Context, notification *types.NotificationCreate) (string, error)
+
+	// GetByID retrieves a notification by its ID
+	GetByID(ctx context.Context, id string) (*types.Notification, error)
+
+	// GetByUser retrieves notifications for a specific user with pagination and optional status filtering
+	// status: nil = all, true = read only, false = unread only
+	GetByUser(ctx context.Context, userID string, limit, offset int32, status *bool) ([]*types.Notification, error)
+
+	// MarkRead marks a single notification as read for a specific user
+	MarkRead(ctx context.Context, id string, userID string) error
+
+	// MarkAllReadByUser marks all unread notifications as read for a specific user
+	// Returns the number of notifications marked as read
+	MarkAllReadByUser(ctx context.Context, userID string) (int64, error)
+
+	// GetUnreadCount retrieves the count of unread notifications for a specific user
+	GetUnreadCount(ctx context.Context, userID string) (int64, error)
+
+	// Delete removes a notification by its ID, ensuring the operation is performed by the owner
+	Delete(ctx context.Context, id string, userID string) error
 }

@@ -141,9 +141,12 @@ SELECT DISTINCT ON (l.user_id)
     COALESCE(l.notes, '') as notes,
     COALESCE(l.status, 'planned') as status,
     l.is_sharing_enabled, l.sharing_expires_at, l.privacy,
-    l.created_at, l.updated_at
+    l.created_at, l.updated_at,
+    COALESCE(up.first_name || ' ' || up.last_name, up.username, '') as user_name,
+    tm.role as user_role
 FROM locations l
 INNER JOIN trip_memberships tm ON l.trip_id = tm.trip_id AND l.user_id = tm.user_id
+LEFT JOIN user_profiles up ON l.user_id = up.id
 WHERE l.trip_id = $1
     AND tm.status = 'ACTIVE'
     AND l.deleted_at IS NULL
@@ -168,9 +171,11 @@ type GetTripMemberLocationsRow struct {
 	Privacy          LocationPrivacy    `db:"privacy" json:"privacy"`
 	CreatedAt        pgtype.Timestamp   `db:"created_at" json:"created_at"`
 	UpdatedAt        pgtype.Timestamp   `db:"updated_at" json:"updated_at"`
+	UserName         string             `db:"user_name" json:"user_name"`
+	UserRole         MembershipRole     `db:"user_role" json:"user_role"`
 }
 
-// Get latest locations for all members of a trip
+// Get latest locations for all members of a trip with user info
 func (q *Queries) GetTripMemberLocations(ctx context.Context, tripID string) ([]*GetTripMemberLocationsRow, error) {
 	rows, err := q.db.Query(ctx, getTripMemberLocations, tripID)
 	if err != nil {
@@ -197,6 +202,8 @@ func (q *Queries) GetTripMemberLocations(ctx context.Context, tripID string) ([]
 			&i.Privacy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UserName,
+			&i.UserRole,
 		); err != nil {
 			return nil, err
 		}
