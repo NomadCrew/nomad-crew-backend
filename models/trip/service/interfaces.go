@@ -39,6 +39,8 @@ type InvitationServiceInterface interface {
 	FindInvitationByTripAndEmail(ctx context.Context, tripID, email string) (*types.TripInvitation, error)
 }
 
+// TripChatServiceInterface is deprecated - use models/chat/service.ChatServiceInterface instead
+// This is kept for backward compatibility only
 type TripChatServiceInterface interface {
 	ListMessages(ctx context.Context, tripID string, userID string, limit int, before string) ([]*types.ChatMessage, error)
 	UpdateLastReadMessage(ctx context.Context, tripID string, userID string, messageID string) error

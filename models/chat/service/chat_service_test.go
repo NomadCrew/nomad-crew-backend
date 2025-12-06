@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/NomadCrew/nomad-crew-backend/internal/service"
+	"github.com/NomadCrew/nomad-crew-backend/models/chat/service"
 	store_mocks "github.com/NomadCrew/nomad-crew-backend/internal/store/mocks"
 	event_mocks "github.com/NomadCrew/nomad-crew-backend/types/mocks" // Assuming mocks exist here
 

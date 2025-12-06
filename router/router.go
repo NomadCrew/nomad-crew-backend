@@ -2,15 +2,18 @@ package router
 
 import (
 	"context"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
+	"github.com/NomadCrew/nomad-crew-backend/internal/websocket"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
@@ -31,9 +34,12 @@ type Dependencies struct {
 	MemberHandler       *handlers.MemberHandler
 	InvitationHandler   *handlers.InvitationHandler
 	SupabaseService     *services.SupabaseService
+	RedisClient         *redis.Client
 	// Supabase Realtime handlers (only ones we use now)
 	ChatHandlerSupabase     *handlers.ChatHandlerSupabase
 	LocationHandlerSupabase *handlers.LocationHandlerSupabase
+	// WebSocket handler for real-time events
+	WebSocketHandler *websocket.Handler
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -84,7 +90,8 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	r := gin.Default()
 
 	// Global Middleware
-	r.Use(middleware.RequestIDMiddleware()) // Add RequestID middleware
+	r.Use(middleware.RequestIDMiddleware())           // Add RequestID middleware
+	r.Use(middleware.SecurityHeadersMiddleware(deps.Config)) // Add security headers
 	r.Use(middleware.ErrorHandler())
 	// Pass pointer to ServerConfig for CORS middleware
 	r.Use(middleware.CORSMiddleware(&deps.Config.Server))
@@ -108,12 +115,25 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 	// Versioned API Group (v1)
 	v1 := r.Group("/v1")
 	{
+		// WebSocket route - uses token from query param or Sec-WebSocket-Protocol header
+		if deps.WebSocketHandler != nil {
+			v1.GET("/ws", middleware.WSJwtAuth(deps.JWTValidator), deps.WebSocketHandler.HandleWebSocket)
+		}
+
 		// Public Invitation routes (actions that don't require user to be logged in *yet*)
 		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink) // For deep links from emails
 		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)  // To get details using a token (public potentially)
 
+		// Create rate limiter for auth endpoints
+		authRateLimiter := middleware.AuthRateLimiter(
+			deps.RedisClient,
+			deps.Config.RateLimit.AuthRequestsPerMinute,
+			time.Duration(deps.Config.RateLimit.WindowSeconds)*time.Second,
+		)
+
 		// Public User routes (onboarding - creates user, so can't require existing user)
-		v1.POST("/users/onboard", deps.UserHandler.OnboardUser)
+		// Apply rate limiting to prevent brute force account creation
+		v1.POST("/users/onboard", authRateLimiter, deps.UserHandler.OnboardUser)
 
 		// --- Authenticated Routes ---
 		// Create user resolver adapter

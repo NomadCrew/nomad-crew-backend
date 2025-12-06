@@ -58,7 +58,12 @@ func NewTripModelCoordinator(
 	tripServiceInstance := NewTripManagementService(tripStore, userStore, eventBus, weatherSvc, supabaseService)
 	memberServiceInstance := NewTripMemberService(tripStore, eventBus, supabaseService)
 	invitationServiceInstance := NewInvitationService(tripStore, emailSvc, supabaseClient, config.FrontendURL, eventBus)
-	chatServiceInstance := NewTripChatService(chatStore, tripStore, eventBus)
+
+	// Note: TripChatService has been deprecated.
+	// For full chat functionality, use models/chat/service.ChatService instead.
+	// This nil assignment is temporary - TripModelCoordinator should be refactored
+	// to not depend on chat service directly.
+	var chatServiceInstance TripChatServiceInterface = nil
 
 	return &TripModelCoordinator{
 		// Assign concrete instances to interface fields
@@ -179,22 +184,20 @@ func (c *TripModelCoordinator) GetTrip(ctx context.Context, tripID string) (*typ
 	return c.store.GetTrip(ctx, tripID)
 }
 
-// ListMessages delegates to TripChatService
+// ListMessages is deprecated - chat functionality has moved to models/chat/service
+// This method returns empty results for backward compatibility
 func (c *TripModelCoordinator) ListMessages(ctx context.Context, tripID string, limit int, before string) ([]*types.ChatMessage, error) {
-	userID, err := utils.GetUserIDFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return c.ChatService.ListMessages(ctx, tripID, userID, limit, before)
+	// Chat functionality has moved to models/chat/service.ChatService
+	// Return empty results for backward compatibility
+	return []*types.ChatMessage{}, nil
 }
 
-// UpdateLastReadMessage delegates to TripChatService
+// UpdateLastReadMessage is deprecated - chat functionality has moved to models/chat/service
+// This method is a no-op for backward compatibility
 func (c *TripModelCoordinator) UpdateLastReadMessage(ctx context.Context, tripID string, messageID string) error {
-	userID, err := utils.GetUserIDFromContext(ctx)
-	if err != nil {
-		return err
-	}
-	return c.ChatService.UpdateLastReadMessage(ctx, tripID, userID, messageID)
+	// Chat functionality has moved to models/chat/service.ChatService
+	// No-op for backward compatibility
+	return nil
 }
 
 // GetCommandContext returns the command context (for backward compatibility)

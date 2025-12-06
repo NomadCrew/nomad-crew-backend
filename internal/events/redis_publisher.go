@@ -105,6 +105,7 @@ type RedisPublisher struct {
 type subscription struct {
 	pubsub    *redis.PubSub
 	cancelCtx context.CancelFunc
+	closeOnce sync.Once // Ensures pubsub is closed exactly once
 }
 
 // NewRedisPublisher creates a new RedisPublisher instance
@@ -192,26 +193,54 @@ func (p *RedisPublisher) Subscribe(ctx context.Context, tripID string, userID st
 	// Create buffered channel for events
 	events := make(chan types.Event, p.config.EventBufferSize)
 
+	// Create ready channel for synchronization
+	readyCh := make(chan struct{})
+
 	// Start processing messages in a goroutine
 	p.wg.Add(1)
-	go p.processMessages(subCtx, pubsub, events, filters, subKey)
+	go p.processMessages(subCtx, pubsub, events, filters, subKey, readyCh)
 
-	// Small delay to ensure subscription is established
-	time.Sleep(10 * time.Millisecond)
+	// Wait for subscription to be ready (with timeout)
+	select {
+	case <-readyCh:
+		// Subscription established
+	case <-time.After(5 * time.Second):
+		// Timeout - log warning but continue
+		p.log.Warnw("Subscription ready timeout", "subKey", subKey)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	return events, nil
 }
 
 // processMessages handles incoming Redis messages
-func (p *RedisPublisher) processMessages(ctx context.Context, pubsub *redis.PubSub, events chan<- types.Event, filters []types.EventType, subKey string) {
+func (p *RedisPublisher) processMessages(ctx context.Context, pubsub *redis.PubSub, events chan<- types.Event, filters []types.EventType, subKey string, readyCh chan<- struct{}) {
 	defer p.wg.Done()
 	defer func() {
+		// Close pubsub connection exactly once using the subscription's closeOnce
+		p.mu.RLock()
+		sub, exists := p.subs[subKey]
+		p.mu.RUnlock()
+
+		if exists {
+			sub.closeOnce.Do(func() {
+				if err := pubsub.Close(); err != nil {
+					p.log.Errorw("Error closing pubsub in processMessages", "error", err, "subKey", subKey)
+				}
+			})
+		}
+
 		close(events)
 		p.metrics.activeSubscribers.Dec()
 		p.log.Infow("Subscription closed", "subKey", subKey)
 	}()
 
 	ch := pubsub.Channel()
+
+	// Signal that subscription is ready
+	close(readyCh)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -268,19 +297,16 @@ func (p *RedisPublisher) Unsubscribe(ctx context.Context, tripID string, userID 
 	// Cancel the context to signal processMessages to stop
 	sub.cancelCtx()
 
-	// Note: processMessages will call pubsub.Close() upon context cancellation and exit
-	// We might not need to call it explicitly here if processMessages handles it robustly
-	// However, closing it here too ensures it's closed if processMessages hasn't reached that point yet.
-	if err := sub.pubsub.Close(); err != nil {
-		p.log.Errorw("Error closing pubsub during unsubscribe", "error", err, "subKey", subKey)
-	}
+	// Close the pubsub connection exactly once using sync.Once
+	// This ensures no double-close panic even if processMessages also tries to close it
+	sub.closeOnce.Do(func() {
+		if err := sub.pubsub.Close(); err != nil {
+			p.log.Errorw("Error closing pubsub during unsubscribe", "error", err, "subKey", subKey)
+		}
+	})
 
 	delete(p.subs, subKey)
 	p.mu.Unlock()
-
-	// It's better to wait for the goroutine to actually finish if we rely on it.
-	// However, Unsubscribe is usually fire-and-forget for the caller.
-	// For Shutdown, waiting is critical.
 
 	return nil
 }

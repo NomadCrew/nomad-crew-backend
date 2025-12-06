@@ -9,13 +9,13 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Store provides access to database repositories.
 // Deprecated: This Store struct seems partially implemented or outdated.
-// Consider using individual store implementations (like PostgresChatStore, TripDB, etc.)
+// Consider using individual store implementations from store/postgres
 // injected directly where needed, rather than this aggregate Store.
 type Store struct {
 	pool  *pgxpool.Pool

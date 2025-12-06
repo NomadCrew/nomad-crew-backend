@@ -12,7 +12,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/store" // Added import for store package
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 // LocationDB provides database operations related to user and trip locations.

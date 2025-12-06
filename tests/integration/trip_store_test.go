@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -60,7 +60,7 @@ func setupTestDB(t *testing.T) {
 	config, err := pgxpool.ParseConfig(connStr)
 	require.NoError(t, err)
 
-	testPool, err = pgxpool.ConnectConfig(ctx, config)
+	testPool, err = pgxpool.NewWithConfig(ctx, config)
 	require.NoError(t, err)
 
 	// Run migrations

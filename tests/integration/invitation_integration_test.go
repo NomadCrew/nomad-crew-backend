@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
-	"github.com/NomadCrew/nomad-crew-backend/db" // For SetupTestDB or ApplyMigrations
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -34,8 +33,8 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4/pgxpool" // Correct Supabase import
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/supabase-community/supabase-go"
@@ -183,7 +182,7 @@ func SetupInvitationTest(t *testing.T) {
 	if err != nil {
 		logOutput.Fatalf("Failed to parse DSN: %s", err)
 	}
-	testDBPool, err = pgxpool.ConnectConfig(context.Background(), poolConfig)
+	testDBPool, err = pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		logOutput.Fatalf("Failed to connect to test database: %s", err)
 	}
@@ -286,11 +285,9 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 	// For now, assume NewPgUserStore returns a type compatible with internal/store.UserStore if signatures match
 	userStore := internalPgStore.NewUserStore(testDBPool, testCFG.ExternalServices.SupabaseURL, "test-supabase-service-key")
 
-	// Corrected ChatStore instantiation, assuming nil for supabase client in tests is acceptable or mocked appropriately.
-	// The actual Supabase client used in main.go is from "github.com/supabase-community/supabase-go"
+	// Initialize Supabase client for tests
 	var supaClient *supabase.Client // Correct type
 	// If a real client is needed for some tests, it should be initialized here, otherwise nil is fine if UserStore/ChatStore handle it.
-	chatStore := db.NewPostgresChatStore(testDBPool, supaClient, testCFG.ExternalServices.SupabaseURL, "test-supabase-service-key")
 
 	// Initialize Services
 	eventService := &MockEventPublisher{} // Use the mock
@@ -298,8 +295,8 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 
 	tripModel := trip_service.NewTripModelCoordinator(
 		tripStore,
-		chatStore,
-		userStore, // This is the problematic line if type mismatch occurs
+		nil, // chatStore removed - using Supabase for chat (matches main.go pattern)
+		userStore,
 		eventService,
 		nil, // weatherSvc
 		supaClient,

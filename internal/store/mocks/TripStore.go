@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	pgxpool "github.com/jackc/pgx/v4/pgxpool"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/NomadCrew/nomad-crew-backend/types"

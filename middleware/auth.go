@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	stderrors "errors"
@@ -14,10 +15,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Simulator bypass constants - only used in development
+const (
+	simulatorBypassToken  = "simulator-dev-token-bypass"
+	simulatorBypassHeader = "X-Simulator-Bypass"
+	simulatorUserID       = "00000000-0000-0000-0000-000000000001" // Valid UUID for database compatibility
+)
+
 // UserResolver defines the interface for resolving Supabase User IDs to internal users.
 // This interface is used by the authentication middleware to avoid import cycles.
 type UserResolver interface {
 	GetUserBySupabaseID(ctx context.Context, supabaseID string) (*types.User, error)
+}
+
+// isSimulatorBypassEnabled checks if simulator bypass should be allowed.
+// Only enabled when SERVER_ENVIRONMENT is "development".
+func isSimulatorBypassEnabled() bool {
+	env := os.Getenv("SERVER_ENVIRONMENT")
+	return env == "development"
 }
 
 // AuthMiddleware creates a Gin middleware for authenticating requests using JWT.
@@ -27,6 +42,40 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 	return func(c *gin.Context) {
 		log := logger.GetLogger()
 		requestPath := c.Request.URL.Path
+
+		// DEVELOPMENT ONLY: Check for simulator bypass
+		// This allows iOS simulator development without real authentication
+		if isSimulatorBypassEnabled() {
+			bypassHeader := c.GetHeader(simulatorBypassHeader)
+			authHeader := c.GetHeader("Authorization")
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+
+			if bypassHeader == "true" && token == simulatorBypassToken {
+				log.Warnw("SIMULATOR BYPASS ACTIVE - Using mock authentication (development only)",
+					"path", requestPath)
+
+				// Create a mock user for simulator development
+				mockUser := &types.User{
+					ID:        simulatorUserID,
+					Email:     "simulator@dev.nomadcrew.local",
+					Username:  "SimulatorDev",
+					FirstName: "Simulator",
+					LastName:  "Developer",
+				}
+
+				// Store in Gin context
+				c.Set(string(UserIDKey), simulatorUserID)
+				c.Set(string(AuthenticatedUserKey), mockUser)
+
+				// Store in stdlib context
+				newCtx := context.WithValue(c.Request.Context(), UserIDKey, simulatorUserID)
+				newCtx = context.WithValue(newCtx, AuthenticatedUserKey, mockUser)
+				c.Request = c.Request.WithContext(newCtx)
+
+				c.Next()
+				return
+			}
+		}
 
 		// Step 1: Extract Token
 		token, err := extractToken(c)

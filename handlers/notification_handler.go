@@ -1,26 +1,26 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
-	"github.com/NomadCrew/nomad-crew-backend/service"
+	notificationSvc "github.com/NomadCrew/nomad-crew-backend/models/notification/service"
 	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 // NotificationHandler handles HTTP requests related to notifications.
 type NotificationHandler struct {
-	notificationService service.NotificationService
+	notificationService notificationSvc.NotificationService
 	logger              *zap.Logger
 }
 
 // NewNotificationHandler creates a new NotificationHandler.
-func NewNotificationHandler(ns service.NotificationService, logger *zap.Logger) *NotificationHandler {
+func NewNotificationHandler(ns notificationSvc.NotificationService, logger *zap.Logger) *NotificationHandler {
 	return &NotificationHandler{
 		notificationService: ns,
 		logger:              logger.Named("NotificationHandler"),

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,7 +16,6 @@ import (
 	appstore "github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
 // UserService manages user operations
@@ -32,6 +32,45 @@ func NewUserService(userStore istore.UserStore, jwtSecret string, supabaseServic
 		jwtSecret:       jwtSecret,
 		supabaseService: supabaseService,
 	}
+}
+
+// Helper functions
+
+// maskEmail masks an email address for logging (e.g., "user@example.com" -> "u***@e***.com")
+func maskEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		// Invalid email format, mask most of it
+		if len(email) <= 3 {
+			return "***"
+		}
+		return email[:1] + "***"
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	// Mask local part (keep first character)
+	maskedLocal := localPart
+	if len(localPart) > 1 {
+		maskedLocal = localPart[:1] + "***"
+	}
+
+	// Mask domain part (keep first character and TLD)
+	maskedDomain := domainPart
+	domainParts := strings.Split(domainPart, ".")
+	if len(domainParts) > 1 {
+		firstPart := domainParts[0]
+		if len(firstPart) > 1 {
+			maskedDomain = firstPart[:1] + "***." + strings.Join(domainParts[1:], ".")
+		}
+	}
+
+	return maskedLocal + "@" + maskedDomain
 }
 
 // GetUserByID retrieves a user by their internal ID
@@ -96,7 +135,7 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models
 
 	typesUser, err := s.userStore.GetUserByEmail(ctx, email)
 	if err != nil {
-		log.Errorw("Failed to get user by email from store", "error", err, "email", email)
+		log.Errorw("Failed to get user by email from store", "error", err, "email", maskEmail(email))
 		return nil, err
 	}
 
@@ -107,7 +146,7 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models
 	userID, parseErr := uuid.Parse(typesUser.ID)
 	if parseErr != nil {
 		log.Errorw("Failed to parse user ID from types.User", "error", parseErr, "userIDStr", typesUser.ID)
-		return nil, errors.Wrap(parseErr, "failed to parse user ID from store data")
+		return nil, fmt.Errorf("failed to parse user ID from store data: %w", parseErr)
 	}
 
 	var preferencesJSON []byte
@@ -159,7 +198,7 @@ func (s *UserService) GetUserBySupabaseID(ctx context.Context, supabaseID string
 	userID, parseErr := uuid.Parse(typesUser.ID)
 	if parseErr != nil {
 		log.Errorw("Failed to parse user ID from types.User", "error", parseErr, "userIDStr", typesUser.ID)
-		return nil, errors.Wrap(parseErr, "failed to parse user ID from store data")
+		return nil, fmt.Errorf("failed to parse user ID from store data: %w", parseErr)
 	}
 
 	var preferencesJSON []byte
@@ -253,7 +292,7 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 	if parseErr != nil {
 		log.Errorw("Failed to parse created user ID string from store", "error", parseErr, "userIDStr", createdUserIDStr)
 		// This is problematic as user is created but we can't return proper ID
-		return uuid.Nil, errors.Wrap(parseErr, "failed to parse created user ID from store")
+		return uuid.Nil, fmt.Errorf("failed to parse created user ID from store: %w", parseErr)
 	}
 
 	log.Infow("User created successfully in store", "userID", createdUUID)
@@ -508,7 +547,7 @@ func (s *UserService) SyncWithSupabase(ctx context.Context, supabaseID string) (
 	userID, parseErr := uuid.Parse(typesUser.ID)
 	if parseErr != nil {
 		log.Errorw("Failed to parse user ID from synced types.User", "error", parseErr, "userIDStr", typesUser.ID)
-		return nil, errors.Wrap(parseErr, "failed to parse synced user ID")
+		return nil, fmt.Errorf("failed to parse synced user ID: %w", parseErr)
 	}
 
 	var preferencesJSON []byte

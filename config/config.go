@@ -89,6 +89,14 @@ type EventServiceConfig struct {
 	EventBufferSize int `mapstructure:"EVENT_BUFFER_SIZE" yaml:"event_buffer_size"`
 }
 
+// RateLimitConfig holds configuration for rate limiting.
+type RateLimitConfig struct {
+	// Maximum requests per minute for auth endpoints (login, register, password reset)
+	AuthRequestsPerMinute int `mapstructure:"AUTH_REQUESTS_PER_MINUTE" yaml:"auth_requests_per_minute"`
+	// Window duration in seconds for rate limiting
+	WindowSeconds int `mapstructure:"WINDOW_SECONDS" yaml:"window_seconds"`
+}
+
 // Config aggregates all application configuration sections.
 type Config struct {
 	Server           ServerConfig       `mapstructure:"SERVER" yaml:"server"`
@@ -97,6 +105,7 @@ type Config struct {
 	Email            EmailConfig        `mapstructure:"EMAIL" yaml:"email"`
 	ExternalServices ExternalServices   `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
 	EventService     EventServiceConfig `mapstructure:"EVENT_SERVICE" yaml:"event_service"`
+	RateLimit        RateLimitConfig    `mapstructure:"RATE_LIMIT" yaml:"rate_limit"`
 }
 
 // IsDevelopment returns true if the application is running in development environment.
@@ -107,6 +116,17 @@ func (c *Config) IsDevelopment() bool {
 // IsProduction returns true if the application is running in production environment.
 func (c *Config) IsProduction() bool {
 	return c.Server.Environment == EnvProduction
+}
+
+// bindEnvVars binds multiple environment variables to config keys.
+// Format: []{configKey, envVar}
+func bindEnvVars(v *viper.Viper, bindings [][2]string) error {
+	for _, b := range bindings {
+		if err := v.BindEnv(b[0], b[1]); err != nil {
+			return fmt.Errorf("failed to bind %s: %w", b[0], err)
+		}
+	}
+	return nil
 }
 
 // LoadConfig loads configuration from environment variables using Viper,
@@ -123,13 +143,15 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
 	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
 	v.SetDefault("DATABASE.CONN_MAX_LIFE", "1h")
-	v.SetDefault("DATABASE.HOST", "ep-blue-sun-a8kj1qdc-pooler.eastus2.azure.neon.tech")
+	v.SetDefault("DATABASE.HOST", "localhost")
 	v.SetDefault("DATABASE.PORT", 5432)
-	v.SetDefault("DATABASE.USER", "neondb_owner")
-	v.SetDefault("DATABASE.NAME", "neondb")
-	v.SetDefault("DATABASE.SSL_MODE", "require")
+	v.SetDefault("DATABASE.USER", "postgres")
+	v.SetDefault("DATABASE.PASSWORD", "")
+	v.SetDefault("DATABASE.NAME", "nomadcrew_dev")
+	v.SetDefault("DATABASE.SSL_MODE", "disable")
 	v.SetDefault("REDIS.DB", 0)
-	v.SetDefault("REDIS.ADDRESS", "actual-serval-57447.upstash.io:6379")
+	v.SetDefault("REDIS.ADDRESS", "localhost:6379")
+	v.SetDefault("REDIS.PASSWORD", "")
 	v.SetDefault("REDIS.USE_TLS", false) // Only enable TLS for Upstash
 	v.SetDefault("REDIS.POOL_SIZE", 3)   // Conservative for free tier
 	v.SetDefault("REDIS.MIN_IDLE_CONNS", 1)
@@ -138,94 +160,54 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", 5)
 	v.SetDefault("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", 10)
 	v.SetDefault("EVENT_SERVICE.EVENT_BUFFER_SIZE", 100)
+	// +++ Set RateLimit defaults +++
+	v.SetDefault("RATE_LIMIT.AUTH_REQUESTS_PER_MINUTE", 10)
+	v.SetDefault("RATE_LIMIT.WINDOW_SECONDS", 60)
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Bind environment variables
-	if err := v.BindEnv("SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT"); err != nil {
-		return nil, fmt.Errorf("failed to bind SERVER.ENVIRONMENT: %w", err)
-	}
-	if err := v.BindEnv("SERVER.PORT", "PORT"); err != nil {
-		return nil, fmt.Errorf("failed to bind SERVER.PORT: %w", err)
-	}
-	if err := v.BindEnv("SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS"); err != nil {
-		return nil, fmt.Errorf("failed to bind SERVER.ALLOWED_ORIGINS: %w", err)
-	}
-	if err := v.BindEnv("SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY"); err != nil {
-		return nil, fmt.Errorf("failed to bind SERVER.JWT_SECRET_KEY: %w", err)
-	}
-
-	if err := v.BindEnv("DATABASE.HOST", "DB_HOST"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.HOST: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.PORT", "DB_PORT"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.PORT: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.USER", "DB_USER"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.USER: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.PASSWORD", "DB_PASSWORD"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.PASSWORD: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.NAME", "DB_NAME"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.NAME: %w", err)
-	}
-	if err := v.BindEnv("DATABASE.SSL_MODE", "DB_SSL_MODE"); err != nil {
-		return nil, fmt.Errorf("failed to bind DATABASE.SSL_MODE: %w", err)
-	}
-
-	if err := v.BindEnv("REDIS.ADDRESS", "REDIS_ADDRESS"); err != nil {
-		return nil, fmt.Errorf("failed to bind REDIS.ADDRESS: %w", err)
-	}
-	if err := v.BindEnv("REDIS.PASSWORD", "REDIS_PASSWORD"); err != nil {
-		return nil, fmt.Errorf("failed to bind REDIS.PASSWORD: %w", err)
-	}
-	if err := v.BindEnv("REDIS.DB", "REDIS_DB"); err != nil {
-		return nil, fmt.Errorf("failed to bind REDIS.DB: %w", err)
-	}
-	if err := v.BindEnv("REDIS.USE_TLS", "REDIS_USE_TLS"); err != nil {
-		return nil, fmt.Errorf("failed to bind REDIS.USE_TLS: %w", err)
+	envBindings := [][2]string{
+		// Server config
+		{"SERVER.ENVIRONMENT", "SERVER_ENVIRONMENT"},
+		{"SERVER.PORT", "PORT"},
+		{"SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS"},
+		{"SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY"},
+		// Database config
+		{"DATABASE.HOST", "DB_HOST"},
+		{"DATABASE.PORT", "DB_PORT"},
+		{"DATABASE.USER", "DB_USER"},
+		{"DATABASE.PASSWORD", "DB_PASSWORD"},
+		{"DATABASE.NAME", "DB_NAME"},
+		{"DATABASE.SSL_MODE", "DB_SSL_MODE"},
+		// Redis config
+		{"REDIS.ADDRESS", "REDIS_ADDRESS"},
+		{"REDIS.PASSWORD", "REDIS_PASSWORD"},
+		{"REDIS.DB", "REDIS_DB"},
+		{"REDIS.USE_TLS", "REDIS_USE_TLS"},
+		// External services
+		{"EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY"},
+		{"EXTERNAL_SERVICES.PEXELS_API_KEY", "PEXELS_API_KEY"},
+		{"EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"},
+		{"EXTERNAL_SERVICES.SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_KEY"},
+		{"EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"},
+		{"EXTERNAL_SERVICES.SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET"},
+		// Email config
+		{"EMAIL.FROM_ADDRESS", "EMAIL_FROM_ADDRESS"},
+		{"EMAIL.FROM_NAME", "EMAIL_FROM_NAME"},
+		{"EMAIL.RESEND_API_KEY", "RESEND_API_KEY"},
+		// Event service config
+		{"EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", "EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS"},
+		{"EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", "EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS"},
+		{"EVENT_SERVICE.EVENT_BUFFER_SIZE", "EVENT_SERVICE_EVENT_BUFFER_SIZE"},
+		// Rate limit config
+		{"RATE_LIMIT.AUTH_REQUESTS_PER_MINUTE", "RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE"},
+		{"RATE_LIMIT.WINDOW_SECONDS", "RATE_LIMIT_WINDOW_SECONDS"},
 	}
 
-	if err := v.BindEnv("EXTERNAL_SERVICES.GEOAPIFY_KEY", "GEOAPIFY_KEY"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.GEOAPIFY_KEY: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.PEXELS_API_KEY", "PEXELS_API_KEY"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.PEXELS_API_KEY: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_ANON_KEY: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_KEY"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_SERVICE_KEY: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_URL", "SUPABASE_URL"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_URL: %w", err)
-	}
-	if err := v.BindEnv("EXTERNAL_SERVICES.SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET"); err != nil {
-		return nil, fmt.Errorf("failed to bind EXTERNAL_SERVICES.SUPABASE_JWT_SECRET: %w", err)
-	}
-
-	if err := v.BindEnv("EMAIL.FROM_ADDRESS", "EMAIL_FROM_ADDRESS"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL.FROM_ADDRESS: %w", err)
-	}
-	if err := v.BindEnv("EMAIL.FROM_NAME", "EMAIL_FROM_NAME"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL.FROM_NAME: %w", err)
-	}
-	if err := v.BindEnv("EMAIL.RESEND_API_KEY", "RESEND_API_KEY"); err != nil {
-		return nil, fmt.Errorf("failed to bind EMAIL.RESEND_API_KEY: %w", err)
-	}
-
-	// Bind EventService environment variables
-	if err := v.BindEnv("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS", "EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS"); err != nil {
-		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS: %w", err)
-	}
-	if err := v.BindEnv("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS", "EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS"); err != nil {
-		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS: %w", err)
-	}
-	if err := v.BindEnv("EVENT_SERVICE.EVENT_BUFFER_SIZE", "EVENT_SERVICE_EVENT_BUFFER_SIZE"); err != nil {
-		return nil, fmt.Errorf("failed to bind EVENT_SERVICE.EVENT_BUFFER_SIZE: %w", err)
+	if err := bindEnvVars(v, envBindings); err != nil {
+		return nil, err
 	}
 
 	env := v.GetString("SERVER.ENVIRONMENT")
@@ -318,6 +300,14 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.EventService.EventBufferSize <= 0 {
 		return fmt.Errorf("event service buffer size must be positive")
+	}
+
+	// +++ Validate RateLimit config +++
+	if cfg.RateLimit.AuthRequestsPerMinute <= 0 {
+		return fmt.Errorf("rate limit auth requests per minute must be positive")
+	}
+	if cfg.RateLimit.WindowSeconds <= 0 {
+		return fmt.Errorf("rate limit window seconds must be positive")
 	}
 
 	return nil

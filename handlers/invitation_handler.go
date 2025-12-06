@@ -143,7 +143,7 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 
 	claims, err := auth.ValidateInvitationToken(req.Token, h.serverConfig.JwtSecretKey)
 	if err != nil {
-		log.Warnw("Invalid invitation token", "token", req.Token, "error", err)
+		log.Warnw("Invalid invitation token", "tokenLength", len(req.Token), "error", err)
 		handleModelError(c, apperrors.AuthenticationFailed("invalid or expired token"))
 		return
 	}
@@ -160,9 +160,28 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 		return
 	}
 
+	// Security check: If invitation is bound to a specific user ID, verify it matches
 	if invitation.InviteeID != nil && *invitation.InviteeID != "" && *invitation.InviteeID != acceptingUserID {
 		log.Warnw("User trying to accept invitation not meant for them", "invitationID", invitation.ID, "inviteeID", *invitation.InviteeID, "acceptingUserID", acceptingUserID)
 		handleModelError(c, apperrors.Forbidden("auth_mismatch", "You are not authorized to accept this invitation."))
+		return
+	}
+
+	// Security check: Verify the accepting user's email matches the invitation email
+	// This prevents someone who obtains the link from accepting it with a different account
+	acceptingUser, err := h.userStore.GetUserByID(c.Request.Context(), acceptingUserID)
+	if err != nil {
+		log.Errorw("Failed to get accepting user details", "userID", acceptingUserID, "error", err)
+		handleModelError(c, err)
+		return
+	}
+	if !strings.EqualFold(acceptingUser.Email, invitation.InviteeEmail) {
+		log.Warnw("Email mismatch: user trying to accept invitation sent to different email",
+			"invitationID", invitation.ID,
+			"inviteeEmail", invitation.InviteeEmail,
+			"acceptingUserEmail", acceptingUser.Email,
+			"acceptingUserID", acceptingUserID)
+		handleModelError(c, apperrors.Forbidden("email_mismatch", "You can only accept invitations sent to your email address."))
 		return
 	}
 
@@ -220,7 +239,7 @@ func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 
 	claims, err := auth.ValidateInvitationToken(req.Token, h.serverConfig.JwtSecretKey)
 	if err != nil {
-		log.Warnw("Invalid invitation token for decline", "token", req.Token, "error", err)
+		log.Warnw("Invalid invitation token for decline", "tokenLength", len(req.Token), "error", err)
 		handleModelError(c, apperrors.AuthenticationFailed("Invalid or expired token"))
 		return
 	}
@@ -269,7 +288,7 @@ func (h *InvitationHandler) HandleInvitationDeepLink(c *gin.Context) {
 
 	claims, err := auth.ValidateInvitationToken(token, h.serverConfig.JwtSecretKey)
 	if err != nil {
-		log.Warnw("Invalid invitation token from deep link", "token", token, "error", err)
+		log.Warnw("Invalid invitation token from deep link", "tokenLength", len(token), "error", err)
 		c.Redirect(http.StatusFound, h.serverConfig.FrontendURL+"/join-trip?error=invalid_token")
 		return
 	}
@@ -324,7 +343,7 @@ func (h *InvitationHandler) GetInvitationDetails(c *gin.Context) {
 
 	claims, err := auth.ValidateInvitationToken(token, h.serverConfig.JwtSecretKey)
 	if err != nil {
-		log.Warnw("Invalid invitation token for details", "token", token, "error", err)
+		log.Warnw("Invalid invitation token for details", "tokenLength", len(token), "error", err)
 		handleModelError(c, apperrors.AuthenticationFailed("invalid or expired token"))
 		return
 	}

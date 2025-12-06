@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -50,8 +50,9 @@ func ConfigureNeonPostgresPool(cfg *DatabaseConfig) (*pgxpool.Config, error) {
 	// Always use TLS for Neon PostgreSQL
 	if strings.Contains(cfg.Host, "neon.tech") || cfg.SSLMode == "require" {
 		poolConfig.ConnConfig.TLSConfig = &tls.Config{
-			ServerName: cfg.Host,
-			MinVersion: tls.VersionTLS12,
+			ServerName:         cfg.Host,
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: false,
 		}
 	}
 

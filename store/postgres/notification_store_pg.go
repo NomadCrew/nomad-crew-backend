@@ -2,15 +2,15 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/pkg/errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Ensure pgNotificationStore implements store.NotificationStore.
@@ -50,7 +50,7 @@ func (s *pgNotificationStore) Create(ctx context.Context, n *models.Notification
 	).Scan(&n.ID, &n.CreatedAt, &n.UpdatedAt)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create notification")
+		return fmt.Errorf("failed to create notification: %w", err)
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func (s *pgNotificationStore) GetByID(ctx context.Context, id uuid.UUID) (*model
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("notification with id %s not found: %w", id, store.ErrNotFound)
 		}
-		return nil, errors.Wrap(err, "failed to get notification by id")
+		return nil, fmt.Errorf("failed to get notification by id: %w", err)
 	}
 	return n, nil
 }
@@ -99,7 +99,7 @@ func (s *pgNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID, l
 
 	rows, err := s.pool.Query(ctx, baseQuery, args...)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query notifications by user")
+		return nil, fmt.Errorf("failed to query notifications by user: %w", err)
 	}
 	defer rows.Close()
 
@@ -107,13 +107,13 @@ func (s *pgNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID, l
 	for rows.Next() {
 		var n models.Notification
 		if err := rows.Scan(&n.ID, &n.UserID, &n.Type, &n.Metadata, &n.IsRead, &n.CreatedAt, &n.UpdatedAt); err != nil {
-			return nil, errors.Wrap(err, "failed to scan notification row")
+			return nil, fmt.Errorf("failed to scan notification row: %w", err)
 		}
 		notifications = append(notifications, n)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "error during row iteration for notifications")
+		return nil, fmt.Errorf("error during row iteration for notifications: %w", err)
 	}
 
 	return notifications, nil
@@ -127,7 +127,7 @@ func (s *pgNotificationStore) MarkRead(ctx context.Context, id uuid.UUID, userID
 
 	cmdTag, err := s.pool.Exec(ctx, query, id, userID)
 	if err != nil {
-		return errors.Wrap(err, "failed to mark notification as read")
+		return fmt.Errorf("failed to mark notification as read: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
@@ -135,7 +135,7 @@ func (s *pgNotificationStore) MarkRead(ctx context.Context, id uuid.UUID, userID
 		checkQuery := `SELECT EXISTS(SELECT 1 FROM notifications WHERE id = $1 AND user_id = $2)`
 		var exists bool
 		if checkErr := s.pool.QueryRow(ctx, checkQuery, id, userID).Scan(&exists); checkErr != nil {
-			return errors.Wrap(checkErr, "failed to check notification existence during mark read")
+			return fmt.Errorf("failed to check notification existence during mark read: %w", checkErr)
 		}
 
 		if !exists {
@@ -148,7 +148,7 @@ func (s *pgNotificationStore) MarkRead(ctx context.Context, id uuid.UUID, userID
 			if errors.Is(ownerErr, pgx.ErrNoRows) {
 				return fmt.Errorf("notification %s not found during ownership check: %w", id, store.ErrNotFound)
 			}
-			return errors.Wrap(ownerErr, "failed to check notification owner")
+			return fmt.Errorf("failed to check notification owner: %w", ownerErr)
 		}
 		if ownerID != userID {
 			return fmt.Errorf("user %s not authorized to mark notification %s as read: %w", userID, id, store.ErrForbidden)
@@ -167,7 +167,7 @@ func (s *pgNotificationStore) MarkAllReadByUser(ctx context.Context, userID uuid
 
 	cmdTag, err := s.pool.Exec(ctx, query, userID)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to mark all notifications as read")
+		return 0, fmt.Errorf("failed to mark all notifications as read: %w", err)
 	}
 
 	return cmdTag.RowsAffected(), nil
@@ -185,7 +185,7 @@ func (s *pgNotificationStore) GetUnreadCount(ctx context.Context, userID uuid.UU
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil
 		}
-		return 0, errors.Wrap(err, "failed to get unread notification count")
+		return 0, fmt.Errorf("failed to get unread notification count: %w", err)
 	}
 
 	return count, nil
@@ -199,7 +199,7 @@ func (s *pgNotificationStore) Delete(ctx context.Context, id uuid.UUID, userID u
 	cmdTag, err := s.pool.Exec(ctx, query, id, userID)
 	if err != nil {
 		// Wrap the error for better context upstream
-		return errors.Wrapf(err, "failed to execute delete for notification %s", id)
+		return fmt.Errorf("failed to execute delete for notification %s: %w", id, err)
 	}
 
 	// Check if any row was actually deleted
@@ -210,7 +210,7 @@ func (s *pgNotificationStore) Delete(ctx context.Context, id uuid.UUID, userID u
 		var exists bool
 		if checkErr := s.pool.QueryRow(ctx, checkQuery, id).Scan(&exists); checkErr != nil {
 			// If the check itself fails, return that error
-			return errors.Wrapf(checkErr, "failed to check existence for notification %s during delete", id)
+			return fmt.Errorf("failed to check existence for notification %s during delete: %w", id, checkErr)
 		}
 
 		if !exists {

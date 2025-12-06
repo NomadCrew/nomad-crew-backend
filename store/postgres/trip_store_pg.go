@@ -11,8 +11,8 @@ import (
 	internal_store "github.com/NomadCrew/nomad-crew-backend/internal/store" // Use alias to avoid conflict
 	"github.com/NomadCrew/nomad-crew-backend/logger"                        // Added for logging
 	"github.com/NomadCrew/nomad-crew-backend/types"
-	"github.com/jackc/pgx/v4" // Added for pgx.Tx
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5" // Added for pgx.Tx
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Ensure pgTripStore implements internal_store.TripStore.
@@ -117,9 +117,9 @@ func (s *pgTripStore) GetTrip(ctx context.Context, id string) (*types.Trip, erro
 	log := logger.GetLogger()
 	query := `
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
-               t.destination_place_id, t.destination_address, t.destination_name, 
+               t.destination_place_id, t.destination_address, t.destination_name,
                t.destination_latitude, t.destination_longitude,
-               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, t.background_image_url
+               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, COALESCE(t.background_image_url, '')
         FROM trips t
         WHERE t.id = $1 AND t.deleted_at IS NULL`
 
@@ -336,7 +336,7 @@ func (s *pgTripStore) ListUserTrips(ctx context.Context, userID string) ([]*type
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
                t.destination_place_id, t.destination_address, t.destination_name,
                t.destination_latitude, t.destination_longitude,
-               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, t.background_image_url
+               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, COALESCE(t.background_image_url, '')
         FROM trips t
         WHERE t.created_by = $1 AND t.deleted_at IS NULL
         ORDER BY t.start_date DESC`
@@ -401,7 +401,7 @@ func (s *pgTripStore) SearchTrips(ctx context.Context, criteria types.TripSearch
         SELECT t.id, t.name, t.description, t.start_date, t.end_date,
                t.destination_place_id, t.destination_address, t.destination_name,
                t.destination_latitude, t.destination_longitude,
-               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, t.background_image_url
+               t.status, t.created_by, t.created_at, t.updated_at, t.deleted_at, COALESCE(t.background_image_url, '')
         FROM trips t
         WHERE t.deleted_at IS NULL`
 

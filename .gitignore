@@ -181,4 +181,4 @@ memory-bank/
 .vscode/
 .cursorrules
 Makefile
-run-migrations.ps1
+run-migrations.ps1nomad-crew-backend

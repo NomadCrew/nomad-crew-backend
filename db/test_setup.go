@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // getSchemaPath calculates the absolute path to the initial database schema file
@@ -53,9 +53,9 @@ func SetupTestDB(connectionString string) (*DatabaseClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse connection config: %w", err)
 	}
-	config.ConnConfig.PreferSimpleProtocol = true
+	// Note: PreferSimpleProtocol was removed in pgx/v5
 
-	pool, err := pgxpool.ConnectConfig(ctx, config)
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to test database: %w", err)
 	}

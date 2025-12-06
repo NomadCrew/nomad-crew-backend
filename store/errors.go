@@ -2,6 +2,11 @@ package store
 
 import "errors"
 
+// Error Handling Guidelines:
+// - Services/Stores: Use fmt.Errorf("context: %w", err) for wrapping errors
+// - Handlers: Use apperrors.* functions for HTTP-appropriate errors
+// - Never use pkg/errors (deprecated in this codebase)
+
 // Predefined errors for the store layer.
 var (
 	// ErrNotFound indicates that a requested resource was not found.

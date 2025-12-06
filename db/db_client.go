@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // DatabaseClient wraps a pgxpool.Pool with reconnection capability.
@@ -113,7 +113,7 @@ func (dc *DatabaseClient) reconnect(ctx context.Context) error {
 
 		// Create a timeout context for this attempt
 		attemptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		newPool, err := pgxpool.ConnectConfig(attemptCtx, dc.config)
+		newPool, err := pgxpool.NewWithConfig(attemptCtx, dc.config)
 		cancel()
 
 		if err == nil {

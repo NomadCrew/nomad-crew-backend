@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CORSMiddleware creates a middleware for handling CORS with the given configuration
+// CORSMiddleware creates a middleware for handling CORS with the given configuration.
+// It properly uses gin-contrib/cors without manual header manipulation.
 func CORSMiddleware(cfg *config.ServerConfig) gin.HandlerFunc {
-	// Default configuration
 	corsConfig := cors.Config{
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowHeaders: []string{
@@ -23,82 +23,65 @@ func CORSMiddleware(cfg *config.ServerConfig) gin.HandlerFunc {
 			"Accept",
 			"X-CSRF-Token",
 		},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		ExposeHeaders: []string{"Content-Length"},
+		MaxAge:        12 * time.Hour,
 	}
 
-	// Set allowed origins
-	if len(cfg.AllowedOrigins) > 0 {
-		if containsOrigin(cfg.AllowedOrigins, "*") {
-			corsConfig.AllowAllOrigins = true
-		} else {
-			corsConfig.AllowOrigins = cfg.AllowedOrigins
+	// Configure allowed origins based on configuration
+	if len(cfg.AllowedOrigins) == 0 || containsOrigin(cfg.AllowedOrigins, "*") {
+		// Allow all origins (development mode or explicitly configured)
+		// Note: When AllowAllOrigins is true, AllowCredentials must be false per CORS spec
+		corsConfig.AllowAllOrigins = true
+		corsConfig.AllowCredentials = false
+	} else {
+		// Production mode with specific allowed origins
+		corsConfig.AllowAllOrigins = false
+		corsConfig.AllowCredentials = true
 
-			// For test compatibility: Default to AllowAllOrigins and use custom origin check
-			corsConfig.AllowAllOrigins = true
+		// Check if any origin uses wildcard subdomain pattern (e.g., "*.example.com")
+		hasWildcardPattern := false
+		for _, origin := range cfg.AllowedOrigins {
+			if strings.HasPrefix(origin, "*.") {
+				hasWildcardPattern = true
+				break
+			}
+		}
 
-			// Use custom handler to set CORS headers
-			return func(c *gin.Context) {
-				origin := c.Request.Header.Get("Origin")
-
-				// When no origin is provided, we need to set the Access-Control-Allow-Origin to *
+		if hasWildcardPattern {
+			// Use AllowOriginFunc for wildcard subdomain support
+			corsConfig.AllowOriginFunc = func(origin string) bool {
+				// Empty origin is allowed (same-origin requests)
 				if origin == "" {
-					c.Header("Access-Control-Allow-Origin", "*")
-					c.Header("Access-Control-Allow-Methods", strings.Join(corsConfig.AllowMethods, ", "))
-					c.Header("Access-Control-Allow-Headers", strings.Join(corsConfig.AllowHeaders, ", "))
-					c.Header("Access-Control-Allow-Credentials", "true")
-					c.Header("Access-Control-Max-Age", "43200") // 12 hours in seconds
-
-					c.Next()
-					return
+					return true
 				}
 
-				// Check if origin is allowed
-				allowed := false
 				for _, allowedOrigin := range cfg.AllowedOrigins {
+					// Exact match
 					if allowedOrigin == origin {
-						allowed = true
-						break
+						return true
 					}
-					// Handle wildcard subdomains
+
+					// Wildcard subdomain match (e.g., "*.example.com")
 					if strings.HasPrefix(allowedOrigin, "*.") {
 						domain := strings.TrimPrefix(allowedOrigin, "*")
 						if strings.HasSuffix(origin, domain) {
-							allowed = true
-							break
+							return true
 						}
 					}
 				}
 
-				// Set appropriate CORS headers based on if origin is allowed
-				if allowed {
-					c.Header("Access-Control-Allow-Origin", origin)
-					c.Header("Access-Control-Allow-Methods", strings.Join(corsConfig.AllowMethods, ", "))
-					c.Header("Access-Control-Allow-Headers", strings.Join(corsConfig.AllowHeaders, ", "))
-					c.Header("Access-Control-Allow-Credentials", "true")
-					c.Header("Access-Control-Max-Age", "43200") // 12 hours in seconds
-					c.Header("Vary", "Origin")
-
-					// Handle preflight requests
-					if c.Request.Method == "OPTIONS" {
-						c.AbortWithStatus(204)
-						return
-					}
-				}
-
-				// Always allow the request to proceed - we just don't set CORS headers for disallowed origins
-				c.Next()
+				return false
 			}
+		} else {
+			// Simple exact match - use AllowOrigins for better performance
+			corsConfig.AllowOrigins = cfg.AllowedOrigins
 		}
-	} else {
-		corsConfig.AllowAllOrigins = true
 	}
 
 	return cors.New(corsConfig)
 }
 
-// containsOrigin checks if a string is present in the allowed origins slice
+// containsOrigin checks if a string is present in the allowed origins slice.
 func containsOrigin(s []string, str string) bool {
 	for _, v := range s {
 		if v == str {

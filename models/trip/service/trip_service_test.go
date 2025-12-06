@@ -14,7 +14,7 @@ import (
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -109,7 +109,7 @@ func (m *MockTripStore) GetTripMembers(ctx context.Context, tripID string) ([]ty
 }
 
 // Assuming GetPool might be needed by internal implementation details, adding a basic mock
-func (m *MockTripStore) GetPool() *pgxpool.Pool { // Import "github.com/jackc/pgx/v4/pgxpool"
+func (m *MockTripStore) GetPool() *pgxpool.Pool { // Import "github.com/jackc/pgx/v5/pgxpool"
 	args := m.Called()
 	if args.Get(0) == nil {
 		return nil

@@ -1,0 +1,29 @@
+# Development Dockerfile with Air hot reloading
+# Usage: docker-compose up api-dev
+
+FROM golang:1.24-alpine
+
+WORKDIR /app
+
+# Install Air for hot reloading (pin to v1.61.7 for Go 1.24 compatibility) and other dev tools
+RUN go install github.com/air-verse/air@v1.61.7 && \
+    go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest && \
+    apk add --no-cache curl git
+
+# Copy go.mod and go.sum first for better caching
+COPY go.mod go.sum ./
+
+# Download dependencies (cached layer)
+RUN go mod download
+
+# Copy Air configuration
+COPY .air.toml ./
+
+# Create tmp directory for Air builds
+RUN mkdir -p /app/tmp && chmod 777 /app/tmp
+
+# Expose the server port
+EXPOSE 8080
+
+# Use Air to run the application with hot reloading
+CMD ["air", "-c", ".air.toml"]

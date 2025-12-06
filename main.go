@@ -35,22 +35,25 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/db"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
+	internal_store "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store/sqlcadapter"
+	"github.com/NomadCrew/nomad-crew-backend/internal/websocket"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	locationSvc "github.com/NomadCrew/nomad-crew-backend/models/location/service"
+	notificationSvc "github.com/NomadCrew/nomad-crew-backend/models/notification/service"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	userSvc "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	weatherSvc "github.com/NomadCrew/nomad-crew-backend/models/weather/service"
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/router"
-	"github.com/NomadCrew/nomad-crew-backend/service"
 	services "github.com/NomadCrew/nomad-crew-backend/services"
 	dbStore "github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/supabase-community/supabase-go"
 )
@@ -105,7 +108,7 @@ func main() {
 
 	// Create context with timeout for initial connection
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	pool, err := pgxpool.ConnectConfig(dbCtx, poolConfig)
+	pool, err := pgxpool.NewWithConfig(dbCtx, poolConfig)
 	dbCancel()
 
 	if err != nil {
@@ -128,7 +131,16 @@ func main() {
 	}
 
 	// Other store initializations using the database pool
-	tripStore := dbStore.NewPgTripStore(dbClient.GetPool())
+	// Use SQLC-based trip store (new implementation with type-safe queries)
+	// Can be toggled back to legacy store with USE_LEGACY_TRIP_STORE=true
+	var tripStore internal_store.TripStore
+	if os.Getenv("USE_LEGACY_TRIP_STORE") == "true" {
+		tripStore = dbStore.NewPgTripStore(dbClient.GetPool())
+		log.Info("Using legacy PostgreSQL trip store")
+	} else {
+		tripStore = sqlcadapter.NewSqlcTripStore(dbClient.GetPool())
+		log.Info("Using SQLC-based trip store")
+	}
 	todoStore := internalPgStore.NewTodoStore(dbClient.GetPool())
 	locationDB := db.NewLocationDB(dbClient)
 	notificationDB := dbStore.NewPgNotificationStore(dbClient.GetPool())
@@ -194,7 +206,7 @@ func main() {
 	healthService := services.NewHealthService(dbClient.GetPool(), redisClient, cfg.Server.Version)
 
 	// Initialize notification service with correct dependencies
-	notificationService := service.NewNotificationService(notificationDB, userDB, tripStore, eventService, log.Desugar())
+	notificationService := notificationSvc.NewNotificationService(notificationDB, userDB, tripStore, eventService, log.Desugar())
 
 	// Initialize refactored location service
 	locationManagementService := locationSvc.NewManagementService(
@@ -251,6 +263,11 @@ func main() {
 		userDB,
 	)
 
+	// Initialize WebSocket hub and handler for real-time events
+	wsHub := websocket.NewHub(eventService, tripStore)
+	wsHandler := websocket.NewHandler(wsHub, &cfg.Server, tripMemberService)
+	log.Info("WebSocket hub and handler initialized")
+
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
 		Config:              cfg,
@@ -266,11 +283,13 @@ func main() {
 		InvitationHandler:   invitationHandler,
 		Logger:              log,
 		SupabaseService:     supabaseService,
+		RedisClient:         redisClient, // Add Redis client for rate limiting
 	}
 
 	// Add Supabase Realtime handlers (always enabled in development)
 	routerDeps.ChatHandlerSupabase = chatHandlerSupabase
 	routerDeps.LocationHandlerSupabase = locationHandlerSupabase
+	routerDeps.WebSocketHandler = wsHandler
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)
@@ -303,9 +322,23 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Shutdown WebSocket hub first to close all connections gracefully
+	log.Info("Shutting down WebSocket hub...")
+	if err := wsHub.Shutdown(ctx); err != nil {
+		log.Errorw("Error during WebSocket hub shutdown", "error", err)
+	}
+
+	// Shutdown event service to stop processing new events
+	log.Info("Shutting down event service...")
+	if err := eventService.Shutdown(ctx); err != nil {
+		log.Errorw("Error during event service shutdown", "error", err)
+	}
+
+	// Then shutdown HTTP server
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalw("Server forced to shutdown", "error", err)
 	}
 
 	log.Info("Server has been gracefully shut down")
 }
+

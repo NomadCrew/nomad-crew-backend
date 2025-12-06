@@ -12,7 +12,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -69,8 +69,8 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 
 	config, err := pgxpool.ParseConfig(connectionString)
 	require.NoError(t, err)
-	config.ConnConfig.PreferSimpleProtocol = true
-	pool, err := pgxpool.ConnectConfig(ctx, config)
+	// Note: PreferSimpleProtocol was removed in pgx/v5
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		// Enhanced error logging
 		t.Logf("Database setup failed: %v", err)

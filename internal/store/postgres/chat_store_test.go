@@ -13,8 +13,8 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -73,10 +73,9 @@ func setupTestDBWithChat(t *testing.T) (*pgxpool.Pool, uuid.UUID, uuid.UUID, uui
 
 	config, err := pgxpool.ParseConfig(connStr)
 	require.NoError(t, err)
-	// Allow execution of migration scripts containing multiple statements
-	config.ConnConfig.PreferSimpleProtocol = true
+	// Note: PreferSimpleProtocol was removed in pgx/v5
 
-	testPool, err = pgxpool.ConnectConfig(ctx, config)
+	testPool, err = pgxpool.NewWithConfig(ctx, config)
 	require.NoError(t, err)
 
 	// Run base migrations (adjust paths if necessary)
@@ -483,15 +482,15 @@ func TestChatStore(t *testing.T) {
 		selectQuery := `SELECT last_read_message_id FROM chat_group_members WHERE group_id = $1 AND user_id = $2`
 		err = pool.QueryRow(ctx, selectQuery, groupID, userID.String()).Scan(&lastReadMsgID)
 		require.NoError(t, err)
-		require.Equal(t, pgtype.Present, lastReadMsgID.Status, "last_read_message_id should be set for userID")
-		expectedMsgID2Bytes, _ := uuid.Parse(msgID2)                                                                      // Parse string UUID to bytes
-		assert.Equal(t, expectedMsgID2Bytes, uuid.UUID(lastReadMsgID.Bytes), "Incorrect last_read_message_id for userID") // Compare bytes
+		require.True(t, lastReadMsgID.Valid, "last_read_message_id should be set for userID")
+		expectedMsgID2Bytes, _ := uuid.Parse(msgID2)                                                                       // Parse string UUID to bytes
+		assert.Equal(t, expectedMsgID2Bytes, uuid.UUID(lastReadMsgID.Bytes), "Incorrect last_read_message_id for userID")  // Compare bytes
 
 		// 4. Verify last_read_message_id for anotherUserID is still NULL
 		var lastReadMsgIDOther pgtype.UUID
 		err = pool.QueryRow(ctx, selectQuery, groupID, anotherUserID.String()).Scan(&lastReadMsgIDOther)
 		require.NoError(t, err)
-		assert.Equal(t, pgtype.Null, lastReadMsgIDOther.Status, "last_read_message_id should be NULL for anotherUserID")
+		assert.False(t, lastReadMsgIDOther.Valid, "last_read_message_id should be NULL for anotherUserID")
 
 		// 5. Update for user not in group (use a new user ID)
 		newUser := uuid.NewString()
