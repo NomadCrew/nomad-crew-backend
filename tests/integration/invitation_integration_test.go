@@ -24,10 +24,9 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
-	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
 
-	internalPgStore "github.com/NomadCrew/nomad-crew-backend/internal/store/postgres"
-	user_service "github.com/NomadCrew/nomad-crew-backend/models/user/service" // Added import
+	"github.com/NomadCrew/nomad-crew-backend/internal/store/sqlcadapter"
+	user_service "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	approuter "github.com/NomadCrew/nomad-crew-backend/router"                 // For mock email service
 	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -279,11 +278,9 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 	require.NotNil(t, testDBPool, "TestDBPool should be initialized by TestMain")
 	require.NotNil(t, testCFG, "TestCFG should be initialized by TestMain")
 
-	// Initialize Stores
-	tripStore := postgres.NewPgTripStore(testDBPool)
-	// UserStore initialization needs to be correct based on internal/store vs store/postgres
-	// For now, assume NewPgUserStore returns a type compatible with internal/store.UserStore if signatures match
-	userStore := internalPgStore.NewUserStore(testDBPool, testCFG.ExternalServices.SupabaseURL, "test-supabase-service-key")
+	// Initialize Stores using SQLC adapters
+	tripStore := sqlcadapter.NewSqlcTripStore(testDBPool)
+	userStore := sqlcadapter.NewSqlcUserStore(testDBPool, testCFG.ExternalServices.SupabaseURL, testCFG.ExternalServices.SupabaseJWTSecret)
 
 	// Initialize Supabase client for tests
 	var supaClient *supabase.Client // Correct type

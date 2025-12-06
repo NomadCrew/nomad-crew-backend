@@ -15,7 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/NomadCrew/nomad-crew-backend/db"
-	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store/sqlcadapter"
 	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
@@ -109,7 +109,7 @@ func TestTripStore_Integration(t *testing.T) {
 
 	dbClient, cleanup := setupTestDatabase(t)
 	ctx := context.Background()
-	tripStore := postgres.NewPgTripStore(dbClient.GetPool())
+	tripStore := sqlcadapter.NewSqlcTripStore(dbClient.GetPool())
 	testUserUUID := authIDtoUUID(testAuthID)
 
 	// Insert the main test user for this test suite

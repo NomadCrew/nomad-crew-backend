@@ -16,7 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
-	"github.com/NomadCrew/nomad-crew-backend/store/postgres"
+	"github.com/NomadCrew/nomad-crew-backend/internal/store/sqlcadapter"
 	"github.com/NomadCrew/nomad-crew-backend/tests/testutil"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
@@ -70,7 +70,7 @@ func setupTestDB(t *testing.T) {
 	_, err = testPool.Exec(ctx, string(migrationSQL))
 	require.NoError(t, err)
 
-	tripStore = postgres.NewPgTripStore(testPool)
+	tripStore = sqlcadapter.NewSqlcTripStore(testPool)
 }
 
 func teardownTestDB(t *testing.T) {
