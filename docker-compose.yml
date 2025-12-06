@@ -46,7 +46,9 @@ services:
     volumes:
       # Mount source code for hot reloading
       - .:/app
-      # Use anonymous volumes to avoid overwriting these directories
+      # Use named volume for Go module cache (faster rebuilds)
+      - go-mod-cache:/go/pkg/mod
+      # Exclude these directories - they should be managed by the container
       - /app/tmp
       - /app/vendor
     env_file:
@@ -118,3 +120,4 @@ services:
 
 volumes:
   postgres_data:
+  go-mod-cache:

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -13,6 +14,13 @@ import (
 type WSClaims struct {
 	UserID string `json:"sub"`
 	jwt.RegisteredClaims
+}
+
+// isWSSimulatorBypassEnabled checks if simulator bypass should be allowed for WebSocket.
+// Only enabled when SERVER_ENVIRONMENT is "development".
+func isWSSimulatorBypassEnabled() bool {
+	env := os.Getenv("SERVER_ENVIRONMENT")
+	return env == "development"
 }
 
 // WSJwtAuth provides optimized JWT authentication middleware for WebSocket connections
@@ -32,6 +40,26 @@ func WSJwtAuth(validator Validator) gin.HandlerFunc {
 				"path", c.Request.URL.Path,
 				"ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication token"})
+			return
+		}
+
+		// DEVELOPMENT ONLY: Check for simulator bypass
+		// This allows iOS simulator development without real authentication
+		if isWSSimulatorBypassEnabled() && tokenString == simulatorBypassToken {
+			log.Warnw("WEBSOCKET SIMULATOR BYPASS ACTIVE - Using mock authentication (development only)",
+				"path", c.Request.URL.Path)
+
+			// Store simulator userID in context
+			c.Set(string(UserIDKey), simulatorUserID)
+
+			// Log auth processing time
+			authTime := time.Since(startTime)
+			log.Debugw("WebSocket auth successful (simulator bypass)",
+				"userID", simulatorUserID,
+				"path", c.Request.URL.Path,
+				"duration_ms", authTime.Milliseconds())
+
+			c.Next()
 			return
 		}
 

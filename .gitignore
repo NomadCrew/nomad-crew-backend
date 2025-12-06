@@ -182,3 +182,12 @@ memory-bank/
 .cursorrules
 Makefile
 run-migrations.ps1nomad-crew-backend
+
+# Go vendor directory (use go mod download instead)
+vendor/
+
+# Air build directory
+tmp/
+
+# Air build error log
+build-errors.log
