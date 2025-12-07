@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 // Simulator bypass constants - only used in development
 const (
-	simulatorBypassToken  = "simulator-dev-token-bypass"
+	simulatorBypassToken  = "simulator-dev-token-bypass" // Legacy format (deprecated)
 	simulatorBypassHeader = "X-Simulator-Bypass"
 	simulatorUserID       = "00000000-0000-0000-0000-000000000001" // Valid UUID for database compatibility
 )
@@ -35,6 +36,49 @@ func isSimulatorBypassEnabled() bool {
 	return env == "development"
 }
 
+// isSimulatorToken checks if the token is a simulator bypass token.
+// Supports both the legacy format and the new JWT format.
+// JWT format: {"alg":"none","typ":"JWT"}.{"sub":"00000000-0000-0000-0000-000000000001","exp":9999999999}.
+func isSimulatorToken(token string) bool {
+	// Check legacy format
+	if token == simulatorBypassToken {
+		return true
+	}
+
+	// Check JWT format by parsing the payload
+	// JWT structure: header.payload.signature (base64url encoded)
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return false
+	}
+
+	// Decode the payload (second part)
+	// The payload should contain {"sub":"00000000-0000-0000-0000-000000000001",...}
+	// We just check if the token contains the simulator user ID in the sub claim
+	payload := parts[1]
+
+	// Base64url decode (need to handle padding)
+	// Add padding if needed
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+
+	// Replace URL-safe characters
+	payload = strings.ReplaceAll(payload, "-", "+")
+	payload = strings.ReplaceAll(payload, "_", "/")
+
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return false
+	}
+
+	// Check if the decoded payload contains the simulator user ID
+	return strings.Contains(string(decoded), simulatorUserID)
+}
+
 // AuthMiddleware creates a Gin middleware for authenticating requests using JWT.
 // It validates the JWT token, resolves the Supabase User ID to an internal UUID,
 // and stores both the Supabase ID and internal user information in the context.
@@ -46,11 +90,10 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 		// DEVELOPMENT ONLY: Check for simulator bypass
 		// This allows iOS simulator development without real authentication
 		if isSimulatorBypassEnabled() {
-			bypassHeader := c.GetHeader(simulatorBypassHeader)
 			authHeader := c.GetHeader("Authorization")
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
-			if bypassHeader == "true" && token == simulatorBypassToken {
+			if isSimulatorToken(token) {
 				log.Warnw("SIMULATOR BYPASS ACTIVE - Using mock authentication (development only)",
 					"path", requestPath)
 

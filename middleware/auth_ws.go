@@ -45,7 +45,7 @@ func WSJwtAuth(validator Validator) gin.HandlerFunc {
 
 		// DEVELOPMENT ONLY: Check for simulator bypass
 		// This allows iOS simulator development without real authentication
-		if isWSSimulatorBypassEnabled() && tokenString == simulatorBypassToken {
+		if isWSSimulatorBypassEnabled() && isSimulatorToken(tokenString) {
 			log.Warnw("WEBSOCKET SIMULATOR BYPASS ACTIVE - Using mock authentication (development only)",
 				"path", c.Request.URL.Path)
 
