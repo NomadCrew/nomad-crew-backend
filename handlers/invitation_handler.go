@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
@@ -93,12 +95,34 @@ func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 		return
 	}
 
+	// Generate invitation ID
+	invitationID := uuid.New().String()
+	inviteeEmail := strings.ToLower(req.Email)
+
+	// Set expiry to 7 days from now
+	expiryDuration := 7 * 24 * time.Hour
+	expiresAt := time.Now().Add(expiryDuration)
+
+	// Generate JWT token for the invitation
+	token, err := auth.GenerateInvitationToken(invitationID, tripID, inviteeEmail, h.serverConfig.JwtSecretKey, expiryDuration)
+	if err != nil {
+		log.Errorw("Failed to generate invitation token", "error", err, "tripID", tripID)
+		handleModelError(c, apperrors.InternalServerError("failed to generate invitation token"))
+		return
+	}
+
+	// Normalize role to uppercase to match database enum
+	normalizedRole := types.MemberRole(strings.ToUpper(string(req.Role)))
+
 	invitation := &types.TripInvitation{
+		ID:           invitationID,
 		TripID:       tripID,
 		InviterID:    inviterID,
-		InviteeEmail: strings.ToLower(req.Email),
-		Role:         req.Role,
+		InviteeEmail: inviteeEmail,
+		Role:         normalizedRole,
 		Status:       types.InvitationStatusPending,
+		Token:        sql.NullString{String: token, Valid: true},
+		ExpiresAt:    &expiresAt,
 	}
 
 	if err := h.tripModel.CreateInvitation(c.Request.Context(), invitation); err != nil {
@@ -182,6 +206,14 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 			"acceptingUserEmail", acceptingUser.Email,
 			"acceptingUserID", acceptingUserID)
 		handleModelError(c, apperrors.Forbidden("email_mismatch", "You can only accept invitations sent to your email address."))
+		return
+	}
+
+	// Check if user is already a member of this trip
+	existingRole, err := h.tripModel.GetUserRole(c.Request.Context(), invitation.TripID, acceptingUserID)
+	if err == nil && existingRole != "" {
+		log.Warnw("User already a member of trip", "tripID", invitation.TripID, "userID", acceptingUserID, "role", existingRole)
+		handleModelError(c, apperrors.Conflict("already_member", "You are already a member of this trip."))
 		return
 	}
 
