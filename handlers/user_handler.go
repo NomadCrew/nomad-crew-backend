@@ -34,12 +34,14 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		// Public endpoints
 		userRoutes.GET("/me", h.GetCurrentUser)
+		userRoutes.GET("/search", h.SearchUsers)
 
 		// Auth required endpoints
 		userRoutes.GET("/:id", h.GetUserByID)
 		userRoutes.GET("", h.ListUsers)
 		userRoutes.PUT("/:id", h.UpdateUser)
 		userRoutes.PUT("/:id/preferences", h.UpdateUserPreferences)
+		userRoutes.PUT("/me/contact-email", h.UpdateContactEmail)
 
 		// Admin only endpoints - would need proper middleware
 		// userRoutes.POST("", h.CreateUser)
@@ -563,4 +565,130 @@ func (h *UserHandler) OnboardUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, profile)
+}
+
+// SearchUsers godoc
+// @Summary Search users
+// @Description Search for users by username, email, contact_email, first name, or last name
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param q query string true "Search query (min 2 characters)"
+// @Param limit query int false "Max results (default 10, max 20)"
+// @Param tripId query string false "Trip ID to check membership (marks users as isMember)"
+// @Success 200 {object} types.UserSearchResponse "Search results"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid query"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /users/search [get]
+// @Security BearerAuth
+func (h *UserHandler) SearchUsers(c *gin.Context) {
+	// Parse query parameters
+	query := c.Query("q")
+	if len(query) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Search query must be at least 2 characters"})
+		return
+	}
+
+	limitStr := c.DefaultQuery("limit", "10")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 || limit > 20 {
+		limit = 10
+	}
+
+	tripID := c.Query("tripId")
+
+	// Search users
+	results, err := h.userService.SearchUsers(c.Request.Context(), query, limit)
+	if err != nil {
+		var status int
+		var message string
+
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			status = appErr.GetHTTPStatus()
+			message = appErr.Error()
+		} else {
+			status = http.StatusInternalServerError
+			message = "Failed to search users"
+		}
+
+		c.JSON(status, gin.H{"error": message})
+		return
+	}
+
+	// If tripId is provided, check membership for each user
+	// This would need TripStore access - for now, just return results without membership info
+	// TODO: Add trip membership check when TripStore is available in this handler
+	_ = tripID // Silence unused variable warning
+
+	c.JSON(http.StatusOK, types.UserSearchResponse{Users: derefUserSearchResults(results)})
+}
+
+// UpdateContactEmail godoc
+// @Summary Update contact email
+// @Description Updates the current user's contact email (for Apple Sign-In users with private relay emails)
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param request body types.UpdateContactEmailRequest true "Contact email"
+// @Success 200 {object} map[string]string "Contact email updated"
+// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid email format"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized - No authenticated user"
+// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Router /users/me/contact-email [put]
+// @Security BearerAuth
+func (h *UserHandler) UpdateContactEmail(c *gin.Context) {
+	// Get the internal user ID from enhanced middleware
+	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
+		return
+	}
+
+	// Parse the UUID
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// Parse request body
+	var req types.UpdateContactEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: email is required"})
+		return
+	}
+
+	// Update contact email
+	err = h.userService.UpdateContactEmail(c.Request.Context(), id, req.Email)
+	if err != nil {
+		var status int
+		var message string
+
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			status = appErr.GetHTTPStatus()
+			message = appErr.Error()
+		} else if strings.Contains(err.Error(), "validation") {
+			status = http.StatusBadRequest
+			message = err.Error()
+		} else {
+			status = http.StatusInternalServerError
+			message = "Failed to update contact email"
+		}
+
+		c.JSON(status, gin.H{"error": message})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"contactEmail": req.Email})
+}
+
+// derefUserSearchResults converts []*types.UserSearchResult to []types.UserSearchResult
+func derefUserSearchResults(results []*types.UserSearchResult) []types.UserSearchResult {
+	out := make([]types.UserSearchResult, len(results))
+	for i, r := range results {
+		if r != nil {
+			out[i] = *r
+		}
+	}
+	return out
 }

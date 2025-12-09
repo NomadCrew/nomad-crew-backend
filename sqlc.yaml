@@ -6,6 +6,8 @@ sql:
       - "db/migrations/000001_init.up.sql"
       - "db/migrations/000002_fix_foreign_key_constraints.up.sql"
       - "db/migrations/000003_schema_cleanup.up.sql"
+      - "db/migrations/000005_add_push_tokens.up.sql"
+      - "db/migrations/000006_add_contact_email.up.sql"
     gen:
       go:
         package: "sqlc"

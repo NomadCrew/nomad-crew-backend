@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	internal_errors "github.com/NomadCrew/nomad-crew-backend/internal/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
@@ -47,14 +48,27 @@ func NewInvitationService(
 
 // CreateInvitation creates a new trip invitation
 func (s *InvitationService) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
+	log := logger.GetLogger()
+
 	// Check if the invitation already exists for this email and trip
 	existingInvitation, err := s.FindInvitationByTripAndEmail(ctx, invitation.TripID, invitation.InviteeEmail)
 	if err == nil && existingInvitation != nil {
-		// Update the existing invitation's status to pending
+		log.Infow("Found existing invitation for email, will resend",
+			"invitationID", existingInvitation.ID,
+			"email", invitation.InviteeEmail,
+			"status", existingInvitation.Status)
+
+		// Update the existing invitation's status to pending if not already
 		if existingInvitation.Status != types.InvitationStatusPending {
-			return s.UpdateInvitationStatus(ctx, existingInvitation.ID, types.InvitationStatusPending)
+			if updateErr := s.UpdateInvitationStatus(ctx, existingInvitation.ID, types.InvitationStatusPending); updateErr != nil {
+				return updateErr
+			}
 		}
-		return nil // Invitation already exists and is pending
+
+		// Always resend the email for existing pending invitations
+		// This allows users to "resend" invitations
+		log.Infow("Resending invitation email", "invitationID", existingInvitation.ID, "email", invitation.InviteeEmail)
+		return s.sendInvitationEmail(ctx, existingInvitation)
 	}
 
 	// Create a new invitation
@@ -130,16 +144,22 @@ func (s *InvitationService) sendInvitationEmail(ctx context.Context, invitation 
 		return err
 	}
 
+	// Build the full invitation URL (pre-compute to avoid html/template URL ambiguity)
+	baseURL := s.frontendURL
+	if baseURL == "" {
+		baseURL = "https://nomadcrew.uk"
+	}
+	invitationURL := fmt.Sprintf("%s/invite/accept/%s", baseURL, invitation.Token.String)
+
 	// Prepare email data using the correct struct
+	// Email service requires: UserEmail, TripName, InvitationURL
 	emailData := types.EmailData{
 		To:      invitation.InviteeEmail,
-		Subject: "You're invited to join a trip on NomadCrew!", // Example subject
+		Subject: "You're invited to join a trip on NomadCrew!",
 		TemplateData: map[string]interface{}{
-			"TripID":          invitation.TripID,
-			"TripName":        trip.Name,
-			"InviterID":       invitation.InviterID, // Consider sending inviter name instead
-			"InvitationToken": invitation.Token,
-			"FrontendURL":     s.frontendURL,
+			"UserEmail":     invitation.InviteeEmail,
+			"TripName":      trip.Name,
+			"InvitationURL": invitationURL,
 		},
 	}
 

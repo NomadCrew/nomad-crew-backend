@@ -63,6 +63,7 @@ type User struct {
 	FirstName         string                 `json:"firstName,omitempty" db:"first_name"`
 	LastName          string                 `json:"lastName,omitempty" db:"last_name"`
 	Email             string                 `json:"email" db:"email"`
+	ContactEmail      *string                `json:"contactEmail,omitempty" db:"contact_email"` // User-provided discoverable email (for Apple Sign-In users)
 	CreatedAt         time.Time              `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time              `json:"updated_at" db:"updated_at"`
 	ProfilePictureURL string                 `json:"profilePictureUrl,omitempty" db:"profile_picture_url"`
@@ -109,4 +110,27 @@ type UserUpdateRequest struct {
 	FirstName         *string `json:"firstName,omitempty"`
 	LastName          *string `json:"lastName,omitempty"`
 	ProfilePictureURL *string `json:"profilePictureUrl,omitempty"`
+}
+
+// UpdateContactEmailRequest represents a request to update user's contact email
+type UpdateContactEmailRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// UserSearchResult represents a user in search results
+// Used for autocomplete in invitation flows
+type UserSearchResult struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	Username     string `json:"username"`
+	FirstName    string `json:"firstName,omitempty"`
+	LastName     string `json:"lastName,omitempty"`
+	AvatarURL    string `json:"avatarUrl,omitempty"`
+	ContactEmail string `json:"contactEmail,omitempty"`
+	IsMember     bool   `json:"isMember,omitempty"` // Whether user is already a member of the trip (when tripId provided)
+}
+
+// UserSearchResponse represents the API response for user search
+type UserSearchResponse struct {
+	Users []UserSearchResult `json:"users"`
 }

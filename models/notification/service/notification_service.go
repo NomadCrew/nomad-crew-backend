@@ -10,6 +10,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store" // Import for internal store types
 	"github.com/NomadCrew/nomad-crew-backend/models"
+	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/store" // Keep for NotificationStore and TripStore (old)
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
@@ -34,6 +35,7 @@ type notificationService struct {
 	userStore         istore.UserStore        // Changed to internal/store.UserStore
 	tripStore         store.TripStore         // Remains old store.TripStore
 	eventPublisher    types.EventPublisher
+	pushService       services.PushService // Push notification service (optional)
 	logger            *zap.Logger
 }
 
@@ -44,6 +46,18 @@ func NewNotificationService(ns store.NotificationStore, us istore.UserStore, ts 
 		userStore:         us, // us is now istore.UserStore
 		tripStore:         ts,
 		eventPublisher:    ep,
+		logger:            logger.Named("NotificationService"),
+	}
+}
+
+// NewNotificationServiceWithPush creates a new NotificationService with push notification support.
+func NewNotificationServiceWithPush(ns store.NotificationStore, us istore.UserStore, ts store.TripStore, ep types.EventPublisher, ps services.PushService, logger *zap.Logger) NotificationService {
+	return &notificationService{
+		notificationStore: ns,
+		userStore:         us,
+		tripStore:         ts,
+		eventPublisher:    ep,
+		pushService:       ps,
 		logger:            logger.Named("NotificationService"),
 	}
 }
@@ -119,7 +133,144 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 		}
 	}()
 
+	// 5. Send push notification if push service is configured
+	if s.pushService != nil {
+		go s.sendPushNotification(notification, metadataInput)
+	}
+
 	return notification, nil
+}
+
+// sendPushNotification sends a push notification for the given notification
+func (s *notificationService) sendPushNotification(notification *models.Notification, metadataInput interface{}) {
+	log := s.logger.With(
+		zap.String("operation", "sendPushNotification"),
+		zap.String("notificationID", notification.ID.String()),
+		zap.String("userID", notification.UserID.String()),
+		zap.String("type", notification.Type),
+	)
+
+	// Build push notification content based on notification type
+	pushNotification := s.buildPushNotification(notification.Type, metadataInput)
+	if pushNotification == nil {
+		log.Debug("No push notification configured for this type")
+		return
+	}
+
+	// Add notification ID to data payload for deep linking
+	if pushNotification.Data == nil {
+		pushNotification.Data = make(map[string]interface{})
+	}
+	pushNotification.Data["notificationId"] = notification.ID.String()
+	pushNotification.Data["type"] = notification.Type
+
+	// Use background context for async push notification
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := s.pushService.SendPushNotification(ctx, notification.UserID.String(), pushNotification); err != nil {
+		log.Error("Failed to send push notification", zap.Error(err))
+	} else {
+		log.Debug("Push notification sent successfully")
+	}
+}
+
+// buildPushNotification creates a push notification based on the notification type
+func (s *notificationService) buildPushNotification(notificationType string, metadataInput interface{}) *services.PushNotification {
+	// Convert metadata to map for easier access
+	var metadata map[string]interface{}
+	if metadataInput != nil {
+		data, err := json.Marshal(metadataInput)
+		if err == nil {
+			_ = json.Unmarshal(data, &metadata)
+		}
+	}
+
+	switch notificationType {
+	case "TRIP_INVITATION", "TRIP_INVITATION_RECEIVED":
+		inviterName := getStringFromMap(metadata, "inviterName", "Someone")
+		tripName := getStringFromMap(metadata, "tripName", "a trip")
+		return &services.PushNotification{
+			Title: "Trip Invitation",
+			Body:  fmt.Sprintf("%s invited you to join %s", inviterName, tripName),
+			Data:  metadata,
+		}
+
+	case "TRIP_MEMBER_JOINED":
+		memberName := getStringFromMap(metadata, "memberName", "A member")
+		tripName := getStringFromMap(metadata, "tripName", "your trip")
+		return &services.PushNotification{
+			Title: "New Member",
+			Body:  fmt.Sprintf("%s joined %s", memberName, tripName),
+			Data:  metadata,
+		}
+
+	case "TRIP_MEMBER_LEFT":
+		memberName := getStringFromMap(metadata, "memberName", "A member")
+		tripName := getStringFromMap(metadata, "tripName", "your trip")
+		return &services.PushNotification{
+			Title: "Member Left",
+			Body:  fmt.Sprintf("%s left %s", memberName, tripName),
+			Data:  metadata,
+		}
+
+	case "TRIP_UPDATED":
+		tripName := getStringFromMap(metadata, "tripName", "A trip")
+		return &services.PushNotification{
+			Title: "Trip Updated",
+			Body:  fmt.Sprintf("%s has been updated", tripName),
+			Data:  metadata,
+		}
+
+	case "CHAT_MESSAGE":
+		senderName := getStringFromMap(metadata, "senderName", "Someone")
+		message := getStringFromMap(metadata, "preview", "sent a message")
+		return &services.PushNotification{
+			Title: senderName,
+			Body:  message,
+			Data:  metadata,
+		}
+
+	case "TODO_ASSIGNED":
+		assignerName := getStringFromMap(metadata, "assignerName", "Someone")
+		todoTitle := getStringFromMap(metadata, "todoTitle", "a task")
+		return &services.PushNotification{
+			Title: "Task Assigned",
+			Body:  fmt.Sprintf("%s assigned you: %s", assignerName, todoTitle),
+			Data:  metadata,
+		}
+
+	case "TODO_COMPLETED":
+		completerName := getStringFromMap(metadata, "completerName", "Someone")
+		todoTitle := getStringFromMap(metadata, "todoTitle", "a task")
+		return &services.PushNotification{
+			Title: "Task Completed",
+			Body:  fmt.Sprintf("%s completed: %s", completerName, todoTitle),
+			Data:  metadata,
+		}
+
+	default:
+		// For unknown types, create a generic notification
+		s.logger.Debug("Unknown notification type for push", zap.String("type", notificationType))
+		return &services.PushNotification{
+			Title: "NomadCrew",
+			Body:  "You have a new notification",
+			Data:  metadata,
+		}
+	}
+}
+
+// getStringFromMap safely extracts a string from a map
+func getStringFromMap(m map[string]interface{}, key, defaultValue string) string {
+	if m == nil {
+		return defaultValue
+	}
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return defaultValue
 }
 
 // Helper function example: Populate metadata and trigger notification creation/publish

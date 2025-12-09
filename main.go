@@ -146,6 +146,9 @@ func main() {
 	userDB := sqlcadapter.NewSqlcUserStore(dbClient.GetPool(), cfg.ExternalServices.SupabaseURL, cfg.ExternalServices.SupabaseJWTSecret)
 	log.Info("Using SQLC-based user store")
 
+	pushTokenStore := sqlcadapter.NewSqlcPushTokenStore(dbClient.GetPool())
+	log.Info("Using SQLC-based push token store")
+
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
 	redisClient := redis.NewClient(redisOptions)
@@ -202,8 +205,12 @@ func main() {
 	emailService := services.NewEmailService(&cfg.Email)
 	healthService := services.NewHealthService(dbClient.GetPool(), redisClient, cfg.Server.Version)
 
-	// Initialize notification service with correct dependencies
-	notificationService := notificationSvc.NewNotificationService(notificationDB, userDB, tripStore, eventService, log.Desugar())
+	// Initialize push notification service
+	pushService := services.NewExpoPushService(pushTokenStore, log.Desugar())
+	log.Info("Push notification service initialized")
+
+	// Initialize notification service with push notification support
+	notificationService := notificationSvc.NewNotificationServiceWithPush(notificationDB, userDB, tripStore, eventService, pushService, log.Desugar())
 
 	// Initialize refactored location service
 	locationManagementService := locationSvc.NewManagementService(
@@ -228,7 +235,8 @@ func main() {
 	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
 
 	// Initialize User Service and Handler
-	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret, supabaseService)
+	// Pass jwtValidator to enable JWKS validation for onboarding (new Supabase API keys)
+	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret, supabaseService, jwtValidator)
 	userHandler := handlers.NewUserHandler(userService)
 
 	// Initialize Pexels client
@@ -247,7 +255,8 @@ func main() {
 	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
 	memberHandler := handlers.NewMemberHandler(tripModel, userDB, eventService)
-	invitationHandler := handlers.NewInvitationHandler(tripModel, userDB, eventService, &cfg.Server)
+	invitationHandler := handlers.NewInvitationHandlerWithNotifications(tripModel, userDB, eventService, &cfg.Server, notificationService)
+	pushTokenHandler := handlers.NewPushTokenHandler(pushTokenStore, log.Desugar())
 
 	// Initialize Supabase Realtime handlers (always enabled)
 	chatHandlerSupabase := handlers.NewChatHandlerSupabase(
@@ -288,6 +297,7 @@ func main() {
 	routerDeps.ChatHandlerSupabase = chatHandlerSupabase
 	routerDeps.LocationHandlerSupabase = locationHandlerSupabase
 	routerDeps.WebSocketHandler = wsHandler
+	routerDeps.PushTokenHandler = pushTokenHandler
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)

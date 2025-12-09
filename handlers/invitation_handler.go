@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/command"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	notificationSvc "github.com/NomadCrew/nomad-crew-backend/models/notification/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,10 +23,11 @@ import (
 
 // InvitationHandler handles HTTP requests related to trip invitations.
 type InvitationHandler struct {
-	tripModel    interfaces.TripModelInterface
-	userStore    store.UserStore
-	eventService types.EventPublisher
-	serverConfig *config.ServerConfig
+	tripModel           interfaces.TripModelInterface
+	userStore           store.UserStore
+	eventService        types.EventPublisher
+	serverConfig        *config.ServerConfig
+	notificationService notificationSvc.NotificationService
 }
 
 // NewInvitationHandler creates a new InvitationHandler.
@@ -39,6 +42,23 @@ func NewInvitationHandler(
 		userStore:    userStore,
 		eventService: eventService,
 		serverConfig: serverConfig,
+	}
+}
+
+// NewInvitationHandlerWithNotifications creates a new InvitationHandler with notification support.
+func NewInvitationHandlerWithNotifications(
+	tripModel interfaces.TripModelInterface,
+	userStore store.UserStore,
+	eventService types.EventPublisher,
+	serverConfig *config.ServerConfig,
+	notificationService notificationSvc.NotificationService,
+) *InvitationHandler {
+	return &InvitationHandler{
+		tripModel:           tripModel,
+		userStore:           userStore,
+		eventService:        eventService,
+		serverConfig:        serverConfig,
+		notificationService: notificationService,
 	}
 }
 
@@ -130,6 +150,17 @@ func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 		return
 	}
 
+	// Send push notification to invitee if they're a registered user and notification service is available
+	// Note: Use a background context with timeout since the HTTP request context will be canceled
+	// after the response is sent, which would cause the goroutine's database queries to fail.
+	if h.notificationService != nil {
+		notifyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		go func() {
+			defer cancel()
+			h.sendInvitationNotification(notifyCtx, invitation, inviterID, tripID)
+		}()
+	}
+
 	c.JSON(http.StatusCreated, invitation)
 }
 
@@ -213,7 +244,7 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 	existingRole, err := h.tripModel.GetUserRole(c.Request.Context(), invitation.TripID, acceptingUserID)
 	if err == nil && existingRole != "" {
 		log.Warnw("User already a member of trip", "tripID", invitation.TripID, "userID", acceptingUserID, "role", existingRole)
-		handleModelError(c, apperrors.Conflict("already_member", "You are already a member of this trip."))
+		handleModelError(c, apperrors.NewConflictError("already_member", "You are already a member of this trip."))
 		return
 	}
 
@@ -437,3 +468,70 @@ func (h *InvitationHandler) GetInvitationDetails(c *gin.Context) {
 
 // Note: handleModelError is assumed to be available from the member_handler.go or a shared utility.
 // If it's not in the same package or a shared one, it needs to be defined/imported.
+
+// sendInvitationNotification sends a push notification to the invitee if they're a registered user
+func (h *InvitationHandler) sendInvitationNotification(ctx context.Context, invitation *types.TripInvitation, inviterID, tripID string) {
+	log := logger.GetLogger()
+
+	// Look up the invitee by email to see if they're a registered user
+	invitee, err := h.userStore.GetUserByEmail(ctx, invitation.InviteeEmail)
+	if err != nil {
+		// User not found - they're not registered yet, so no push notification
+		log.Debugw("Invitee not registered, skipping push notification",
+			"email", invitation.InviteeEmail,
+			"tripID", tripID)
+		return
+	}
+
+	// Get trip details for the notification
+	trip, err := h.tripModel.GetTrip(ctx, tripID)
+	if err != nil {
+		log.Errorw("Failed to get trip for notification", "tripID", tripID, "error", err)
+		return
+	}
+
+	// Get inviter details
+	inviter, err := h.userStore.GetUserByID(ctx, inviterID)
+	if err != nil {
+		log.Errorw("Failed to get inviter for notification", "inviterID", inviterID, "error", err)
+		return
+	}
+
+	// Parse invitee UUID
+	inviteeUUID, err := uuid.Parse(invitee.ID)
+	if err != nil {
+		log.Errorw("Failed to parse invitee UUID", "inviteeID", invitee.ID, "error", err)
+		return
+	}
+
+	// Build notification metadata
+	metadata := map[string]interface{}{
+		"inviterName":  inviter.GetFullName(),
+		"inviterID":    inviterID,
+		"tripID":       tripID,
+		"tripName":     trip.Name,
+		"invitationID": invitation.ID,
+	}
+
+	// Create the notification via the notification service
+	// This will also trigger a push notification
+	// Note: Using TRIP_INVITATION_RECEIVED to match the notification_type enum in the database
+	_, err = h.notificationService.CreateAndPublishNotification(
+		ctx,
+		inviteeUUID,
+		"TRIP_INVITATION_RECEIVED",
+		metadata,
+	)
+	if err != nil {
+		log.Errorw("Failed to create invitation notification",
+			"inviteeID", invitee.ID,
+			"tripID", tripID,
+			"error", err)
+		return
+	}
+
+	log.Infow("Sent push notification for invitation",
+		"inviteeID", invitee.ID,
+		"inviteeEmail", invitation.InviteeEmail,
+		"tripID", tripID)
+}

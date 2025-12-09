@@ -6,6 +6,7 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE id = $1;
@@ -16,6 +17,7 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE email = $1;
@@ -26,6 +28,7 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE username = $1;
@@ -62,27 +65,56 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2;
 
 -- name: SearchUserProfiles :many
+-- Fuzzy search across username, email, contact_email, first_name, and last_name
+-- Results are ordered by relevance: exact prefix matches first, then partial matches
 SELECT
     id, email, username,
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE
     username ILIKE '%' || $1 || '%'
     OR email ILIKE '%' || $1 || '%'
-ORDER BY username ASC
-LIMIT 20;
+    OR contact_email ILIKE '%' || $1 || '%'
+    OR first_name ILIKE '%' || $1 || '%'
+    OR last_name ILIKE '%' || $1 || '%'
+ORDER BY
+    -- Prioritize exact prefix matches on username
+    CASE WHEN username ILIKE $1 || '%' THEN 0 ELSE 1 END,
+    -- Then exact prefix matches on email/contact_email
+    CASE WHEN email ILIKE $1 || '%' OR contact_email ILIKE $1 || '%' THEN 0 ELSE 1 END,
+    username ASC
+LIMIT $2;
 
 -- name: CheckUsernameExists :one
 SELECT EXISTS(SELECT 1 FROM user_profiles WHERE username = $1) as exists;
 
 -- name: CheckEmailExists :one
 SELECT EXISTS(SELECT 1 FROM user_profiles WHERE email = $1) as exists;
+
+-- name: UpdateUserContactEmail :exec
+UPDATE user_profiles
+SET contact_email = $2, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1;
+
+-- name: GetUserProfileByContactEmail :one
+-- Find user by their discoverable contact_email (for invitation lookups)
+SELECT
+    id, email, username,
+    COALESCE(first_name, '') as first_name,
+    COALESCE(last_name, '') as last_name,
+    COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
+    created_at, updated_at
+FROM user_profiles
+WHERE contact_email = $1;

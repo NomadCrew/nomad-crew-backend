@@ -27,7 +27,7 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 		log := logger.GetLogger()
 
 		tripID := c.Param("id")
-		userID := c.GetString("user_id")
+		userID := c.GetString(string(UserIDKey))
 
 		// More detailed logging of all context values
 		log.Debugw("RBAC Check Initiated",
@@ -124,7 +124,7 @@ func RequirePermission(
 		log := logger.GetLogger()
 
 		tripID := c.Param("id")
-		userID := c.GetString("user_id")
+		userID := c.GetString(string(UserIDKey))
 
 		log.Debugw("Permission check initiated",
 			"tripID", tripID,
@@ -241,7 +241,7 @@ func RequireTripMembership(tripModel tripinterfaces.TripModelInterface) gin.Hand
 		log := logger.GetLogger()
 
 		tripID := c.Param("id")
-		userID := c.GetString("user_id")
+		userID := c.GetString(string(UserIDKey))
 
 		if tripID == "" || userID == "" {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{

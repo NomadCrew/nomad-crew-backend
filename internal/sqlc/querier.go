@@ -13,6 +13,10 @@ type Querier interface {
 	AddMessageReaction(ctx context.Context, arg AddMessageReactionParams) error
 	CheckEmailExists(ctx context.Context, email string) (bool, error)
 	CheckUsernameExists(ctx context.Context, username string) (bool, error)
+	// Removes inactive tokens older than 30 days
+	CleanupOldInactiveTokens(ctx context.Context) error
+	// Counts active tokens for a user
+	CountActiveTokens(ctx context.Context, userID string) (int64, error)
 	CountCompletedTodosByTrip(ctx context.Context, tripID string) (int64, error)
 	CountPendingInvitationsForTrip(ctx context.Context, tripID string) (int64, error)
 	CountTodosByTrip(ctx context.Context, tripID string) (int64, error)
@@ -35,13 +39,21 @@ type Querier interface {
 	// Trips CRUD Operations
 	CreateTrip(ctx context.Context, arg CreateTripParams) (string, error)
 	CreateUserProfile(ctx context.Context, arg CreateUserProfileParams) (string, error)
+	// Deactivates all tokens for a user (e.g., on account delete or forced logout)
+	DeactivateAllUserTokens(ctx context.Context, userID string) error
 	DeactivateMembership(ctx context.Context, arg DeactivateMembershipParams) error
+	// Deactivates a specific token (e.g., on logout)
+	DeactivatePushToken(ctx context.Context, arg DeactivatePushTokenParams) error
 	DeleteExpiredInvitations(ctx context.Context) error
 	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) error
 	DeleteOldNotifications(ctx context.Context) error
 	// Disable location sharing that has expired
 	DisableExpiredSharing(ctx context.Context) error
 	GetActiveMembership(ctx context.Context, arg GetActiveMembershipParams) (*GetActiveMembershipRow, error)
+	// Gets all active push tokens for a user
+	GetActiveTokensForUser(ctx context.Context, userID string) ([]*UserPushToken, error)
+	// Gets all active push tokens for multiple users (for batch sending)
+	GetActiveTokensForUsers(ctx context.Context, dollar_1 []string) ([]*UserPushToken, error)
 	GetChatGroup(ctx context.Context, id string) (*GetChatGroupRow, error)
 	GetChatGroupByTrip(ctx context.Context, tripID string) (*GetChatGroupByTripRow, error)
 	GetChatGroupMembers(ctx context.Context, groupID string) ([]*ChatGroupMember, error)
@@ -72,11 +84,15 @@ type Querier interface {
 	// Get the latest location for a user in a specific trip
 	GetUserLocationInTrip(ctx context.Context, arg GetUserLocationInTripParams) (*GetUserLocationInTripRow, error)
 	GetUserNotifications(ctx context.Context, arg GetUserNotificationsParams) ([]*Notification, error)
+	// Find user by their discoverable contact_email (for invitation lookups)
+	GetUserProfileByContactEmail(ctx context.Context, contactEmail *string) (*GetUserProfileByContactEmailRow, error)
 	GetUserProfileByEmail(ctx context.Context, email string) (*GetUserProfileByEmailRow, error)
 	// Users Operations (using user_profiles table)
 	GetUserProfileByID(ctx context.Context, id string) (*GetUserProfileByIDRow, error)
 	GetUserProfileByUsername(ctx context.Context, username string) (*GetUserProfileByUsernameRow, error)
 	GetUserRole(ctx context.Context, arg GetUserRoleParams) (MembershipRole, error)
+	// Marks a token as invalid (e.g., when Expo reports it as invalid)
+	InvalidateToken(ctx context.Context, token string) error
 	IsUserMember(ctx context.Context, arg IsUserMemberParams) (bool, error)
 	// Get all trips where user is a member (active membership)
 	ListMemberTrips(ctx context.Context, userID string) ([]*ListMemberTripsRow, error)
@@ -87,11 +103,16 @@ type Querier interface {
 	ListUserTrips(ctx context.Context, createdBy *string) ([]*ListUserTripsRow, error)
 	MarkAllNotificationsRead(ctx context.Context, userID string) error
 	MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) error
+	// Push Token Operations
+	// Upserts a push token for a user (updates if already exists)
+	RegisterPushToken(ctx context.Context, arg RegisterPushTokenParams) (*UserPushToken, error)
 	RemoveChatGroupMember(ctx context.Context, arg RemoveChatGroupMemberParams) error
 	RemoveMessageReaction(ctx context.Context, arg RemoveMessageReactionParams) error
 	// Search trips by destination name/address with optional date filters
 	SearchTrips(ctx context.Context, arg SearchTripsParams) ([]*SearchTripsRow, error)
-	SearchUserProfiles(ctx context.Context, dollar_1 *string) ([]*SearchUserProfilesRow, error)
+	// Fuzzy search across username, email, contact_email, first_name, and last_name
+	// Results are ordered by relevance: exact prefix matches first, then partial matches
+	SearchUserProfiles(ctx context.Context, arg SearchUserProfilesParams) ([]*SearchUserProfilesRow, error)
 	SoftDeleteChatMessage(ctx context.Context, arg SoftDeleteChatMessageParams) error
 	SoftDeleteLocation(ctx context.Context, id string) error
 	SoftDeleteTodo(ctx context.Context, id string) error
@@ -104,11 +125,14 @@ type Querier interface {
 	UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error
 	UpdateTodoStatus(ctx context.Context, arg UpdateTodoStatusParams) error
 	UpdateTodoText(ctx context.Context, arg UpdateTodoTextParams) error
+	// Updates the last_used_at timestamp for a token
+	UpdateTokenLastUsed(ctx context.Context, token string) error
 	UpdateTripDates(ctx context.Context, arg UpdateTripDatesParams) error
 	UpdateTripDescription(ctx context.Context, arg UpdateTripDescriptionParams) error
 	UpdateTripDestination(ctx context.Context, arg UpdateTripDestinationParams) error
 	UpdateTripName(ctx context.Context, arg UpdateTripNameParams) error
 	UpdateTripStatus(ctx context.Context, arg UpdateTripStatusParams) error
+	UpdateUserContactEmail(ctx context.Context, arg UpdateUserContactEmailParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpsertMembership(ctx context.Context, arg UpsertMembershipParams) error
 	UpsertUserProfile(ctx context.Context, arg UpsertUserProfileParams) (string, error)

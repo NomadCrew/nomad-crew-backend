@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/auth"
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -18,18 +19,28 @@ import (
 	"github.com/google/uuid"
 )
 
+// JWTValidator defines the interface for JWT validation (from middleware package).
+// This avoids circular import while allowing UserService to use JWKS validation.
+type JWTValidator interface {
+	Validate(tokenString string) (string, error)
+	ValidateAndGetClaims(tokenString string) (*types.JWTClaims, error)
+}
+
 // UserService manages user operations
 type UserService struct {
 	userStore       istore.UserStore
 	jwtSecret       string
+	jwtValidator    JWTValidator
 	supabaseService *services.SupabaseService
 }
 
-// NewUserService creates a new UserService
-func NewUserService(userStore istore.UserStore, jwtSecret string, supabaseService *services.SupabaseService) *UserService {
+// NewUserService creates a new UserService.
+// jwtValidator is optional (can be nil) for backwards compatibility - if nil, falls back to HS256 jwtSecret.
+func NewUserService(userStore istore.UserStore, jwtSecret string, supabaseService *services.SupabaseService, jwtValidator JWTValidator) *UserService {
 	return &UserService{
 		userStore:       userStore,
 		jwtSecret:       jwtSecret,
+		jwtValidator:    jwtValidator,
 		supabaseService: supabaseService,
 	}
 }
@@ -747,6 +758,11 @@ func generateUsernameFromEmail(email string) string {
 }
 
 func (s *UserService) ValidateAndExtractClaims(tokenString string) (*types.JWTClaims, error) {
+	// Prefer JWKS validator if available (supports new Supabase API keys)
+	if s.jwtValidator != nil {
+		return s.jwtValidator.ValidateAndGetClaims(tokenString)
+	}
+	// Fallback to legacy HS256 validation
 	return auth.ValidateAccessToken(tokenString, s.jwtSecret)
 }
 
@@ -768,8 +784,14 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 
 	// Try to get user by SupabaseID (UserID in claims)
 	typesUser, err := s.userStore.GetUserBySupabaseID(ctx, claims.UserID)
-	if err != nil && err.Error() != "user not found: no rows in result set" {
-		return nil, err
+	if err != nil {
+		// Check if it's a "not found" error - this is expected for new users
+		if appErr, ok := err.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
+			// User doesn't exist yet, continue to creation flow
+			typesUser = nil
+		} else {
+			return nil, err
+		}
 	}
 
 	if typesUser == nil {
@@ -824,4 +846,49 @@ func (s *UserService) OnboardUserFromJWTClaims(ctx context.Context, claims *type
 		}
 	}
 	return s.GetUserProfile(ctx, uuid.MustParse(typesUser.ID))
+}
+
+// SearchUsers searches for users by query across username, email, contact_email, first_name, last_name
+func (s *UserService) SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error) {
+	log := logger.GetLogger()
+
+	if len(query) < 2 {
+		return nil, apperrors.ValidationFailed("search query must be at least 2 characters", "")
+	}
+
+	if limit <= 0 || limit > 20 {
+		limit = 10 // Default limit
+	}
+
+	results, err := s.userStore.SearchUsers(ctx, query, limit)
+	if err != nil {
+		log.Errorw("Failed to search users", "query", query, "error", err)
+		return nil, fmt.Errorf("error searching users: %w", err)
+	}
+
+	log.Infow("Successfully searched users", "query", query, "count", len(results))
+	return results, nil
+}
+
+// UpdateContactEmail updates the user's contact email
+func (s *UserService) UpdateContactEmail(ctx context.Context, userID uuid.UUID, email string) error {
+	log := logger.GetLogger()
+
+	// Validate email format
+	if email == "" {
+		return apperrors.ValidationFailed("email is required", "")
+	}
+
+	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return apperrors.ValidationFailed("invalid email format", "")
+	}
+
+	err := s.userStore.UpdateContactEmail(ctx, userID.String(), email)
+	if err != nil {
+		log.Errorw("Failed to update contact email", "userID", userID, "error", err)
+		return fmt.Errorf("error updating contact email: %w", err)
+	}
+
+	log.Infow("Successfully updated contact email", "userID", userID, "email", maskEmail(email))
+	return nil
 }

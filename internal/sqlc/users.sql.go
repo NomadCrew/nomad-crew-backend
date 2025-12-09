@@ -62,26 +62,70 @@ func (q *Queries) CreateUserProfile(ctx context.Context, arg CreateUserProfilePa
 	return id, err
 }
 
+const getUserProfileByContactEmail = `-- name: GetUserProfileByContactEmail :one
+SELECT
+    id, email, username,
+    COALESCE(first_name, '') as first_name,
+    COALESCE(last_name, '') as last_name,
+    COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
+    created_at, updated_at
+FROM user_profiles
+WHERE contact_email = $1
+`
+
+type GetUserProfileByContactEmailRow struct {
+	ID           string             `db:"id" json:"id"`
+	Email        string             `db:"email" json:"email"`
+	Username     string             `db:"username" json:"username"`
+	FirstName    string             `db:"first_name" json:"first_name"`
+	LastName     string             `db:"last_name" json:"last_name"`
+	AvatarUrl    string             `db:"avatar_url" json:"avatar_url"`
+	ContactEmail *string            `db:"contact_email" json:"contact_email"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+// Find user by their discoverable contact_email (for invitation lookups)
+func (q *Queries) GetUserProfileByContactEmail(ctx context.Context, contactEmail *string) (*GetUserProfileByContactEmailRow, error) {
+	row := q.db.QueryRow(ctx, getUserProfileByContactEmail, contactEmail)
+	var i GetUserProfileByContactEmailRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Username,
+		&i.FirstName,
+		&i.LastName,
+		&i.AvatarUrl,
+		&i.ContactEmail,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
 const getUserProfileByEmail = `-- name: GetUserProfileByEmail :one
 SELECT
     id, email, username,
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE email = $1
 `
 
 type GetUserProfileByEmailRow struct {
-	ID        string             `db:"id" json:"id"`
-	Email     string             `db:"email" json:"email"`
-	Username  string             `db:"username" json:"username"`
-	FirstName string             `db:"first_name" json:"first_name"`
-	LastName  string             `db:"last_name" json:"last_name"`
-	AvatarUrl string             `db:"avatar_url" json:"avatar_url"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID           string             `db:"id" json:"id"`
+	Email        string             `db:"email" json:"email"`
+	Username     string             `db:"username" json:"username"`
+	FirstName    string             `db:"first_name" json:"first_name"`
+	LastName     string             `db:"last_name" json:"last_name"`
+	AvatarUrl    string             `db:"avatar_url" json:"avatar_url"`
+	ContactEmail *string            `db:"contact_email" json:"contact_email"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetUserProfileByEmail(ctx context.Context, email string) (*GetUserProfileByEmailRow, error) {
@@ -94,6 +138,7 @@ func (q *Queries) GetUserProfileByEmail(ctx context.Context, email string) (*Get
 		&i.FirstName,
 		&i.LastName,
 		&i.AvatarUrl,
+		&i.ContactEmail,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -107,20 +152,22 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE id = $1
 `
 
 type GetUserProfileByIDRow struct {
-	ID        string             `db:"id" json:"id"`
-	Email     string             `db:"email" json:"email"`
-	Username  string             `db:"username" json:"username"`
-	FirstName string             `db:"first_name" json:"first_name"`
-	LastName  string             `db:"last_name" json:"last_name"`
-	AvatarUrl string             `db:"avatar_url" json:"avatar_url"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID           string             `db:"id" json:"id"`
+	Email        string             `db:"email" json:"email"`
+	Username     string             `db:"username" json:"username"`
+	FirstName    string             `db:"first_name" json:"first_name"`
+	LastName     string             `db:"last_name" json:"last_name"`
+	AvatarUrl    string             `db:"avatar_url" json:"avatar_url"`
+	ContactEmail *string            `db:"contact_email" json:"contact_email"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 // Users Operations (using user_profiles table)
@@ -134,6 +181,7 @@ func (q *Queries) GetUserProfileByID(ctx context.Context, id string) (*GetUserPr
 		&i.FirstName,
 		&i.LastName,
 		&i.AvatarUrl,
+		&i.ContactEmail,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -146,20 +194,22 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE username = $1
 `
 
 type GetUserProfileByUsernameRow struct {
-	ID        string             `db:"id" json:"id"`
-	Email     string             `db:"email" json:"email"`
-	Username  string             `db:"username" json:"username"`
-	FirstName string             `db:"first_name" json:"first_name"`
-	LastName  string             `db:"last_name" json:"last_name"`
-	AvatarUrl string             `db:"avatar_url" json:"avatar_url"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID           string             `db:"id" json:"id"`
+	Email        string             `db:"email" json:"email"`
+	Username     string             `db:"username" json:"username"`
+	FirstName    string             `db:"first_name" json:"first_name"`
+	LastName     string             `db:"last_name" json:"last_name"`
+	AvatarUrl    string             `db:"avatar_url" json:"avatar_url"`
+	ContactEmail *string            `db:"contact_email" json:"contact_email"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetUserProfileByUsername(ctx context.Context, username string) (*GetUserProfileByUsernameRow, error) {
@@ -172,6 +222,7 @@ func (q *Queries) GetUserProfileByUsername(ctx context.Context, username string)
 		&i.FirstName,
 		&i.LastName,
 		&i.AvatarUrl,
+		&i.ContactEmail,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -184,6 +235,7 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 ORDER BY created_at DESC
@@ -196,14 +248,15 @@ type ListUserProfilesParams struct {
 }
 
 type ListUserProfilesRow struct {
-	ID        string             `db:"id" json:"id"`
-	Email     string             `db:"email" json:"email"`
-	Username  string             `db:"username" json:"username"`
-	FirstName string             `db:"first_name" json:"first_name"`
-	LastName  string             `db:"last_name" json:"last_name"`
-	AvatarUrl string             `db:"avatar_url" json:"avatar_url"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID           string             `db:"id" json:"id"`
+	Email        string             `db:"email" json:"email"`
+	Username     string             `db:"username" json:"username"`
+	FirstName    string             `db:"first_name" json:"first_name"`
+	LastName     string             `db:"last_name" json:"last_name"`
+	AvatarUrl    string             `db:"avatar_url" json:"avatar_url"`
+	ContactEmail *string            `db:"contact_email" json:"contact_email"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) ListUserProfiles(ctx context.Context, arg ListUserProfilesParams) ([]*ListUserProfilesRow, error) {
@@ -222,6 +275,7 @@ func (q *Queries) ListUserProfiles(ctx context.Context, arg ListUserProfilesPara
 			&i.FirstName,
 			&i.LastName,
 			&i.AvatarUrl,
+			&i.ContactEmail,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -241,28 +295,45 @@ SELECT
     COALESCE(first_name, '') as first_name,
     COALESCE(last_name, '') as last_name,
     COALESCE(avatar_url, '') as avatar_url,
+    contact_email,
     created_at, updated_at
 FROM user_profiles
 WHERE
     username ILIKE '%' || $1 || '%'
     OR email ILIKE '%' || $1 || '%'
-ORDER BY username ASC
-LIMIT 20
+    OR contact_email ILIKE '%' || $1 || '%'
+    OR first_name ILIKE '%' || $1 || '%'
+    OR last_name ILIKE '%' || $1 || '%'
+ORDER BY
+    -- Prioritize exact prefix matches on username
+    CASE WHEN username ILIKE $1 || '%' THEN 0 ELSE 1 END,
+    -- Then exact prefix matches on email/contact_email
+    CASE WHEN email ILIKE $1 || '%' OR contact_email ILIKE $1 || '%' THEN 0 ELSE 1 END,
+    username ASC
+LIMIT $2
 `
 
-type SearchUserProfilesRow struct {
-	ID        string             `db:"id" json:"id"`
-	Email     string             `db:"email" json:"email"`
-	Username  string             `db:"username" json:"username"`
-	FirstName string             `db:"first_name" json:"first_name"`
-	LastName  string             `db:"last_name" json:"last_name"`
-	AvatarUrl string             `db:"avatar_url" json:"avatar_url"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+type SearchUserProfilesParams struct {
+	Column1 *string `db:"column_1" json:"column_1"`
+	Limit   int32   `db:"limit" json:"limit"`
 }
 
-func (q *Queries) SearchUserProfiles(ctx context.Context, dollar_1 *string) ([]*SearchUserProfilesRow, error) {
-	rows, err := q.db.Query(ctx, searchUserProfiles, dollar_1)
+type SearchUserProfilesRow struct {
+	ID           string             `db:"id" json:"id"`
+	Email        string             `db:"email" json:"email"`
+	Username     string             `db:"username" json:"username"`
+	FirstName    string             `db:"first_name" json:"first_name"`
+	LastName     string             `db:"last_name" json:"last_name"`
+	AvatarUrl    string             `db:"avatar_url" json:"avatar_url"`
+	ContactEmail *string            `db:"contact_email" json:"contact_email"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+// Fuzzy search across username, email, contact_email, first_name, and last_name
+// Results are ordered by relevance: exact prefix matches first, then partial matches
+func (q *Queries) SearchUserProfiles(ctx context.Context, arg SearchUserProfilesParams) ([]*SearchUserProfilesRow, error) {
+	rows, err := q.db.Query(ctx, searchUserProfiles, arg.Column1, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +348,7 @@ func (q *Queries) SearchUserProfiles(ctx context.Context, dollar_1 *string) ([]*
 			&i.FirstName,
 			&i.LastName,
 			&i.AvatarUrl,
+			&i.ContactEmail,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -288,6 +360,22 @@ func (q *Queries) SearchUserProfiles(ctx context.Context, dollar_1 *string) ([]*
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserContactEmail = `-- name: UpdateUserContactEmail :exec
+UPDATE user_profiles
+SET contact_email = $2, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+`
+
+type UpdateUserContactEmailParams struct {
+	ID           string  `db:"id" json:"id"`
+	ContactEmail *string `db:"contact_email" json:"contact_email"`
+}
+
+func (q *Queries) UpdateUserContactEmail(ctx context.Context, arg UpdateUserContactEmailParams) error {
+	_, err := q.db.Exec(ctx, updateUserContactEmail, arg.ID, arg.ContactEmail)
+	return err
 }
 
 const updateUserProfile = `-- name: UpdateUserProfile :exec

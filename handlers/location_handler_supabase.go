@@ -389,14 +389,15 @@ func (h *LocationHandlerSupabase) CreateLocation(c *gin.Context) {
 	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	tripID, member, ok := h.validateTripAccess(c, supabaseUserID)
+	tripID, _, ok := h.validateTripAccess(c, supabaseUserID)
 	if !ok {
 		return
 	}
 
-	if !h.checkTripExists(c, tripID, supabaseUserID, member) {
-		return
-	}
+	// Note: checkTripExists is skipped because:
+	// 1. RBAC middleware already validated trip access
+	// 2. validateTripAccess verified user is a member (which confirms trip exists)
+	// 3. The trips table lives in PostgreSQL, not Supabase
 
 	var locationUpdate types.LocationUpdate
 	if !h.validateLocationData(c, &locationUpdate) {

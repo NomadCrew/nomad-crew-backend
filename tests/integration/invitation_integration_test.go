@@ -304,7 +304,8 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 
 	// UserHandler expects user_service.UserServiceInterface
 	// Create an actual user service instance for integration tests
-	userService := user_service.NewUserService(userStore, testCFG.ExternalServices.SupabaseJWTSecret, nil)
+	// Pass nil for jwtValidator in tests - will fall back to HS256 validation
+	userService := user_service.NewUserService(userStore, testCFG.ExternalServices.SupabaseJWTSecret, nil, nil)
 
 	invitationHandler := handlers.NewInvitationHandler(tripModel, userStore, eventService, &testCFG.Server)
 	userHandler := handlers.NewUserHandler(userService) // Corrected: Pass UserService

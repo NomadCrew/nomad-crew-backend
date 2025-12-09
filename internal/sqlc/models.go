@@ -618,4 +618,17 @@ type UserProfile struct {
 	Preferences []byte             `db:"preferences" json:"preferences"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	// User-provided discoverable email for invitations (distinct from auth email which may be Apple private relay)
+	ContactEmail *string `db:"contact_email" json:"contact_email"`
+}
+
+type UserPushToken struct {
+	ID         string             `db:"id" json:"id"`
+	UserID     string             `db:"user_id" json:"user_id"`
+	Token      string             `db:"token" json:"token"`
+	DeviceType string             `db:"device_type" json:"device_type"`
+	IsActive   *bool              `db:"is_active" json:"is_active"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	LastUsedAt pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`
 }

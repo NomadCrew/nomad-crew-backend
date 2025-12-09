@@ -56,7 +56,7 @@ func LogError(ctx context.Context, err error, message string, metadata map[strin
 	// Extract additional context for HTTP requests
 	if ginCtx, ok := ctx.(*gin.Context); ok {
 		errorLog.RequestID = ginCtx.GetString("request_id")
-		errorLog.UserID = ginCtx.GetString("user_id")
+		errorLog.UserID = ginCtx.GetString("userID")
 		errorLog.Path = ginCtx.Request.URL.Path
 		errorLog.Method = ginCtx.Request.Method
 		errorLog.IPAddress = ginCtx.ClientIP()
@@ -108,7 +108,7 @@ func LogError(ctx context.Context, err error, message string, metadata map[strin
 
 // LogHTTPError logs an HTTP request error with context from a gin.Context
 func LogHTTPError(c *gin.Context, err error, statusCode int, message string) {
-	userID, _ := c.Get("user_id")
+	userID, _ := c.Get("userID")
 	requestID, _ := c.Get("request_id")
 
 	metadata := map[string]interface{}{

@@ -12,7 +12,7 @@ import (
 
 func WSRateLimiter(redisClient *redis.Client, maxConnPerUser int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.GetString("user_id")
+		userID := c.GetString(string(UserIDKey))
 		if userID == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "Authentication required",

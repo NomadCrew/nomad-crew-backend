@@ -482,6 +482,7 @@ func GetUserProfileByIDRowToUser(row *sqlc.GetUserProfileByIDRow) *types.User {
 		FirstName:         row.FirstName,
 		LastName:          row.LastName,
 		ProfilePictureURL: row.AvatarUrl,
+		ContactEmail:      row.ContactEmail,
 		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
 		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
 	}
@@ -499,6 +500,7 @@ func GetUserProfileByEmailRowToUser(row *sqlc.GetUserProfileByEmailRow) *types.U
 		FirstName:         row.FirstName,
 		LastName:          row.LastName,
 		ProfilePictureURL: row.AvatarUrl,
+		ContactEmail:      row.ContactEmail,
 		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
 		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
 	}
@@ -516,6 +518,7 @@ func GetUserProfileByUsernameRowToUser(row *sqlc.GetUserProfileByUsernameRow) *t
 		FirstName:         row.FirstName,
 		LastName:          row.LastName,
 		ProfilePictureURL: row.AvatarUrl,
+		ContactEmail:      row.ContactEmail,
 		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
 		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
 	}
@@ -533,6 +536,41 @@ func ListUserProfilesRowToUser(row *sqlc.ListUserProfilesRow) *types.User {
 		FirstName:         row.FirstName,
 		LastName:          row.LastName,
 		ProfilePictureURL: row.AvatarUrl,
+		ContactEmail:      row.ContactEmail,
+		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
+		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
+	}
+}
+
+// SearchUserProfilesRowToUserSearchResult converts sqlc.SearchUserProfilesRow to types.UserSearchResult
+func SearchUserProfilesRowToUserSearchResult(row *sqlc.SearchUserProfilesRow) *types.UserSearchResult {
+	if row == nil {
+		return nil
+	}
+	return &types.UserSearchResult{
+		ID:           row.ID,
+		Email:        row.Email,
+		Username:     row.Username,
+		FirstName:    row.FirstName,
+		LastName:     row.LastName,
+		AvatarURL:    row.AvatarUrl,
+		ContactEmail: DerefString(row.ContactEmail),
+	}
+}
+
+// GetUserProfileByContactEmailRowToUser converts sqlc.GetUserProfileByContactEmailRow to types.User
+func GetUserProfileByContactEmailRowToUser(row *sqlc.GetUserProfileByContactEmailRow) *types.User {
+	if row == nil {
+		return nil
+	}
+	return &types.User{
+		ID:                row.ID,
+		Email:             row.Email,
+		Username:          row.Username,
+		FirstName:         row.FirstName,
+		LastName:          row.LastName,
+		ProfilePictureURL: row.AvatarUrl,
+		ContactEmail:      row.ContactEmail,
 		CreatedAt:         PgTimestamptzToTime(row.CreatedAt),
 		UpdatedAt:         PgTimestamptzToTime(row.UpdatedAt),
 	}

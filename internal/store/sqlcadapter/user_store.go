@@ -510,6 +510,62 @@ func (s *sqlcUserStore) BeginTx(ctx context.Context) (types.DatabaseTransaction,
 	return &txWrapper{tx: tx}, nil
 }
 
+// SearchUsers searches for users by query across username, email, contact_email, first_name, last_name
+func (s *sqlcUserStore) SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error) {
+	log := logger.GetLogger()
+
+	rows, err := s.queries.SearchUserProfiles(ctx, sqlc.SearchUserProfilesParams{
+		Column1: &query,
+		Limit:   int32(limit),
+	})
+	if err != nil {
+		log.Errorw("Failed to search users", "query", query, "error", err)
+		return nil, fmt.Errorf("error searching users: %w", err)
+	}
+
+	results := make([]*types.UserSearchResult, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, SearchUserProfilesRowToUserSearchResult(row))
+	}
+
+	log.Infow("Successfully searched users", "query", query, "count", len(results))
+	return results, nil
+}
+
+// UpdateContactEmail updates the user's contact email
+func (s *sqlcUserStore) UpdateContactEmail(ctx context.Context, userID string, email string) error {
+	log := logger.GetLogger()
+
+	err := s.queries.UpdateUserContactEmail(ctx, sqlc.UpdateUserContactEmailParams{
+		ID:           userID,
+		ContactEmail: &email,
+	})
+	if err != nil {
+		log.Errorw("Failed to update contact email", "userID", userID, "error", err)
+		return fmt.Errorf("error updating contact email: %w", err)
+	}
+
+	log.Infow("Successfully updated contact email", "userID", userID)
+	return nil
+}
+
+// GetUserByContactEmail retrieves a user by their contact email
+func (s *sqlcUserStore) GetUserByContactEmail(ctx context.Context, contactEmail string) (*types.User, error) {
+	log := logger.GetLogger()
+
+	row, err := s.queries.GetUserProfileByContactEmail(ctx, &contactEmail)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Warnw("User not found by contact email", "contactEmail", contactEmail)
+			return nil, apperrors.NotFound("user with contact email", contactEmail)
+		}
+		log.Errorw("Failed to get user by contact email", "contactEmail", contactEmail, "error", err)
+		return nil, fmt.Errorf("error getting user by contact email: %w", err)
+	}
+
+	return GetUserProfileByContactEmailRowToUser(row), nil
+}
+
 // getSupabaseUserByID is a helper method to fetch a user from Supabase API
 // This method is preserved exactly as in the legacy implementation
 func (s *sqlcUserStore) getSupabaseUserByID(ctx context.Context, supabaseID string) (*types.SupabaseUser, error) {

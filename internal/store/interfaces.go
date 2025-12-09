@@ -142,6 +142,15 @@ type UserStore interface {
 
 	// GetUserByUsername retrieves a user by their username
 	GetUserByUsername(ctx context.Context, username string) (*types.User, error)
+
+	// SearchUsers searches for users by query (username, email, contact_email, first_name, last_name)
+	SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error)
+
+	// UpdateContactEmail updates the user's contact email
+	UpdateContactEmail(ctx context.Context, userID string, email string) error
+
+	// GetUserByContactEmail retrieves a user by their contact email
+	GetUserByContactEmail(ctx context.Context, contactEmail string) (*types.User, error)
 }
 
 // Use types.DatabaseTransaction here instead of a local interface
@@ -192,4 +201,28 @@ type NotificationStore interface {
 
 	// Delete removes a notification by its ID, ensuring the operation is performed by the owner
 	Delete(ctx context.Context, id string, userID string) error
+}
+
+// PushTokenStore defines the interface for push token operations
+type PushTokenStore interface {
+	// RegisterToken registers or updates a push token for a user
+	RegisterToken(ctx context.Context, userID, token, deviceType string) (*types.PushToken, error)
+
+	// DeactivateToken deactivates a specific token for a user (e.g., on logout)
+	DeactivateToken(ctx context.Context, userID, token string) error
+
+	// DeactivateAllUserTokens deactivates all tokens for a user
+	DeactivateAllUserTokens(ctx context.Context, userID string) error
+
+	// GetActiveTokensForUser retrieves all active push tokens for a user
+	GetActiveTokensForUser(ctx context.Context, userID string) ([]*types.PushToken, error)
+
+	// GetActiveTokensForUsers retrieves all active push tokens for multiple users (batch)
+	GetActiveTokensForUsers(ctx context.Context, userIDs []string) ([]*types.PushToken, error)
+
+	// InvalidateToken marks a token as invalid (when Expo reports delivery failure)
+	InvalidateToken(ctx context.Context, token string) error
+
+	// UpdateTokenLastUsed updates the last_used_at timestamp for a token
+	UpdateTokenLastUsed(ctx context.Context, token string) error
 }

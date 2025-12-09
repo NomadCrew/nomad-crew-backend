@@ -58,4 +58,10 @@ type UserServiceInterface interface {
 	// Add JWT onboarding methods for handler compatibility
 	ValidateAndExtractClaims(tokenString string) (*types.JWTClaims, error)
 	OnboardUserFromJWTClaims(ctx context.Context, claims *types.JWTClaims) (*types.UserProfile, error)
+
+	// SearchUsers searches for users by query (username, email, contact_email, first_name, last_name)
+	SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error)
+
+	// UpdateContactEmail updates the user's contact email
+	UpdateContactEmail(ctx context.Context, userID uuid.UUID, email string) error
 }

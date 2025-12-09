@@ -43,6 +43,8 @@ type Dependencies struct {
 	LocationHandlerSupabase *handlers.LocationHandlerSupabase
 	// WebSocket handler for real-time events
 	WebSocketHandler *websocket.Handler
+	// Push token handler for push notification registration
+	PushTokenHandler *handlers.PushTokenHandler
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -304,12 +306,21 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			userRoutes := authRoutes.Group("/users")
 			{
 				userRoutes.GET("/me", deps.UserHandler.GetCurrentUser)
+				userRoutes.GET("/search", deps.UserHandler.SearchUsers)
+				userRoutes.PUT("/me/contact-email", deps.UserHandler.UpdateContactEmail)
 				userRoutes.GET("/:id", deps.UserHandler.GetUserByID)
 				userRoutes.GET("", deps.UserHandler.ListUsers)
 				userRoutes.PUT("/:id", deps.UserHandler.UpdateUser)
 				userRoutes.PUT("/:id/preferences", deps.UserHandler.UpdateUserPreferences)
 				// Add SyncWithSupabase as a special endpoint
 				userRoutes.POST("/sync", deps.UserHandler.SyncWithSupabase)
+
+				// Push Token Routes
+				if deps.PushTokenHandler != nil {
+					userRoutes.POST("/push-token", deps.PushTokenHandler.RegisterPushToken)
+					userRoutes.DELETE("/push-token", deps.PushTokenHandler.DeregisterPushToken)
+					userRoutes.DELETE("/push-tokens", deps.PushTokenHandler.DeregisterAllPushTokens)
+				}
 			}
 		}
 	}
@@ -320,5 +331,5 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 // currentUserAsOwner is an ownership extractor that returns the current user's ID.
 // Use this when the resource is inherently owned by the logged-in user (e.g., their own location).
 func currentUserAsOwner(c *gin.Context) string {
-	return c.GetString("user_id")
+	return c.GetString(string(middleware.UserIDKey))
 }

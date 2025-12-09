@@ -69,7 +69,7 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	}()
 
 	// Validate required template data
-	requiredFields := []string{"UserEmail", "TripName", "InvitationToken"}
+	requiredFields := []string{"UserEmail", "TripName", "InvitationURL"}
 	for _, field := range requiredFields {
 		if _, ok := data.TemplateData[field]; !ok {
 			s.metrics.errorCount.Inc()
@@ -199,20 +199,21 @@ const invitationEmailTemplate = `<!DOCTYPE html>
         <p>Hi {{.UserEmail}}!</p>
         <p>You've been invited to join the trip "{{.TripName}}". Click below to accept:</p>
         
-        <!-- Mobile app deep link button -->
+        <!-- Universal Link button (works in iOS emails, unlike custom URL schemes) -->
         <p>
-            <a href="{{if .AppDeepLink}}{{.AppDeepLink}}{{else}}nomadcrew://invite/accept/{{.InvitationToken}}{{end}}" class="button">
+            <a href="{{.InvitationURL}}" class="button">
                 Open in App
             </a>
         </p>
-        
+
         <p class="note">
             The button above will open directly in the NomadCrew app if you have it installed on your mobile device.
+            If the app is not installed, you'll be redirected to download it.
         </p>
-        
+
         <p class="link">
-            If you're having trouble with the link, you can copy and paste this in your browser:<br>
-            <code>nomadcrew://invite/accept/{{.InvitationToken}}</code>
+            Having trouble? Copy this link to your browser:<br>
+            <code>{{.InvitationURL}}</code>
         </p>
     </div>
 </body>
