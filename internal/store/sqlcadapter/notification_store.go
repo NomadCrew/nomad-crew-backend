@@ -213,6 +213,27 @@ func (s *sqlcNotificationStore) Delete(ctx context.Context, id uuid.UUID, userID
 	return nil
 }
 
+// DeleteAllByUser removes all notifications for a specific user
+func (s *sqlcNotificationStore) DeleteAllByUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	log := logger.GetLogger()
+
+	// Get count before deleting
+	count, err := s.queries.CountAllNotifications(ctx, userID.String())
+	if err != nil {
+		log.Errorw("Failed to count notifications", "userID", userID, "error", err)
+		return 0, fmt.Errorf("failed to count notifications: %w", err)
+	}
+
+	err = s.queries.DeleteAllNotificationsByUser(ctx, userID.String())
+	if err != nil {
+		log.Errorw("Failed to delete all notifications", "userID", userID, "error", err)
+		return 0, fmt.Errorf("failed to delete all notifications: %w", err)
+	}
+
+	log.Infow("Successfully deleted all notifications", "userID", userID, "count", count)
+	return count, nil
+}
+
 // sqlcNotificationToModels converts a SQLC notification to models.Notification
 func sqlcNotificationToModels(n *sqlc.Notification) *models.Notification {
 	if n == nil {

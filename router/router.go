@@ -149,8 +149,12 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 		{
 			// Authenticated Invitation Actions
 			// These require the user (invitee) to be logged in
+			// Token-based accept/decline (for email deep links)
 			authRoutes.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)
 			authRoutes.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler)
+			// ID-based accept/decline (for in-app notifications)
+			authRoutes.POST("/invitations/:invitationId/accept", deps.InvitationHandler.AcceptInvitationByIDHandler)
+			authRoutes.POST("/invitations/:invitationId/decline", deps.InvitationHandler.DeclineInvitationByIDHandler)
 
 			// Legacy Location Routes (global location updates)
 			authRoutes.POST("/location/update", deps.LocationHandlerSupabase.LegacyUpdateLocation)
@@ -300,6 +304,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				notificationRoutes.PATCH("/:notificationId/read", deps.NotificationHandler.MarkNotificationAsRead)
 				notificationRoutes.PATCH("/read-all", deps.NotificationHandler.MarkAllNotificationsRead)
 				notificationRoutes.DELETE("/:notificationId", deps.NotificationHandler.DeleteNotification)
+				notificationRoutes.DELETE("", deps.NotificationHandler.DeleteAllNotifications)
 			}
 
 			// User Routes

@@ -9,6 +9,19 @@ import (
 	"context"
 )
 
+const countAllNotifications = `-- name: CountAllNotifications :one
+SELECT COUNT(*) as count
+FROM notifications
+WHERE user_id = $1
+`
+
+func (q *Queries) CountAllNotifications(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countAllNotifications, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUnreadNotifications = `-- name: CountUnreadNotifications :one
 SELECT COUNT(*) as count
 FROM notifications
@@ -41,6 +54,16 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const deleteAllNotificationsByUser = `-- name: DeleteAllNotificationsByUser :exec
+DELETE FROM notifications
+WHERE user_id = $1
+`
+
+func (q *Queries) DeleteAllNotificationsByUser(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteAllNotificationsByUser, userID)
+	return err
 }
 
 const deleteNotification = `-- name: DeleteNotification :exec

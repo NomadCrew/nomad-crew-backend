@@ -19,4 +19,6 @@ type NotificationStore interface {
 	GetUnreadCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// Delete removes a notification by its ID, ensuring the operation is performed by the owner.
 	Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+	// DeleteAllByUser removes all notifications for a user. Returns count of deleted notifications.
+	DeleteAllByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 }

@@ -17,6 +17,7 @@ type Querier interface {
 	CleanupOldInactiveTokens(ctx context.Context) error
 	// Counts active tokens for a user
 	CountActiveTokens(ctx context.Context, userID string) (int64, error)
+	CountAllNotifications(ctx context.Context, userID string) (int64, error)
 	CountCompletedTodosByTrip(ctx context.Context, tripID string) (int64, error)
 	CountPendingInvitationsForTrip(ctx context.Context, tripID string) (int64, error)
 	CountTodosByTrip(ctx context.Context, tripID string) (int64, error)
@@ -44,6 +45,7 @@ type Querier interface {
 	DeactivateMembership(ctx context.Context, arg DeactivateMembershipParams) error
 	// Deactivates a specific token (e.g., on logout)
 	DeactivatePushToken(ctx context.Context, arg DeactivatePushTokenParams) error
+	DeleteAllNotificationsByUser(ctx context.Context, userID string) error
 	DeleteExpiredInvitations(ctx context.Context) error
 	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) error
 	DeleteOldNotifications(ctx context.Context) error

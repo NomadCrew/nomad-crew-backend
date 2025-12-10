@@ -327,6 +327,178 @@ func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// AcceptInvitationByIDHandler godoc
+// @Summary Accept a trip invitation by ID
+// @Description Allows an authenticated user to accept an invitation using the invitation ID. The user must be the invitee.
+// @Tags trips-invitations
+// @Produce json
+// @Param invitationId path string true "Invitation ID (UUID)"
+// @Success 200 {object} types.TripMembership "Successfully joined trip"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid invitation ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not authenticated"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not the invitee"
+// @Failure 404 {object} types.ErrorResponse "Not found - Invitation not found"
+// @Failure 409 {object} types.ErrorResponse "Conflict - Already a member or invitation not pending"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /invitations/{invitationId}/accept [post]
+// @Security BearerAuth
+func (h *InvitationHandler) AcceptInvitationByIDHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	acceptingUserID := c.GetString(string(middleware.UserIDKey))
+	if acceptingUserID == "" {
+		log.Warn("AcceptInvitationByIDHandler: missing user ID in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	invitationIDStr := c.Param("invitationId")
+	if invitationIDStr == "" {
+		handleModelError(c, apperrors.ValidationFailed("missing_invitation_id", "Invitation ID is required"))
+		return
+	}
+
+	invitation, err := h.tripModel.GetInvitation(c.Request.Context(), invitationIDStr)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	if invitation.Status != types.InvitationStatusPending {
+		log.Warnw("Invitation already processed or not pending", "invitationID", invitation.ID, "status", invitation.Status)
+		handleModelError(c, apperrors.ValidationFailed("invitation_not_pending", "Invitation has already been processed or is not in a pending state."))
+		return
+	}
+
+	// Security check: If invitation is bound to a specific user ID, verify it matches
+	if invitation.InviteeID != nil && *invitation.InviteeID != "" && *invitation.InviteeID != acceptingUserID {
+		log.Warnw("User trying to accept invitation not meant for them", "invitationID", invitation.ID, "inviteeID", *invitation.InviteeID, "acceptingUserID", acceptingUserID)
+		handleModelError(c, apperrors.Forbidden("auth_mismatch", "You are not authorized to accept this invitation."))
+		return
+	}
+
+	// Security check: Verify the accepting user's email matches the invitation email
+	acceptingUser, err := h.userStore.GetUserByID(c.Request.Context(), acceptingUserID)
+	if err != nil {
+		log.Errorw("Failed to get accepting user details", "userID", acceptingUserID, "error", err)
+		handleModelError(c, err)
+		return
+	}
+	if !strings.EqualFold(acceptingUser.Email, invitation.InviteeEmail) {
+		log.Warnw("Email mismatch: user trying to accept invitation sent to different email",
+			"invitationID", invitation.ID,
+			"inviteeEmail", invitation.InviteeEmail,
+			"acceptingUserEmail", acceptingUser.Email,
+			"acceptingUserID", acceptingUserID)
+		handleModelError(c, apperrors.Forbidden("email_mismatch", "You can only accept invitations sent to your email address."))
+		return
+	}
+
+	// Check if user is already a member of this trip
+	existingRole, err := h.tripModel.GetUserRole(c.Request.Context(), invitation.TripID, acceptingUserID)
+	if err == nil && existingRole != "" {
+		log.Warnw("User already a member of trip", "tripID", invitation.TripID, "userID", acceptingUserID, "role", existingRole)
+		handleModelError(c, apperrors.NewConflictError("already_member", "You are already a member of this trip."))
+		return
+	}
+
+	membership := &types.TripMembership{
+		TripID: invitation.TripID,
+		UserID: acceptingUserID,
+		Role:   invitation.Role,
+		Status: types.MembershipStatusActive,
+	}
+
+	if err := h.tripModel.AddMember(c.Request.Context(), membership); err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	if err := h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitation.ID, types.InvitationStatusAccepted); err != nil {
+		log.Errorw("Failed to update invitation status after member addition", "invitationID", invitation.ID, "error", err)
+		handleModelError(c, err)
+		return
+	}
+
+	log.Infow("Successfully accepted invitation by ID", "invitationID", invitation.ID, "userID", acceptingUserID, "tripID", invitation.TripID)
+	c.JSON(http.StatusOK, membership)
+}
+
+// DeclineInvitationByIDHandler godoc
+// @Summary Decline a trip invitation by ID
+// @Description Allows an authenticated user to decline an invitation using the invitation ID. The user must be the invitee.
+// @Tags trips-invitations
+// @Produce json
+// @Param invitationId path string true "Invitation ID (UUID)"
+// @Success 204 "Successfully declined invitation"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid invitation ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not authenticated"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not the invitee"
+// @Failure 404 {object} types.ErrorResponse "Not found - Invitation not found"
+// @Failure 409 {object} types.ErrorResponse "Conflict - Invitation not pending"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /invitations/{invitationId}/decline [post]
+// @Security BearerAuth
+func (h *InvitationHandler) DeclineInvitationByIDHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("DeclineInvitationByIDHandler: missing user ID in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	invitationIDStr := c.Param("invitationId")
+	if invitationIDStr == "" {
+		handleModelError(c, apperrors.ValidationFailed("missing_invitation_id", "Invitation ID is required"))
+		return
+	}
+
+	invitation, err := h.tripModel.GetInvitation(c.Request.Context(), invitationIDStr)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	if invitation.Status != types.InvitationStatusPending {
+		log.Warnw("Invitation already processed or not pending", "invitationID", invitation.ID, "status", invitation.Status)
+		handleModelError(c, apperrors.ValidationFailed("invitation_not_pending", "Invitation has already been processed or is not in a pending state."))
+		return
+	}
+
+	// Security check: If invitation is bound to a specific user ID, verify it matches
+	if invitation.InviteeID != nil && *invitation.InviteeID != "" && *invitation.InviteeID != userID {
+		log.Warnw("User trying to decline invitation not meant for them", "invitationID", invitation.ID, "inviteeID", *invitation.InviteeID, "decliningUserID", userID)
+		handleModelError(c, apperrors.Forbidden("auth_mismatch", "You are not authorized to decline this invitation."))
+		return
+	}
+
+	// Security check: Verify the declining user's email matches the invitation email
+	decliningUser, err := h.userStore.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		log.Errorw("Failed to get declining user details", "userID", userID, "error", err)
+		handleModelError(c, err)
+		return
+	}
+	if !strings.EqualFold(decliningUser.Email, invitation.InviteeEmail) {
+		log.Warnw("Email mismatch: user trying to decline invitation sent to different email",
+			"invitationID", invitation.ID,
+			"inviteeEmail", invitation.InviteeEmail,
+			"decliningUserEmail", decliningUser.Email,
+			"decliningUserID", userID)
+		handleModelError(c, apperrors.Forbidden("email_mismatch", "You can only decline invitations sent to your email address."))
+		return
+	}
+
+	if err := h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitation.ID, types.InvitationStatusDeclined); err != nil {
+		log.Errorw("Failed to update invitation status", "invitationID", invitation.ID, "error", err)
+		handleModelError(c, err)
+		return
+	}
+
+	log.Infow("Successfully declined invitation by ID", "invitationID", invitation.ID, "userID", userID)
+	c.Status(http.StatusNoContent)
+}
+
 // HandleInvitationDeepLink godoc
 // @Summary Handle a deep link for a trip invitation
 // @Description Validates an invitation token from a deep link and redirects the user or provides invitation details.

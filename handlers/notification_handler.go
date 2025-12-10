@@ -243,3 +243,38 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 	h.logger.Info("Successfully deleted notification", zap.String("notificationID", notificationIDStr), zap.String("userID", userID.String()))
 	c.Status(http.StatusNoContent)
 }
+
+// DeleteAllNotifications godoc
+// @Summary Delete all notifications
+// @Description Deletes all notifications for the authenticated user
+// @Tags notifications
+// @Produce json
+// @Success 200 {object} map[string]int64 "Returns the number of notifications deleted"
+// @Failure 401 {object} docs.ErrorResponse "Unauthorized"
+// @Failure 500 {object} docs.ErrorResponse "Internal Server Error"
+// @Router /notifications [delete]
+// @Security BearerAuth
+func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
+	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
+	if err != nil {
+		h.logger.Warn("Unauthorized attempt to delete all notifications", zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	deletedCount, err := h.notificationService.DeleteAllNotifications(c.Request.Context(), userID)
+	if err != nil {
+		h.logger.Error("Failed to delete all notifications", zap.String("userID", userID.String()), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete all notifications"})
+		return
+	}
+
+	h.logger.Info("Successfully deleted all notifications", zap.String("userID", userID.String()), zap.Int64("deletedCount", deletedCount))
+	c.JSON(http.StatusOK, gin.H{"deleted_count": deletedCount})
+}

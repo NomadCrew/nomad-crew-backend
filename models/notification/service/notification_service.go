@@ -27,6 +27,8 @@ type NotificationService interface {
 	GetUnreadNotificationCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// DeleteNotification removes a specific notification.
 	DeleteNotification(ctx context.Context, userID, notificationID uuid.UUID) error
+	// DeleteAllNotifications removes all notifications for a user.
+	DeleteAllNotifications(ctx context.Context, userID uuid.UUID) (int64, error)
 }
 
 // notificationService implements NotificationService.
@@ -381,4 +383,15 @@ func (s *notificationService) DeleteNotification(ctx context.Context, userID, no
 
 	log.Info("Notification deleted successfully")
 	return nil
+}
+
+// DeleteAllNotifications removes all notifications for a user.
+func (s *notificationService) DeleteAllNotifications(ctx context.Context, userID uuid.UUID) (int64, error) {
+	deletedCount, err := s.notificationStore.DeleteAllByUser(ctx, userID)
+	if err != nil {
+		s.logger.Error("Failed to delete all notifications", zap.String("userID", userID.String()), zap.Error(err))
+		return 0, fmt.Errorf("failed to delete all notifications: %w", err)
+	}
+	s.logger.Info("All notifications deleted", zap.String("userID", userID.String()), zap.Int64("deletedCount", deletedCount))
+	return deletedCount, nil
 }

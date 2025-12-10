@@ -45,3 +45,12 @@ WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days';
 SELECT COUNT(*) as count
 FROM notifications
 WHERE user_id = $1 AND is_read = false;
+
+-- name: CountAllNotifications :one
+SELECT COUNT(*) as count
+FROM notifications
+WHERE user_id = $1;
+
+-- name: DeleteAllNotificationsByUser :exec
+DELETE FROM notifications
+WHERE user_id = $1;
