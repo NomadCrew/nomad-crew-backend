@@ -18,27 +18,46 @@ type Store interface {
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
-// TripStore handles trip-related data operations
+// TripStore handles trip-related data operations including trips, memberships, and invitations.
 type TripStore interface {
+	// GetPool returns the underlying database connection pool.
 	GetPool() *pgxpool.Pool
+
+	// Trip CRUD operations
 	CreateTrip(ctx context.Context, trip types.Trip) (string, error)
 	GetTrip(ctx context.Context, id string) (*types.Trip, error)
 	UpdateTrip(ctx context.Context, id string, update types.TripUpdate) (*types.Trip, error)
 	SoftDeleteTrip(ctx context.Context, id string) error
 	ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error)
 	SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error)
+
+	// Membership operations
 	AddMember(ctx context.Context, membership *types.TripMembership) error
 	UpdateMemberRole(ctx context.Context, tripID string, userID string, role types.MemberRole) error
 	RemoveMember(ctx context.Context, tripID string, userID string) error
 	GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
 	GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error)
+
+	// User lookup (for invitations)
 	LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error)
+
+	// Invitation operations
 	CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error
 	GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error)
 	GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
 	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
+
+	// Transaction support
+	// BeginTx starts a new database transaction. Use the returned DatabaseTransaction
+	// for Commit() and Rollback() operations.
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
+
+	// Deprecated: Commit is deprecated. Use BeginTx() to start a transaction and call
+	// Commit() on the returned DatabaseTransaction instead.
 	Commit() error
+
+	// Deprecated: Rollback is deprecated. Use BeginTx() to start a transaction and call
+	// Rollback() on the returned DatabaseTransaction instead.
 	Rollback() error
 }
 
