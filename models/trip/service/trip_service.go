@@ -42,15 +42,6 @@ func NewTripManagementService(
 
 // CreateTrip creates a new trip and returns the created trip object
 func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip) (*types.Trip, error) {
-	// Do NOT overwrite trip.CreatedBy here; it should already be set to the internal UUID by the handler
-	logger.GetLogger().Infow("[DEBUG] trip.CreatedBy in service before DB call", "type", fmt.Sprintf("%T", trip.CreatedBy), "value", func() string {
-		if trip.CreatedBy != nil {
-			return *trip.CreatedBy
-		} else {
-			return "<nil>"
-		}
-	}())
-
 	// Create the trip (this already includes adding the creator as owner in the store transaction)
 	tripID, err := s.store.CreateTrip(ctx, *trip)
 	if err != nil {

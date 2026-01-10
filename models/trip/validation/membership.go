@@ -29,14 +29,9 @@ func ValidateRoleTransition(oldRole, newRole types.MemberRole) error {
 	return nil
 }
 
+// ValidateMembershipStatus validates membership status transitions.
+// With only ACTIVE and INACTIVE statuses, transitions are controlled by authorization
+// rather than state machine validation. No additional validation is needed.
 func ValidateMembershipStatus(oldStatus, newStatus types.MembershipStatus) error {
-	// if oldStatus == types.MembershipStatusInvited && newStatus != types.MembershipStatusActive { // MembershipStatusInvited removed
-	// 	return errors.ValidationFailed(
-	// 		"status_transition",
-	// 		"Invalid status transition for invited member",
-	// 	)
-	// }
-	// TODO: Add any other relevant membership status transition validation if needed.
-	// For now, with only ACTIVE/INACTIVE, direct transitions are usually allowed based on auth.
 	return nil
 }

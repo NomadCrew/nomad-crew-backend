@@ -59,10 +59,8 @@ func NewTripModelCoordinator(
 	memberServiceInstance := NewTripMemberService(tripStore, eventBus, supabaseService)
 	invitationServiceInstance := NewInvitationService(tripStore, emailSvc, supabaseClient, config.FrontendURL, eventBus)
 
-	// Note: TripChatService has been deprecated.
-	// For full chat functionality, use models/chat/service.ChatService instead.
-	// This nil assignment is temporary - TripModelCoordinator should be refactored
-	// to not depend on chat service directly.
+	// ChatService is deprecated and always nil.
+	// Chat functionality has moved to models/chat/service.ChatService.
 	var chatServiceInstance TripChatServiceInterface = nil
 
 	return &TripModelCoordinator{
@@ -184,19 +182,15 @@ func (c *TripModelCoordinator) GetTrip(ctx context.Context, tripID string) (*typ
 	return c.store.GetTrip(ctx, tripID)
 }
 
-// ListMessages is deprecated - chat functionality has moved to models/chat/service
-// This method returns empty results for backward compatibility
+// Deprecated: ListMessages is a no-op. Chat functionality has moved to models/chat/service.ChatService.
+// This method exists only for backward compatibility and always returns an empty slice.
 func (c *TripModelCoordinator) ListMessages(ctx context.Context, tripID string, limit int, before string) ([]*types.ChatMessage, error) {
-	// Chat functionality has moved to models/chat/service.ChatService
-	// Return empty results for backward compatibility
 	return []*types.ChatMessage{}, nil
 }
 
-// UpdateLastReadMessage is deprecated - chat functionality has moved to models/chat/service
-// This method is a no-op for backward compatibility
+// Deprecated: UpdateLastReadMessage is a no-op. Chat functionality has moved to models/chat/service.ChatService.
+// This method exists only for backward compatibility and always returns nil.
 func (c *TripModelCoordinator) UpdateLastReadMessage(ctx context.Context, tripID string, messageID string) error {
-	// Chat functionality has moved to models/chat/service.ChatService
-	// No-op for backward compatibility
 	return nil
 }
 
