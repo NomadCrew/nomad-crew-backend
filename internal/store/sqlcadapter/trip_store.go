@@ -248,13 +248,11 @@ func (s *sqlcTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListUserTrips retrieves all trips created by a user
+// ListUserTrips retrieves all trips for a user (as member or owner)
 func (s *sqlcTripStore) ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error) {
-	log := logger.GetLogger()
-
 	rows, err := s.queries.ListUserTrips(ctx, &userID)
 	if err != nil {
-		log.Errorw("Failed to list user trips", "userID", userID, "error", err)
+		logger.GetLogger().Errorw("Failed to list user trips", "userID", userID, "error", err)
 		return nil, fmt.Errorf("failed to list user trips: %w", err)
 	}
 
@@ -263,14 +261,11 @@ func (s *sqlcTripStore) ListUserTrips(ctx context.Context, userID string) ([]*ty
 		trips = append(trips, ListUserTripsRowToTrip(row))
 	}
 
-	log.Infow("Successfully listed trips for user", "userID", userID, "count", len(trips))
 	return trips, nil
 }
 
 // SearchTrips searches trips by criteria
 func (s *sqlcTripStore) SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error) {
-	log := logger.GetLogger()
-
 	var destination *string
 	if criteria.Destination != "" {
 		destination = &criteria.Destination
@@ -291,7 +286,7 @@ func (s *sqlcTripStore) SearchTrips(ctx context.Context, criteria types.TripSear
 		EndDateTo:     OptionalTimeToPgDate(criteria.EndDate),
 	})
 	if err != nil {
-		log.Errorw("Failed to search trips", "criteria", criteria, "error", err)
+		logger.GetLogger().Errorw("Failed to search trips", "error", err)
 		return nil, fmt.Errorf("failed to search trips: %w", err)
 	}
 
@@ -300,7 +295,6 @@ func (s *sqlcTripStore) SearchTrips(ctx context.Context, criteria types.TripSear
 		trips = append(trips, SearchTripsRowToTrip(row))
 	}
 
-	log.Infow("Successfully searched trips", "count", len(trips))
 	return trips, nil
 }
 
@@ -506,13 +500,15 @@ func (s *sqlcTripStore) BeginTx(ctx context.Context) (types.DatabaseTransaction,
 	return &txWrapper{tx: tx}, nil
 }
 
-// Commit - deprecated, use the transaction object
+// Deprecated: Commit is deprecated. Use BeginTx() to start a transaction and call
+// Commit() on the returned DatabaseTransaction instead.
 func (s *sqlcTripStore) Commit() error {
 	logger.GetLogger().Warn("Commit called directly on store, use transaction object instead")
 	return fmt.Errorf("commit should be called on transaction object")
 }
 
-// Rollback - deprecated, use the transaction object
+// Deprecated: Rollback is deprecated. Use BeginTx() to start a transaction and call
+// Rollback() on the returned DatabaseTransaction instead.
 func (s *sqlcTripStore) Rollback() error {
 	logger.GetLogger().Warn("Rollback called directly on store, use transaction object instead")
 	return fmt.Errorf("rollback should be called on transaction object")
