@@ -256,8 +256,8 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// For now, no users are admins
-	isAdmin := false // TODO: Implement admin check
+	// Get admin status from JWT claims via context
+	isAdmin := c.GetBool(string(middleware.IsAdminKey))
 
 	// Parse request body
 	var updateReq models.UserUpdateRequest
@@ -339,8 +339,8 @@ func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
 		return
 	}
 
-	// For now, no users are admins
-	isAdmin := false // TODO: Implement admin check
+	// Get admin status from JWT claims via context
+	isAdmin := c.GetBool(string(middleware.IsAdminKey))
 
 	// Parse request body
 	var prefsMap map[string]interface{}
