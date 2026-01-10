@@ -575,7 +575,6 @@ func (h *UserHandler) OnboardUser(c *gin.Context) {
 // @Produce json
 // @Param q query string true "Search query (min 2 characters)"
 // @Param limit query int false "Max results (default 10, max 20)"
-// @Param tripId query string false "Trip ID to check membership (marks users as isMember)"
 // @Success 200 {object} types.UserSearchResponse "Search results"
 // @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid query"
 // @Failure 500 {object} docs.ErrorResponse "Internal server error"
@@ -595,8 +594,6 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 		limit = 10
 	}
 
-	tripID := c.Query("tripId")
-
 	// Search users
 	results, err := h.userService.SearchUsers(c.Request.Context(), query, limit)
 	if err != nil {
@@ -615,11 +612,8 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 		return
 	}
 
-	// If tripId is provided, check membership for each user
-	// This would need TripStore access - for now, just return results without membership info
-	// TODO: Add trip membership check when TripStore is available in this handler
-	_ = tripID // Silence unused variable warning
-
+	// Return search results
+	// Note: Trip membership info not included - use trip member endpoints for that
 	c.JSON(http.StatusOK, types.UserSearchResponse{Users: derefUserSearchResults(results)})
 }
 
