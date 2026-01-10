@@ -68,22 +68,24 @@ type CreateTripRequest struct {
 	BackgroundImageURL   string           `json:"backgroundImageUrl,omitempty"`
 }
 
+// DestinationResponse is the destination object in trip responses
+type DestinationResponse struct {
+	Address     string `json:"address"`
+	Coordinates struct {
+		Lat float64 `json:"lat"`
+		Lng float64 `json:"lng"`
+	} `json:"coordinates"`
+	PlaceID string `json:"placeId"`
+	Name    string `json:"name,omitempty"`
+}
+
 // TripWithMembersAndInvitationsResponse is the response for trip creation
 // matching the FE's expected shape
-// (Consider moving to a shared types or docs file if reused)
 type TripWithMembersAndInvitationsResponse struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Destination struct {
-		Address     string `json:"address"`
-		Coordinates struct {
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
-		} `json:"coordinates"`
-		PlaceID string `json:"placeId"`
-		Name    string `json:"name,omitempty"`
-	} `json:"destination"`
+	ID                 string                  `json:"id"`
+	Name               string                  `json:"name"`
+	Description        string                  `json:"description"`
+	Destination        DestinationResponse     `json:"destination"`
 	StartDate          time.Time               `json:"startDate"`
 	EndDate            time.Time               `json:"endDate"`
 	Status             string                  `json:"status"`
@@ -121,9 +123,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		return
 	}
 
-	// Extract the authenticated user ID from Gin context
-	userID := c.GetString(string(middleware.UserIDKey))
-	log.Infow("[DEBUG] User ID from context", "userID", userID)
+	userID := getUserIDFromContext(c)
 	if userID == "" {
 		log.Errorw("No user ID found in context for CreateTripHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
@@ -188,47 +188,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		}
 	}
 
-	// Compose destination object
-	dest := struct {
-		Address     string `json:"address"`
-		Coordinates struct {
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
-		} `json:"coordinates"`
-		PlaceID string `json:"placeId"`
-		Name    string `json:"name,omitempty"`
-	}{}
-	dest.Address = ""
-	if createdTrip.DestinationAddress != nil {
-		dest.Address = *createdTrip.DestinationAddress
-	}
-	dest.Coordinates.Lat = createdTrip.DestinationLatitude
-	dest.Coordinates.Lng = createdTrip.DestinationLongitude
-	dest.PlaceID = ""
-	if createdTrip.DestinationPlaceID != nil {
-		dest.PlaceID = *createdTrip.DestinationPlaceID
-	}
-	dest.Name = ""
-	if createdTrip.DestinationName != nil {
-		dest.Name = *createdTrip.DestinationName
-	}
-
-	resp := TripWithMembersAndInvitationsResponse{
-		ID:                 createdTrip.ID,
-		Name:               createdTrip.Name,
-		Description:        createdTrip.Description,
-		Destination:        dest,
-		StartDate:          createdTrip.StartDate,
-		EndDate:            createdTrip.EndDate,
-		Status:             string(createdTrip.Status),
-		CreatedBy:          derefString(createdTrip.CreatedBy),
-		CreatedAt:          createdTrip.CreatedAt,
-		UpdatedAt:          createdTrip.UpdatedAt,
-		BackgroundImageURL: createdTrip.BackgroundImageURL,
-		Members:            members,
-		Invitations:        invitations,
-	}
-
+	resp := buildTripWithMembersResponse(createdTrip, members, invitations)
 	c.JSON(http.StatusCreated, resp)
 }
 
@@ -238,6 +198,46 @@ func derefString(s *string) string {
 		return *s
 	}
 	return ""
+}
+
+// buildDestinationResponse builds the destination response object from a Trip
+func buildDestinationResponse(trip *types.Trip) DestinationResponse {
+	dest := DestinationResponse{}
+	dest.Address = derefString(trip.DestinationAddress)
+	dest.Coordinates.Lat = trip.DestinationLatitude
+	dest.Coordinates.Lng = trip.DestinationLongitude
+	dest.PlaceID = derefString(trip.DestinationPlaceID)
+	dest.Name = derefString(trip.DestinationName)
+	return dest
+}
+
+// buildTripWithMembersResponse builds the full trip response with members and invitations
+func buildTripWithMembersResponse(
+	trip *types.Trip,
+	members []*types.TripMembership,
+	invitations []*types.TripInvitation,
+) TripWithMembersAndInvitationsResponse {
+	return TripWithMembersAndInvitationsResponse{
+		ID:                 trip.ID,
+		Name:               trip.Name,
+		Description:        trip.Description,
+		Destination:        buildDestinationResponse(trip),
+		StartDate:          trip.StartDate,
+		EndDate:            trip.EndDate,
+		Status:             string(trip.Status),
+		CreatedBy:          derefString(trip.CreatedBy),
+		CreatedAt:          trip.CreatedAt,
+		UpdatedAt:          trip.UpdatedAt,
+		BackgroundImageURL: trip.BackgroundImageURL,
+		Members:            members,
+		Invitations:        invitations,
+	}
+}
+
+// getUserIDFromContext extracts the authenticated user ID from the Gin context.
+// Returns empty string if not found (caller should handle unauthorized response).
+func getUserIDFromContext(c *gin.Context) string {
+	return c.GetString(string(middleware.UserIDKey))
 }
 
 // GetTripHandler godoc
@@ -398,18 +398,14 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 // @Security BearerAuth
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	// Use Supabase user ID for querying trips (consistent with trip creation)
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
-
-	if supabaseUserID == "" {
-		log.Errorw("No Supabase user ID found in context for ListUserTripsHandler")
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		log.Errorw("No user ID found in context for ListUserTripsHandler")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No authenticated user"})
 		return
 	}
 
-	log.Infow("Listing trips for user", "supabaseUserID", supabaseUserID)
-
-	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), supabaseUserID) // Use supabaseUserID for consistency with created_by field
+	trips, err := h.tripModel.ListUserTrips(c.Request.Context(), userID)
 	if err != nil {
 		h.handleModelError(c, err)
 		return
