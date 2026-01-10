@@ -7,9 +7,9 @@
 
 ## Current Status
 
-**Active Milestone:** v1.1 — Infrastructure Migration to Oracle Cloud
-**Current Phase:** 13 (Not Started)
-**Phase Status:** Ready to plan Phase 13 - Oracle Cloud Setup
+**Active Milestone:** v1.0 — Codebase Refactoring
+**Current Phase:** 4 (In Progress)
+**Phase Status:** Plan 4-01 complete, ready for Plan 4-02
 
 ## Progress
 
@@ -18,7 +18,7 @@
 | 1. Trip Domain Handler Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 2. Trip Domain Service/Model Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 3. Trip Domain Store Refactoring | Complete | 2026-01-10 | 2026-01-10 |
-| 4. User Domain Refactoring | Not Started | — | — |
+| 4. User Domain Refactoring | In Progress | 2026-01-10 | — |
 | 5. Location Domain Refactoring | Not Started | — | — |
 | 6. Notification Domain Refactoring | Not Started | — | — |
 | 7. Todo Domain Refactoring | Not Started | — | — |
@@ -47,19 +47,22 @@ None currently.
 | 2026-01-10 | Domain-by-domain approach | Allows complete refactoring of each domain before moving to next |
 | 2026-01-10 | All layers equally | No layer is clean enough to skip |
 | 2026-01-10 | Tests as safety net | Existing tests validate refactoring correctness |
+| 2026-01-10 | Use app_metadata for admin status | Server-only, secure - cannot be modified by users |
+| 2026-01-10 | ValidateAndGetClaims in AuthMiddleware | Full claim access including IsAdmin |
 
 ## Context for Next Session
 
-### v1.0 Context (Paused)
+### v1.0 Context (Active)
 - Phases 1-3 complete: Trip Domain fully refactored (Handler, Service/Model, Store)
-- Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix convention
-- Next phase: Phase 4 - User Domain Refactoring
-- Phase 4 (User Domain) requires research on admin role implementation
-- Critical security issues in Phase 4 (admin check) and Phase 9 (weather permissions)
+- Phase 4 Plan 01 complete: Admin role implementation done
+- Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix, IsAdminKey context
+- **Next:** Plan 4-02 - Handler cleanup and trip membership check
+- Critical security issue in Phase 4 (admin check) is now RESOLVED
+- Remaining critical: Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - Untracked files with compilation issues: notification_service.go, chat_handler.go (blocks full test suite)
 
-### v1.1 Context (Active)
+### v1.1 Context (Planned)
 - **Goal:** Migrate from Cloud Run ($24/month) to Oracle Cloud Always Free ($0/month)
 - **Target Stack:** Oracle Cloud ARM + Coolify + Neon + Upstash + Grafana Cloud
 - **Phase 13 Research Topics:** OCI account setup, ARM instance provisioning, Always Free limits
@@ -68,12 +71,11 @@ None currently.
 
 ## Files Modified This Session
 
-- `handlers/trip_handler.go` - Refactored (Phase 1)
-- `models/trip/service/trip_service.go` - Cleaned up (Phase 2)
-- `models/trip/validation/membership.go` - Cleaned up (Phase 2)
-- `models/trip/service/trip_model_coordinator.go` - Improved deprecation docs (Phase 2)
-- `internal/store/interfaces.go` - Added Deprecated: prefix to Commit/Rollback (Phase 3)
-- `internal/store/sqlcadapter/trip_store.go` - Removed verbose logs, updated deprecation docs (Phase 3)
+- `types/user.go` - Added IsAdmin to JWTClaims (Phase 4)
+- `middleware/jwt_validator.go` - Extract app_metadata.is_admin (Phase 4)
+- `middleware/context_keys.go` - Added IsAdminKey (Phase 4)
+- `middleware/auth.go` - Use ValidateAndGetClaims, set IsAdminKey (Phase 4)
+- `handlers/user_handler.go` - Replace hardcoded admin check (Phase 4)
 
 ---
 
