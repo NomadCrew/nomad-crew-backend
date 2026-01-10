@@ -15,7 +15,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// LocationHandler handles location-related API requests
+// Deprecated: LocationHandler is not routed and should not be used.
+// All location routes use LocationHandlerSupabase instead.
+// This handler is instantiated in main.go but no routes point to its methods.
+// TODO(phase-12): Remove this handler and its instantiation in main.go.
 type LocationHandler struct {
 	locationService locationService.LocationManagementServiceInterface
 	tripService     types.TripServiceInterface
@@ -38,6 +41,7 @@ func NewLocationHandler(
 	}
 }
 
+// Deprecated: UpdateLocationHandler is not routed. Use LocationHandlerSupabase.UpdateLocation instead.
 // UpdateLocationHandler godoc
 // @Summary Update user location
 // @Description Updates the current user's location
@@ -51,7 +55,6 @@ func NewLocationHandler(
 // @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /locations [put]
 // @Security BearerAuth
-// UpdateLocationHandler handles requests to update a user's location
 func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -91,6 +94,7 @@ func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, location)
 }
 
+// Deprecated: GetTripMemberLocationsHandler is not routed. Use LocationHandlerSupabase.GetTripMemberLocations instead.
 // GetTripMemberLocationsHandler godoc
 // @Summary Get trip member locations
 // @Description Retrieves the current locations of all members in a trip
@@ -105,7 +109,6 @@ func (h *LocationHandler) UpdateLocationHandler(c *gin.Context) {
 // @Failure 500 {object} docs.ErrorResponse "Internal server error"
 // @Router /trips/{id}/locations [get]
 // @Security BearerAuth
-// GetTripMemberLocationsHandler handles requests to get locations of all members in a trip
 func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 	log := logger.GetLogger()
 
@@ -152,7 +155,8 @@ func (h *LocationHandler) GetTripMemberLocationsHandler(c *gin.Context) {
 	})
 }
 
-// UpdateLocation handles PUT /api/v1/locations
+// Deprecated: UpdateLocationSupabase is not routed and duplicates LocationHandlerSupabase.UpdateLocation.
+// Use LocationHandlerSupabase.UpdateLocation instead.
 func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {
@@ -221,7 +225,8 @@ func (h *LocationHandler) UpdateLocationSupabase(c *gin.Context) {
 	})
 }
 
-// GetTripMemberLocations handles GET /api/v1/trips/:tripID/locations
+// Deprecated: GetTripMemberLocationsSupabase is not routed and duplicates LocationHandlerSupabase.GetTripMemberLocations.
+// Use LocationHandlerSupabase.GetTripMemberLocations instead.
 func (h *LocationHandler) GetTripMemberLocationsSupabase(c *gin.Context) {
 	userID := c.GetString(string(middleware.UserIDKey))
 	if userID == "" {

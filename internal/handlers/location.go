@@ -9,6 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Deprecated: LocationHandler in internal/handlers is not used and should not be used.
+// This handler bypasses the service layer and has NO authorization checks.
+// Use handlers.LocationHandlerSupabase instead, which is properly routed and secured.
+// WARNING: GetTripMemberLocations has NO trip membership verification - security gap.
+// TODO(phase-12): Remove this handler after confirming it's not imported anywhere.
 type LocationHandler struct {
 	store store.LocationStore
 }
@@ -17,18 +22,8 @@ func NewLocationHandler(store store.LocationStore) *LocationHandler {
 	return &LocationHandler{store: store}
 }
 
-// //@Summary Update user location
-// //@Description Updates the current user's location with the provided coordinates
-// //@Tags location
-// //@Accept json
-// //@Produce json
-// //@Param location body types.LocationUpdate true "Location update information"
-// //@Success 200 {object} types.Location "Location updated successfully"
-// //@Failure 400 {object} gin.H "Bad request"
-// //@Failure 401 {object} gin.H "Unauthorized"
-// //@Failure 500 {object} gin.H "Internal server error"
-// //@Router /location [put]
-// UpdateLocation handles updating a user's location
+// Deprecated: UpdateLocation is not routed and bypasses service layer.
+// Use handlers.LocationHandlerSupabase.UpdateLocation instead.
 func (h *LocationHandler) UpdateLocation(c *gin.Context) {
 	userID, exists := c.Get(string(middleware.UserIDKey))
 	if !exists || userID == "" {
@@ -52,17 +47,9 @@ func (h *LocationHandler) UpdateLocation(c *gin.Context) {
 	c.JSON(http.StatusOK, location)
 }
 
-// //@Summary Get trip member locations
-// //@Description Retrieves the locations of all members in a specific trip
-// //@Tags location
-// //@Accept json
-// //@Produce json
-// //@Param id path string true "Trip ID"
-// //@Success 200 {array} types.Location "Trip member locations"
-// //@Failure 400 {object} gin.H "Bad request"
-// //@Failure 500 {object} gin.H "Internal server error"
-// //@Router /trips/{id}/locations [get]
-// GetTripMemberLocations retrieves all member locations for a trip
+// Deprecated: GetTripMemberLocations is not routed, bypasses service layer, and has NO authorization.
+// WARNING: This method allows ANY authenticated user to query ANY trip's locations - SECURITY GAP.
+// Use handlers.LocationHandlerSupabase.GetTripMemberLocations instead.
 func (h *LocationHandler) GetTripMemberLocations(c *gin.Context) {
 	tripID := c.Param("id")
 	if tripID == "" {
