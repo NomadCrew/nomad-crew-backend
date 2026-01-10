@@ -112,14 +112,9 @@ type TripWithMembersAndInvitationsResponse struct {
 // @Security BearerAuth
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 	log := logger.GetLogger()
-	log.Infow("Received CreateTrip request")
 
 	var req CreateTripRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid request for CreateTripHandler", "error", err)
-		if bindErr := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); bindErr != nil {
-			log.Errorw("Failed to set error in context for CreateTripHandler", "error", bindErr)
-		}
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
@@ -145,7 +140,6 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		BackgroundImageURL:   req.BackgroundImageURL,
 		CreatedBy:            &userID,
 	}
-	log.Infow("[DEBUG] Trip to be created", "tripToCreate", tripToCreate)
 
 	if tripToCreate.Status == "" {
 		tripToCreate.Status = types.TripStatusPlanning
@@ -165,7 +159,7 @@ func (h *TripHandler) CreateTripHandler(c *gin.Context) {
 		h.handleModelError(c, err)
 		return
 	}
-	log.Infow("Successfully created trip", "trip", createdTrip)
+	log.Infow("Successfully created trip", "tripID", createdTrip.ID)
 
 	// Fetch members (should include the creator as owner)
 	membersRaw, err := h.tripModel.GetTripMembers(c.Request.Context(), createdTrip.ID)
@@ -240,6 +234,18 @@ func getUserIDFromContext(c *gin.Context) string {
 	return c.GetString(string(middleware.UserIDKey))
 }
 
+// bindJSONOrError binds JSON request body and sets validation error if binding fails.
+// Returns true if binding succeeded, false if error was set (caller should return).
+func bindJSONOrError(c *gin.Context, obj interface{}) bool {
+	if err := c.ShouldBindJSON(obj); err != nil {
+		log := logger.GetLogger()
+		log.Errorw("Invalid request payload", "error", err)
+		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
+		return false
+	}
+	return true
+}
+
 // GetTripHandler godoc
 // @Summary Get trip details
 // @Description Retrieves detailed information about a specific trip
@@ -257,8 +263,7 @@ func getUserIDFromContext(c *gin.Context) string {
 // @Security BearerAuth
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := getUserIDFromContext(c)
 
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -286,17 +291,11 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
 // @Router /trips/{id} [put]
 // @Security BearerAuth
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
-	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := getUserIDFromContext(c)
 
 	var update types.TripUpdate
-	if err := c.ShouldBindJSON(&update); err != nil {
-		log.Errorw("Invalid update data", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("Invalid update data", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+	if !bindJSONOrError(c, &update) {
 		return
 	}
 
@@ -328,15 +327,10 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 // UpdateTripStatusHandler updates trip status using the facade
 func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 	log := logger.GetLogger()
-
 	tripID := c.Param("id")
 
 	var req UpdateTripStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid status update request", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
@@ -348,8 +342,7 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 		return
 	}
 
-	// Use internal user ID from enhanced middleware
-	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, c.GetString(string(middleware.UserIDKey)))
+	updatedTrip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, getUserIDFromContext(c))
 	if err != nil {
 		log.Errorw("Failed to fetch updated trip after status change", "tripID", tripID, "error", err)
 		c.JSON(http.StatusOK, gin.H{"message": "Trip status updated successfully"})
@@ -455,13 +448,8 @@ func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 // @Router /trips/search [post]
 // @Security BearerAuth
 func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
-	log := logger.GetLogger()
-
 	var criteria types.TripSearchCriteria
-	if err := c.ShouldBindJSON(&criteria); err != nil {
-		if err := c.Error(apperrors.ValidationFailed("Invalid search criteria", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+	if !bindJSONOrError(c, &criteria) {
 		return
 	}
 
@@ -491,8 +479,7 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := getUserIDFromContext(c)
 
 	tripWithMembers, err := h.tripModel.GetTripWithMembers(c.Request.Context(), tripID, userID)
 	if err != nil {
@@ -521,47 +508,33 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	log := logger.GetLogger()
 	tripID := c.Param("id")
-	// Use internal user ID from enhanced middleware
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := getUserIDFromContext(c)
 
-	// Fetch the trip to ensure it exists and to get destination details
-	// Use GetTripByID which includes membership check implicitly via the model layer
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
-		h.handleModelError(c, err) // Handles NotFound, Forbidden, etc.
+		h.handleModelError(c, err)
 		return
 	}
 
 	if trip.DestinationLatitude == 0 && trip.DestinationLongitude == 0 {
-		log.Warnw("Cannot trigger weather update, trip has no valid destination coordinates", "tripID", tripID, "userID", userID)
-		if err := c.Error(apperrors.Forbidden("no_destination", "Trip has no destination set for weather updates.")); err != nil {
-			log.Errorw("Failed to set error in context for TriggerWeatherUpdateHandler no destination", "error", err)
-		}
+		log.Warnw("Cannot trigger weather update, trip has no destination", "tripID", tripID)
+		_ = c.Error(apperrors.Forbidden("no_destination", "Trip has no destination set for weather updates."))
 		return
 	}
 
 	if h.weatherService == nil {
-		log.Errorw("Weather service not available in TripHandler", "tripID", tripID, "userID", userID)
-		if err := c.Error(apperrors.InternalServerError("Weather service is not configured.")); err != nil {
-			log.Errorw("Failed to set error in context for TriggerWeatherUpdateHandler weather service unavailable", "error", err)
-		}
+		log.Errorw("Weather service not available", "tripID", tripID)
+		_ = c.Error(apperrors.InternalServerError("Weather service is not configured."))
 		return
 	}
 
-	log.Infow("Attempting to trigger weather update for trip", "tripID", tripID, "userID", userID, "lat", trip.DestinationLatitude, "lon", trip.DestinationLongitude)
-
-	// Call the weather service to trigger an immediate update
 	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
-		log.Errorw("Failed to trigger weather update", "tripID", tripID, "userID", userID, "error", err)
-		// Propagate the error to the client, ensuring it's an AppError
+		log.Errorw("Failed to trigger weather update", "tripID", tripID, "error", err)
 		appErr, ok := err.(*apperrors.AppError)
 		if !ok {
-			// If it's not an AppError, wrap it as an internal server error
 			appErr = apperrors.InternalServerError("Failed to trigger weather update due to an unexpected error")
 		}
-		if bindErr := c.Error(appErr); bindErr != nil { // Use c.Error to let middleware handle it
-			log.Errorw("Failed to bind appErr to context in TriggerWeatherUpdateHandler", "error", bindErr, "originalAppError", appErr)
-		}
+		_ = c.Error(appErr)
 		return
 	}
 
