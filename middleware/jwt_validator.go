@@ -413,10 +413,21 @@ func extractClaimsFromToken(token jwt.Token) (*types.JWTClaims, error) {
 		}
 	}
 
+	// Extract admin status from app_metadata (server-only, secure)
+	// app_metadata can only be set via Supabase Admin API, not by users
+	if appMetaVal, ok := token.Get("app_metadata"); ok {
+		if appMeta, ok := appMetaVal.(map[string]interface{}); ok {
+			if isAdmin, ok := appMeta["is_admin"].(bool); ok {
+				claims.IsAdmin = isAdmin
+			}
+		}
+	}
+
 	logger.GetLogger().Debugw("Extracted claims from token",
 		"userID", claims.UserID,
 		"email", claims.Email,
-		"username", claims.Username)
+		"username", claims.Username,
+		"isAdmin", claims.IsAdmin)
 
 	return claims, nil
 }

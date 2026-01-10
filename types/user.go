@@ -53,6 +53,10 @@ type JWTClaims struct {
 	Username  string   `json:"username,omitempty"`
 	Roles     []string `json:"roles,omitempty"`
 	SessionID string   `json:"sid,omitempty"`
+	// IsAdmin indicates system-wide admin status extracted from app_metadata.is_admin.
+	// This is different from trip-level MemberRoleAdmin.
+	// Defaults to false if not present in JWT.
+	IsAdmin bool `json:"is_admin,omitempty"`
 	jwt.RegisteredClaims
 }
 
