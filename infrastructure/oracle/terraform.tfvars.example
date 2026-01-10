@@ -1,0 +1,54 @@
+# Oracle Cloud Infrastructure - Terraform Variables
+# Copy this file to terraform.tfvars and fill in your values
+#
+# IMPORTANT: terraform.tfvars contains sensitive data - DO NOT commit to git!
+# Add to .gitignore: infrastructure/oracle/terraform.tfvars
+
+# -----------------------------------------------------------------------------
+# Authentication - Get these from OCI Console
+# -----------------------------------------------------------------------------
+
+# Tenancy OCID
+# Find at: OCI Console > Profile (top right) > Tenancy > OCID (copy)
+# Format: ocid1.tenancy.oc1..aaaaaaaaxxxxxxxxxx
+tenancy_ocid = "ocid1.tenancy.oc1..your-tenancy-ocid"
+
+# User OCID
+# Find at: OCI Console > Profile > My Profile > OCID (copy)
+# Format: ocid1.user.oc1..aaaaaaaaxxxxxxxxxx
+user_ocid = "ocid1.user.oc1..your-user-ocid"
+
+# API Key Fingerprint
+# Shown when you add API key: OCI Console > Profile > My Profile > API Keys
+# Format: xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
+fingerprint = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+
+# Path to Private Key
+# Generated with: openssl genrsa -out ~/.oci/oci_api_key.pem 2048
+private_key_path = "~/.oci/oci_api_key.pem"
+
+# -----------------------------------------------------------------------------
+# Region
+# -----------------------------------------------------------------------------
+
+# Your OCI home region (selected during account creation)
+# Common values: us-ashburn-1, uk-london-1, me-dubai-1, ap-sydney-1
+region = "me-dubai-1"
+
+# -----------------------------------------------------------------------------
+# SSH Access
+# -----------------------------------------------------------------------------
+
+# Path to your SSH public key
+# Generate with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/oci_nomadcrew
+# This key will be added to the ubuntu user on the instance
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# -----------------------------------------------------------------------------
+# Instance Configuration (Optional - defaults work for Always Free tier)
+# -----------------------------------------------------------------------------
+
+# Uncomment to customize (must stay within Always Free limits):
+# instance_ocpus     = 4     # Max 4 for Always Free
+# instance_memory_gb = 24    # Max 24 for Always Free
+# boot_volume_size_gb = 50   # Max 200 for Always Free (total across all instances)
