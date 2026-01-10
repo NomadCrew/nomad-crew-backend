@@ -93,8 +93,8 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 ---
 
 ## Phase 4: User Domain Refactoring
-**Status:** Not Started
-**Research Required:** Yes (admin role implementation options)
+**Status:** Complete (2026-01-11)
+**Research Required:** Yes (admin role implementation options) - DONE
 
 **Goal:** Fix admin check implementation, add missing permission checks, reduce handler complexity
 
@@ -105,17 +105,21 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 - `services/supabase_service.go` - Supabase integration
 
 **Key Tasks:**
-- **CRITICAL:** Implement proper admin role check (currently hardcoded false at lines 260, 343)
-- **CRITICAL:** Add trip membership check at line 620 (or document why not needed)
+- ✅ **CRITICAL:** Implement proper admin role check (currently hardcoded false at lines 260, 343)
+- ✅ **CRITICAL:** Add trip membership check at line 620 (or document why not needed) - Removed unused parameter
 - Extract repeated validation patterns
 - Standardize error responses
 - Review Supabase service integration
 
+**Completed Plans:**
+- Plan 4-01: Admin role implementation (JWT app_metadata extraction)
+- Plan 4-02: Handler cleanup (removed unused tripId parameter)
+
 **Success Criteria:**
-- Admin role check properly implemented
-- Trip membership verification in place
+- ✅ Admin role check properly implemented
+- ✅ Trip membership verification in place (removed unused parameter, use trip member endpoints)
 - All existing tests pass
-- Security issues resolved
+- ✅ Security issues resolved
 
 **Dependencies:** Phase 3 (may need TripStore for membership check)
 

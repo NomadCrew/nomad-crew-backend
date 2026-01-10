@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.0 — Codebase Refactoring
-**Current Phase:** 4 (In Progress)
-**Phase Status:** Plan 4-01 complete, ready for Plan 4-02
+**Current Phase:** 4 (Complete)
+**Phase Status:** Phase 4 complete, ready for Phase 5
 
 ## Progress
 
@@ -18,7 +18,7 @@
 | 1. Trip Domain Handler Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 2. Trip Domain Service/Model Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 3. Trip Domain Store Refactoring | Complete | 2026-01-10 | 2026-01-10 |
-| 4. User Domain Refactoring | In Progress | 2026-01-10 | — |
+| 4. User Domain Refactoring | Complete | 2026-01-10 | 2026-01-11 |
 | 5. Location Domain Refactoring | Not Started | — | — |
 | 6. Notification Domain Refactoring | Not Started | — | — |
 | 7. Todo Domain Refactoring | Not Started | — | — |
@@ -49,14 +49,14 @@ None currently.
 | 2026-01-10 | Tests as safety net | Existing tests validate refactoring correctness |
 | 2026-01-10 | Use app_metadata for admin status | Server-only, secure - cannot be modified by users |
 | 2026-01-10 | ValidateAndGetClaims in AuthMiddleware | Full claim access including IsAdmin |
+| 2026-01-11 | Remove unused tripId from SearchUsers | Don't accept parameters that do nothing |
 
 ## Context for Next Session
 
 ### v1.0 Context (Active)
-- Phases 1-3 complete: Trip Domain fully refactored (Handler, Service/Model, Store)
-- Phase 4 Plan 01 complete: Admin role implementation done
+- Phases 1-4 complete: Trip Domain and User Domain fully refactored
 - Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix, IsAdminKey context
-- **Next:** Plan 4-02 - Handler cleanup and trip membership check
+- **Next:** Phase 5 - Location Domain Refactoring
 - Critical security issue in Phase 4 (admin check) is now RESOLVED
 - Remaining critical: Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
@@ -71,12 +71,8 @@ None currently.
 
 ## Files Modified This Session
 
-- `types/user.go` - Added IsAdmin to JWTClaims (Phase 4)
-- `middleware/jwt_validator.go` - Extract app_metadata.is_admin (Phase 4)
-- `middleware/context_keys.go` - Added IsAdminKey (Phase 4)
-- `middleware/auth.go` - Use ValidateAndGetClaims, set IsAdminKey (Phase 4)
-- `handlers/user_handler.go` - Replace hardcoded admin check (Phase 4)
+- `handlers/user_handler.go` - Removed unused tripId parameter from SearchUsers (Phase 4-02)
 
 ---
 
-*Last updated: 2026-01-10*
+*Last updated: 2026-01-11*
