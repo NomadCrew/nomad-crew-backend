@@ -17,7 +17,7 @@
 |-------|--------|---------|-----------|
 | 1. Trip Domain Handler Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 2. Trip Domain Service/Model Refactoring | Complete | 2026-01-10 | 2026-01-10 |
-| 3. Trip Domain Store Refactoring | Not Started | — | — |
+| 3. Trip Domain Store Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 4. User Domain Refactoring | Not Started | — | — |
 | 5. Location Domain Refactoring | Not Started | — | — |
 | 6. Notification Domain Refactoring | Not Started | — | — |
@@ -51,13 +51,13 @@ None currently.
 ## Context for Next Session
 
 ### v1.0 Context (Paused)
-- Phases 1-2 complete: Trip Domain Handler and Service/Model Refactoring
-- Established patterns: bindJSONOrError, getUserIDFromContext, buildDestinationResponse, buildTripWithMembersResponse
-- Next phase: Phase 3 - Trip Domain Store Refactoring
+- Phases 1-3 complete: Trip Domain fully refactored (Handler, Service/Model, Store)
+- Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix convention
+- Next phase: Phase 4 - User Domain Refactoring
 - Phase 4 (User Domain) requires research on admin role implementation
 - Critical security issues in Phase 4 (admin check) and Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
-- Untracked files with compilation issues: notification_service.go, chat_handler.go
+- Untracked files with compilation issues: notification_service.go, chat_handler.go (blocks full test suite)
 
 ### v1.1 Context (Active)
 - **Goal:** Migrate from Cloud Run ($24/month) to Oracle Cloud Always Free ($0/month)
@@ -72,6 +72,8 @@ None currently.
 - `models/trip/service/trip_service.go` - Cleaned up (Phase 2)
 - `models/trip/validation/membership.go` - Cleaned up (Phase 2)
 - `models/trip/service/trip_model_coordinator.go` - Improved deprecation docs (Phase 2)
+- `internal/store/interfaces.go` - Added Deprecated: prefix to Commit/Rollback (Phase 3)
+- `internal/store/sqlcadapter/trip_store.go` - Removed verbose logs, updated deprecation docs (Phase 3)
 
 ---
 
