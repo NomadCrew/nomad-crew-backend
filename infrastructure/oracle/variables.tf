@@ -67,3 +67,9 @@ variable "boot_volume_size_gb" {
   type        = number
   default     = 50
 }
+
+variable "availability_domain_number" {
+  description = "Availability Domain number (1, 2, or 3). Try different ADs if 'Out of capacity' error occurs"
+  type        = number
+  default     = 1
+}

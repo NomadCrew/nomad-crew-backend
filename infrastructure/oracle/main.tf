@@ -30,10 +30,10 @@ provider "oci" {
 # Data Sources
 # -----------------------------------------------------------------------------
 
-# Get the first availability domain in the region
+# Get the availability domain in the region
 data "oci_identity_availability_domain" "ad" {
   compartment_id = var.tenancy_ocid
-  ad_number      = 1
+  ad_number      = var.availability_domain_number
 }
 
 # Get the latest Ubuntu 22.04 ARM image
