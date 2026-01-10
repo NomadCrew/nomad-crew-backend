@@ -355,6 +355,250 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 
 ---
 
+## Milestone: v1.1 — Infrastructure Migration to Oracle Cloud
+
+### Overview
+
+Migrate from Google Cloud Run ($24/month) to Oracle Cloud Always Free tier with Coolify for a truly free, production-ready infrastructure.
+
+**Target Stack:**
+- **Compute**: Oracle Cloud ARM (4 OCPU, 24 GB RAM) — Always Free
+- **Orchestration**: Coolify (self-hosted PaaS)
+- **Database**: Neon PostgreSQL (keep existing)
+- **Cache**: Upstash Redis (keep existing)
+- **Monitoring**: Grafana Cloud Free Tier
+
+**Cost Savings:** $24/month → $0/month
+
+---
+
+## Phase 13: Oracle Cloud Setup
+**Status:** Not Started
+**Research Required:** Yes (OCI account setup, ARM instance provisioning)
+
+**Goal:** Create Oracle Cloud account and provision Always Free ARM compute instances
+
+**Scope:**
+- Create Oracle Cloud Infrastructure (OCI) account
+- Configure compartments and IAM policies
+- Provision ARM Ampere A1 instance (4 OCPU, 24 GB RAM)
+- Configure networking (VCN, subnet, security lists)
+- Set up SSH access and firewall rules
+
+**Research Topics:**
+- Oracle Cloud Always Free tier limits and gotchas
+- ARM instance availability by region
+- Network security best practices for OCI
+
+**Success Criteria:**
+- OCI account active with Always Free tier
+- ARM instance running and accessible via SSH
+- Ports 80, 443, 22 open and configured
+
+**Dependencies:** None
+
+---
+
+## Phase 14: Coolify Installation
+**Status:** Not Started
+**Research Required:** Yes (Coolify setup on ARM, Docker configuration)
+
+**Goal:** Install and configure Coolify on Oracle Cloud for Heroku-like deployment experience
+
+**Scope:**
+- Install Docker on ARM instance
+- Install Coolify using official install script
+- Configure Coolify admin account
+- Set up Coolify networking and reverse proxy
+- Test basic deployment capability
+
+**Research Topics:**
+- Coolify ARM64 compatibility
+- Docker installation on Oracle Linux / Ubuntu
+- Coolify resource requirements and configuration
+
+**Success Criteria:**
+- Coolify dashboard accessible
+- Can create projects and environments
+- Reverse proxy (Traefik) working
+
+**Dependencies:** Phase 13
+
+---
+
+## Phase 15: CI/CD Pipeline Migration
+**Status:** Not Started
+**Research Required:** No
+
+**Goal:** Update GitHub Actions workflows for Coolify git-push deployments
+
+**Scope:**
+- Configure Coolify webhook or git integration
+- Update deploy-cloud-run.yml → deploy-coolify.yml
+- Remove Cloud Run specific configurations
+- Set up deployment secrets in GitHub
+- Test automated deployments on push
+
+**Key Tasks:**
+- Create Coolify deployment configuration
+- Update GitHub Actions workflow
+- Configure environment variables in Coolify
+- Test PR preview environments (if supported)
+
+**Success Criteria:**
+- Push to main triggers deployment to Coolify
+- Environment variables properly configured
+- Deployment logs accessible
+
+**Dependencies:** Phase 14
+
+---
+
+## Phase 16: Application Deployment
+**Status:** Not Started
+**Research Required:** No
+
+**Goal:** Deploy NomadCrew Go backend via Coolify with existing Dockerfile
+
+**Scope:**
+- Configure application in Coolify
+- Set up environment variables (Neon, Upstash, Supabase, etc.)
+- Configure health checks
+- Test application functionality
+- Verify database and cache connectivity
+
+**Key Tasks:**
+- Create Coolify application from GitHub repo
+- Configure build settings (Dockerfile)
+- Set all required environment variables
+- Test all API endpoints
+- Verify external service integrations
+
+**Success Criteria:**
+- Application running on Coolify
+- All health checks passing
+- Database and cache connections working
+- API endpoints responding correctly
+
+**Dependencies:** Phase 15
+
+---
+
+## Phase 17: Domain & SSL Configuration
+**Status:** Not Started
+**Research Required:** No
+
+**Goal:** Configure custom domain and SSL certificates for production
+
+**Scope:**
+- Update DNS records for nomadcrew.uk
+- Configure domain in Coolify
+- Set up Let's Encrypt SSL certificates
+- Configure HTTP to HTTPS redirect
+- Update CORS and allowed origins
+
+**Key Tasks:**
+- Add A record pointing to Oracle Cloud IP
+- Configure domain in Coolify dashboard
+- Enable automatic SSL via Let's Encrypt
+- Test HTTPS access
+- Update frontend configuration if needed
+
+**Success Criteria:**
+- nomadcrew.uk resolving to Oracle Cloud
+- Valid SSL certificate installed
+- HTTPS working with auto-redirect
+- No mixed content warnings
+
+**Dependencies:** Phase 16
+
+---
+
+## Phase 18: Monitoring Setup
+**Status:** Not Started
+**Research Required:** Yes (Grafana Cloud setup, Prometheus integration)
+
+**Goal:** Set up free monitoring and observability with Grafana Cloud
+
+**Scope:**
+- Create Grafana Cloud free account
+- Configure Prometheus metrics export
+- Set up log aggregation
+- Create dashboards for key metrics
+- Configure alerting for critical issues
+
+**Research Topics:**
+- Grafana Cloud free tier limits
+- Prometheus Go client integration
+- Loki log shipping configuration
+
+**Key Tasks:**
+- Sign up for Grafana Cloud free tier
+- Install Grafana Agent on Oracle Cloud
+- Configure application metrics endpoint
+- Create performance dashboards
+- Set up alert rules
+
+**Success Criteria:**
+- Metrics visible in Grafana Cloud
+- Logs searchable
+- Alerts configured for downtime
+- Dashboard showing key health indicators
+
+**Dependencies:** Phase 17
+
+---
+
+## Phase 19: Cloud Run Decommissioning
+**Status:** Not Started
+**Research Required:** No
+
+**Goal:** Safely shut down GCP Cloud Run and clean up resources
+
+**Scope:**
+- Verify Oracle Cloud deployment is stable (run for 48+ hours)
+- Update any remaining DNS records
+- Delete Cloud Run service
+- Remove Artifact Registry images
+- Clean up GCP IAM and service accounts
+- Cancel/downgrade GCP billing
+
+**Key Tasks:**
+- Final verification of Oracle Cloud deployment
+- Document any GCP resources to keep (if any)
+- Delete Cloud Run service
+- Clean up container images
+- Update GitHub secrets to remove GCP credentials
+- Archive old deployment workflows
+
+**Success Criteria:**
+- Cloud Run service deleted
+- No unexpected GCP charges
+- All traffic flowing through Oracle Cloud
+- GitHub workflows updated
+
+**Dependencies:** Phase 18 (monitoring confirms stability)
+
+---
+
+## v1.1 Summary
+
+| Phase | Name | Research | Critical |
+|-------|------|----------|----------|
+| 13 | Oracle Cloud Setup | Yes | No |
+| 14 | Coolify Installation | Yes | No |
+| 15 | CI/CD Pipeline Migration | No | No |
+| 16 | Application Deployment | No | Yes |
+| 17 | Domain & SSL Config | No | Yes |
+| 18 | Monitoring Setup | Yes | No |
+| 19 | Cloud Run Decommissioning | No | No |
+
+**Total Phases:** 7
+**Phases Requiring Research:** 3 (Phase 13, 14, 18)
+**Critical Phases:** 2 (Phase 16, 17 - production traffic)
+
+---
+
 *Created: 2026-01-10*
 *Approach: Domain-by-domain*
 *Depth: Comprehensive*

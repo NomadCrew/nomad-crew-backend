@@ -1,10 +1,15 @@
 # Project State
 
+## Milestones
+
+- 🚧 **v1.0 — Codebase Refactoring** (Phases 1-12) - In Progress
+- 📋 **v1.1 — Infrastructure Migration to Oracle Cloud** (Phases 13-19) - Planned
+
 ## Current Status
 
-**Milestone:** v1.0 — Codebase Refactoring
-**Current Phase:** 2 (Complete)
-**Phase Status:** Phase 2 Complete - Ready for Phase 3
+**Active Milestone:** v1.1 — Infrastructure Migration to Oracle Cloud
+**Current Phase:** 13 (Not Started)
+**Phase Status:** Ready to plan Phase 13 - Oracle Cloud Setup
 
 ## Progress
 
@@ -22,6 +27,14 @@
 | 10. Middleware and Cross-Cutting Concerns | Not Started | — | — |
 | 11. Event System and WebSocket Refactoring | Not Started | — | — |
 | 12. Final Cleanup and Documentation | Not Started | — | — |
+| **v1.1 — Infrastructure Migration** | | | |
+| 13. Oracle Cloud Setup | Not Started | — | — |
+| 14. Coolify Installation | Not Started | — | — |
+| 15. CI/CD Pipeline Migration | Not Started | — | — |
+| 16. Application Deployment | Not Started | — | — |
+| 17. Domain & SSL Config | Not Started | — | — |
+| 18. Monitoring Setup | Not Started | — | — |
+| 19. Cloud Run Decommissioning | Not Started | — | — |
 
 ## Blockers
 
@@ -37,6 +50,7 @@ None currently.
 
 ## Context for Next Session
 
+### v1.0 Context (Paused)
 - Phases 1-2 complete: Trip Domain Handler and Service/Model Refactoring
 - Established patterns: bindJSONOrError, getUserIDFromContext, buildDestinationResponse, buildTripWithMembersResponse
 - Next phase: Phase 3 - Trip Domain Store Refactoring
@@ -44,6 +58,13 @@ None currently.
 - Critical security issues in Phase 4 (admin check) and Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - Untracked files with compilation issues: notification_service.go, chat_handler.go
+
+### v1.1 Context (Active)
+- **Goal:** Migrate from Cloud Run ($24/month) to Oracle Cloud Always Free ($0/month)
+- **Target Stack:** Oracle Cloud ARM + Coolify + Neon + Upstash + Grafana Cloud
+- **Phase 13 Research Topics:** OCI account setup, ARM instance provisioning, Always Free limits
+- **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
+- **Risk:** Oracle Cloud "out of capacity" errors - may need to try different regions
 
 ## Files Modified This Session
 
