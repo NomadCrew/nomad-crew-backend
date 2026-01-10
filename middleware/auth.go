@@ -106,13 +106,15 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 					LastName:  "Developer",
 				}
 
-				// Store in Gin context
+				// Store in Gin context (simulator user is not admin by default)
 				c.Set(string(UserIDKey), simulatorUserID)
 				c.Set(string(AuthenticatedUserKey), mockUser)
+				c.Set(string(IsAdminKey), false)
 
 				// Store in stdlib context
 				newCtx := context.WithValue(c.Request.Context(), UserIDKey, simulatorUserID)
 				newCtx = context.WithValue(newCtx, AuthenticatedUserKey, mockUser)
+				newCtx = context.WithValue(newCtx, IsAdminKey, false)
 				c.Request = c.Request.WithContext(newCtx)
 
 				c.Next()
@@ -130,8 +132,8 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 			return
 		}
 
-		// Step 2: Validate Token
-		supabaseUserID, err := validator.Validate(token)
+		// Step 2: Validate Token and extract claims (including admin status)
+		claims, err := validator.ValidateAndGetClaims(token)
 		if err != nil {
 			// Determine appropriate error response based on validation error type
 			log.Warnw("Authentication failed: Token validation error", "error", err, "path", requestPath)
@@ -148,7 +150,8 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 			return
 		}
 
-		// Step 3: Validate Supabase User ID
+		// Step 3: Validate Supabase User ID from claims
+		supabaseUserID := claims.UserID
 		if supabaseUserID == "" {
 			log.Errorw("Authentication failed: Valid token resulted in empty UserID", "path", requestPath)
 			_ = c.Error(apperrors.InternalServerError("internal_error"))
@@ -171,15 +174,18 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 		log.Infow("Authentication successful",
 			"supabaseUserID", supabaseUserID,
 			"username", user.Username,
+			"isAdmin", claims.IsAdmin,
 			"path", requestPath)
 
 		// Store in Gin context
 		c.Set(string(UserIDKey), supabaseUserID)
 		c.Set(string(AuthenticatedUserKey), user)
+		c.Set(string(IsAdminKey), claims.IsAdmin)
 
 		// Store in stdlib context
 		newCtx := context.WithValue(c.Request.Context(), UserIDKey, supabaseUserID)
 		newCtx = context.WithValue(newCtx, AuthenticatedUserKey, user)
+		newCtx = context.WithValue(newCtx, IsAdminKey, claims.IsAdmin)
 		c.Request = c.Request.WithContext(newCtx)
 
 		c.Next()
