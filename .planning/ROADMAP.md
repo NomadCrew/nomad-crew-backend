@@ -183,7 +183,7 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 ---
 
 ## Phase 7: Todo Domain Refactoring
-**Status:** Not Started
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
 **Goal:** Simplify todo handler and model, ensure proper trip authorization
