@@ -44,9 +44,10 @@ func initLoggerInternal() {
 	} else if os.Getenv("ENVIRONMENT") == "production" {
 		cfg := zap.NewProductionConfig()
 		cfg.Level = zap.NewAtomicLevelAt(level)
-		// TODO: Configure actual cloudwatch paths if needed
-		cfg.OutputPaths = []string{"stdout"}      // Example: "stdout", "cloudwatch:///nomadcrew-logs"
-		cfg.ErrorOutputPaths = []string{"stderr"} // Example: "stderr", "cloudwatch:///nomadcrew-errors"
+		// NOTE: CloudWatch integration available if needed in future.
+		// Current setup uses stdout/stderr which works with container logging.
+		cfg.OutputPaths = []string{"stdout"}
+		cfg.ErrorOutputPaths = []string{"stderr"}
 		zapLogger, err = cfg.Build()
 	} else {
 		// Use development config for non-production, non-test environments.

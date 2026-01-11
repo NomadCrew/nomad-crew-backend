@@ -6,8 +6,9 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 )
 
-// Error codes for trip-related operations
-// TODO: Consider making these more generic if used outside trips
+// Error codes for trip-related operations.
+// NOTE: These error codes are trip-domain specific by design.
+// Generic error codes exist in errors/errors.go for cross-domain use.
 const (
 	// Authorization errors
 	ErrUserNotFound = "USER_NOT_FOUND"
