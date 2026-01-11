@@ -139,3 +139,48 @@ type PaginationInfo struct {
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
 }
+
+// =============================================================================
+// Supabase Chat Handler Request/Response Types
+// Used by ChatHandlerSupabase for direct Supabase integration
+// =============================================================================
+
+// ChatSendMessageRequest represents a request to send a chat message via Supabase
+type ChatSendMessageRequest struct {
+	Message   string  `json:"message" binding:"required,min=1,max=1000"`
+	ReplyToID *string `json:"replyToId,omitempty"`
+}
+
+// ChatAddReactionRequest represents a request to add a reaction to a message
+type ChatAddReactionRequest struct {
+	Emoji string `json:"emoji" binding:"required,max=10"`
+}
+
+// ChatUpdateReadStatusRequest represents a request to update read status
+type ChatUpdateReadStatusRequest struct {
+	LastReadMessageID string `json:"lastReadMessageId" binding:"required"`
+}
+
+// ChatSendMessageResponse represents a chat message response from Supabase handler
+type ChatSendMessageResponse struct {
+	ID        string    `json:"id"`
+	TripID    string    `json:"tripId"`
+	UserID    string    `json:"userId"`
+	Message   string    `json:"message"`
+	ReplyToID *string   `json:"replyToId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// ChatGetMessagesResponse represents paginated chat messages from Supabase
+// Uses ChatPaginationInfo from response.go
+type ChatGetMessagesResponse struct {
+	Messages   []interface{}      `json:"messages"`
+	Pagination ChatPaginationInfo `json:"pagination"`
+}
+
+// ChatReactionResponse represents a reaction response
+type ChatReactionResponse struct {
+	MessageID string `json:"messageId"`
+	UserID    string `json:"userId"`
+	Emoji     string `json:"emoji"`
+}

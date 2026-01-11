@@ -10,5 +10,6 @@ import (
 type TripServiceInterface interface {
 	IsTripMember(ctx context.Context, tripID, userID string) (bool, error)
 	GetTripMember(ctx context.Context, tripID, userID string) (*types.TripMembership, error)
+	GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
 	GetTripForSync(ctx context.Context, tripID string) (*types.Trip, error)
 }

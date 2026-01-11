@@ -209,6 +209,10 @@ func main() {
 	pushService := services.NewExpoPushService(pushTokenStore, log.Desugar())
 	log.Info("Push notification service initialized")
 
+	// Initialize notification facade service (for chat and other notifications)
+	notificationFacadeService := services.NewNotificationFacadeService(&cfg.Notification)
+	log.Infow("Notification facade service initialized", "enabled", notificationFacadeService.IsEnabled())
+
 	// Initialize notification service with push notification support
 	notificationService := notificationSvc.NewNotificationServiceWithPush(notificationDB, userDB, tripStore, eventService, pushService, log.Desugar())
 
@@ -262,6 +266,7 @@ func main() {
 	chatHandlerSupabase := handlers.NewChatHandlerSupabase(
 		tripMemberService,
 		supabaseService,
+		notificationFacadeService,
 	)
 	locationHandlerSupabase := handlers.NewLocationHandlerSupabase(
 		tripMemberService,

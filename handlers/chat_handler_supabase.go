@@ -1,14 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/internal/notification"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/services"
+	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -16,20 +19,23 @@ import (
 
 // ChatHandlerSupabase handles chat-related HTTP requests with Supabase Realtime integration
 type ChatHandlerSupabase struct {
-	tripService     TripServiceInterface
-	supabaseService *services.SupabaseService
-	logger          *zap.Logger
+	tripService         TripServiceInterface
+	supabaseService     *services.SupabaseService
+	notificationService *services.NotificationFacadeService
+	logger              *zap.Logger
 }
 
 // NewChatHandlerSupabase creates a new instance of ChatHandlerSupabase
 func NewChatHandlerSupabase(
 	tripService TripServiceInterface,
 	supabaseService *services.SupabaseService,
+	notificationService *services.NotificationFacadeService,
 ) *ChatHandlerSupabase {
 	return &ChatHandlerSupabase{
-		tripService:     tripService,
-		supabaseService: supabaseService,
-		logger:          logger.GetLogger().Desugar(),
+		tripService:         tripService,
+		supabaseService:     supabaseService,
+		notificationService: notificationService,
+		logger:              logger.GetLogger().Desugar(),
 	}
 }
 
@@ -40,8 +46,8 @@ func NewChatHandlerSupabase(
 // @Accept json
 // @Produce json
 // @Param tripId path string true "Trip ID"
-// @Param message body ChatMessageRequest true "Message data"
-// @Success 201 {object} ChatMessageResponse
+// @Param message body types.ChatSendMessageRequest true "Message data"
+// @Success 201 {object} types.ChatSendMessageResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
@@ -49,44 +55,33 @@ func NewChatHandlerSupabase(
 // @Router /api/v1/trips/{tripId}/chat/messages [post]
 func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	tripID := c.Param("id")
-	// Use Supabase user ID for trip access validation
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
-
 	if tripID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Trip ID is required",
-		})
+		_ = c.Error(errors.ValidationFailed("missing_trip_id", "trip ID is required"))
+		return
+	}
+
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
 	if err != nil || member == nil || member.DeletedAt != nil {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "You are not an active member of this trip",
-		})
+		_ = c.Error(errors.Forbidden("not_trip_member", "you are not an active member of this trip"))
 		return
 	}
 
-	// Parse the request
-	var req struct {
-		Message   string  `json:"message" binding:"required,min=1,max=1000"`
-		ReplyToID *string `json:"replyToId,omitempty"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid message data: " + err.Error(),
-		})
+	var req types.ChatSendMessageRequest
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
 	// Trim whitespace and validate message is not empty
 	req.Message = strings.TrimSpace(req.Message)
 	if req.Message == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Message cannot be empty",
-		})
+		_ = c.Error(errors.ValidationFailed("empty_message", "message cannot be empty"))
 		return
 	}
 
@@ -98,7 +93,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	err = h.supabaseService.SendChatMessage(c.Request.Context(), services.ChatMessage{
 		ID:        messageID,
 		TripID:    tripID,
-		UserID:    supabaseUserID,
+		UserID:    userID,
 		Message:   req.Message,
 		ReplyToID: req.ReplyToID,
 		CreatedAt: now,
@@ -106,21 +101,76 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("Failed to send message to Supabase", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to send message",
-		})
+		_ = c.Error(errors.InternalServerError("failed to send message"))
 		return
 	}
 
+	// Send notifications to trip members asynchronously
+	if h.notificationService != nil && h.notificationService.IsEnabled() {
+		go h.sendChatNotifications(tripID, userID, messageID, req.Message)
+	}
+
 	// Return success
-	c.JSON(http.StatusCreated, gin.H{
-		"id":        messageID,
-		"tripId":    tripID,
-		"userId":    supabaseUserID,
-		"message":   req.Message,
-		"replyToId": req.ReplyToID,
-		"createdAt": now,
+	c.JSON(http.StatusCreated, types.ChatSendMessageResponse{
+		ID:        messageID,
+		TripID:    tripID,
+		UserID:    userID,
+		Message:   req.Message,
+		ReplyToID: req.ReplyToID,
+		CreatedAt: now,
 	})
+}
+
+// sendChatNotifications sends push notifications to trip members for a new chat message
+func (h *ChatHandlerSupabase) sendChatNotifications(tripID, senderID, messageID, message string) {
+	// Use background context for async notification
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Get trip members for notification
+	members, err := h.tripService.GetTripMembers(ctx, tripID)
+	if err != nil {
+		h.logger.Error("Failed to get trip members for chat notification", zap.Error(err))
+		return
+	}
+
+	// Use a generic sender name for notifications
+	// User info is not embedded in TripMembership, so we use a fallback
+	senderName := "A trip member"
+
+	// Prepare message preview (truncate if too long)
+	messagePreview := message
+	if len(messagePreview) > 100 {
+		messagePreview = messagePreview[:97] + "..."
+	}
+
+	data := notification.ChatMessageData{
+		TripID:         tripID,
+		ChatID:         tripID, // In this system, chat ID is same as trip ID
+		SenderID:       senderID,
+		SenderName:     senderName,
+		Message:        message,
+		MessagePreview: messagePreview,
+	}
+
+	// Collect recipient IDs (all members except sender)
+	var recipientIDs []string
+	for _, member := range members {
+		if member.UserID != senderID && member.DeletedAt == nil {
+			recipientIDs = append(recipientIDs, member.UserID)
+		}
+	}
+
+	// Send notifications
+	if len(recipientIDs) > 0 {
+		if err := h.notificationService.SendChatMessage(ctx, recipientIDs, data); err != nil {
+			h.logger.Error("Failed to send chat message notifications",
+				zap.Error(err),
+				zap.String("tripId", tripID),
+				zap.String("messageId", messageID),
+			)
+		}
+	}
 }
 
 // GetMessages handles retrieving chat messages
@@ -131,7 +181,7 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Param tripId path string true "Trip ID"
 // @Param limit query int false "Maximum number of messages to return" default(50)
 // @Param before query string false "Return messages before this message ID (for pagination)"
-// @Success 200 {object} ChatMessagesResponse
+// @Success 200 {object} types.ChatGetMessagesResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
@@ -139,22 +189,21 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 // @Router /api/v1/trips/{tripId}/chat/messages [get]
 func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 	tripID := c.Param("id")
-	// Use Supabase user ID for trip access validation
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
-
 	if tripID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Trip ID is required",
-		})
+		_ = c.Error(errors.ValidationFailed("missing_trip_id", "trip ID is required"))
+		return
+	}
+
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
 	if err != nil || member == nil || member.DeletedAt != nil {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "You are not an active member of this trip",
-		})
+		_ = c.Error(errors.Forbidden("not_trip_member", "you are not an active member of this trip"))
 		return
 	}
 
@@ -171,13 +220,13 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 	// For the Supabase implementation, return proper structure with pagination
 	// The actual chat messages will be retrieved by the client directly from Supabase
 	// But we need to return the expected structure to prevent frontend crashes
-	response := gin.H{
-		"messages": []gin.H{}, // Empty array of messages
-		"pagination": gin.H{
-			"has_more":    false,          // No more pages since we're returning empty
-			"next_cursor": (*string)(nil), // No next cursor
-			"limit":       limit,          // Echo back the limit parameter
-			"before":      before,         // Echo back the before parameter if provided
+	response := types.ChatGetMessagesResponse{
+		Messages: []interface{}{}, // Empty array - client fetches from Supabase directly
+		Pagination: types.ChatPaginationInfo{
+			HasMore:    false,
+			NextCursor: nil,
+			Limit:      limit,
+			Before:     before,
 		},
 	}
 
@@ -192,8 +241,8 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 // @Produce json
 // @Param tripId path string true "Trip ID"
 // @Param messageId path string true "Message ID"
-// @Param reaction body ChatReactionRequest true "Reaction data"
-// @Success 201 {object} ChatReactionResponse
+// @Param reaction body types.ChatAddReactionRequest true "Reaction data"
+// @Success 201 {object} types.ChatReactionResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
@@ -202,57 +251,48 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 	tripID := c.Param("id")
 	messageID := c.Param("messageId")
-	// Use Supabase user ID for trip access validation
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" || messageID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Trip ID and Message ID are required",
-		})
+		_ = c.Error(errors.ValidationFailed("missing_ids", "trip ID and message ID are required"))
+		return
+	}
+
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
 	if err != nil || member == nil || member.DeletedAt != nil {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "You are not an active member of this trip",
-		})
+		_ = c.Error(errors.Forbidden("not_trip_member", "you are not an active member of this trip"))
 		return
 	}
 
-	// Parse the request
-	var req struct {
-		Emoji string `json:"emoji" binding:"required,max=10"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid reaction data: " + err.Error(),
-		})
+	var req types.ChatAddReactionRequest
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
 	// Send to Supabase
 	err = h.supabaseService.AddChatReaction(c.Request.Context(), services.ChatReaction{
 		MessageID: messageID,
-		UserID:    supabaseUserID,
+		UserID:    userID,
 		Emoji:     req.Emoji,
 	})
 
 	if err != nil {
 		h.logger.Error("Failed to add reaction in Supabase", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to add reaction",
-		})
+		_ = c.Error(errors.InternalServerError("failed to add reaction"))
 		return
 	}
 
 	// Return success
-	c.JSON(http.StatusCreated, gin.H{
-		"messageId": messageID,
-		"userId":    supabaseUserID,
-		"emoji":     req.Emoji,
+	c.JSON(http.StatusCreated, types.ChatReactionResponse{
+		MessageID: messageID,
+		UserID:    userID,
+		Emoji:     req.Emoji,
 	})
 }
 
@@ -274,37 +314,35 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 	tripID := c.Param("id")
 	messageID := c.Param("messageId")
 	emoji := c.Param("emoji")
-	// Use Supabase user ID for trip access validation
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
 	if tripID == "" || messageID == "" || emoji == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Trip ID, Message ID, and Emoji are required",
-		})
+		_ = c.Error(errors.ValidationFailed("missing_params", "trip ID, message ID, and emoji are required"))
+		return
+	}
+
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
 	if err != nil || member == nil || member.DeletedAt != nil {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "You are not an active member of this trip",
-		})
+		_ = c.Error(errors.Forbidden("not_trip_member", "you are not an active member of this trip"))
 		return
 	}
 
 	// Remove from Supabase
 	err = h.supabaseService.RemoveChatReaction(c.Request.Context(), services.ChatReaction{
 		MessageID: messageID,
-		UserID:    supabaseUserID,
+		UserID:    userID,
 		Emoji:     emoji,
 	})
 
 	if err != nil {
 		h.logger.Error("Failed to remove reaction from Supabase", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to remove reaction",
-		})
+		_ = c.Error(errors.InternalServerError("failed to remove reaction"))
 		return
 	}
 
@@ -321,7 +359,7 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param tripId path string true "Trip ID"
-// @Param status body ChatReadStatusRequest true "Read status data"
+// @Param status body types.ChatUpdateReadStatusRequest true "Read status data"
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
@@ -330,34 +368,26 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Router /api/v1/trips/{tripId}/chat/read-status [put]
 func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
 	tripID := c.Param("id")
-	// Use Supabase user ID for trip access validation
-	supabaseUserID := c.GetString(string(middleware.UserIDKey))
-
 	if tripID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Trip ID is required",
-		})
+		_ = c.Error(errors.ValidationFailed("missing_trip_id", "trip ID is required"))
+		return
+	}
+
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	// Verify user is a member of the trip
-	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, supabaseUserID)
+	member, err := h.tripService.GetTripMember(c.Request.Context(), tripID, userID)
 	if err != nil || member == nil || member.DeletedAt != nil {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "You are not an active member of this trip",
-		})
+		_ = c.Error(errors.Forbidden("not_trip_member", "you are not an active member of this trip"))
 		return
 	}
 
-	// Parse the request
-	var req struct {
-		LastReadMessageID string `json:"lastReadMessageId" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid read status data: " + err.Error(),
-		})
+	var req types.ChatUpdateReadStatusRequest
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
