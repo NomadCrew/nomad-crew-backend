@@ -147,6 +147,15 @@ resource "aws_security_group" "backend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Coolify Dashboard (initial setup only)
+  ingress {
+    description = "Coolify Dashboard"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # All outbound traffic
   egress {
     description = "All outbound"
