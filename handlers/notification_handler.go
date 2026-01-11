@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	notificationSvc "github.com/NomadCrew/nomad-crew-backend/models/notification/service"
 	"github.com/NomadCrew/nomad-crew-backend/store"
 	"github.com/gin-gonic/gin"
@@ -42,16 +42,16 @@ func NewNotificationHandler(ns notificationSvc.NotificationService, logger *zap.
 // @Router /notifications [get]
 // @Security BearerAuth
 func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
-	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
-	if err != nil {
-		h.logger.Warn("Unauthorized attempt to get notifications", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userIDStr := getUserIDFromContext(c)
+	if userIDStr == "" {
+		_ = c.Error(apperrors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
+
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
@@ -80,7 +80,7 @@ func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
 			readStatus := false
 			status = &readStatus
 		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status parameter. Use 'read' or 'unread'."})
+			_ = c.Error(apperrors.ValidationFailed("invalid_status", "status must be 'read' or 'unread'"))
 			return
 		}
 	}
@@ -88,7 +88,7 @@ func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
 	notifications, err := h.notificationService.GetNotifications(c.Request.Context(), userID, limit, offset, status)
 	if err != nil {
 		h.logger.Error("Failed to get notifications", zap.String("userID", userID.String()), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve notifications"})
+		_ = c.Error(apperrors.InternalServerError("failed to retrieve notifications"))
 		return
 	}
 
@@ -111,38 +111,38 @@ func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
 // @Router /notifications/{notificationId}/read [patch]
 // @Security BearerAuth
 func (h *NotificationHandler) MarkNotificationAsRead(c *gin.Context) {
-	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
-	if err != nil {
-		h.logger.Warn("Unauthorized attempt to mark notification read", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userIDStr := getUserIDFromContext(c)
+	if userIDStr == "" {
+		_ = c.Error(apperrors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
+
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
 	notificationIDStr := c.Param("notificationId")
 	notificationID, err := uuid.Parse(notificationIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid notification ID format"})
+		_ = c.Error(apperrors.ValidationFailed("invalid_notification_id", "invalid notification ID format"))
 		return
 	}
 
 	err = h.notificationService.MarkNotificationAsRead(c.Request.Context(), userID, notificationID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Notification not found"})
+			_ = c.Error(apperrors.NotFound("notification", notificationIDStr))
 		} else if errors.Is(err, store.ErrForbidden) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to update this notification"})
+			_ = c.Error(apperrors.Forbidden("not_authorized", "you are not authorized to update this notification"))
 		} else {
 			h.logger.Error("Failed to mark notification as read",
 				zap.String("userID", userID.String()),
 				zap.String("notificationID", notificationIDStr),
 				zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark notification as read"})
+			_ = c.Error(apperrors.InternalServerError("failed to mark notification as read"))
 		}
 		return
 	}
@@ -162,23 +162,23 @@ func (h *NotificationHandler) MarkNotificationAsRead(c *gin.Context) {
 // @Router /notifications/read-all [patch]
 // @Security BearerAuth
 func (h *NotificationHandler) MarkAllNotificationsRead(c *gin.Context) {
-	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
-	if err != nil {
-		h.logger.Warn("Unauthorized attempt to mark all notifications read", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userIDStr := getUserIDFromContext(c)
+	if userIDStr == "" {
+		_ = c.Error(apperrors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
+
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
 	affectedRows, err := h.notificationService.MarkAllNotificationsAsRead(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("Failed to mark all notifications as read", zap.String("userID", userID.String()), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark all notifications as read"})
+		_ = c.Error(apperrors.InternalServerError("failed to mark all notifications as read"))
 		return
 	}
 
@@ -200,23 +200,23 @@ func (h *NotificationHandler) MarkAllNotificationsRead(c *gin.Context) {
 // @Router /notifications/{notificationId} [delete]
 // @Security BearerAuth
 func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
-	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
-	if err != nil {
-		h.logger.Warn("Unauthorized attempt to delete notification", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userIDStr := getUserIDFromContext(c)
+	if userIDStr == "" {
+		_ = c.Error(apperrors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
+
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
 	notificationIDStr := c.Param("notificationId")
 	notificationID, err := uuid.Parse(notificationIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid notification ID format"})
+		_ = c.Error(apperrors.ValidationFailed("invalid_notification_id", "invalid notification ID format"))
 		return
 	}
 
@@ -226,16 +226,16 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			h.logger.Warn("DeleteNotification: Notification not found", zap.String("notificationID", notificationIDStr), zap.String("userID", userID.String()))
-			c.JSON(http.StatusNotFound, gin.H{"error": "Notification not found"})
+			_ = c.Error(apperrors.NotFound("notification", notificationIDStr))
 		} else if errors.Is(err, store.ErrForbidden) {
 			h.logger.Warn("DeleteNotification: Forbidden", zap.String("notificationID", notificationIDStr), zap.String("userID", userID.String()))
-			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to delete this notification"})
+			_ = c.Error(apperrors.Forbidden("not_authorized", "you are not authorized to delete this notification"))
 		} else {
 			h.logger.Error("Failed to delete notification",
 				zap.String("userID", userID.String()),
 				zap.String("notificationID", notificationIDStr),
 				zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete notification"})
+			_ = c.Error(apperrors.InternalServerError("failed to delete notification"))
 		}
 		return
 	}
@@ -255,23 +255,23 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 // @Router /notifications [delete]
 // @Security BearerAuth
 func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
-	userIDStr, err := utils.GetUserIDFromContext(c.Request.Context())
-	if err != nil {
-		h.logger.Warn("Unauthorized attempt to delete all notifications", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userIDStr := getUserIDFromContext(c)
+	if userIDStr == "" {
+		_ = c.Error(apperrors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
+
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
 	deletedCount, err := h.notificationService.DeleteAllNotifications(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("Failed to delete all notifications", zap.String("userID", userID.String()), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete all notifications"})
+		_ = c.Error(apperrors.InternalServerError("failed to delete all notifications"))
 		return
 	}
 
