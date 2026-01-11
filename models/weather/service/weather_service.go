@@ -57,10 +57,10 @@ func NewWeatherService(eventPublisher types.EventPublisher) *WeatherService {
 
 // IncrementSubscribers handles adding a subscriber for a trip's weather updates.
 // It starts the update loop for the trip if it's the first subscriber.
+// NOTE: Permission validation is handled by callers (handlers/models) before
+// invoking weather service methods. This service trusts that callers have
+// verified trip membership. See TriggerWeatherUpdateHandler, CreateTrip, UpdateTrip.
 func (s *WeatherService) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
-	// TODO: Permission Check - Verify user requesting this (via an external method)
-	// has access to the tripID before incrementing/starting updates.
-
 	actual, _ := s.activeTrips.LoadOrStore(tripID, &tripSubscribers{
 		// destination: dest, // Removed
 		latitude:  latitude,
@@ -81,9 +81,8 @@ func (s *WeatherService) IncrementSubscribers(tripID string, latitude float64, l
 
 // DecrementSubscribers handles removing a subscriber.
 // It stops the update loop if it's the last subscriber.
+// NOTE: Permission validation is handled by callers before invoking this method.
 func (s *WeatherService) DecrementSubscribers(tripID string) {
-	// TODO: Permission Check - Verify user requesting this has access to the tripID.
-
 	actual, ok := s.activeTrips.Load(tripID)
 	if !ok {
 		return
@@ -181,56 +180,6 @@ func (s *WeatherService) updateWeather(ctx context.Context, tripID string, latit
 
 	log.Infow("Weather update published successfully", "tripID", tripID)
 }
-
-// --- Geocoding (Internal Helpers) ---
-
-// Commenting out unused helper functions instead of deleting immediately,
-// in case they are part of a not-yet-fully-implemented feature or recent refactor.
-/*
-// getCoordinates tries to fetch coordinates using the primary service first, then falls back to Nominatim.
-func (s *WeatherService) getCoordinates(city string) (float64, float64, error) {
-	// Try primary service first (e.g., a more precise or preferred geocoding API)
-	lat, lon, err := s.getPrimaryCoordinates(city)
-	if err == nil {
-		return lat, lon, nil
-	}
-	// Fallback to Nominatim if primary fails or is not configured
-	log.Warnw("Primary coordinate fetch failed, falling back to Nominatim", "city", city, "primary_error", err)
-	return s.getNominatimCoordinates(city)
-}
-
-// getPrimaryCoordinates - Placeholder for a primary geocoding service if you have one.
-// This could be Google Geocoding, Mapbox, etc., which might require API keys and separate clients.
-func (s *WeatherService) getPrimaryCoordinates(city string) (float64, float64, error) {
-	// Example: if s.primaryGeocodingClient != nil {
-	//    return s.primaryGeocodingClient.Geocode(city)
-	// }
-	return 0, 0, fmt.Errorf("primary geocoding service not configured or failed")
-}
-
-// NominatimResponse defines the structure for the JSON response from Nominatim API.
-// We only need lat and lon, but including others can be useful for debugging.
-type NominatimResponse struct {
-	PlaceID     int64  `json:"place_id"`
-	Licence     string `json:"licence"`
-	OsmType     string `json:"osm_type"`
-	OsmID       int64  `json:"osm_id"`
-	BoundingBox []string `json:"boundingbox"`
-	Lat         string `json:"lat"`
-	Lon         string `json:"lon"`
-	DisplayName string `json:"display_name"`
-	Class       string `json:"class"`
-	Type        string `json:"type"`
-	Importance  float64 `json:"importance"`
-	Icon        string `json:"icon,omitempty"`
-}
-
-// getNominatimCoordinates fetches coordinates from Nominatim API.
-func (s *WeatherService) getNominatimCoordinates(city string) (float64, float64, error) {
-	// ... (implementation was here)
-	return 0, 0, fmt.Errorf("getNominatimCoordinates not fully implemented after refactor or placeholder")
-}
-*/
 
 // --- Weather Fetching (Internal Helper) ---
 
