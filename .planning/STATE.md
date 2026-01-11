@@ -3,7 +3,7 @@
 ## Milestones
 
 - 🚧 **v1.0 — Codebase Refactoring** (Phases 1-12) - In Progress
-- 📋 **v1.1 — Infrastructure Migration to Oracle Cloud** (Phases 13-19) - Planned
+- 🚧 **v1.1 — Infrastructure Migration to AWS** (Phases 13-19) - In Progress
 
 ## Current Status
 
@@ -28,7 +28,7 @@
 | 11. Event System and WebSocket Refactoring | Not Started | — | — |
 | 12. Final Cleanup and Documentation | Not Started | — | — |
 | **v1.1 — Infrastructure Migration** | | | |
-| 13. Oracle Cloud Setup | Not Started | — | — |
+| 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
 | 14. Coolify Installation | Not Started | — | — |
 | 15. CI/CD Pipeline Migration | Not Started | — | — |
 | 16. Application Deployment | Not Started | — | — |
@@ -50,6 +50,8 @@ None currently.
 | 2026-01-10 | Use app_metadata for admin status | Server-only, secure - cannot be modified by users |
 | 2026-01-10 | ValidateAndGetClaims in AuthMiddleware | Full claim access including IsAdmin |
 | 2026-01-11 | Remove unused tripId from SearchUsers | Don't accept parameters that do nothing |
+| 2026-01-11 | Switch from OCI to AWS | Oracle Cloud Dubai region had no ARM capacity after 60+ retries |
+| 2026-01-11 | Use t4g.small ARM Graviton | Best cost/performance for Go backend + Coolify (~$14/month) |
 
 ## Context for Next Session
 
@@ -62,16 +64,20 @@ None currently.
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - Untracked files with compilation issues: notification_service.go, chat_handler.go (blocks full test suite)
 
-### v1.1 Context (Planned)
-- **Goal:** Migrate from Cloud Run ($24/month) to Oracle Cloud Always Free ($0/month)
-- **Target Stack:** Oracle Cloud ARM + Coolify + Neon + Upstash + Grafana Cloud
-- **Phase 13 Research Topics:** OCI account setup, ARM instance provisioning, Always Free limits
+### v1.1 Context (In Progress)
+- **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
+- **Target Stack:** AWS EC2 ARM + Coolify + Neon + Upstash + Grafana Cloud
+- **Phase 13 Complete:** AWS EC2 t4g.small deployed at 3.130.209.141
 - **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
-- **Risk:** Oracle Cloud "out of capacity" errors - may need to try different regions
+- **Next:** Phase 14 - Install Coolify on EC2 instance
+- **Note:** Switched from Oracle Cloud due to ARM capacity issues (60+ failed attempts)
 
 ## Files Modified This Session
 
-- `internal/store/interfaces.go` - Marked LocationStore as deprecated (Phase 05-02)
+- `infrastructure/aws/main.tf` - AWS EC2 Terraform config (Phase 13-01)
+- `infrastructure/aws/variables.tf` - AWS Terraform variables (Phase 13-01)
+- `infrastructure/aws/outputs.tf` - AWS Terraform outputs (Phase 13-01)
+- `infrastructure/oracle/` - OCI config (abandoned, resources destroyed)
 
 ---
 

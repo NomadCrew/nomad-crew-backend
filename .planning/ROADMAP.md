@@ -359,45 +359,45 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 
 ---
 
-## Milestone: v1.1 — Infrastructure Migration to Oracle Cloud
+## Milestone: v1.1 — Infrastructure Migration to AWS
 
 ### Overview
 
-Migrate from Google Cloud Run ($24/month) to Oracle Cloud Always Free tier with Coolify for a truly free, production-ready infrastructure.
+Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effective, reliable infrastructure.
 
 **Target Stack:**
-- **Compute**: Oracle Cloud ARM (4 OCPU, 24 GB RAM) — Always Free
+- **Compute**: AWS EC2 t4g.small (2 vCPU, 2 GB ARM Graviton) — ~$14/month
 - **Orchestration**: Coolify (self-hosted PaaS)
 - **Database**: Neon PostgreSQL (keep existing)
 - **Cache**: Upstash Redis (keep existing)
 - **Monitoring**: Grafana Cloud Free Tier
 
-**Cost Savings:** $24/month → $0/month
+**Cost Savings:** $24/month → ~$14/month
+
+**Note:** Originally planned for Oracle Cloud Always Free, but switched to AWS due to persistent ARM capacity issues in OCI regions.
 
 ---
 
-## Phase 13: Oracle Cloud Setup
-**Status:** Not Started
-**Research Required:** Yes (OCI account setup, ARM instance provisioning)
+## Phase 13: AWS EC2 Setup
+**Status:** Complete (2026-01-11)
+**Research Required:** No (switched from OCI to AWS)
 
-**Goal:** Create Oracle Cloud account and provision Always Free ARM compute instances
+**Goal:** Provision AWS EC2 ARM Graviton instance for backend deployment
 
 **Scope:**
-- Create Oracle Cloud Infrastructure (OCI) account
-- Configure compartments and IAM policies
-- Provision ARM Ampere A1 instance (4 OCPU, 24 GB RAM)
-- Configure networking (VCN, subnet, security lists)
-- Set up SSH access and firewall rules
+- Create VPC with public subnet
+- Configure security group (ports 22, 80, 443)
+- Provision t4g.small ARM Graviton instance
+- Assign Elastic IP for stable addressing
+- Set up SSH access
 
-**Research Topics:**
-- Oracle Cloud Always Free tier limits and gotchas
-- ARM instance availability by region
-- Network security best practices for OCI
+**Outcome:**
+- AWS EC2 instance running at 3.130.209.141
+- t4g.small (2 vCPU, 2 GB ARM Graviton)
+- Ubuntu 22.04 ARM64
+- Estimated cost: ~$14/month
 
-**Success Criteria:**
-- OCI account active with Always Free tier
-- ARM instance running and accessible via SSH
-- Ports 80, 443, 22 open and configured
+**Note:** Originally attempted Oracle Cloud but switched to AWS due to "Out of host capacity" errors after 60+ retry attempts.
 
 **Dependencies:** None
 
@@ -407,7 +407,7 @@ Migrate from Google Cloud Run ($24/month) to Oracle Cloud Always Free tier with 
 **Status:** Not Started
 **Research Required:** Yes (Coolify setup on ARM, Docker configuration)
 
-**Goal:** Install and configure Coolify on Oracle Cloud for Heroku-like deployment experience
+**Goal:** Install and configure Coolify on AWS EC2 for Heroku-like deployment experience
 
 **Scope:**
 - Install Docker on ARM instance
@@ -418,15 +418,15 @@ Migrate from Google Cloud Run ($24/month) to Oracle Cloud Always Free tier with 
 
 **Research Topics:**
 - Coolify ARM64 compatibility
-- Docker installation on Oracle Linux / Ubuntu
-- Coolify resource requirements and configuration
+- Docker installation on Ubuntu ARM
+- Coolify resource requirements (2 GB RAM may be tight)
 
 **Success Criteria:**
 - Coolify dashboard accessible
 - Can create projects and environments
 - Reverse proxy (Traefik) working
 
-**Dependencies:** Phase 13
+**Dependencies:** Phase 13 (AWS EC2 instance at 3.130.209.141)
 
 ---
 
@@ -587,18 +587,19 @@ Migrate from Google Cloud Run ($24/month) to Oracle Cloud Always Free tier with 
 
 ## v1.1 Summary
 
-| Phase | Name | Research | Critical |
-|-------|------|----------|----------|
-| 13 | Oracle Cloud Setup | Yes | No |
-| 14 | Coolify Installation | Yes | No |
-| 15 | CI/CD Pipeline Migration | No | No |
-| 16 | Application Deployment | No | Yes |
-| 17 | Domain & SSL Config | No | Yes |
-| 18 | Monitoring Setup | Yes | No |
-| 19 | Cloud Run Decommissioning | No | No |
+| Phase | Name | Status | Research | Critical |
+|-------|------|--------|----------|----------|
+| 13 | AWS EC2 Setup | Complete | No | No |
+| 14 | Coolify Installation | Not Started | Yes | No |
+| 15 | CI/CD Pipeline Migration | Not Started | No | No |
+| 16 | Application Deployment | Not Started | No | Yes |
+| 17 | Domain & SSL Config | Not Started | No | Yes |
+| 18 | Monitoring Setup | Not Started | Yes | No |
+| 19 | Cloud Run Decommissioning | Not Started | No | No |
 
 **Total Phases:** 7
-**Phases Requiring Research:** 3 (Phase 13, 14, 18)
+**Phases Complete:** 1 (Phase 13)
+**Phases Requiring Research:** 2 (Phase 14, 18)
 **Critical Phases:** 2 (Phase 16, 17 - production traffic)
 
 ---
