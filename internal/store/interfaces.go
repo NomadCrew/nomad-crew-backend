@@ -175,7 +175,12 @@ type UserStore interface {
 // Use types.DatabaseTransaction here instead of a local interface
 type Transaction = types.DatabaseTransaction
 
-// LocationStore defines the interface for location-related operations
+// Deprecated: LocationStore in internal/store/interfaces.go is deprecated.
+// Use store.LocationStore from store/location_store.go instead, which is used
+// by the service layer with proper authorization checks.
+// This interface has different method signatures and is only used by the deprecated
+// internal/handlers.LocationHandler which bypasses the service layer.
+// TODO(phase-12): Remove this interface after removing internal/handlers/location.go.
 type LocationStore interface {
 	// CreateLocation creates a new location record
 	CreateLocation(ctx context.Context, location *types.Location) (string, error)
