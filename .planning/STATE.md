@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.0 — Codebase Refactoring / v1.1 — Infrastructure Migration
-**Current Phase:** 11 (Complete), 15 (Complete)
-**Phase Status:** Phase 11 complete, Phase 12 next for v1.0
+**Current Phase:** 11 (Complete), 16 (Complete)
+**Phase Status:** Phase 11 complete for v1.0, Phase 16 complete for v1.1
 
 ## Progress
 
@@ -31,7 +31,7 @@
 | 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
 | 14. Coolify Installation | Complete | 2026-01-11 | 2026-01-11 |
 | 15. CI/CD Pipeline Migration | Complete | 2026-01-11 | 2026-01-12 |
-| 16. Application Deployment | Not Started | — | — |
+| 16. Application Deployment | Complete | 2026-01-12 | 2026-01-12 |
 | 17. Domain & SSL Config | Not Started | — | — |
 | 18. Monitoring Setup | Not Started | — | — |
 | 19. Cloud Run Decommissioning | Not Started | — | — |
@@ -74,20 +74,17 @@ None currently.
 - **Phase 13 Complete:** AWS EC2 t4g.small deployed at 3.130.209.141
 - **Phase 14 Complete:** Coolify v4.0.0-beta.460 installed, admin@nomadcrew.uk
 - **Phase 15 Complete:** GitHub workflows migrated to Coolify webhook deployment
-- **EC2 Instance Name:** sftp (renamed from default)
-- **Coolify App:** nomad-crew-backend (GitHub App source, auto-deploy enabled)
-- **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
-- **Next:** Phase 16 - Application Deployment (configure env vars in Coolify, first deploy)
+- **Phase 16 Complete:** Application deployed and running healthy
+- **Application URL:** http://3.130.209.141:8081
 - **Coolify Dashboard:** http://3.130.209.141:8000
+- **Coolify App:** nomad-crew-backend (GitHub App source, auto-deploy enabled)
+- **Port Mapping:** 8081:8080 (avoids conflict with Coolify on 8080)
+- **Next:** Phase 17 - Domain & SSL Configuration (Cloudflare DNS, Let's Encrypt)
 - **No GitHub secrets needed** - Coolify GitHub App handles deployment automatically
 
 ## Files Modified This Session
 
-- `models/weather/service/weather_service.go` - Updated TODOs, removed dead code (Phase 09-01)
-- `errors/errors.go` - Added RateLimitError type (Phase 10-01)
-- `middleware/rbac.go` - Standardized error handling (Phase 10-01)
-- `middleware/rate_limit.go` - Standardized error handling (Phase 10-01)
-- `models/chat/service/chat_service.go` - Standardized event publishing (Phase 11-01)
+- `infrastructure/aws/main.tf` - Added port 8081 to security group (Phase 16-01)
 
 ---
 
