@@ -15,6 +15,7 @@ const (
 	ServerError        = "SERVER"
 	ExternalAPIError   = "EXTERNAL_API"
 	TripNotFoundError  = "TRIP_NOT_FOUND"
+	RateLimitError     = "RATE_LIMIT"
 )
 
 // AppError is a structured error type for the application
@@ -50,6 +51,8 @@ func getHTTPStatus(errType string) int {
 		return http.StatusForbidden
 	case TripNotFoundError:
 		return http.StatusNotFound
+	case RateLimitError:
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}
@@ -205,5 +208,16 @@ func Unauthorized(code string, message string) *AppError {
 		Details:    code,
 		Detail:     code,
 		HTTPStatus: http.StatusUnauthorized,
+	}
+}
+
+// RateLimitExceeded creates a new rate limit error
+func RateLimitExceeded(message string, retryAfter int) *AppError {
+	return &AppError{
+		Type:       RateLimitError,
+		Message:    message,
+		Details:    fmt.Sprintf("retry_after: %d seconds", retryAfter),
+		Detail:     fmt.Sprintf("retry_after: %d seconds", retryAfter),
+		HTTPStatus: http.StatusTooManyRequests,
 	}
 }

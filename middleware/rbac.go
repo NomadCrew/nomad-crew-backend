@@ -1,8 +1,7 @@
 package middleware
 
 import (
-	"net/http"
-
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	tripinterfaces "github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -41,10 +40,8 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 
 		if tripID == "" {
 			log.Warnw("Unauthorized: Missing trip ID", "tripID", tripID)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "Unauthorized",
-				"message": "User ID or Trip ID missing in request",
-			})
+			_ = c.Error(apperrors.ValidationFailed("missing_trip_id", "Trip ID is required"))
+			c.Abort()
 			return
 		}
 
@@ -52,13 +49,11 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 			log.Warnw("Unauthorized: Missing user ID",
 				"tripID", tripID,
 				"userID", userID,
-				"authHeader", c.GetHeader("Authorization"), // Log the auth header to see if it's present
-				"contextKeys", c.Keys,                      // Log context keys again
+				"authHeader", c.GetHeader("Authorization"),
+				"contextKeys", c.Keys,
 			)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "Unauthorized",
-				"message": "User ID or Trip ID missing in request",
-			})
+			_ = c.Error(apperrors.Unauthorized("missing_user_id", "Authentication required"))
+			c.Abort()
 			return
 		}
 
@@ -70,10 +65,8 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 				"userID", userID,
 				"error", err,
 			)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "Unauthorized",
-				"message": "Failed to retrieve user role",
-			})
+			_ = c.Error(apperrors.Forbidden("not_trip_member", "You are not a member of this trip"))
+			c.Abort()
 			return
 		}
 
@@ -85,10 +78,8 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 				"userRole", role,
 				"requiredRole", requiredRole,
 			)
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":   "Forbidden",
-				"message": "User does not have access to this resource",
-			})
+			_ = c.Error(apperrors.Forbidden("insufficient_permissions", "You don't have permission to perform this action"))
+			c.Abort()
 			return
 		}
 
@@ -141,10 +132,8 @@ func RequirePermission(
 				"action", action,
 				"resource", resource,
 			)
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-				"error":   "BadRequest",
-				"message": "Trip ID is required",
-			})
+			_ = c.Error(apperrors.ValidationFailed("missing_trip_id", "Trip ID is required"))
+			c.Abort()
 			return
 		}
 
@@ -154,10 +143,8 @@ func RequirePermission(
 				"action", action,
 				"resource", resource,
 			)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "Unauthorized",
-				"message": "Authentication required",
-			})
+			_ = c.Error(apperrors.Unauthorized("missing_user_id", "Authentication required"))
+			c.Abort()
 			return
 		}
 
@@ -169,10 +156,8 @@ func RequirePermission(
 				"userID", userID,
 				"error", err,
 			)
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":   "Forbidden",
-				"message": "You are not a member of this trip",
-			})
+			_ = c.Error(apperrors.Forbidden("not_trip_member", "You are not a member of this trip"))
+			c.Abort()
 			return
 		}
 
@@ -207,14 +192,8 @@ func RequirePermission(
 				"requiredRole", minRoleStr,
 			)
 
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":         "Forbidden",
-				"message":       "You don't have permission to perform this action",
-				"action":        action,
-				"resource":      resource,
-				"your_role":     role,
-				"required_role": minRoleStr,
-			})
+			_ = c.Error(apperrors.Forbidden("insufficient_permissions", "You don't have permission to perform this action"))
+			c.Abort()
 			return
 		}
 
@@ -244,10 +223,8 @@ func RequireTripMembership(tripModel tripinterfaces.TripModelInterface) gin.Hand
 		userID := c.GetString(string(UserIDKey))
 
 		if tripID == "" || userID == "" {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-				"error":   "BadRequest",
-				"message": "Trip ID and authentication required",
-			})
+			_ = c.Error(apperrors.ValidationFailed("missing_parameters", "Trip ID and authentication required"))
+			c.Abort()
 			return
 		}
 
@@ -258,10 +235,8 @@ func RequireTripMembership(tripModel tripinterfaces.TripModelInterface) gin.Hand
 				"userID", userID,
 				"error", err,
 			)
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":   "Forbidden",
-				"message": "You are not a member of this trip",
-			})
+			_ = c.Error(apperrors.Forbidden("not_trip_member", "You are not a member of this trip"))
+			c.Abort()
 			return
 		}
 

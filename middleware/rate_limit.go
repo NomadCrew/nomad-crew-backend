@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
@@ -14,9 +15,8 @@ func WSRateLimiter(redisClient *redis.Client, maxConnPerUser int, window time.Du
 	return func(c *gin.Context) {
 		userID := c.GetString(string(UserIDKey))
 		if userID == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authentication required",
-			})
+			_ = c.Error(apperrors.Unauthorized("missing_auth", "Authentication required"))
+			c.Abort()
 			return
 		}
 
@@ -29,17 +29,14 @@ func WSRateLimiter(redisClient *redis.Client, maxConnPerUser int, window time.Du
 
 		_, err := pipe.Exec(c.Request.Context())
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"error": "Rate limit check failed",
-			})
+			_ = c.Error(apperrors.InternalServerError("Rate limit check failed"))
+			c.Abort()
 			return
 		}
 
 		if incr.Val() > int64(maxConnPerUser) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error":       "Too many WebSocket connections",
-				"retry_after": window.Seconds(),
-			})
+			_ = c.Error(apperrors.RateLimitExceeded("Too many WebSocket connections", int(window.Seconds())))
+			c.Abort()
 			return
 		}
 
@@ -95,10 +92,8 @@ func AuthRateLimiter(redisClient *redis.Client, requestsPerMinute int, window ti
 			c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(ttl).Unix()))
 			c.Header("Retry-After", fmt.Sprintf("%d", int(ttl.Seconds())))
 
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error":       "Too many requests. Please try again later.",
-				"retry_after": int(ttl.Seconds()),
-			})
+			_ = c.Error(apperrors.RateLimitExceeded("Too many requests. Please try again later.", int(ttl.Seconds())))
+			c.Abort()
 			return
 		}
 
