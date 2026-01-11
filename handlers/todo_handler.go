@@ -5,8 +5,6 @@ import (
 	"strconv"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/logger"
-	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
@@ -50,33 +48,24 @@ func NewTodoHandler(model *models.TodoModel, eventService types.EventPublisher, 
 // @Security BearerAuth
 // Uses the trip ID from the parent route to create todos with correct association.
 func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	var req types.TodoCreate
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid request body", "error", err)
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
 	// Get trip ID from the parent route ("/trips/:id/todos")
 	tripID := c.Param("id")
 	if tripID == "" {
-		log.Error("Trip ID missing in URL parameters")
-		if err := c.Error(errors.ValidationFailed("Trip ID missing", "trip id is required")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+		_ = c.Error(errors.ValidationFailed("missing_trip_id", "trip ID is required"))
 		return
 	}
 	// Override the TripID from the request to ensure consistency.
 	req.TripID = tripID
 
 	// Set the UserID from the authenticated user in the context (use Supabase UUID for created_by FK)
-	userID := c.GetString(string(middleware.UserIDKey))
+	userID := getUserIDFromContext(c)
 	if userID == "" {
-		log.Warn("CreateTodoHandler: User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
@@ -90,9 +79,7 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 	// Use CreateTodoWithEvent which handles both creation and event publishing
 	todoID, err := h.todoModel.CreateTodoWithEvent(c.Request.Context(), todo)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to add model error", "error", err)
-		}
+		_ = c.Error(err)
 		return
 	}
 
@@ -123,38 +110,27 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 // @Security BearerAuth
 // Extracts trip ID from the parent route and todo ID from c.Param("todoID").
 func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-	userID := c.GetString(string(middleware.UserIDKey))
-	if userID == "" {
-		log.Warn("UpdateTodoHandler: User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+	if todoID == "" {
+		_ = c.Error(errors.ValidationFailed("missing_todo_id", "todo ID is required"))
 		return
 	}
 
-	if todoID == "" {
-		log.Error("Missing todo ID in URL parameters")
-		if err := c.Error(errors.ValidationFailed("Missing parameters", "todo ID is required")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	var req types.TodoUpdate
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid request body", "error", err)
-		if err := c.Error(errors.ValidationFailed("Invalid request body", err.Error())); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+	if !bindJSONOrError(c, &req) {
 		return
 	}
 
 	// Use UpdateTodoWithEvent which handles both update and event publishing
 	todo, err := h.todoModel.UpdateTodoWithEvent(c.Request.Context(), todoID, userID, &req)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to update todo", "error", err)
-		}
+		_ = c.Error(err)
 		return
 	}
 
@@ -179,28 +155,21 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 // @Security BearerAuth
 // Uses trip ID from c.Param("id") and todo ID from c.Param("todoID").
 func (h *TodoHandler) DeleteTodoHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-	userID := c.GetString(string(middleware.UserIDKey))
-	if userID == "" {
-		log.Warn("DeleteTodoHandler: User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+	if todoID == "" {
+		_ = c.Error(errors.ValidationFailed("missing_todo_id", "todo ID is required"))
 		return
 	}
 
-	if todoID == "" {
-		log.Error("Missing todo ID in URL parameters")
-		if err := c.Error(errors.ValidationFailed("Missing parameters", "todo ID is required")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
 	// Use DeleteTodoWithEvent which handles both deletion and event publishing
 	if err := h.todoModel.DeleteTodoWithEvent(c.Request.Context(), todoID, userID); err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to delete todo", "error", err)
-		}
+		_ = c.Error(err)
 		return
 	}
 
@@ -246,19 +215,15 @@ func getPaginationParams(c *gin.Context, defaultLimit, defaultOffset int) Pagina
 // @Security BearerAuth
 // ListTodosHandler retrieves todos for a given trip.
 func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
-	log := logger.GetLogger()
-
 	tripID := c.Param("id")
-	userID := c.GetString(string(middleware.UserIDKey))
-	if userID == "" {
-		log.Warn("ListTodosHandler: User ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+	if tripID == "" {
+		_ = c.Error(errors.ValidationFailed("missing_trip_id", "trip ID is required"))
 		return
 	}
 
-	if tripID == "" {
-		log.Warn("ListTodosHandler: missing trip ID")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Trip ID is required"})
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		_ = c.Error(errors.Unauthorized("not_authenticated", "user not authenticated"))
 		return
 	}
 
@@ -267,7 +232,6 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 
 	todos, err := h.todoModel.ListTripTodos(c.Request.Context(), tripID, userID, params.Limit, params.Offset)
 	if err != nil {
-		log.Errorw("ListTodosHandler: error listing todos", "error", err, "tripID", tripID)
 		_ = c.Error(err)
 		return
 	}
@@ -293,22 +257,15 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 // @Security BearerAuth
 // Uses todo ID from the URL parameter.
 func (h *TodoHandler) GetTodoHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	todoID := c.Param("todoID")
-
 	if todoID == "" {
-		log.Error("Todo ID missing in URL parameters")
-		if err := c.Error(errors.ValidationFailed("Todo ID missing", "todo id is required")); err != nil {
-			log.Errorw("Failed to add validation error", "error", err)
-		}
+		_ = c.Error(errors.ValidationFailed("missing_todo_id", "todo ID is required"))
 		return
 	}
 
 	todo, err := h.todoModel.GetTodo(c.Request.Context(), todoID)
 	if err != nil {
-		if err := c.Error(err); err != nil {
-			log.Errorw("Failed to get todo", "error", err)
-		}
+		_ = c.Error(err)
 		return
 	}
 
