@@ -201,7 +201,11 @@ type LocationStore interface {
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
-// NotificationStore defines the interface for notification operations
+// Deprecated: NotificationStore in internal/store/interfaces.go is deprecated.
+// Use store.NotificationStore from store/notification_store.go instead, which uses
+// uuid.UUID for type safety and models.Notification for the domain model.
+// This interface exists for the unused Store.Notification() method pattern.
+// TODO(phase-12): Remove this interface after consolidating store patterns.
 type NotificationStore interface {
 	// Create inserts a new notification into the database
 	Create(ctx context.Context, notification *types.NotificationCreate) (string, error)
