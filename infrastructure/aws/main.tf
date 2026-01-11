@@ -1,4 +1,4 @@
-# AWS Infrastructure - NomadCrew Backend
+# AWS Infrastructure - sftp Backend
 # Cost-optimized EC2 instance with Graviton (ARM) processor
 #
 # Estimated costs (us-east-2):
@@ -23,7 +23,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "nomadcrew"
+      Project     = "sftp"
       Environment = "production"
       ManagedBy   = "terraform"
     }
@@ -70,7 +70,7 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = {
-    Name = "nomadcrew-vpc"
+    Name = "sftp-vpc"
   }
 }
 
@@ -78,7 +78,7 @@ resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "nomadcrew-igw"
+    Name = "sftp-igw"
   }
 }
 
@@ -89,7 +89,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "nomadcrew-public-subnet"
+    Name = "sftp-public-subnet"
   }
 }
 
@@ -102,7 +102,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "nomadcrew-public-rt"
+    Name = "sftp-public-rt"
   }
 }
 
@@ -116,8 +116,8 @@ resource "aws_route_table_association" "public" {
 # -----------------------------------------------------------------------------
 
 resource "aws_security_group" "backend" {
-  name        = "nomadcrew-backend-sg"
-  description = "Security group for NomadCrew backend"
+  name        = "sftp-backend-sg"
+  description = "Security group for sftp backend"
   vpc_id      = aws_vpc.main.id
 
   # SSH
@@ -156,6 +156,15 @@ resource "aws_security_group" "backend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # App direct access (temporary for testing)
+  ingress {
+    description = "App direct access"
+    from_port   = 8081
+    to_port     = 8081
+    protocol    = "tcp"
+    cidr_blocks = ["92.98.234.116/32"]
+  }
+
   # All outbound traffic
   egress {
     description = "All outbound"
@@ -166,7 +175,7 @@ resource "aws_security_group" "backend" {
   }
 
   tags = {
-    Name = "nomadcrew-backend-sg"
+    Name = "sftp-backend-sg"
   }
 }
 
@@ -175,7 +184,7 @@ resource "aws_security_group" "backend" {
 # -----------------------------------------------------------------------------
 
 resource "aws_key_pair" "deployer" {
-  key_name   = "nomadcrew-deployer"
+  key_name   = "sftp-deployer"
   public_key = file(var.ssh_public_key_path)
 }
 
@@ -205,13 +214,13 @@ resource "aws_instance" "backend" {
   # User data to set hostname and update system
   user_data = <<-EOF
     #!/bin/bash
-    hostnamectl set-hostname nomadcrew-backend
+    hostnamectl set-hostname sftp-backend
     apt-get update
     apt-get upgrade -y
   EOF
 
   tags = {
-    Name = "nomadcrew-backend"
+    Name = "sftp-backend"
   }
 
   lifecycle {
@@ -228,7 +237,7 @@ resource "aws_eip" "backend" {
   domain   = "vpc"
 
   tags = {
-    Name = "nomadcrew-backend-eip"
+    Name = "sftp-backend-eip"
   }
 
   depends_on = [aws_internet_gateway.main]
