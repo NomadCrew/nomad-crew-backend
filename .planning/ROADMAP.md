@@ -295,27 +295,31 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 ---
 
 ## Phase 11: Event System and WebSocket Refactoring
-**Status:** Not Started
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
 **Goal:** Clean up event publishing patterns, improve WebSocket hub
 
+**Completed Plans:**
+- Plan 11-01: Event publishing pattern standardization
+
 **Scope:**
-- `internal/events/service.go` - Event service
-- `internal/events/redis_publisher.go` - Redis pub/sub
-- `internal/websocket/hub.go` - WebSocket connection manager
-- `internal/websocket/handler.go` - WebSocket endpoint
+- `internal/events/service.go` - Event service (already clean)
+- `internal/events/redis_publisher.go` - Redis pub/sub (already clean)
+- `internal/websocket/hub.go` - WebSocket connection manager (already clean)
+- `internal/websocket/handler.go` - WebSocket endpoint (already clean)
+- `models/chat/service/chat_service.go` - Standardized event publishing
 
-**Key Tasks:**
-- Review event type consistency
-- Standardize event publishing patterns across all domains
-- Ensure proper WebSocket cleanup on disconnect
-- Review Redis pub/sub error handling
+**Outcome:**
+- **Analysis Result:** Event system already well-structured
+- Only chat_service.go needed standardization
+- Updated to use `events.PublishEventWithContext()` like other services
+- Removed 3 unused imports (`encoding/json`, `time`, `internal/utils`)
 
-**Success Criteria:**
+**Success Criteria:** All met
 - All existing tests pass
-- Consistent event publishing across domains
-- Proper connection lifecycle management
+- Consistent event publishing across all domains
+- Proper connection lifecycle management (already in place)
 
 **Dependencies:** Phase 10
 

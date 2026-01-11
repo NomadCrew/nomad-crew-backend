@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.0 — Codebase Refactoring / v1.1 — Infrastructure Migration
-**Current Phase:** 10 (Complete), 15 (Complete)
-**Phase Status:** All plans complete for both milestones
+**Current Phase:** 11 (Complete), 15 (Complete)
+**Phase Status:** Phase 11 complete, Phase 12 next for v1.0
 
 ## Progress
 
@@ -25,7 +25,7 @@
 | 8. Chat Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 9. Weather Service Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 10. Middleware and Cross-Cutting Concerns | Complete | 2026-01-12 | 2026-01-12 |
-| 11. Event System and WebSocket Refactoring | Not Started | — | — |
+| 11. Event System and WebSocket Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 12. Final Cleanup and Documentation | Not Started | — | — |
 | **v1.1 — Infrastructure Migration** | | | |
 | 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
@@ -56,14 +56,14 @@ None currently.
 ## Context for Next Session
 
 ### v1.0 Context (Active)
-- **Phases 1-10 complete:** All domain handlers and middleware refactored
-- **Phase 10 complete:** Middleware error handling standardized
-  - Added RateLimitError type and RateLimitExceeded helper
-  - rbac.go and rate_limit.go now use c.Error() + c.Abort() pattern
-  - All middleware errors flow through ErrorHandler
-- Established patterns: bindJSONOrError, getUserIDFromContext, c.Error(), Deprecated: prefix, IsAdminKey context
+- **Phases 1-11 complete:** All domain handlers, middleware, and event system refactored
+- **Phase 11 complete:** Event publishing pattern standardized
+  - chat_service.go now uses events.PublishEventWithContext()
+  - All services using consistent event publishing pattern
+  - Removed 3 unused imports from chat_service.go
+- Established patterns: bindJSONOrError, getUserIDFromContext, c.Error(), Deprecated: prefix, IsAdminKey context, PublishEventWithContext
 - **Architecture pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
-- **Next:** Phase 11 (Event System and WebSocket Refactoring)
+- **Next:** Phase 12 (Final Cleanup and Documentation)
 - All critical security issues RESOLVED (Phase 4 admin check, Phase 9 weather verified)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - ChatHandler.go deprecated - scheduled for removal in Phase 12
@@ -87,6 +87,7 @@ None currently.
 - `errors/errors.go` - Added RateLimitError type (Phase 10-01)
 - `middleware/rbac.go` - Standardized error handling (Phase 10-01)
 - `middleware/rate_limit.go` - Standardized error handling (Phase 10-01)
+- `models/chat/service/chat_service.go` - Standardized event publishing (Phase 11-01)
 
 ---
 
