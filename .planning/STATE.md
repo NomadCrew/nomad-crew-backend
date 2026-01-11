@@ -7,9 +7,9 @@
 
 ## Current Status
 
-**Active Milestone:** v1.0 — Codebase Refactoring
-**Current Phase:** 6 (In Progress)
-**Phase Status:** Plan 06-01 complete, may have more plans in Phase 6
+**Active Milestone:** v1.1 — Infrastructure Migration to AWS
+**Current Phase:** 15 (In Progress)
+**Phase Status:** Plan 15-01 complete, Plan 15-02 remaining
 
 ## Progress
 
@@ -30,7 +30,7 @@
 | **v1.1 — Infrastructure Migration** | | | |
 | 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
 | 14. Coolify Installation | Complete | 2026-01-11 | 2026-01-11 |
-| 15. CI/CD Pipeline Migration | Not Started | — | — |
+| 15. CI/CD Pipeline Migration | In Progress | 2026-01-11 | — |
 | 16. Application Deployment | Not Started | — | — |
 | 17. Domain & SSL Config | Not Started | — | — |
 | 18. Monitoring Setup | Not Started | — | — |
@@ -66,13 +66,16 @@ None currently.
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - Untracked files with compilation issues: chat_handler.go (notification_service.go FIXED)
 
-### v1.1 Context (In Progress)
+### v1.1 Context (Active)
 - **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
 - **Target Stack:** AWS EC2 ARM + Coolify + Neon + Upstash + Grafana Cloud
 - **Phase 13 Complete:** AWS EC2 t4g.small deployed at 3.130.209.141
 - **Phase 14 Complete:** Coolify v4.0.0-beta.460 installed, admin@nomadcrew.uk
+- **Phase 15 In Progress:** Plan 15-01 complete (Coolify app + GitHub App integration)
+- **EC2 Instance Name:** sftp (renamed from default)
+- **Coolify App:** nomad-crew-backend (GitHub App source, auto-deploy enabled)
 - **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
-- **Next:** Phase 15 - CI/CD Pipeline Migration (GitHub integration with Coolify)
+- **Next:** Phase 15 Plan 02 - GitHub Workflow Migration
 - **Coolify Dashboard:** http://3.130.209.141:8000
 
 ## Files Modified This Session
@@ -84,4 +87,4 @@ None currently.
 
 ---
 
-*Last updated: 2026-01-11*
+*Last updated: 2026-01-12*
