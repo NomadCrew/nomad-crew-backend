@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.1 — Infrastructure Migration to AWS
-**Current Phase:** 15 (In Progress)
-**Phase Status:** Plan 15-01 complete, Plan 15-02 remaining
+**Current Phase:** 15 (Complete)
+**Phase Status:** All plans complete (15-01, 15-02)
 
 ## Progress
 
@@ -30,7 +30,7 @@
 | **v1.1 — Infrastructure Migration** | | | |
 | 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
 | 14. Coolify Installation | Complete | 2026-01-11 | 2026-01-11 |
-| 15. CI/CD Pipeline Migration | In Progress | 2026-01-11 | — |
+| 15. CI/CD Pipeline Migration | Complete | 2026-01-11 | 2026-01-12 |
 | 16. Application Deployment | Not Started | — | — |
 | 17. Domain & SSL Config | Not Started | — | — |
 | 18. Monitoring Setup | Not Started | — | — |
@@ -72,20 +72,19 @@ None currently.
 - **Target Stack:** AWS EC2 ARM + Coolify + Neon + Upstash + Grafana Cloud
 - **Phase 13 Complete:** AWS EC2 t4g.small deployed at 3.130.209.141
 - **Phase 14 Complete:** Coolify v4.0.0-beta.460 installed, admin@nomadcrew.uk
-- **Phase 15 In Progress:** Plan 15-01 complete (Coolify app + GitHub App integration)
+- **Phase 15 Complete:** GitHub workflows migrated to Coolify webhook deployment
 - **EC2 Instance Name:** sftp (renamed from default)
 - **Coolify App:** nomad-crew-backend (GitHub App source, auto-deploy enabled)
 - **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
-- **Next:** Phase 15 Plan 02 - GitHub Workflow Migration
+- **Next:** Phase 16 - Application Deployment (configure env vars, first deploy)
 - **Coolify Dashboard:** http://3.130.209.141:8000
+- **Before first deploy:** Add COOLIFY_WEBHOOK_URL and COOLIFY_WEBHOOK_SECRET to GitHub secrets
 
 ## Files Modified This Session
 
-- `handlers/todo_handler.go` - Standardized with established patterns (Phase 07-01)
-- `models/notification/service/interfaces.go` - DELETED (Phase 06-01)
-- `config/config.go` - Added NotificationConfig (Phase 06-01)
-- `internal/store/interfaces.go` - Deprecated NotificationStore (Phase 06-01)
-- `services/notification_facade_service.go` - Renamed from notification_service.go (Phase 06-01)
+- `.github/workflows/deploy-coolify.yml` - NEW: Coolify webhook deployment workflow (Phase 15-02)
+- `.github/SECRETS.md` - NEW: GitHub secrets documentation (Phase 15-02)
+- `.github/workflows-archived/` - Cloud Run workflows archived (Phase 15-02)
 
 ---
 

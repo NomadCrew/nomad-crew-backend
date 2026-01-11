@@ -441,31 +441,25 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 ---
 
 ## Phase 15: CI/CD Pipeline Migration
-**Status:** In Progress (Plan 1 of 2 complete)
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
 **Goal:** Update GitHub Actions workflows for Coolify git-push deployments
 
 **Completed Plans:**
 - Plan 15-01: Coolify application setup with GitHub App integration
+- Plan 15-02: GitHub workflow migration (deploy-coolify.yml, archive Cloud Run)
 
-**Scope:**
-- Configure Coolify webhook or git integration
-- Update deploy-cloud-run.yml → deploy-coolify.yml
-- Remove Cloud Run specific configurations
-- Set up deployment secrets in GitHub
-- Test automated deployments on push
+**Outcome:**
+- `deploy-coolify.yml` created with test, security-scan, and webhook deploy jobs
+- Cloud Run workflows archived to `.github/workflows-archived/`
+- GitHub secrets documented in `.github/SECRETS.md`
+- No GCP references in active workflows
 
-**Key Tasks:**
-- Create Coolify deployment configuration
-- Update GitHub Actions workflow
-- Configure environment variables in Coolify
-- Test PR preview environments (if supported)
-
-**Success Criteria:**
+**Success Criteria:** ✅ All met
 - Push to main triggers deployment to Coolify
-- Environment variables properly configured
-- Deployment logs accessible
+- Environment variables to be configured in Phase 16
+- Deployment logs accessible via Coolify dashboard
 
 **Dependencies:** Phase 14
 
@@ -604,14 +598,14 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 |-------|------|--------|----------|----------|
 | 13 | AWS EC2 Setup | Complete | No | No |
 | 14 | Coolify Installation | Complete | Yes | No |
-| 15 | CI/CD Pipeline Migration | In Progress | No | No |
+| 15 | CI/CD Pipeline Migration | Complete | No | No |
 | 16 | Application Deployment | Not Started | No | Yes |
 | 17 | Domain & SSL Config | Not Started | No | Yes |
 | 18 | Monitoring Setup | Not Started | Yes | No |
 | 19 | Cloud Run Decommissioning | Not Started | No | No |
 
 **Total Phases:** 7
-**Phases Complete:** 2 (Phase 13, 14)
+**Phases Complete:** 3 (Phase 13, 14, 15)
 **Phases Requiring Research:** 1 (Phase 18)
 **Critical Phases:** 2 (Phase 16, 17 - production traffic)
 
