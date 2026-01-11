@@ -1,0 +1,41 @@
+# AWS Infrastructure - Terraform Variables
+# Copy this file to terraform.tfvars and customize as needed
+#
+# Most values have sensible defaults - you may not need to change anything!
+
+# -----------------------------------------------------------------------------
+# Region (default: us-east-2)
+# -----------------------------------------------------------------------------
+# region = "us-east-2"
+
+# -----------------------------------------------------------------------------
+# Instance Configuration
+# -----------------------------------------------------------------------------
+
+# Instance type - ARM Graviton instances are most cost-effective
+# Options:
+#   t4g.small  (2 vCPU, 2 GB) - ~$12/month - minimum for Coolify
+#   t4g.medium (2 vCPU, 4 GB) - ~$24/month - comfortable headroom
+instance_type = "t4g.small"
+
+# Root volume size in GB (gp3 SSD)
+# 30GB is plenty for OS + Docker + app
+root_volume_size = 30
+
+# -----------------------------------------------------------------------------
+# SSH Configuration
+# -----------------------------------------------------------------------------
+
+# Path to your SSH public key
+# This key will be used to access the EC2 instance
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# CIDR blocks allowed for SSH access
+# For better security, replace with your IP: ["YOUR_IP/32"]
+# To find your IP: curl ifconfig.me
+ssh_allowed_cidrs = ["0.0.0.0/0"]
+
+# -----------------------------------------------------------------------------
+# Tags
+# -----------------------------------------------------------------------------
+# environment = "production"
