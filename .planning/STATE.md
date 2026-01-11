@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.0 — Codebase Refactoring
-**Current Phase:** 5 (Complete)
-**Phase Status:** Phase 5 complete, ready for Phase 6
+**Current Phase:** 6 (In Progress)
+**Phase Status:** Plan 06-01 complete, may have more plans in Phase 6
 
 ## Progress
 
@@ -20,7 +20,7 @@
 | 3. Trip Domain Store Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 4. User Domain Refactoring | Complete | 2026-01-10 | 2026-01-11 |
 | 5. Location Domain Refactoring | Complete | 2026-01-11 | 2026-01-11 |
-| 6. Notification Domain Refactoring | Not Started | — | — |
+| 6. Notification Domain Refactoring | In Progress | 2026-01-11 | — |
 | 7. Todo Domain Refactoring | Not Started | — | — |
 | 8. Chat Domain Refactoring | Not Started | — | — |
 | 9. Weather Service Refactoring | Not Started | — | — |
@@ -57,12 +57,14 @@ None currently.
 
 ### v1.0 Context (Active)
 - Phases 1-5 complete: Trip Domain, User Domain, and Location Domain fully refactored
+- Phase 6 Plan 1 complete: Notification interface consolidation
 - Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix, IsAdminKey context
-- **Next:** Phase 6 - Notification Domain Refactoring
+- **New pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
+- **Next:** Check if Phase 6 has more plans, or proceed to Phase 7
 - Critical security issue in Phase 4 (admin check) is now RESOLVED
 - Remaining critical: Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
-- Untracked files with compilation issues: notification_service.go, chat_handler.go (blocks full test suite)
+- Untracked files with compilation issues: chat_handler.go (notification_service.go FIXED)
 
 ### v1.1 Context (In Progress)
 - **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
@@ -75,10 +77,10 @@ None currently.
 
 ## Files Modified This Session
 
-- `infrastructure/aws/main.tf` - AWS EC2 Terraform config (Phase 13-01)
-- `infrastructure/aws/variables.tf` - AWS Terraform variables (Phase 13-01)
-- `infrastructure/aws/outputs.tf` - AWS Terraform outputs (Phase 13-01)
-- `infrastructure/oracle/` - OCI config (abandoned, resources destroyed)
+- `models/notification/service/interfaces.go` - DELETED (Phase 06-01)
+- `config/config.go` - Added NotificationConfig (Phase 06-01)
+- `internal/store/interfaces.go` - Deprecated NotificationStore (Phase 06-01)
+- `services/notification_facade_service.go` - Renamed from notification_service.go (Phase 06-01)
 
 ---
 
