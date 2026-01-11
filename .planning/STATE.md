@@ -8,7 +8,7 @@
 ## Current Status
 
 **Active Milestone:** v1.0 — Codebase Refactoring / v1.1 — Infrastructure Migration
-**Current Phase:** 9 (Complete), 15 (Complete)
+**Current Phase:** 10 (Complete), 15 (Complete)
 **Phase Status:** All plans complete for both milestones
 
 ## Progress
@@ -24,7 +24,7 @@
 | 7. Todo Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 8. Chat Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 9. Weather Service Refactoring | Complete | 2026-01-12 | 2026-01-12 |
-| 10. Middleware and Cross-Cutting Concerns | Not Started | — | — |
+| 10. Middleware and Cross-Cutting Concerns | Complete | 2026-01-12 | 2026-01-12 |
 | 11. Event System and WebSocket Refactoring | Not Started | — | — |
 | 12. Final Cleanup and Documentation | Not Started | — | — |
 | **v1.1 — Infrastructure Migration** | | | |
@@ -56,13 +56,14 @@ None currently.
 ## Context for Next Session
 
 ### v1.0 Context (Active)
-- **Phases 1-9 complete:** All domain handlers refactored with established patterns
-- **Phase 9 complete:** Weather service TODOs updated, dead code removed
-  - Security analysis: Permission checks ALREADY at correct layer (handlers/models)
-  - 55 lines of dead geocoding code removed
+- **Phases 1-10 complete:** All domain handlers and middleware refactored
+- **Phase 10 complete:** Middleware error handling standardized
+  - Added RateLimitError type and RateLimitExceeded helper
+  - rbac.go and rate_limit.go now use c.Error() + c.Abort() pattern
+  - All middleware errors flow through ErrorHandler
 - Established patterns: bindJSONOrError, getUserIDFromContext, c.Error(), Deprecated: prefix, IsAdminKey context
 - **Architecture pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
-- **Next:** Phase 10 (Middleware and Cross-Cutting Concerns)
+- **Next:** Phase 11 (Event System and WebSocket Refactoring)
 - All critical security issues RESOLVED (Phase 4 admin check, Phase 9 weather verified)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - ChatHandler.go deprecated - scheduled for removal in Phase 12
@@ -83,6 +84,9 @@ None currently.
 ## Files Modified This Session
 
 - `models/weather/service/weather_service.go` - Updated TODOs, removed dead code (Phase 09-01)
+- `errors/errors.go` - Added RateLimitError type (Phase 10-01)
+- `middleware/rbac.go` - Standardized error handling (Phase 10-01)
+- `middleware/rate_limit.go` - Standardized error handling (Phase 10-01)
 
 ---
 

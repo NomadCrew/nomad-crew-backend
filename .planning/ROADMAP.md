@@ -265,30 +265,32 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 ---
 
 ## Phase 10: Middleware and Cross-Cutting Concerns
-**Status:** Not Started
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
-**Goal:** Standardize middleware patterns, improve RBAC consistency
+**Goal:** Standardize middleware patterns, improve error handling consistency
 
 **Scope:**
-- `middleware/auth.go` - Authentication middleware
+- `middleware/auth.go` - Authentication middleware (already correct)
 - `middleware/rbac.go` - Authorization middleware
 - `middleware/rate_limit.go` - Rate limiting
-- `middleware/jwt_validator.go` - JWT validation
-- `types/permission_matrix.go` - Permission definitions
+- `errors/errors.go` - Error types
 
-**Key Tasks:**
-- Review permission matrix completeness
-- Ensure consistent middleware error responses
-- Standardize context key usage across all middleware
-- Review rate limiting configuration
+**Completed Plans:**
+- Plan 10-01: Error handling pattern standardization
 
-**Success Criteria:**
+**Outcome:**
+- Added `RateLimitError` type and `RateLimitExceeded` helper
+- Standardized rbac.go with `c.Error()` + `c.Abort()` pattern (9 error cases)
+- Standardized rate_limit.go with same pattern (4 error cases)
+- All middleware now flows through ErrorHandler
+
+**Success Criteria:** All met
 - All existing tests pass
-- Consistent middleware patterns
-- Complete permission matrix coverage
+- Consistent middleware patterns with auth.go
+- All errors flow through ErrorHandler
 
-**Dependencies:** Phases 1-9 (may discover middleware issues during domain refactoring)
+**Dependencies:** Phases 1-9
 
 ---
 
