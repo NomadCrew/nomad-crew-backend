@@ -22,7 +22,7 @@
 | 5. Location Domain Refactoring | Complete | 2026-01-11 | 2026-01-11 |
 | 6. Notification Domain Refactoring | In Progress | 2026-01-11 | — |
 | 7. Todo Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
-| 8. Chat Domain Refactoring | Not Started | — | — |
+| 8. Chat Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 9. Weather Service Refactoring | Not Started | — | — |
 | 10. Middleware and Cross-Cutting Concerns | Not Started | — | — |
 | 11. Event System and WebSocket Refactoring | Not Started | — | — |
@@ -58,14 +58,15 @@ None currently.
 ### v1.0 Context (Active)
 - Phases 1-5 complete: Trip Domain, User Domain, and Location Domain fully refactored
 - Phase 6 Plan 1 complete: Notification interface consolidation
-- **Phase 7 complete:** Todo handler standardized with established patterns (bindJSONOrError, getUserIDFromContext, c.Error())
+- **Phase 7 complete:** Todo handler standardized with established patterns
+- **Phase 8 complete:** ChatHandlerSupabase standardized, notification support added, ChatHandler deprecated
 - Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix, IsAdminKey context
 - **New pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
-- **Next:** Complete Phase 6 remaining plans, or proceed to Phase 8 (Chat Domain)
+- **Next:** Complete Phase 6 remaining plans, or proceed to Phase 9 (Weather Service)
 - Critical security issue in Phase 4 (admin check) is now RESOLVED
 - Remaining critical: Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
-- Pre-existing compilation issues: chat_handler.go (undefined methods on TripServiceInterface)
+- ChatHandler.go deprecated - scheduled for removal in Phase 12
 
 ### v1.1 Context (Active)
 - **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
@@ -82,9 +83,11 @@ None currently.
 
 ## Files Modified This Session
 
-- `.github/workflows/deploy-coolify.yml` - NEW: Coolify webhook deployment workflow (Phase 15-02)
-- `.github/SECRETS.md` - NEW: GitHub secrets documentation (Phase 15-02)
-- `.github/workflows-archived/` - Cloud Run workflows archived (Phase 15-02)
+- `handlers/chat_handler_supabase.go` - Refactored with established patterns, added notifications (Phase 08-01)
+- `handlers/chat_handler.go` - Added deprecation notice (Phase 08-01)
+- `handlers/interfaces.go` - Added GetTripMembers to TripServiceInterface (Phase 08-01)
+- `types/chat.go` - Added Supabase chat handler types (Phase 08-01)
+- `main.go` - Wired NotificationFacadeService to ChatHandlerSupabase (Phase 08-01)
 
 ---
 
