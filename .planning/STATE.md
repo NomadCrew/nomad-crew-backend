@@ -29,7 +29,7 @@
 | 12. Final Cleanup and Documentation | Not Started | — | — |
 | **v1.1 — Infrastructure Migration** | | | |
 | 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
-| 14. Coolify Installation | Not Started | — | — |
+| 14. Coolify Installation | Complete | 2026-01-11 | 2026-01-11 |
 | 15. CI/CD Pipeline Migration | Not Started | — | — |
 | 16. Application Deployment | Not Started | — | — |
 | 17. Domain & SSL Config | Not Started | — | — |
@@ -68,9 +68,10 @@ None currently.
 - **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
 - **Target Stack:** AWS EC2 ARM + Coolify + Neon + Upstash + Grafana Cloud
 - **Phase 13 Complete:** AWS EC2 t4g.small deployed at 3.130.209.141
+- **Phase 14 Complete:** Coolify v4.0.0-beta.460 installed, admin@nomadcrew.uk
 - **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
-- **Next:** Phase 14 - Install Coolify on EC2 instance
-- **Note:** Switched from Oracle Cloud due to ARM capacity issues (60+ failed attempts)
+- **Next:** Phase 15 - CI/CD Pipeline Migration (GitHub integration with Coolify)
+- **Coolify Dashboard:** http://3.130.209.141:8000
 
 ## Files Modified This Session
 

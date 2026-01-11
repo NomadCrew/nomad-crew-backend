@@ -404,8 +404,8 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 ---
 
 ## Phase 14: Coolify Installation
-**Status:** Not Started
-**Research Required:** Yes (Coolify setup on ARM, Docker configuration)
+**Status:** Complete (2026-01-11)
+**Research Required:** Yes (Coolify setup on ARM, Docker configuration) - DONE
 
 **Goal:** Install and configure Coolify on AWS EC2 for Heroku-like deployment experience
 
@@ -425,6 +425,13 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 - Coolify dashboard accessible
 - Can create projects and environments
 - Reverse proxy (Traefik) working
+
+**Outcome:**
+- Coolify v4.0.0-beta.460 installed and running
+- Docker 27.0.3 installed automatically
+- Admin account: admin@nomadcrew.uk
+- Dashboard: http://3.130.209.141:8000
+- All containers healthy (coolify, realtime, redis, db)
 
 **Dependencies:** Phase 13 (AWS EC2 instance at 3.130.209.141)
 
@@ -590,7 +597,7 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 | Phase | Name | Status | Research | Critical |
 |-------|------|--------|----------|----------|
 | 13 | AWS EC2 Setup | Complete | No | No |
-| 14 | Coolify Installation | Not Started | Yes | No |
+| 14 | Coolify Installation | Complete | Yes | No |
 | 15 | CI/CD Pipeline Migration | Not Started | No | No |
 | 16 | Application Deployment | Not Started | No | Yes |
 | 17 | Domain & SSL Config | Not Started | No | Yes |
@@ -598,8 +605,8 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 | 19 | Cloud Run Decommissioning | Not Started | No | No |
 
 **Total Phases:** 7
-**Phases Complete:** 1 (Phase 13)
-**Phases Requiring Research:** 2 (Phase 14, 18)
+**Phases Complete:** 2 (Phase 13, 14)
+**Phases Requiring Research:** 1 (Phase 18)
 **Critical Phases:** 2 (Phase 16, 17 - production traffic)
 
 ---
