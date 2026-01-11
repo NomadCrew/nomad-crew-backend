@@ -43,7 +43,7 @@ completed: 2026-01-12
 
 # Phase 15 Plan 02: GitHub Workflow Migration Summary
 
-**Created deploy-coolify.yml with test/security-scan/webhook-deploy pipeline, archived 3 Cloud Run workflows**
+**Created test/security-scan workflow for GitHub Actions, Coolify GitHub App handles deployment automatically**
 
 ## Performance
 
@@ -64,6 +64,7 @@ completed: 2026-01-12
 1. **Task 1: Create Coolify deployment workflow** - `fc94f50` (feat)
 2. **Task 2: Archive Cloud Run workflows** - Already done in prior commit `eb30009`
 3. **Task 3: Document required GitHub secrets** - `2fd5a31` (docs)
+4. **Fix: Remove webhook job (GitHub App auto-deploys)** - `17148be` (fix)
 
 **Plan metadata:** (this commit)
 
@@ -79,10 +80,10 @@ completed: 2026-01-12
 
 | Aspect | Cloud Run (Old) | Coolify (New) |
 |--------|----------------|---------------|
-| Test Job | PostgreSQL + Redis services | Same |
-| Security Scan | Gosec + Trivy | Same |
-| Deploy | Build + Push to Artifact Registry + gcloud deploy | Webhook trigger |
-| Secrets | GCP_SA_KEY, many GCP vars | COOLIFY_WEBHOOK_URL/SECRET |
+| Test Job | PostgreSQL + Redis services | Same (GitHub Actions) |
+| Security Scan | Gosec + Trivy | Same (GitHub Actions) |
+| Deploy | Build + Push to Artifact Registry + gcloud deploy | GitHub App auto-deploy |
+| Secrets | GCP_SA_KEY, many GCP vars | None needed (GitHub App) |
 | Build Location | GitHub Actions | Coolify server |
 
 ## Decisions Made
@@ -105,9 +106,7 @@ None.
 
 Phase 15 complete. Ready for **Phase 16: Application Deployment**.
 
-**Before first deployment, add to GitHub secrets:**
-1. `COOLIFY_WEBHOOK_URL` - Get from Coolify dashboard
-2. `COOLIFY_WEBHOOK_SECRET` - Get from Coolify dashboard
+**No GitHub secrets needed** - Coolify GitHub App handles deployment automatically.
 
 **Coolify Dashboard:** http://3.130.209.141:8000
 **Application:** nomad-crew-backend

@@ -1,10 +1,16 @@
-name: Deploy to Coolify
+name: Test and Security Scan
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
+
+# Deployment is handled automatically by Coolify GitHub App integration
+# This workflow runs tests and security scans in parallel with deployment
 
 jobs:
   test:
@@ -83,19 +89,3 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
-
-  deploy:
-    name: Trigger Coolify Deploy
-    needs: [test, security-scan]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Trigger Coolify Webhook
-        run: |
-          curl -X POST "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_WEBHOOK_SECRET }}" \
-            -H "Content-Type: application/json" \
-            --fail --silent --show-error
-
-      - name: Deployment Triggered
-        run: echo "Deployment triggered on Coolify. Check http://3.130.209.141:8000 for status."

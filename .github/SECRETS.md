@@ -2,23 +2,11 @@
 
 This document lists the secrets required for GitHub Actions workflows.
 
-## Required Secrets (Coolify Deployment)
+## Current Secrets (Coolify + GitHub App)
 
-| Secret Name | Purpose | Where to Obtain | Status |
-|-------------|---------|-----------------|--------|
-| `COOLIFY_WEBHOOK_URL` | Coolify deployment webhook endpoint | Coolify Dashboard → Application → Webhooks | **Required** |
-| `COOLIFY_WEBHOOK_SECRET` | Bearer token for webhook authentication | Coolify Dashboard → Application → Webhooks | **Required** |
+**No GitHub secrets required for deployment!**
 
-### Setting Up Coolify Secrets
-
-1. Open Coolify Dashboard: http://3.130.209.141:8000
-2. Navigate to `nomad-crew-backend` application
-3. Go to **Webhooks** section
-4. Copy the webhook URL and secret
-5. Add to GitHub:
-   - Go to Repository → Settings → Secrets and variables → Actions
-   - Add `COOLIFY_WEBHOOK_URL` with the webhook endpoint
-   - Add `COOLIFY_WEBHOOK_SECRET` with the bearer token
+Coolify uses GitHub App integration which handles repository access and deployment triggers automatically. No webhook URLs or secrets needed in GitHub.
 
 ## Deprecated Secrets (Cloud Run)
 
@@ -28,21 +16,32 @@ These secrets were used for Cloud Run deployment and can be removed after migrat
 |-------------|---------|--------|
 | `GCP_SA_KEY` | Google Cloud service account key | **Deprecated** - Remove after Phase 19 |
 
-## Other Secrets (Not Changed)
+## Application Environment Variables
 
-Secrets used by other workflows or services that remain unchanged:
+Environment variables for the application are configured in **Coolify**, not GitHub:
 
-| Secret Name | Used By | Notes |
-|-------------|---------|-------|
-| Various env vars | Application config | Configured in Coolify, not GitHub |
+- Database connection (Neon PostgreSQL)
+- Redis connection (Upstash)
+- Supabase credentials
+- JWT secrets
+- API keys (Resend, Geoapify, Pexels)
+
+**Coolify Dashboard:** http://3.130.209.141:8000
+
+---
+
+## Deployment Flow
+
+1. Push to `main` branch
+2. **GitHub Actions** runs tests + security scan (parallel)
+3. **Coolify GitHub App** auto-deploys (parallel)
+4. Both complete independently
 
 ---
 
 ## Migration Checklist
 
-- [ ] Add `COOLIFY_WEBHOOK_URL` to GitHub secrets
-- [ ] Add `COOLIFY_WEBHOOK_SECRET` to GitHub secrets
-- [ ] Verify first deployment succeeds via webhook
+- [x] GitHub App integration configured (no secrets needed)
 - [ ] Remove `GCP_SA_KEY` after Phase 19 (Cloud Run decommissioning)
 
 ---

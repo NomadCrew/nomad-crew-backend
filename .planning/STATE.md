@@ -76,9 +76,9 @@ None currently.
 - **EC2 Instance Name:** sftp (renamed from default)
 - **Coolify App:** nomad-crew-backend (GitHub App source, auto-deploy enabled)
 - **Critical Note:** Keep existing Neon PostgreSQL and Upstash Redis - they work great
-- **Next:** Phase 16 - Application Deployment (configure env vars, first deploy)
+- **Next:** Phase 16 - Application Deployment (configure env vars in Coolify, first deploy)
 - **Coolify Dashboard:** http://3.130.209.141:8000
-- **Before first deploy:** Add COOLIFY_WEBHOOK_URL and COOLIFY_WEBHOOK_SECRET to GitHub secrets
+- **No GitHub secrets needed** - Coolify GitHub App handles deployment automatically
 
 ## Files Modified This Session
 
