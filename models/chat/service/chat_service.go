@@ -2,14 +2,12 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
+	"github.com/NomadCrew/nomad-crew-backend/internal/events"
 	"github.com/NomadCrew/nomad-crew-backend/internal/store"
-	"github.com/NomadCrew/nomad-crew-backend/internal/utils"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -891,7 +889,7 @@ func (s *ChatServiceImpl) UpdateLastRead(ctx context.Context, groupID, userID, m
 	return nil
 }
 
-// publishChatEvent publishes a chat-related event
+// publishChatEvent publishes a chat-related event using the standardized PublishEventWithContext helper.
 func (s *ChatServiceImpl) publishChatEvent(ctx context.Context, tripID, eventType string, data interface{}, user *types.UserResponse) {
 	if s.eventService == nil {
 		fmt.Printf("publishChatEvent: eventService is nil! Cannot publish event\n")
@@ -911,7 +909,7 @@ func (s *ChatServiceImpl) publishChatEvent(ctx context.Context, tripID, eventTyp
 	fmt.Printf("publishChatEvent: Successfully retrieved userID from context: %s for event: %s\n",
 		userID, eventType)
 
-	// Convert data to JSON for payload
+	// Build event data map
 	eventData := map[string]interface{}{
 		"data": data,
 	}
@@ -919,33 +917,19 @@ func (s *ChatServiceImpl) publishChatEvent(ctx context.Context, tripID, eventTyp
 		eventData["user"] = user
 	}
 
-	payload, err := json.Marshal(eventData)
-	if err != nil {
-		s.log.Errorw("Failed to marshal event data", "error", err)
-		return
-	}
-
 	// Create the proper event type with the "chat." prefix
 	chatEventType := "chat." + eventType
 
-	// Create event
-	event := types.Event{
-		BaseEvent: types.BaseEvent{
-			ID:        utils.GenerateEventID(),
-			Type:      types.EventType(chatEventType),
-			TripID:    tripID,
-			UserID:    userID,
-			Timestamp: time.Now(),
-			Version:   1,
-		},
-		Metadata: types.EventMetadata{
-			Source: "chat-service",
-		},
-		Payload: payload,
-	}
-
-	// Publish the event
-	if err := s.eventService.Publish(ctx, tripID, event); err != nil {
+	// Publish using standardized helper
+	if err := events.PublishEventWithContext(
+		s.eventService,
+		ctx,
+		chatEventType,
+		tripID,
+		userID,
+		eventData,
+		"chat-service",
+	); err != nil {
 		s.log.Errorw("Failed to publish chat event", "error", err, "eventType", chatEventType)
 	}
 }
