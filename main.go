@@ -40,7 +40,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models"
-	locationSvc "github.com/NomadCrew/nomad-crew-backend/models/location/service"
 	notificationSvc "github.com/NomadCrew/nomad-crew-backend/models/notification/service"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
@@ -135,9 +134,6 @@ func main() {
 	todoStore := sqlcadapter.NewSqlcTodoStore(dbClient.GetPool())
 	log.Info("Using SQLC-based todo store")
 
-	locationDB := sqlcadapter.NewSqlcLocationStore(dbClient.GetPool())
-	log.Info("Using SQLC-based location store")
-
 	notificationDB := sqlcadapter.NewSqlcNotificationStore(dbClient.GetPool())
 	log.Info("Using SQLC-based notification store")
 
@@ -216,12 +212,6 @@ func main() {
 	// Initialize notification service with push notification support
 	notificationService := notificationSvc.NewNotificationServiceWithPush(notificationDB, userDB, tripStore, eventService, pushService, log.Desugar())
 
-	// Initialize refactored location service
-	locationManagementService := locationSvc.NewManagementService(
-		locationDB,
-		eventService,
-	)
-
 	tripMemberService := trip_service.NewTripMemberService(tripStore, eventService, supabaseService)
 
 	// Initialize trip model with new store (removed chatStore dependency)
@@ -251,12 +241,6 @@ func main() {
 	tripHandler := handlers.NewTripHandler(tripModel, eventService, supabaseClient, &cfg.Server, weatherService, userService, pexelsClient)
 	todoHandler := handlers.NewTodoHandler(todoModel, eventService, log.Desugar())
 	healthHandler := handlers.NewHealthHandler(healthService)
-	locationHandler := handlers.NewLocationHandler(
-		locationManagementService,
-		tripMemberService,
-		supabaseService,
-		log.Desugar(),
-	)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, log.Desugar())
 	memberHandler := handlers.NewMemberHandler(tripModel, userDB, eventService)
 	invitationHandler := handlers.NewInvitationHandlerWithNotifications(tripModel, userDB, eventService, &cfg.Server, notificationService)
@@ -287,7 +271,6 @@ func main() {
 		TripHandler:         tripHandler,
 		TodoHandler:         todoHandler,
 		HealthHandler:       healthHandler,
-		LocationHandler:     locationHandler,
 		NotificationHandler: notificationHandler,
 		UserHandler:         userHandler,
 		MemberHandler:       memberHandler,

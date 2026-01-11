@@ -10,11 +10,9 @@ import (
 // Store provides a unified interface for all data operations
 type Store interface {
 	Trip() TripStore
-	Location() LocationStore
 	Todo() TodoStore
 	Chat() ChatStore
 	User() UserStore
-	Notification() NotificationStore
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
@@ -174,62 +172,6 @@ type UserStore interface {
 
 // Use types.DatabaseTransaction here instead of a local interface
 type Transaction = types.DatabaseTransaction
-
-// Deprecated: LocationStore in internal/store/interfaces.go is deprecated.
-// Use store.LocationStore from store/location_store.go instead, which is used
-// by the service layer with proper authorization checks.
-// This interface has different method signatures and is only used by the deprecated
-// internal/handlers.LocationHandler which bypasses the service layer.
-// TODO(phase-12): Remove this interface after removing internal/handlers/location.go.
-type LocationStore interface {
-	// CreateLocation creates a new location record
-	CreateLocation(ctx context.Context, location *types.Location) (string, error)
-
-	// GetLocation retrieves a location by its ID
-	GetLocation(ctx context.Context, id string) (*types.Location, error)
-
-	// UpdateLocation updates an existing location
-	UpdateLocation(ctx context.Context, id string, update *types.LocationUpdate) (*types.Location, error)
-
-	// DeleteLocation removes a location record
-	DeleteLocation(ctx context.Context, id string) error
-
-	// ListTripMemberLocations retrieves all locations for members of a specific trip
-	ListTripMemberLocations(ctx context.Context, tripID string) ([]*types.MemberLocation, error)
-
-	// BeginTx starts a new database transaction
-	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
-}
-
-// Deprecated: NotificationStore in internal/store/interfaces.go is deprecated.
-// Use store.NotificationStore from store/notification_store.go instead, which uses
-// uuid.UUID for type safety and models.Notification for the domain model.
-// This interface exists for the unused Store.Notification() method pattern.
-// TODO(phase-12): Remove this interface after consolidating store patterns.
-type NotificationStore interface {
-	// Create inserts a new notification into the database
-	Create(ctx context.Context, notification *types.NotificationCreate) (string, error)
-
-	// GetByID retrieves a notification by its ID
-	GetByID(ctx context.Context, id string) (*types.Notification, error)
-
-	// GetByUser retrieves notifications for a specific user with pagination and optional status filtering
-	// status: nil = all, true = read only, false = unread only
-	GetByUser(ctx context.Context, userID string, limit, offset int32, status *bool) ([]*types.Notification, error)
-
-	// MarkRead marks a single notification as read for a specific user
-	MarkRead(ctx context.Context, id string, userID string) error
-
-	// MarkAllReadByUser marks all unread notifications as read for a specific user
-	// Returns the number of notifications marked as read
-	MarkAllReadByUser(ctx context.Context, userID string) (int64, error)
-
-	// GetUnreadCount retrieves the count of unread notifications for a specific user
-	GetUnreadCount(ctx context.Context, userID string) (int64, error)
-
-	// Delete removes a notification by its ID, ensuring the operation is performed by the owner
-	Delete(ctx context.Context, id string, userID string) error
-}
 
 // PushTokenStore defines the interface for push token operations
 type PushTokenStore interface {

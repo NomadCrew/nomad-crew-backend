@@ -28,7 +28,6 @@ type Dependencies struct {
 	TripHandler         *handlers.TripHandler
 	TodoHandler         *handlers.TodoHandler
 	HealthHandler       *handlers.HealthHandler
-	LocationHandler     *handlers.LocationHandler
 	NotificationHandler *handlers.NotificationHandler
 	UserHandler         *handlers.UserHandler
 	Logger              *zap.SugaredLogger

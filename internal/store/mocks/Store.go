@@ -64,26 +64,6 @@ func (_m *Store) Chat() store.ChatStore {
 	return r0
 }
 
-// Location provides a mock function with no fields
-func (_m *Store) Location() store.LocationStore {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for Location")
-	}
-
-	var r0 store.LocationStore
-	if rf, ok := ret.Get(0).(func() store.LocationStore); ok {
-		r0 = rf()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(store.LocationStore)
-		}
-	}
-
-	return r0
-}
-
 // Todo provides a mock function with no fields
 func (_m *Store) Todo() store.TodoStore {
 	ret := _m.Called()
