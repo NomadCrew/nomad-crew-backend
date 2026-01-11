@@ -2,14 +2,14 @@
 
 ## Milestones
 
-- 🚧 **v1.0 — Codebase Refactoring** (Phases 1-12) - In Progress
+- ✅ **v1.0 — Codebase Refactoring** (Phases 1-12) - COMPLETE
 - 🚧 **v1.1 — Infrastructure Migration to AWS** (Phases 13-19) - In Progress
 
 ## Current Status
 
-**Active Milestone:** v1.0 — Codebase Refactoring / v1.1 — Infrastructure Migration
-**Current Phase:** 11 (Complete), 16 (Complete)
-**Phase Status:** Phase 11 complete for v1.0, Phase 16 complete for v1.1
+**Active Milestone:** v1.1 — Infrastructure Migration
+**Current Phase:** 16 (Complete), 17 next
+**Phase Status:** v1.0 milestone COMPLETE! All 12 phases done.
 
 ## Progress
 
@@ -26,7 +26,7 @@
 | 9. Weather Service Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 10. Middleware and Cross-Cutting Concerns | Complete | 2026-01-12 | 2026-01-12 |
 | 11. Event System and WebSocket Refactoring | Complete | 2026-01-12 | 2026-01-12 |
-| 12. Final Cleanup and Documentation | Not Started | — | — |
+| 12. Final Cleanup and Documentation | Complete | 2026-01-12 | 2026-01-12 |
 | **v1.1 — Infrastructure Migration** | | | |
 | 13. AWS EC2 Setup | Complete | 2026-01-11 | 2026-01-11 |
 | 14. Coolify Installation | Complete | 2026-01-11 | 2026-01-11 |
@@ -55,18 +55,17 @@ None currently.
 
 ## Context for Next Session
 
-### v1.0 Context (Active)
-- **Phases 1-11 complete:** All domain handlers, middleware, and event system refactored
-- **Phase 11 complete:** Event publishing pattern standardized
-  - chat_service.go now uses events.PublishEventWithContext()
-  - All services using consistent event publishing pattern
-  - Removed 3 unused imports from chat_service.go
+### v1.0 Context (COMPLETE)
+- **All 12 phases complete:** Codebase fully refactored
+- **Phase 12 complete:** Final cleanup
+  - Removed deprecated handlers (ChatHandler, LocationHandler, internal/handlers/location.go)
+  - Removed deprecated store interfaces (LocationStore, NotificationStore)
+  - Updated remaining TODOs to NOTEs
+  - 660+ lines of dead code removed
 - Established patterns: bindJSONOrError, getUserIDFromContext, c.Error(), Deprecated: prefix, IsAdminKey context, PublishEventWithContext
 - **Architecture pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
-- **Next:** Phase 12 (Final Cleanup and Documentation)
 - All critical security issues RESOLVED (Phase 4 admin check, Phase 9 weather verified)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
-- ChatHandler.go deprecated - scheduled for removal in Phase 12
 
 ### v1.1 Context (Active)
 - **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
@@ -85,6 +84,15 @@ None currently.
 ## Files Modified This Session
 
 - `infrastructure/aws/main.tf` - Added port 8081 to security group (Phase 16-01)
+- `handlers/chat_handler.go` - DELETED (Phase 12-01)
+- `handlers/location_handler.go` - DELETED (Phase 12-01)
+- `internal/handlers/location.go` - DELETED (Phase 12-01)
+- `internal/handlers/location_test.go` - DELETED (Phase 12-01)
+- `internal/store/interfaces.go` - Removed deprecated interfaces (Phase 12-01)
+- `main.go` - Removed unused locationHandler code (Phase 12-01)
+- `router/router.go` - Removed LocationHandler from Dependencies (Phase 12-01)
+- `logger/logger.go` - TODO → NOTE (Phase 12-01)
+- `internal/errors/errors.go` - TODO → NOTE (Phase 12-01)
 
 ---
 
