@@ -9,6 +9,7 @@ import (
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 // Environment represents the application's running environment (development or production).
@@ -97,6 +98,18 @@ type RateLimitConfig struct {
 	WindowSeconds int `mapstructure:"WINDOW_SECONDS" yaml:"window_seconds"`
 }
 
+// NotificationConfig holds configuration for the external notification facade API.
+type NotificationConfig struct {
+	// Enabled indicates whether the notification service is enabled
+	Enabled bool `mapstructure:"ENABLED" yaml:"enabled"`
+	// APIUrl is the URL of the notification facade API
+	APIUrl string `mapstructure:"API_URL" yaml:"api_url"`
+	// APIKey is the API key for authenticating with the notification facade
+	APIKey string `mapstructure:"API_KEY" yaml:"api_key"`
+	// TimeoutSeconds is the HTTP client timeout for notification requests
+	TimeoutSeconds int `mapstructure:"TIMEOUT_SECONDS" yaml:"timeout_seconds"`
+}
+
 // Config aggregates all application configuration sections.
 type Config struct {
 	Server           ServerConfig       `mapstructure:"SERVER" yaml:"server"`
@@ -106,6 +119,7 @@ type Config struct {
 	ExternalServices ExternalServices   `mapstructure:"EXTERNAL_SERVICES" yaml:"external_services"`
 	EventService     EventServiceConfig `mapstructure:"EVENT_SERVICE" yaml:"event_service"`
 	RateLimit        RateLimitConfig    `mapstructure:"RATE_LIMIT" yaml:"rate_limit"`
+	Notification     NotificationConfig `mapstructure:"NOTIFICATION" yaml:"notification"`
 }
 
 // IsDevelopment returns true if the application is running in development environment.
@@ -163,6 +177,11 @@ func LoadConfig() (*Config, error) {
 	// +++ Set RateLimit defaults +++
 	v.SetDefault("RATE_LIMIT.AUTH_REQUESTS_PER_MINUTE", 10)
 	v.SetDefault("RATE_LIMIT.WINDOW_SECONDS", 60)
+	// +++ Set Notification defaults +++
+	v.SetDefault("NOTIFICATION.ENABLED", false)
+	v.SetDefault("NOTIFICATION.API_URL", "https://ilqhxd37y4.execute-api.us-east-1.amazonaws.com/dev/notify")
+	v.SetDefault("NOTIFICATION.API_KEY", "")
+	v.SetDefault("NOTIFICATION.TIMEOUT_SECONDS", 10)
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -204,6 +223,11 @@ func LoadConfig() (*Config, error) {
 		// Rate limit config
 		{"RATE_LIMIT.AUTH_REQUESTS_PER_MINUTE", "RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE"},
 		{"RATE_LIMIT.WINDOW_SECONDS", "RATE_LIMIT_WINDOW_SECONDS"},
+		// Notification config
+		{"NOTIFICATION.ENABLED", "NOTIFICATION_ENABLED"},
+		{"NOTIFICATION.API_URL", "NOTIFICATION_API_URL"},
+		{"NOTIFICATION.API_KEY", "NOTIFICATION_API_KEY"},
+		{"NOTIFICATION.TIMEOUT_SECONDS", "NOTIFICATION_TIMEOUT_SECONDS"},
 	}
 
 	if err := bindEnvVars(v, envBindings); err != nil {
@@ -310,6 +334,11 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("rate limit window seconds must be positive")
 	}
 
+	// +++ Validate Notification config +++
+	if err := validateNotificationConfig(&cfg.Notification, log); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -336,6 +365,36 @@ func validateExternalServices(services *ExternalServices) error {
 	if len(services.SupabaseJWTSecret) < minJWTLength {
 		return fmt.Errorf("supabase JWT secret must be at least %d characters long", minJWTLength)
 	}
+	return nil
+}
+
+// validateNotificationConfig validates the notification facade configuration.
+// If enabled but missing API key, it auto-disables the service with a warning.
+func validateNotificationConfig(cfg *NotificationConfig, log *zap.SugaredLogger) error {
+	// If notifications are disabled, no further validation needed
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// Validate API URL format
+	if cfg.APIUrl != "" {
+		if _, err := url.ParseRequestURI(cfg.APIUrl); err != nil {
+			return fmt.Errorf("invalid notification API URL: %w", err)
+		}
+	}
+
+	// If enabled but no API key, auto-disable with warning
+	if cfg.APIKey == "" {
+		log.Warn("Notification API key not set, auto-disabling notification service")
+		cfg.Enabled = false
+		return nil
+	}
+
+	// Validate timeout
+	if cfg.TimeoutSeconds <= 0 {
+		return fmt.Errorf("notification timeout must be positive")
+	}
+
 	return nil
 }
 
