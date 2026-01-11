@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.0 — Codebase Refactoring
-**Current Phase:** 4 (Complete)
-**Phase Status:** Phase 4 complete, ready for Phase 5
+**Current Phase:** 5 (Complete)
+**Phase Status:** Phase 5 complete, ready for Phase 6
 
 ## Progress
 
@@ -19,7 +19,7 @@
 | 2. Trip Domain Service/Model Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 3. Trip Domain Store Refactoring | Complete | 2026-01-10 | 2026-01-10 |
 | 4. User Domain Refactoring | Complete | 2026-01-10 | 2026-01-11 |
-| 5. Location Domain Refactoring | Not Started | — | — |
+| 5. Location Domain Refactoring | Complete | 2026-01-11 | 2026-01-11 |
 | 6. Notification Domain Refactoring | Not Started | — | — |
 | 7. Todo Domain Refactoring | Not Started | — | — |
 | 8. Chat Domain Refactoring | Not Started | — | — |
@@ -54,9 +54,9 @@ None currently.
 ## Context for Next Session
 
 ### v1.0 Context (Active)
-- Phases 1-4 complete: Trip Domain and User Domain fully refactored
+- Phases 1-5 complete: Trip Domain, User Domain, and Location Domain fully refactored
 - Established patterns: bindJSONOrError, getUserIDFromContext, Deprecated: prefix, IsAdminKey context
-- **Next:** Phase 5 - Location Domain Refactoring
+- **Next:** Phase 6 - Notification Domain Refactoring
 - Critical security issue in Phase 4 (admin check) is now RESOLVED
 - Remaining critical: Phase 9 (weather permissions)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
@@ -71,7 +71,7 @@ None currently.
 
 ## Files Modified This Session
 
-- `handlers/user_handler.go` - Removed unused tripId parameter from SearchUsers (Phase 4-02)
+- `internal/store/interfaces.go` - Marked LocationStore as deprecated (Phase 05-02)
 
 ---
 
