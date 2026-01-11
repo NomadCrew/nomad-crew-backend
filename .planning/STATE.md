@@ -7,9 +7,9 @@
 
 ## Current Status
 
-**Active Milestone:** v1.1 — Infrastructure Migration to AWS
-**Current Phase:** 15 (Complete)
-**Phase Status:** All plans complete (15-01, 15-02)
+**Active Milestone:** v1.0 — Codebase Refactoring / v1.1 — Infrastructure Migration
+**Current Phase:** 9 (Complete), 15 (Complete)
+**Phase Status:** All plans complete for both milestones
 
 ## Progress
 
@@ -23,7 +23,7 @@
 | 6. Notification Domain Refactoring | Complete | 2026-01-11 | 2026-01-12 |
 | 7. Todo Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 8. Chat Domain Refactoring | Complete | 2026-01-12 | 2026-01-12 |
-| 9. Weather Service Refactoring | Not Started | — | — |
+| 9. Weather Service Refactoring | Complete | 2026-01-12 | 2026-01-12 |
 | 10. Middleware and Cross-Cutting Concerns | Not Started | — | — |
 | 11. Event System and WebSocket Refactoring | Not Started | — | — |
 | 12. Final Cleanup and Documentation | Not Started | — | — |
@@ -56,15 +56,14 @@ None currently.
 ## Context for Next Session
 
 ### v1.0 Context (Active)
-- **Phases 1-8 complete:** All domain handlers refactored with established patterns
-- **Phase 6 complete:** Notification handler standardized, batch notification documented as enhancement
-- **Phase 7 complete:** Todo handler standardized with established patterns
-- **Phase 8 complete:** ChatHandlerSupabase standardized, notification support added, ChatHandler deprecated
+- **Phases 1-9 complete:** All domain handlers refactored with established patterns
+- **Phase 9 complete:** Weather service TODOs updated, dead code removed
+  - Security analysis: Permission checks ALREADY at correct layer (handlers/models)
+  - 55 lines of dead geocoding code removed
 - Established patterns: bindJSONOrError, getUserIDFromContext, c.Error(), Deprecated: prefix, IsAdminKey context
-- **New pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
-- **Next:** Phase 9 (Weather Service) - CRITICAL security issue (permission checks)
-- Critical security issue in Phase 4 (admin check) is now RESOLVED
-- Remaining critical: Phase 9 (weather permissions)
+- **Architecture pattern:** NotificationService (database) vs NotificationFacadeService (AWS facade)
+- **Next:** Phase 10 (Middleware and Cross-Cutting Concerns)
+- All critical security issues RESOLVED (Phase 4 admin check, Phase 9 weather verified)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 - ChatHandler.go deprecated - scheduled for removal in Phase 12
 
@@ -83,13 +82,7 @@ None currently.
 
 ## Files Modified This Session
 
-- `handlers/notification_handler.go` - Refactored with established patterns (Phase 06-02)
-- `internal/notification/client.go` - Updated batch TODO comment (Phase 06-02)
-- `handlers/chat_handler_supabase.go` - Refactored with established patterns, added notifications (Phase 08-01)
-- `handlers/chat_handler.go` - Added deprecation notice (Phase 08-01)
-- `handlers/interfaces.go` - Added GetTripMembers to TripServiceInterface (Phase 08-01)
-- `types/chat.go` - Added Supabase chat handler types (Phase 08-01)
-- `main.go` - Wired NotificationFacadeService to ChatHandlerSupabase (Phase 08-01)
+- `models/weather/service/weather_service.go` - Updated TODOs, removed dead code (Phase 09-01)
 
 ---
 

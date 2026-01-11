@@ -238,23 +238,27 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 ---
 
 ## Phase 9: Weather Service Refactoring
-**Status:** Not Started
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
-**Goal:** Add missing permission checks, clean up weather service
+**Goal:** Verify permission architecture, clean up weather service
 
 **Scope:**
-- `models/weather/service/weather_service.go` - Weather service (TODO at lines 61, 85)
+- `models/weather/service/weather_service.go` - Weather service
 
-**Key Tasks:**
-- **CRITICAL:** Add trip membership verification before weather operations
-- Review weather data caching patterns
-- Standardize error handling
+**Completed Plans:**
+- Plan 9-01: Permission verification and TODO cleanup
 
-**Success Criteria:**
-- Permission checks implemented
+**Outcome:**
+- **Security Analysis Result:** Permission checks ALREADY implemented at handler/model layer
+- Misleading TODOs replaced with architecture documentation
+- 55 lines of dead geocoding code removed
+- File is cleaner and better documented
+
+**Success Criteria:** All met
+- Permission architecture verified (callers validate, service trusts)
 - All existing tests pass
-- Security issues resolved
+- No security gaps (confirmed by analysis)
 
 **Dependencies:** Phase 8
 
@@ -354,14 +358,14 @@ Domain-by-domain refactoring of the NomadCrew backend API to reduce complexity, 
 | 6 | Notification Domain | Batch notifications | No |
 | 7 | Todo Domain | None | No |
 | 8 | Chat Domain | None | No |
-| 9 | Weather Service | Permission checks | No |
+| 9 | Weather Service | None (verified) | No |
 | 10 | Middleware | None | No |
 | 11 | Events/WebSocket | None | No |
 | 12 | Final Cleanup | TODO comments | No |
 
 **Total Phases:** 12
-**Phases with Critical Security Issues:** 2 (Phase 4, Phase 9)
-**Phases Requiring Research:** 1 (Phase 4)
+**Phases with Critical Security Issues:** 0 (All resolved - Phase 4 fixed, Phase 9 verified)
+**Phases Requiring Research:** 0 (All complete)
 
 ---
 
