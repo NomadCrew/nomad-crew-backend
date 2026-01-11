@@ -12,20 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// NotificationService handles sending notifications through the facade API
-type NotificationService struct {
+// NotificationFacadeService handles sending notifications through the facade API
+type NotificationFacadeService struct {
 	client  *notification.Client
 	enabled bool
 	logger  *zap.SugaredLogger
 }
 
-// NewNotificationService creates a new notification service
-func NewNotificationService(cfg *config.NotificationConfig) *NotificationService {
+// NewNotificationFacadeService creates a new notification service
+func NewNotificationFacadeService(cfg *config.NotificationConfig) *NotificationFacadeService {
 	log := logger.GetLogger()
 
 	if !cfg.Enabled {
 		log.Info("Notification service disabled")
-		return &NotificationService{
+		return &NotificationFacadeService{
 			enabled: false,
 			logger:  log,
 		}
@@ -42,7 +42,7 @@ func NewNotificationService(cfg *config.NotificationConfig) *NotificationService
 		notification.WithHTTPClient(httpClient),
 	)
 
-	return &NotificationService{
+	return &NotificationFacadeService{
 		client:  client,
 		enabled: true,
 		logger:  log,
@@ -50,12 +50,12 @@ func NewNotificationService(cfg *config.NotificationConfig) *NotificationService
 }
 
 // IsEnabled returns whether notifications are enabled
-func (s *NotificationService) IsEnabled() bool {
+func (s *NotificationFacadeService) IsEnabled() bool {
 	return s.enabled
 }
 
 // SendTripUpdate sends a trip update notification to specified users
-func (s *NotificationService) SendTripUpdate(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority) error {
+func (s *NotificationFacadeService) SendTripUpdate(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority) error {
 	if !s.enabled {
 		s.logger.Debug("Notifications disabled, skipping trip update notification")
 		return nil
@@ -89,7 +89,7 @@ func (s *NotificationService) SendTripUpdate(ctx context.Context, userIDs []stri
 }
 
 // SendTripUpdateAsync sends trip update notifications asynchronously
-func (s *NotificationService) SendTripUpdateAsync(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority) {
+func (s *NotificationFacadeService) SendTripUpdateAsync(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority) {
 	if !s.enabled {
 		return
 	}
@@ -106,7 +106,7 @@ func (s *NotificationService) SendTripUpdateAsync(ctx context.Context, userIDs [
 }
 
 // SendChatMessage sends a chat message notification
-func (s *NotificationService) SendChatMessage(ctx context.Context, recipientIDs []string, data notification.ChatMessageData) error {
+func (s *NotificationFacadeService) SendChatMessage(ctx context.Context, recipientIDs []string, data notification.ChatMessageData) error {
 	if !s.enabled {
 		s.logger.Debug("Notifications disabled, skipping chat message notification")
 		return nil
@@ -145,7 +145,7 @@ func (s *NotificationService) SendChatMessage(ctx context.Context, recipientIDs 
 }
 
 // SendChatMessageAsync sends chat message notifications asynchronously
-func (s *NotificationService) SendChatMessageAsync(ctx context.Context, recipientIDs []string, data notification.ChatMessageData) {
+func (s *NotificationFacadeService) SendChatMessageAsync(ctx context.Context, recipientIDs []string, data notification.ChatMessageData) {
 	if !s.enabled {
 		return
 	}
@@ -161,7 +161,7 @@ func (s *NotificationService) SendChatMessageAsync(ctx context.Context, recipien
 }
 
 // SendWeatherAlert sends weather alert notifications
-func (s *NotificationService) SendWeatherAlert(ctx context.Context, userIDs []string, data notification.WeatherAlertData, priority notification.Priority) error {
+func (s *NotificationFacadeService) SendWeatherAlert(ctx context.Context, userIDs []string, data notification.WeatherAlertData, priority notification.Priority) error {
 	if !s.enabled {
 		s.logger.Debug("Notifications disabled, skipping weather alert")
 		return nil
@@ -195,7 +195,7 @@ func (s *NotificationService) SendWeatherAlert(ctx context.Context, userIDs []st
 }
 
 // SendLocationUpdate sends location update notifications
-func (s *NotificationService) SendLocationUpdate(ctx context.Context, recipientIDs []string, data notification.LocationUpdateData) error {
+func (s *NotificationFacadeService) SendLocationUpdate(ctx context.Context, recipientIDs []string, data notification.LocationUpdateData) error {
 	if !s.enabled {
 		s.logger.Debug("Notifications disabled, skipping location update")
 		return nil
@@ -234,7 +234,7 @@ func (s *NotificationService) SendLocationUpdate(ctx context.Context, recipientI
 }
 
 // SendSystemAlert sends system alert notifications
-func (s *NotificationService) SendSystemAlert(ctx context.Context, userID string, data notification.SystemAlertData, priority notification.Priority) error {
+func (s *NotificationFacadeService) SendSystemAlert(ctx context.Context, userID string, data notification.SystemAlertData, priority notification.Priority) error {
 	if !s.enabled {
 		s.logger.Debug("Notifications disabled, skipping system alert")
 		return nil
@@ -261,7 +261,7 @@ func (s *NotificationService) SendSystemAlert(ctx context.Context, userID string
 }
 
 // SendCustomNotification sends a custom notification
-func (s *NotificationService) SendCustomNotification(ctx context.Context, userID string, eventType notification.EventType, priority notification.Priority, data map[string]interface{}) error {
+func (s *NotificationFacadeService) SendCustomNotification(ctx context.Context, userID string, eventType notification.EventType, priority notification.Priority, data map[string]interface{}) error {
 	if !s.enabled {
 		s.logger.Debug("Notifications disabled, skipping custom notification")
 		return nil
