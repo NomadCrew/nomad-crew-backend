@@ -1,86 +1,97 @@
-# NomadCrew Backend Refactoring
+# NomadCrew Backend
+
+## Current State (v1.1)
+
+**Production URL:** https://api.nomadcrew.uk
+**Infrastructure:** AWS EC2 m8g.large (ARM Graviton4) + Coolify
+**Database:** Neon PostgreSQL
+**Cache:** Upstash Redis
+**Monitoring:** Grafana Cloud (synthetic checks)
+
+**Codebase:** 57,583 lines of Go 1.24 with clean layered architecture (Handler -> Service/Model -> Store)
 
 ## What This Is
 
-A comprehensive refactoring effort for the NomadCrew backend API - a Go-based REST API with WebSocket support for trip coordination. The goal is to reduce complexity, remove duplication, and improve architecture across all layers and domains while maintaining existing functionality.
+A Go-based REST API with WebSocket support for trip coordination. Powers the NomadCrew mobile app for digital nomads to plan and coordinate group trips.
+
+**Key domains:**
+- Trip management with RBAC permissions
+- User management with Supabase auth
+- Location tracking with real-time sync
+- Chat messaging via Supabase Realtime
+- Push notifications via Expo
+- Todo management within trips
 
 ## Core Value
 
-Clean, maintainable code that is easy to understand, extend, and debug - making future development faster and reducing bugs.
+Clean, maintainable code with reliable infrastructure - enabling fast feature development for the mobile app.
 
 ## Requirements
 
 ### Validated
 
-<!-- Existing functionality that must be preserved -->
-
-- ✓ Trip CRUD operations with RBAC permissions — existing
-- ✓ User management with Supabase auth integration — existing
-- ✓ Todo management within trips — existing
-- ✓ Location tracking with real-time sync — existing
-- ✓ Chat messaging via Supabase Realtime — existing
-- ✓ Invitation system with email notifications — existing
-- ✓ Push notifications via Expo — existing
-- ✓ WebSocket hub for real-time events — existing
-- ✓ SQLC-based type-safe database access — existing
-- ✓ Rate limiting on auth endpoints — existing
-- ✓ Swagger API documentation — existing
+- Trip CRUD operations with RBAC permissions — v1.0
+- User management with Supabase auth integration — v1.0
+- Admin role check via JWT app_metadata — v1.0
+- Consistent error handling pattern (c.Error()) — v1.0
+- Todo management within trips — v1.0
+- Location tracking with real-time sync — v1.0
+- Chat messaging via Supabase Realtime — v1.0
+- Invitation system with email notifications — v1.0
+- Push notifications via Expo — v1.0
+- WebSocket hub for real-time events — v1.0
+- SQLC-based type-safe database access — v1.0
+- Rate limiting on auth endpoints — v1.0
+- Swagger API documentation — v1.0
+- AWS EC2 + Coolify infrastructure — v1.1
+- HTTPS with Let's Encrypt SSL — v1.1
+- GitHub Actions CI/CD — v1.1
+- Synthetic monitoring with Discord alerts — v1.1
 
 ### Active
 
-<!-- Refactoring goals for this effort -->
-
-- [ ] Reduce handler complexity across all domains
-- [ ] Implement proper admin role checks (currently hardcoded false)
-- [ ] Add missing permission checks in weather and user services
-- [ ] Remove code duplication across handlers and services
-- [ ] Improve layer separation (handler → service → store)
-- [ ] Clean up TODO/FIXME technical debt
-- [ ] Ensure consistent error handling patterns
-- [ ] Improve interface definitions for better testability
+- [ ] Windows developer experience optimization (Phase 20)
+- [ ] Mobile app integration testing
 
 ### Out of Scope
 
-- New features — pure refactoring, no functional changes
-- Database schema changes — no migrations
-- API contract changes — all endpoints remain the same
-- Dependency upgrades — keep current versions
-- Performance optimization — focus on code quality first
+- New backend features — focus on frontend/mobile development
+- Database schema changes — stable schema for now
+- Performance optimization — not needed at current scale
 
 ## Context
 
-**Codebase state:** Brownfield Go 1.24 backend with layered architecture (Handler → Service/Model → Store). Uses Gin for HTTP, pgx/SQLC for database, Redis for events/caching, Supabase for auth.
+**What shipped in v1.0 (Codebase Refactoring):**
+- 12 phases, 16 plans over 3 days
+- Fixed critical security issue (admin role hardcoded false)
+- Established consistent patterns across all handlers
+- Removed 660+ lines of deprecated code
+- Verified permission architecture is correct
 
-**Key domains:**
-- Trip (primary domain) - `models/trip/`, `handlers/trip_handler.go`
-- User - `models/user/`, `handlers/user_handler.go`
-- Location - `models/location/`, `handlers/location_handler.go`
-- Notifications - `models/notification/`, `handlers/notification_handler.go`
-- Chat - `handlers/chat_handler_supabase.go`
-- Todo - `models/model.go`, `handlers/todo_handler.go`
-
-**Known tech debt:**
-- Admin check hardcoded to `false` in `handlers/user_handler.go:260,343`
-- Missing trip membership check in `handlers/user_handler.go:620`
-- TODO comments for permission checks in weather service
-- Incomplete integration tests
-
-**Codebase mapping:** `.planning/codebase/` contains 7 documents with detailed analysis.
-
-## Constraints
-
-- **Tests must pass**: All existing tests must continue to pass after refactoring
-- **No API changes**: External API contracts (endpoints, request/response formats) must remain unchanged
-- **No database changes**: No migrations or schema modifications
-- **Preserve architecture**: Keep the layered architecture pattern (Handler → Service → Store)
+**What shipped in v1.1 (Infrastructure Migration):**
+- 7 phases, 8 plans over 2 days
+- Migrated from GCP Cloud Run to AWS EC2
+- Set up Coolify for Heroku-like deployments
+- Configured SSL, monitoring, and alerting
+- Decommissioned GCP resources
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Domain-by-domain approach | Allows complete refactoring of each domain before moving to next | — Pending |
-| All layers equally | No layer is clean enough to skip | — Pending |
-| Tests as safety net | Existing tests validate refactoring correctness | — Pending |
+| Domain-by-domain refactoring | Complete each domain before moving to next | Good |
+| app_metadata for admin status | Server-only, secure from user modification | Good |
+| c.Error() + c.Abort() pattern | Consistent error handling | Good |
+| AWS over Oracle Cloud | OCI had no ARM capacity | Required |
+| m8g.large instance | t4g.small couldn't handle Coolify | Required |
+| Synthetic monitoring | Simple, no agent needed | Good |
+
+## Constraints
+
+- **No API changes:** External contracts must remain stable
+- **No database changes:** Schema is stable
+- **Maintain architecture:** Keep Handler -> Service -> Store pattern
+- **Production stability:** Changes must not break api.nomadcrew.uk
 
 ---
-*Last updated: 2026-01-10 after initialization*
+*Last updated: 2026-01-12 after v1.1 milestone*
