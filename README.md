@@ -17,7 +17,13 @@ The backend is a **monolithic Go application** built using the **Gin** web frame
 
 It integrates with **PostgreSQL** for persistent storage, **Redis** for caching, and **Supabase** for authentication services.
 
-👉 [Frontend Repository](https://github.com/NomadCrew/nomad-crew-frontend)
+### Quick Links
+
+| Resource | URL |
+|----------|-----|
+| Production API | https://api.nomadcrew.uk |
+| Health Check | https://api.nomadcrew.uk/health |
+| Frontend Repo | [nomad-crew-frontend](https://github.com/NomadCrew/nomad-crew-frontend) |
 
 ---
 
@@ -88,8 +94,8 @@ Refer to `PROJECT_STRUCTURE.md` for a detailed breakdown of the directory struct
 | Logging             | Uber Zap                                    |
 | Migrations          | SQL-based (`db/migrations/`)               |
 | Containerization    | Docker                                      |
-| CI/CD               | GitHub Actions                              |
-| Deployment          | Google Cloud Run (Primary), Fly.io (Backup)|
+| CI/CD               | GitHub Actions + Coolify Webhooks           |
+| Deployment          | AWS EC2 (Graviton4) + Coolify               |
 | Testing             | Go `testing`, `testify`, `testcontainers-go`|
 
 ---
@@ -218,23 +224,34 @@ See `.env.example` for a full list. Below are key variables:
 
 ## Deployment
 
-The app is designed for cloud-native deployment with Docker and GitHub Actions.
+The app is deployed on AWS EC2 with Coolify for container orchestration.
 
-### Targets
+### Production
 
-- ✅ **Primary**: Google Cloud Run
-- 🛑 **Backup**: Fly.io (manual fallback)
+- **API URL**: https://api.nomadcrew.uk
+- **Infrastructure**: AWS EC2 m8g.large (4 vCPU, 16 GB Graviton4)
+- **SSL**: Let's Encrypt (auto-renewed via Coolify/Traefik)
+- **Orchestration**: Coolify (self-hosted PaaS)
 
 ### CI/CD Workflows
 
-- `deploy-cloud-run.yml`, `pr-preview-cloud-run.yml` – deploy on merge or PR
-- `main.yml` – runs tests, security checks, builds/pushes Docker image
+- `deploy-coolify.yml` – runs tests, security scan, triggers Coolify webhook deploy on merge to main
+- `main.yml` – runs tests and security checks
 - `golang-cilint.yml` – linting workflow
+
+### How Deployment Works
+
+1. Push to `main` triggers GitHub Actions
+2. Tests and security scans run
+3. On success, webhook notifies Coolify
+4. Coolify pulls latest code, builds Docker image, deploys
+5. Traefik handles SSL termination and routing
 
 ### Notes
 
-- Always use HTTPS in production.
-- Use secret managers (e.g., GCP Secret Manager) to avoid hardcoding secrets.
+- HTTPS enforced in production (HTTP redirects to HTTPS)
+- Environment variables configured in Coolify dashboard
+- Coolify dashboard: accessible on port 8000 (restricted access)
 
 ---
 
