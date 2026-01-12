@@ -561,32 +561,27 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 ---
 
 ## Phase 19: Cloud Run Decommissioning
-**Status:** Not Started
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
 **Goal:** Safely shut down GCP Cloud Run and clean up resources
 
-**Scope:**
-- Verify Oracle Cloud deployment is stable (run for 48+ hours)
-- Update any remaining DNS records
-- Delete Cloud Run service
-- Remove Artifact Registry images
-- Clean up GCP IAM and service accounts
-- Cancel/downgrade GCP billing
+**Completed Plans:**
+- Plan 19-01: GCP resource cleanup and GitHub secret removal
 
-**Key Tasks:**
-- Final verification of Oracle Cloud deployment
-- Document any GCP resources to keep (if any)
-- Delete Cloud Run service
-- Clean up container images
-- Update GitHub secrets to remove GCP credentials
-- Archive old deployment workflows
+**Outcome:**
+- AWS production verified stable (1h35m+ uptime, all health checks passing)
+- Cloud Run service (`nomadcrew-backend`) already deleted/never deployed (API disabled)
+- Artifact Registry (`nomadcrew-containers`) already deleted (API disabled)
+- `GCP_SA_KEY` secret removed from GitHub
+- No Cloud Storage buckets or Compute Engine instances found
+- Firebase services kept for mobile app (minimal network usage ~$0-2/month)
 
-**Success Criteria:**
-- Cloud Run service deleted
+**Success Criteria:** ✅ All met
+- Cloud Run service deleted/verified gone
 - No unexpected GCP charges
-- All traffic flowing through Oracle Cloud
-- GitHub workflows updated
+- All traffic flowing through AWS EC2
+- GitHub secrets cleaned up
 
 **Dependencies:** Phase 18 (monitoring confirms stability)
 
@@ -675,13 +670,15 @@ Current machine setup analysis (2026-01-12):
 | 16 | Application Deployment | Complete | No | Yes |
 | 17 | Domain & SSL Config | Complete | No | Yes |
 | 18 | Monitoring Setup | Complete | No | No |
-| 19 | Cloud Run Decommissioning | Not Started | No | No |
+| 19 | Cloud Run Decommissioning | Complete | No | No |
 | 20 | Windows DevX for Mobile | Not Started | Yes | No |
 
 **Total Phases:** 8
-**Phases Complete:** 6 (Phase 13, 14, 15, 16, 17, 18)
+**Phases Complete:** 7 (Phase 13-19)
 **Phases Requiring Research:** 1 (Phase 20)
 **Critical Phases:** 2 (Phase 16, 17 - production traffic) - Both complete
+
+**v1.1 Infrastructure Migration: COMPLETE** (Phases 13-19)
 
 ---
 

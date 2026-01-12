@@ -3,13 +3,13 @@
 ## Milestones
 
 - ✅ **v1.0 — Codebase Refactoring** (Phases 1-12) - COMPLETE
-- 🚧 **v1.1 — Infrastructure Migration to AWS** (Phases 13-19) - In Progress
+- ✅ **v1.1 — Infrastructure Migration to AWS** (Phases 13-19) - COMPLETE
 
 ## Current Status
 
-**Active Milestone:** v1.1 — Infrastructure Migration
-**Current Phase:** 18 (Complete), 19 next
-**Phase Status:** Monitoring configured with Grafana Cloud synthetic checks and Discord alerting
+**Active Milestone:** v1.1 — Infrastructure Migration - COMPLETE
+**Current Phase:** 19 (Complete) - All infrastructure phases done
+**Phase Status:** Cloud Run decommissioned, GCP resources verified deleted, GitHub secrets cleaned
 
 ## Progress
 
@@ -34,7 +34,7 @@
 | 16. Application Deployment | Complete | 2026-01-12 | 2026-01-12 |
 | 17. Domain & SSL Config | Complete | 2026-01-12 | 2026-01-12 |
 | 18. Monitoring Setup | Complete | 2026-01-12 | 2026-01-12 |
-| 19. Cloud Run Decommissioning | Not Started | — | — |
+| 19. Cloud Run Decommissioning | Complete | 2026-01-12 | 2026-01-12 |
 
 ## Blockers
 
@@ -67,15 +67,10 @@ None currently.
 - All critical security issues RESOLVED (Phase 4 admin check, Phase 9 weather verified)
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 
-### v1.1 Context (Active)
-- **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2
+### v1.1 Context (COMPLETE)
+- **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 - ACHIEVED
 - **Target Stack:** AWS EC2 ARM + Coolify + Neon + Upstash + Grafana Cloud
-- **Phase 13 Complete:** AWS EC2 instance deployed at 3.130.209.141
-- **Phase 14 Complete:** Coolify v4.0.0-beta.460 installed, admin@nomadcrew.uk
-- **Phase 15 Complete:** GitHub workflows migrated to Coolify webhook deployment
-- **Phase 16 Complete:** Application deployed and running healthy
-- **Phase 17 Complete:** Domain & SSL configured
-- **Phase 18 Complete:** Grafana Cloud monitoring with Discord alerts
+- **Phase 13-19:** All complete
 - **Production URL:** https://api.nomadcrew.uk (Let's Encrypt SSL)
 - **EC2 Instance:** m8g.large (4 vCPU, 16 GB Graviton4) - ~$163/month
 - **Coolify Dashboard:** http://3.130.209.141:8000
@@ -83,12 +78,12 @@ None currently.
 - **Alerting:** Discord webhook for downtime notifications
 - **SSL Certificate:** Let's Encrypt R12, expires Apr 12, 2026
 - **API Routes:** /v1/... (not /api/v1/...)
-- **Next:** Phase 19 - Cloud Run Decommissioning
-- **No GitHub secrets needed** - Coolify GitHub App handles deployment automatically
+- **GCP Status:** Cloud Run/Artifact Registry already deleted, GCP_SA_KEY removed
+- **Milestone Complete:** All 7 infrastructure phases done
 
 ## Files Modified This Session
 
-- `.planning/phases/18-monitoring-setup/18-01-SUMMARY.md` - Monitoring setup summary (Phase 18-01)
+- `.planning/phases/19-cloud-run-decommissioning/19-01-SUMMARY.md` - Cloud Run decommissioning summary
 
 ---
 
