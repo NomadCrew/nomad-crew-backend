@@ -1,12 +1,11 @@
-# AWS Infrastructure - sftp Backend
-# Cost-optimized EC2 instance with Graviton (ARM) processor
+# AWS Infrastructure - NomadCrew Backend
+# Production EC2 instance with Graviton3 (ARM) processor
 #
 # Estimated costs (us-east-2):
-#   t4g.small  (2 vCPU, 2 GB):  ~$12/month
-#   t4g.medium (2 vCPU, 4 GB):  ~$24/month
+#   m8g.large  (4 vCPU, 16 GB):  ~$160/month (non-burstable, production)
 #   + EBS 30GB gp3:             ~$2.40/month
-#   + Elastic IP:               ~$3.60/month (if instance running, free)
-#   Total:                      ~$15-30/month depending on instance size
+#   + Elastic IP:               Free (when instance running)
+#   Total:                      ~$163/month
 
 terraform {
   required_version = ">= 1.5.0"
