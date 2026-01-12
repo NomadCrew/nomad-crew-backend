@@ -511,30 +511,26 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 ---
 
 ## Phase 17: Domain & SSL Configuration
-**Status:** Not Started
+**Status:** Complete (2026-01-12)
 **Research Required:** No
 
 **Goal:** Configure custom domain and SSL certificates for production
 
-**Scope:**
-- Update DNS records for nomadcrew.uk
-- Configure domain in Coolify
-- Set up Let's Encrypt SSL certificates
-- Configure HTTP to HTTPS redirect
-- Update CORS and allowed origins
+**Completed Plans:**
+- Plan 17-01: DNS configuration, Coolify SSL setup, verification
 
-**Key Tasks:**
-- Add A record pointing to Oracle Cloud IP
-- Configure domain in Coolify dashboard
-- Enable automatic SSL via Let's Encrypt
-- Test HTTPS access
-- Update frontend configuration if needed
+**Outcome:**
+- DNS A record: api.nomadcrew.uk → 3.130.209.141
+- Let's Encrypt SSL certificate (expires Apr 12, 2026)
+- HTTP to HTTPS redirect working
+- EC2 upgraded: m8g.large (4 vCPU, 16 GB Graviton4) - ~$163/month
+- Production URL: https://api.nomadcrew.uk
 
-**Success Criteria:**
-- nomadcrew.uk resolving to Oracle Cloud
+**Success Criteria:** ✅ All met
+- api.nomadcrew.uk resolving to AWS EC2
 - Valid SSL certificate installed
 - HTTPS working with auto-redirect
-- No mixed content warnings
+- All health checks passing
 
 **Dependencies:** Phase 16
 
@@ -615,14 +611,14 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 | 14 | Coolify Installation | Complete | Yes | No |
 | 15 | CI/CD Pipeline Migration | Complete | No | No |
 | 16 | Application Deployment | Complete | No | Yes |
-| 17 | Domain & SSL Config | Not Started | No | Yes |
+| 17 | Domain & SSL Config | Complete | No | Yes |
 | 18 | Monitoring Setup | Not Started | Yes | No |
 | 19 | Cloud Run Decommissioning | Not Started | No | No |
 
 **Total Phases:** 7
-**Phases Complete:** 4 (Phase 13, 14, 15, 16)
+**Phases Complete:** 5 (Phase 13, 14, 15, 16, 17)
 **Phases Requiring Research:** 1 (Phase 18)
-**Critical Phases:** 2 (Phase 16, 17 - production traffic)
+**Critical Phases:** 2 (Phase 16, 17 - production traffic) - Both complete
 
 ---
 

@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.1 — Infrastructure Migration
-**Current Phase:** 16 (Complete), 17 next
-**Phase Status:** v1.0 milestone COMPLETE! All 12 phases done.
+**Current Phase:** 17 (Complete), 18 next
+**Phase Status:** Domain & SSL configured, HTTPS live at api.nomadcrew.uk
 
 ## Progress
 
@@ -32,7 +32,7 @@
 | 14. Coolify Installation | Complete | 2026-01-11 | 2026-01-11 |
 | 15. CI/CD Pipeline Migration | Complete | 2026-01-11 | 2026-01-12 |
 | 16. Application Deployment | Complete | 2026-01-12 | 2026-01-12 |
-| 17. Domain & SSL Config | Not Started | — | — |
+| 17. Domain & SSL Config | Complete | 2026-01-12 | 2026-01-12 |
 | 18. Monitoring Setup | Not Started | — | — |
 | 19. Cloud Run Decommissioning | Not Started | — | — |
 
@@ -68,31 +68,25 @@ None currently.
 - Pre-existing test issues: user_handler_test.go missing SearchUsers on mock
 
 ### v1.1 Context (Active)
-- **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2 (~$14/month)
+- **Goal:** Migrate from Cloud Run ($24/month) to AWS EC2
 - **Target Stack:** AWS EC2 ARM + Coolify + Neon + Upstash + Grafana Cloud
-- **Phase 13 Complete:** AWS EC2 t4g.small deployed at 3.130.209.141
+- **Phase 13 Complete:** AWS EC2 instance deployed at 3.130.209.141
 - **Phase 14 Complete:** Coolify v4.0.0-beta.460 installed, admin@nomadcrew.uk
 - **Phase 15 Complete:** GitHub workflows migrated to Coolify webhook deployment
 - **Phase 16 Complete:** Application deployed and running healthy
-- **Application URL:** http://3.130.209.141:8081
+- **Phase 17 Complete:** Domain & SSL configured
+- **Production URL:** https://api.nomadcrew.uk (Let's Encrypt SSL)
+- **EC2 Instance:** m8g.large (4 vCPU, 16 GB Graviton4) - ~$163/month
 - **Coolify Dashboard:** http://3.130.209.141:8000
-- **Coolify App:** nomad-crew-backend (GitHub App source, auto-deploy enabled)
-- **Port Mapping:** 8081:8080 (avoids conflict with Coolify on 8080)
-- **Next:** Phase 17 - Domain & SSL Configuration (Cloudflare DNS, Let's Encrypt)
+- **SSL Certificate:** Let's Encrypt R12, expires Apr 12, 2026
+- **API Routes:** /v1/... (not /api/v1/...)
+- **Next:** Phase 18 - Monitoring Setup (Grafana Cloud)
 - **No GitHub secrets needed** - Coolify GitHub App handles deployment automatically
 
 ## Files Modified This Session
 
-- `infrastructure/aws/main.tf` - Added port 8081 to security group (Phase 16-01)
-- `handlers/chat_handler.go` - DELETED (Phase 12-01)
-- `handlers/location_handler.go` - DELETED (Phase 12-01)
-- `internal/handlers/location.go` - DELETED (Phase 12-01)
-- `internal/handlers/location_test.go` - DELETED (Phase 12-01)
-- `internal/store/interfaces.go` - Removed deprecated interfaces (Phase 12-01)
-- `main.go` - Removed unused locationHandler code (Phase 12-01)
-- `router/router.go` - Removed LocationHandler from Dependencies (Phase 12-01)
-- `logger/logger.go` - TODO → NOTE (Phase 12-01)
-- `internal/errors/errors.go` - TODO → NOTE (Phase 12-01)
+- `infrastructure/aws/main.tf` - Updated cost estimates for m8g.large (Phase 17-01)
+- `infrastructure/aws/terraform.tfvars` - Changed instance_type to m8g.large (Phase 17-01)
 
 ---
 
