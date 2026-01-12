@@ -537,35 +537,24 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 ---
 
 ## Phase 18: Monitoring Setup
-**Status:** Not Started
-**Research Required:** Yes (Grafana Cloud setup, Prometheus integration)
+**Status:** Complete (2026-01-12)
+**Research Required:** No (used synthetic monitoring approach)
 
 **Goal:** Set up free monitoring and observability with Grafana Cloud
 
-**Scope:**
-- Create Grafana Cloud free account
-- Configure Prometheus metrics export
-- Set up log aggregation
-- Create dashboards for key metrics
-- Configure alerting for critical issues
+**Completed Plans:**
+- Plan 18-01: Grafana Cloud setup with synthetic monitoring and Discord alerting
 
-**Research Topics:**
-- Grafana Cloud free tier limits
-- Prometheus Go client integration
-- Loki log shipping configuration
+**Outcome:**
+- Grafana Cloud account: nomadcrew5.grafana.net
+- 3 synthetic checks: health, liveness, API v1
+- Discord webhook alerting for downtime
+- No agent installation required (synthetic monitoring approach)
 
-**Key Tasks:**
-- Sign up for Grafana Cloud free tier
-- Install Grafana Agent on Oracle Cloud
-- Configure application metrics endpoint
-- Create performance dashboards
-- Set up alert rules
-
-**Success Criteria:**
-- Metrics visible in Grafana Cloud
-- Logs searchable
+**Success Criteria:** ✅ All met
+- Synthetic checks running every 1-5 minutes
 - Alerts configured for downtime
-- Dashboard showing key health indicators
+- Discord notifications working
 
 **Dependencies:** Phase 17
 
@@ -603,6 +592,79 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 
 ---
 
+## Phase 20: Windows DevX for Mobile Development
+**Status:** Not Started
+**Research Required:** Yes (WSL2 performance tuning, Android toolchain optimization)
+
+**Goal:** Streamline Windows development experience for building Android/iOS mobile apps with the NomadCrew frontend
+
+**Background:**
+Current machine setup analysis (2026-01-12):
+- Windows 11 with Git Bash (MSYS2), no shell configuration
+- NVM with Node 23.2.0 active, Expo 6.3.10, EAS 16.15.0
+- Android SDK installed with ANDROID_HOME set correctly
+- WSL2 Ubuntu available but workflow not configured
+- Docker Desktop with WSL2 integration working
+- Multiple dev tools installed but not optimized for mobile dev workflow
+
+**Scope:**
+- Shell configuration (Git Bash .bashrc)
+- Android development workflow optimization
+- WSL2 integration for React Native (optional path)
+- Environment variable cleanup
+- Development scripts and aliases
+- VS Code workspace configuration
+
+**Key Tasks:**
+
+### 1. Shell Configuration
+- Create `.bashrc` with NomadCrew-specific aliases
+- Add mobile dev shortcuts (start emulator, adb commands, expo scripts)
+- Clean up PATH duplicates and fix `%M2_HOME%` reference
+- Configure prompt with git branch display
+
+### 2. Android Toolchain Optimization
+- Verify Android SDK components are up-to-date
+- Configure Gradle for faster builds (daemon, parallel execution)
+- Set up Android emulator quick-launch scripts
+- Configure `local.properties` for frontend project
+- Test `expo run:android` workflow end-to-end
+
+### 3. Development Workflow Scripts
+- Create `dev-start.sh` - one-command to start backend + frontend
+- Create `android-dev.sh` - launch emulator + connect + start metro
+- Create `clean-all.sh` - nuclear option for when things break
+- Document common troubleshooting commands
+
+### 4. VS Code Workspace Setup
+- Create multi-root workspace for backend + frontend
+- Configure recommended extensions
+- Set up launch configurations for debugging
+- Add task definitions for common operations
+
+### 5. Environment Documentation
+- Document current setup in `.planning/DEVX.md`
+- Create onboarding guide for new developers
+- List required tools and versions
+- Troubleshooting FAQ
+
+**Research Topics:**
+- WSL2 vs native Windows for React Native performance
+- Gradle build cache optimization
+- Metro bundler performance tuning on Windows
+- Android emulator hardware acceleration settings
+
+**Success Criteria:**
+- `npm run android` works reliably from Git Bash
+- Emulator starts in < 30 seconds
+- Hot reload works consistently
+- Single command to start full development environment
+- New developer can set up in < 1 hour with guide
+
+**Dependencies:** None (can run in parallel with other phases)
+
+---
+
 ## v1.1 Summary
 
 | Phase | Name | Status | Research | Critical |
@@ -612,12 +674,13 @@ Migrate from Google Cloud Run ($24/month) to AWS EC2 with Coolify for cost-effec
 | 15 | CI/CD Pipeline Migration | Complete | No | No |
 | 16 | Application Deployment | Complete | No | Yes |
 | 17 | Domain & SSL Config | Complete | No | Yes |
-| 18 | Monitoring Setup | Not Started | Yes | No |
+| 18 | Monitoring Setup | Complete | No | No |
 | 19 | Cloud Run Decommissioning | Not Started | No | No |
+| 20 | Windows DevX for Mobile | Not Started | Yes | No |
 
-**Total Phases:** 7
-**Phases Complete:** 5 (Phase 13, 14, 15, 16, 17)
-**Phases Requiring Research:** 1 (Phase 18)
+**Total Phases:** 8
+**Phases Complete:** 6 (Phase 13, 14, 15, 16, 17, 18)
+**Phases Requiring Research:** 1 (Phase 20)
 **Critical Phases:** 2 (Phase 16, 17 - production traffic) - Both complete
 
 ---

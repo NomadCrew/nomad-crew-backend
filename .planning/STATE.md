@@ -8,8 +8,8 @@
 ## Current Status
 
 **Active Milestone:** v1.1 — Infrastructure Migration
-**Current Phase:** 17 (Complete), 18 next
-**Phase Status:** Domain & SSL configured, HTTPS live at api.nomadcrew.uk
+**Current Phase:** 18 (Complete), 19 next
+**Phase Status:** Monitoring configured with Grafana Cloud synthetic checks and Discord alerting
 
 ## Progress
 
@@ -33,7 +33,7 @@
 | 15. CI/CD Pipeline Migration | Complete | 2026-01-11 | 2026-01-12 |
 | 16. Application Deployment | Complete | 2026-01-12 | 2026-01-12 |
 | 17. Domain & SSL Config | Complete | 2026-01-12 | 2026-01-12 |
-| 18. Monitoring Setup | Not Started | — | — |
+| 18. Monitoring Setup | Complete | 2026-01-12 | 2026-01-12 |
 | 19. Cloud Run Decommissioning | Not Started | — | — |
 
 ## Blockers
@@ -75,18 +75,20 @@ None currently.
 - **Phase 15 Complete:** GitHub workflows migrated to Coolify webhook deployment
 - **Phase 16 Complete:** Application deployed and running healthy
 - **Phase 17 Complete:** Domain & SSL configured
+- **Phase 18 Complete:** Grafana Cloud monitoring with Discord alerts
 - **Production URL:** https://api.nomadcrew.uk (Let's Encrypt SSL)
 - **EC2 Instance:** m8g.large (4 vCPU, 16 GB Graviton4) - ~$163/month
 - **Coolify Dashboard:** http://3.130.209.141:8000
+- **Grafana Cloud:** nomadcrew5.grafana.net (3 synthetic checks)
+- **Alerting:** Discord webhook for downtime notifications
 - **SSL Certificate:** Let's Encrypt R12, expires Apr 12, 2026
 - **API Routes:** /v1/... (not /api/v1/...)
-- **Next:** Phase 18 - Monitoring Setup (Grafana Cloud)
+- **Next:** Phase 19 - Cloud Run Decommissioning
 - **No GitHub secrets needed** - Coolify GitHub App handles deployment automatically
 
 ## Files Modified This Session
 
-- `infrastructure/aws/main.tf` - Updated cost estimates for m8g.large (Phase 17-01)
-- `infrastructure/aws/terraform.tfvars` - Changed instance_type to m8g.large (Phase 17-01)
+- `.planning/phases/18-monitoring-setup/18-01-SUMMARY.md` - Monitoring setup summary (Phase 18-01)
 
 ---
 
