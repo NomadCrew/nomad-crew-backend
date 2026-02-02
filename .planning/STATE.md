@@ -8,12 +8,12 @@
 
 ## Current Position
 
-Phase: 20 of 25 (Windows DevX for Mobile Development)
+Phase: 21 of 25 (Auth Flow Integration)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-01-12 - Milestone v1.2 created
+Last activity: 2026-02-02 - Mobile testing on physical device, auth & push fixes
 
-Progress: ░░░░░░░░░░ 0%
+Progress: ██░░░░░░░░ 17% (1/6 phases)
 
 ## Progress
 
@@ -23,7 +23,7 @@ Progress: ░░░░░░░░░░ 0%
 | v1.1 Infrastructure Migration | 13-19 | Complete | 2026-01-12 |
 | v1.2 Mobile Integration & Quality | 20-25 | In Progress | - |
 
-**Total Phases Completed:** 19 phases, 24 plans
+**Total Phases Completed:** 20 phases, 24 plans
 
 ## Production Status
 
@@ -82,15 +82,41 @@ None currently.
 
 ### Next Steps
 
-1. `/gsd:plan-phase 20` to plan Windows DevX
-2. Or `/gsd:discuss-phase 20` to gather more context first
+1. `/gsd:plan-phase 21` to plan Auth Flow Integration
+2. Or continue with frontend bug fixes first
 
 ## Session Continuity
 
-Last session: 2026-01-12
-Stopped at: Milestone v1.2 initialization
+Last session: 2026-02-02
+Stopped at: Mobile testing complete, auth & push notifications working
 Resume file: None
+
+### Phase 20 Deliverables
+
+- `~/.bashrc` - Global shell config with cd hook
+- `/n/NomadCrew/.nomadrc` - NomadCrew dev commands
+- `.nvmrc` - Node v20.19.0 auto-switching
+- Commands: `android-dev`, `eas-install`, `fe-start`, `be-run`, `emu-start`
+- Server discovery fix: `REACT_NATIVE_PACKAGER_HOSTNAME=10.0.2.2`
+
+### 2026-02-02 Mobile Testing Session
+
+**Issues Fixed:**
+- Google Sign-In DEVELOPER_ERROR 10 → Updated SHA-1 fingerprint in Google Cloud Console (EAS keystore, not system debug keystore)
+- Push notifications FIS_AUTH_ERROR → Enabled Firebase Installations API and FCM Registration API in Google Cloud Console
+- Push token registration 500 → Ran `user_push_tokens` migration on Coolify PostgreSQL
+- Theme/spacing initialization errors → Added missing exports to `spacing.ts`
+- Notification module null errors → Added proper initialization in `notifications.ts`
+- Project ID undefined → Fixed to use `Constants.expoConfig?.extra?.eas?.projectId`
+
+**Migrations Applied:**
+- `user_profiles` table - ✅ Applied
+- `user_push_tokens` table - ✅ Applied (2026-02-02)
+
+**Documentation Created:**
+- `docs/TROUBLESHOOTING.md` - Backend troubleshooting guide
+- Updated `frontend/docs/DEVELOPMENT_SETUP.md` - Added Google Sign-In and Push setup
 
 ---
 
-*Last updated: 2026-01-12*
+*Last updated: 2026-02-02*
