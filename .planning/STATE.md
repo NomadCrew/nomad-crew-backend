@@ -112,6 +112,12 @@ Resume file: None
 - Google Places REQUEST_DENIED → Use unrestricted key for HTTP fetch (not Android-restricted key)
 - WebSocket JSON parse error → Removed double JSON.parse in WebSocketManager (data already parsed by WebSocketConnection)
 
+**Working Features (verified 2026-02-02):**
+- Google Sign-In (Android)
+- Push notification token registration
+- Google Places Autocomplete
+- WebSocket real-time connection
+
 **Migrations Applied:**
 - `user_profiles` table - ✅ Applied
 - `user_push_tokens` table - ✅ Applied (2026-02-02)
