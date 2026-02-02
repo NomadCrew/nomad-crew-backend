@@ -1,0 +1,222 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Response Protocol
+
+Before executing ANY non-trivial task, first compile the request into a structured specification:
+
+### Step 1: Classify Intent
+Identify the primary intent: `research` | `decision` | `design` | `code` | `writing` | `ops`
+
+### Step 2: State the Objective
+Write a single clear sentence describing what success looks like.
+
+### Step 3: Document Assumptions
+List any defaults being applied due to missing information. Format:
+- **Assumption:** [What you're assuming]
+- **Reason:** [Why this is a reasonable default]
+
+### Step 4: Define Verification Criteria
+List pass/fail criteria that will confirm the task is complete.
+
+### Step 5: Execute
+Only after completing steps 1-4, proceed with the work.
+
+### When to Skip This Protocol
+- Simple questions with obvious answers
+- Single-file edits with clear instructions
+- Commands the user explicitly specifies
+
+### Example
+
+**User:** "Add rate limiting to the trips endpoint"
+
+**Compiled:**
+- **Intent:** code
+- **Objective:** Implement rate limiting middleware for trip-related API endpoints
+- **Assumptions:**
+  - Use existing Redis connection for rate limit storage (infrastructure exists)
+  - Apply to all /v1/trips/* routes (standard scope)
+  - 100 requests/minute per user (reasonable default, not specified)
+- **Verification:**
+  - [ ] Rate limiter middleware created
+  - [ ] Applied to trip routes
+  - [ ] Returns 429 when limit exceeded
+  - [ ] Tests pass
+
+**Then execute.**
+
+---
+
+## Development Commands
+
+```bash
+# Run the server
+go run main.go
+
+# Run with hot reload
+air
+
+# Run tests
+go test ./...
+
+# Run tests with coverage
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+
+# Lint code
+golangci-lint run
+
+# Format code
+gofmt -w .
+
+# Generate Swagger docs
+swag init -g main.go -o ./static/docs/api
+
+# Run migrations
+psql -d <db> -f db/migrations/init.sql
+```
+
+## High-Level Architecture
+
+### Stack
+- **Language:** Go 1.24
+- **Framework:** Gin
+- **Database:** PostgreSQL (pgx driver)
+- **Cache:** Redis
+- **Auth:** Supabase + JWT
+- **Real-time:** WebSockets (nhooyr.io/websocket)
+- **Logging:** Uber Zap
+- **Config:** Viper
+
+### Project Structure
+```
+├── main.go              # Entry point
+├── router/              # API routes and middleware setup
+├── handlers/            # HTTP handlers (parse input, call services)
+├── models/*/service/    # Business logic (NEW - use this pattern)
+├── services/            # Legacy business logic (migrate away from)
+├── db/                  # Data access layer (pgx queries)
+├── middleware/          # JWT, CORS, rate limiting, error handling
+├── internal/
+│   ├── ws/              # WebSocket manager
+│   └── events/          # Event definitions and dispatch
+├── types/               # Shared type definitions
+├── errors/              # Custom error types
+└── config/              # Configuration loading
+```
+
+### Key Patterns
+
+1. **Layered Architecture:**
+   - Handlers → Services → DB
+   - Permission checks happen in service layer
+   - Handlers only parse/validate input
+
+2. **New Feature Convention:**
+   - Place in `models/<feature>/service/`
+   - NOT in legacy `services/` directory
+
+3. **Error Handling:**
+   - Use custom error types from `errors/`
+   - Wrap errors with context
+   - Log at appropriate levels
+
+4. **WebSocket Pattern:**
+   - Trip-specific: `/v1/trips/:id/chat/ws/events`
+   - General updates: `/v1/ws`
+
+## Code Principles
+
+- Use structured logging (Zap)
+- Validate all input at handler level
+- Check permissions in service layer
+- Use context for request-scoped values
+- Prefer explicit error handling over panics
+- Write tests for new functionality
+
+## Environment Variables
+
+Key variables (see `.env.example` for full list):
+- `DB_CONNECTION_STRING` - PostgreSQL connection
+- `REDIS_ADDRESS` - Redis connection
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
+- `JWT_SECRET_KEY`, `SUPABASE_JWT_SECRET`
+- `SERVER_ENVIRONMENT` - development/production
+- `LOG_LEVEL` - debug/info/warn/error
+
+## Testing
+
+```bash
+# Unit tests
+go test ./...
+
+# With verbose output
+go test -v ./...
+
+# Specific package
+go test ./handlers/...
+
+# Integration tests (requires testcontainers)
+go test -tags=integration ./...
+```
+
+## API Documentation
+
+- Swagger UI: `/swagger/index.html` (when server running)
+- Generate docs: `swag init -g main.go -o ./static/docs/api`
+- Use proper Swagger annotations on handlers
+
+## Deployment
+
+- **Production:** https://api.nomadcrew.uk
+- **CI/CD:** GitHub Actions → Coolify webhook
+- **Infrastructure:** AWS EC2 (Graviton4) + Docker
+
+## Database Migration SoP (Production)
+
+### Architecture
+- **Supabase:** Auth only (Google/Apple Sign-In, JWT tokens)
+- **Coolify PostgreSQL:** All application data (self-hosted on EC2)
+
+### Running Migrations via GitHub Gist
+
+When you need to run SQL migrations on the production Coolify PostgreSQL:
+
+**Step 1: Create a public GitHub Gist with the SQL**
+```bash
+gh gist create --public --filename "migration_name.sql" --desc "Description" - << 'EOF'
+-- Your SQL here
+CREATE TABLE IF NOT EXISTS ...
+EOF
+```
+
+**Step 2: On EC2, download the migration**
+```bash
+curl -sL https://gist.githubusercontent.com/<user>/<gist_id>/raw/<filename>.sql -o /tmp/migration.sql
+```
+
+**Step 3: Execute via Docker**
+```bash
+docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -d postgres < /tmp/migration.sql
+```
+
+### Why This Approach?
+- Large SQL blocks don't paste correctly in EC2 console
+- Gists provide version history and easy sharing
+- curl + pipe is reliable for multi-line SQL
+
+### Example: Adding user_profiles table
+```bash
+# Download
+curl -sL https://gist.githubusercontent.com/naqeebali-shamsi/2873041bd902e36cb0ea24cdccfc8ae9/raw/add_user_profiles_table.sql -o /tmp/migration.sql
+
+# Execute
+docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -d postgres < /tmp/migration.sql
+```
+
+### Verify Migration
+```bash
+docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "\dt"
+```
