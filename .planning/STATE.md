@@ -111,6 +111,7 @@ Resume file: None
 - Google Places API key missing → Added fallback to check `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in PlacesAutocomplete.tsx
 - Google Places REQUEST_DENIED → Use unrestricted key for HTTP fetch (not Android-restricted key)
 - WebSocket JSON parse error → Removed double JSON.parse in WebSocketManager (data already parsed by WebSocketConnection)
+- Map "Unable to find view for viewState" → Added 500ms delay + try-catch for fitToCoordinates in GroupLiveMap
 
 **Working Features (verified 2026-02-02):**
 - Google Sign-In (Android)
