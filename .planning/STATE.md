@@ -109,6 +109,8 @@ Resume file: None
 - Notification module null errors → Added proper initialization in `notifications.ts`
 - Project ID undefined → Fixed to use `Constants.expoConfig?.extra?.eas?.projectId`
 - Google Places API key missing → Added fallback to check `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in PlacesAutocomplete.tsx
+- Google Places REQUEST_DENIED → Use unrestricted key for HTTP fetch (not Android-restricted key)
+- WebSocket JSON parse error → Removed double JSON.parse in WebSocketManager (data already parsed by WebSocketConnection)
 
 **Migrations Applied:**
 - `user_profiles` table - ✅ Applied
