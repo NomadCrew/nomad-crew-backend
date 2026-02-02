@@ -108,6 +108,7 @@ Resume file: None
 - Theme/spacing initialization errors → Added missing exports to `spacing.ts`
 - Notification module null errors → Added proper initialization in `notifications.ts`
 - Project ID undefined → Fixed to use `Constants.expoConfig?.extra?.eas?.projectId`
+- Google Places API key missing → Added fallback to check `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in PlacesAutocomplete.tsx
 
 **Migrations Applied:**
 - `user_profiles` table - ✅ Applied
