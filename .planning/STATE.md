@@ -11,7 +11,7 @@
 Phase: 21 of 25 (Auth Flow Integration)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-02-02 - Mobile testing on physical device, auth & push fixes
+Last activity: 2026-02-03 - Completed quick task 001: Implement NomadCrew Profile Screen
 
 Progress: ██░░░░░░░░ 17% (1/6 phases)
 
@@ -36,6 +36,12 @@ Progress: ██░░░░░░░░ 17% (1/6 phases)
 ## Blockers
 
 None currently.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 001 | Implement NomadCrew Profile Screen | 2026-02-03 | 4625fc2 | [001-implement-nomadcrew-profile-screen](./quick/001-implement-nomadcrew-profile-screen/) |
 
 ## Decisions Made
 
