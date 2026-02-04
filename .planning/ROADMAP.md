@@ -46,7 +46,7 @@ Plans:
 - [x] 26-01-PLAN.md — Rate limiter fail-closed with in-memory fallback (SEC-01)
 - [x] 26-02-PLAN.md — Trusted proxy configuration for IP spoofing prevention (SEC-02)
 
-**Status:** Complete ✓
+**Status:** Complete
 
 **Success Criteria:**
 1. Rate limiter returns 503 (not 200) when Redis is unavailable
@@ -68,6 +68,13 @@ Plans:
 **Goal:** All packages compile and tests can run in CI
 **Depends on:** Phase 26 (security fixes deployed first)
 **Requirements:** TEST-01, TEST-02, TEST-03, TEST-04, TEST-05
+**Plans:** 4 plans
+
+Plans:
+- [ ] 27-01-PLAN.md — Install test dependencies and fix pgx v4 imports
+- [ ] 27-02-PLAN.md — Consolidate duplicate mocks and fix interface mismatches (handlers, middleware)
+- [ ] 27-03-PLAN.md — Fix interface mismatches and type errors (handlers, models)
+- [ ] 27-04-PLAN.md — Fix API changes, test logic, and remaining compilation errors
 
 **Success Criteria:**
 1. `go test ./...` compiles all 22 packages without errors
@@ -77,7 +84,7 @@ Plans:
 5. `go test -race ./...` detects no data races
 
 **Files to modify:**
-- `go.mod` (add pgxmock/v4, miniredis/v2)
+- `go.mod` (add pgxmock/v4, redismock/v9)
 - All `*_test.go` files with pgx/v4 imports
 - Mock consolidation across packages
 
@@ -209,7 +216,7 @@ Phase 31 (DevX) [independent, can run in parallel]
 | 24. Bug Fixes | v1.2 | 0/? | Not started | - |
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
 | 26. Critical Security | v1.3 | 2/2 | Complete | 2026-02-04 |
-| 27. Test Suite Repair | v1.3 | 0/? | Not started | - |
+| 27. Test Suite Repair | v1.3 | 0/4 | Planned | - |
 | 28. Goroutine Management | v1.3 | 0/? | Not started | - |
 | 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
 | 30. Dependency Migrations | v1.3 | 0/? | Not started | - |
@@ -221,4 +228,4 @@ Phase 31 (DevX) [independent, can run in parallel]
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-02-04 - Phase 26 complete (SEC-01, SEC-02 closed)*
+*Last Updated: 2026-02-04 - Phase 27 planned (4 plans in 2 waves)*
