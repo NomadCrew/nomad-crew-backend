@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/config"
+	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
