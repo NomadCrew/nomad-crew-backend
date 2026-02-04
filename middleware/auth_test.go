@@ -25,6 +25,15 @@ func (m *MockJWTValidator) Validate(tokenString string) (string, error) {
 	return args.String(0), args.Error(1)
 }
 
+// Mock the ValidateAndGetClaims method to implement full Validator interface
+func (m *MockJWTValidator) ValidateAndGetClaims(tokenString string) (*types.JWTClaims, error) {
+	args := m.Called(tokenString)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.JWTClaims), args.Error(1)
+}
+
 // Ensure MockJWTValidator implements the Validator interface
 var _ Validator = (*MockJWTValidator)(nil)
 

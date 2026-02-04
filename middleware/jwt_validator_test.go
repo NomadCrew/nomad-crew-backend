@@ -67,6 +67,16 @@ func (m *TestJWTValidator) Validate(tokenString string) (string, error) {
 	return args.String(0), args.Error(1)
 }
 
+// ValidateAndGetClaims validates the token and returns full JWT claims
+func (m *TestJWTValidator) ValidateAndGetClaims(tokenString string) (*types.JWTClaims, error) {
+	// Delegate to Validate and construct claims from userID
+	userID, err := m.Validate(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	return &types.JWTClaims{UserID: userID}, nil
+}
+
 func TestJWTValidator_Validate(t *testing.T) {
 	mockValidator := new(TestJWTValidator)
 
