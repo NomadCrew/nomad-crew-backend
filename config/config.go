@@ -33,6 +33,10 @@ type ServerConfig struct {
 	Version        string      `mapstructure:"VERSION" yaml:"version"`
 	JwtSecretKey   string      `mapstructure:"JWT_SECRET_KEY" yaml:"jwt_secret_key"`
 	FrontendURL    string      `mapstructure:"FRONTEND_URL" yaml:"frontend_url"`
+	// TrustedProxies is a list of CIDR ranges or IPs of trusted reverse proxies.
+	// If empty, X-Forwarded-For headers are ignored entirely (safe default).
+	// Examples: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+	TrustedProxies []string `mapstructure:"TRUSTED_PROXIES" yaml:"trusted_proxies"`
 }
 
 // DatabaseConfig holds PostgreSQL database connection details.
@@ -153,6 +157,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.ENVIRONMENT", EnvDevelopment)
 	v.SetDefault("SERVER.PORT", "8080")
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
+	v.SetDefault("SERVER.TRUSTED_PROXIES", []string{}) // Empty = trust no one (safe default)
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
 	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
 	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
@@ -193,6 +198,7 @@ func LoadConfig() (*Config, error) {
 		{"SERVER.PORT", "PORT"},
 		{"SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS"},
 		{"SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY"},
+		{"SERVER.TRUSTED_PROXIES", "TRUSTED_PROXIES"},
 		// Database config
 		{"DATABASE.HOST", "DB_HOST"},
 		{"DATABASE.PORT", "DB_PORT"},
@@ -240,6 +246,7 @@ func LoadConfig() (*Config, error) {
 		"server_port", v.GetString("SERVER.PORT"),
 		"db_host", v.GetString("DATABASE.HOST"),
 		"allowed_origins", v.GetString("SERVER.ALLOWED_ORIGINS"),
+		"trusted_proxies", v.GetStringSlice("SERVER.TRUSTED_PROXIES"),
 		// +++ Log EventService config +++
 		"event_service_publish_timeout", v.GetInt("EVENT_SERVICE.PUBLISH_TIMEOUT_SECONDS"),
 		"event_service_subscribe_timeout", v.GetInt("EVENT_SERVICE.SUBSCRIBE_TIMEOUT_SECONDS"),
