@@ -7,6 +7,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/handlers"
 	"github.com/NomadCrew/nomad-crew-backend/internal/websocket"
+	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	tripinterfaces "github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
@@ -92,6 +93,24 @@ func (a *userServiceAdapter) GetUserBySupabaseID(ctx context.Context, supabaseID
 // SetupRouter configures and returns the main Gin engine with all routes defined.
 func SetupRouter(deps Dependencies) *gin.Engine {
 	r := gin.Default()
+
+	// SECURITY: Configure trusted proxies before any other middleware
+	// This ensures c.ClientIP() returns the actual client IP, not spoofed headers
+	if len(deps.Config.Server.TrustedProxies) == 0 {
+		// No trusted proxies configured - disable proxy header parsing entirely
+		// This is the SAFE default: X-Forwarded-For headers are ignored
+		if err := r.SetTrustedProxies(nil); err != nil {
+			logger.GetLogger().Errorw("Failed to set trusted proxies", "error", err)
+		}
+		logger.GetLogger().Info("Trusted proxies disabled - using RemoteAddr directly for client IP")
+	} else {
+		// Specific trusted proxies configured - only trust headers from these IPs/CIDRs
+		if err := r.SetTrustedProxies(deps.Config.Server.TrustedProxies); err != nil {
+			logger.GetLogger().Fatalw("Invalid trusted proxy configuration", "error", err)
+		}
+		logger.GetLogger().Infow("Trusted proxies configured",
+			"proxies", deps.Config.Server.TrustedProxies)
+	}
 
 	// Global Middleware
 	r.Use(middleware.RequestIDMiddleware())           // Add RequestID middleware
