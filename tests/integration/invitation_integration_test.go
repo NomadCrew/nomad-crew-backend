@@ -315,7 +315,6 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 		TripHandler:         nil,
 		TodoHandler:         nil,
 		HealthHandler:       nil,
-		LocationHandler:     nil,
 		NotificationHandler: nil,
 		UserHandler:         userHandler,
 		Logger:              logger.GetLogger(),
