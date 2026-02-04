@@ -35,10 +35,10 @@ func createTestTrip() types.Trip {
 // Helper function to create test trip membership
 func createTestTripMembership() *types.TripMembership {
 	return &types.TripMembership{
-		TripID:   uuid.NewString(),
-		UserID:   uuid.NewString(),
-		Role:     types.MemberRoleMember,
-		JoinedAt: time.Now(),
+		TripID:    uuid.NewString(),
+		UserID:    uuid.NewString(),
+		Role:      types.MemberRoleMember,
+		CreatedAt: time.Now(),
 	}
 }
 
@@ -479,7 +479,7 @@ func TestTripStore_GetTripMembers(t *testing.T) {
 
 	t.Run("successful list", func(t *testing.T) {
 		rows := sqlmock.NewRows([]string{
-			"user_id", "role", "joined_at", "email", "username", "display_name",
+			"user_id", "role", "created_at", "email", "username", "display_name",
 		}).
 			AddRow(uuid.NewString(), types.MemberRoleOwner, time.Now(), "owner@example.com", "owner", "Trip Owner").
 			AddRow(uuid.NewString(), types.MemberRoleAdmin, time.Now(), "admin@example.com", "admin", "Trip Admin").
@@ -494,7 +494,7 @@ func TestTripStore_GetTripMembers(t *testing.T) {
 
 	t.Run("empty trip", func(t *testing.T) {
 		rows := sqlmock.NewRows([]string{
-			"user_id", "role", "joined_at", "email", "username", "display_name",
+			"user_id", "role", "created_at", "email", "username", "display_name",
 		})
 
 		mock.ExpectQuery("SELECT (.+) FROM trip_memberships").
