@@ -21,9 +21,14 @@ func TestConfigureNeonPostgresPool(t *testing.T) {
 		validateConfig func(t *testing.T, cfg *pgxpool.Config)
 	}{
 		{
-			name: "Valid connection string",
+			name: "Valid Neon host configuration",
 			config: &DatabaseConfig{
-				ConnectionString: "postgresql://user:pass@neon.tech:5432/db?sslmode=require",
+				Host:     "neon.tech",
+				Port:     5432,
+				User:     "user",
+				Password: "pass",
+				Name:     "db",
+				SSLMode:  "require",
 			},
 			expectError: false,
 			validateConfig: func(t *testing.T, cfg *pgxpool.Config) {
@@ -77,9 +82,14 @@ func TestConfigureNeonPostgresPool(t *testing.T) {
 			},
 		},
 		{
-			name: "Invalid connection string",
+			name: "Invalid port value",
 			config: &DatabaseConfig{
-				ConnectionString: "not-a-valid-connection-string",
+				Host:     "localhost",
+				Port:     -1,
+				User:     "user",
+				Password: "pass",
+				Name:     "db",
+				SSLMode:  "disable",
 			},
 			expectError: true,
 		},
