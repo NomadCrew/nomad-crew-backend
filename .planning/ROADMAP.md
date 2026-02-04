@@ -108,10 +108,10 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 28-01-PLAN.md — Worker pool implementation with config and tests
-- [ ] 28-02-PLAN.md — NotificationFacadeService refactor and shutdown integration
+- [x] 28-01-PLAN.md — Worker pool implementation with config and tests
+- [x] 28-02-PLAN.md — NotificationFacadeService refactor and shutdown integration
 
-**Status:** Planned
+**Status:** Complete
 
 **Success Criteria:**
 1. Notification service uses worker pool with configurable max workers (default: 10)
@@ -234,15 +234,15 @@ Phase 31 (DevX) [independent, can run in parallel]
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
 | 26. Critical Security | v1.3 | 2/2 | Complete | 2026-02-04 |
 | 27. Test Suite Repair | v1.3 | 10/10 | Complete | 2026-02-04 |
-| 28. Goroutine Management | v1.3 | 0/2 | Planned | - |
+| 28. Goroutine Management | v1.3 | 2/2 | Complete | 2026-02-04 |
 | 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
 | 30. Dependency Migrations | v1.3 | 0/? | Not started | - |
 | 31. Developer Experience | v1.3 | 0/? | Not started | - |
 
-**Total Phases Completed:** 22
+**Total Phases Completed:** 23
 **Current Production:** https://api.nomadcrew.uk (AWS EC2 + Coolify)
 
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-02-04 - Phase 28 planned (2 plans in 2 waves)*
+*Last Updated: 2026-02-04 - Phase 28 complete (SEC-03, SEC-04 closed)*

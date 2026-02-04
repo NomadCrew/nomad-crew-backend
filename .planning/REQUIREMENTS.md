@@ -11,8 +11,8 @@ Requirements for Security Remediation & Code Quality milestone. Each maps to roa
 
 - [x] **SEC-01**: Rate limiter fails closed with in-memory fallback when Redis is unavailable
 - [x] **SEC-02**: Gin router configured with trusted proxies to prevent X-Forwarded-For spoofing
-- [ ] **SEC-03**: Notification service uses bounded worker pool instead of unbounded goroutines
-- [ ] **SEC-04**: Background tasks tracked and awaited during graceful shutdown
+- [x] **SEC-03**: Notification service uses bounded worker pool instead of unbounded goroutines
+- [x] **SEC-04**: Background tasks tracked and awaited during graceful shutdown
 - [ ] **SEC-05**: Simulator bypass uses proper JWT claim parsing (check `sub` exactly, not substring)
 
 ### Testing
@@ -75,8 +75,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | SEC-01 | Phase 26 | Complete |
 | SEC-02 | Phase 26 | Complete |
-| SEC-03 | Phase 28 | Pending |
-| SEC-04 | Phase 28 | Pending |
+| SEC-03 | Phase 28 | Complete |
+| SEC-04 | Phase 28 | Complete |
 | SEC-05 | Phase 29 | Pending |
 | TEST-01 | Phase 27 | Complete |
 | TEST-02 | Phase 27 | Complete |
@@ -101,4 +101,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 - TEST-01 through TEST-05 complete (Phase 27)*
+*Last updated: 2026-02-04 - SEC-03, SEC-04 complete (Phase 28)*
