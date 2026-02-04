@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -12,9 +11,21 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgconn"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+// setupMockDB creates a mock database connection for testing
+func setupMockDB(t testing.TB) (*sql.DB, sqlmock.Sqlmock, func()) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+
+	cleanup := func() {
+		db.Close()
+	}
+
+	return db, mock, cleanup
+}
 
 // Helper function to create test trip
 func createTestTrip() types.Trip {
@@ -57,10 +68,10 @@ func createTestTripInvitation() *types.TripInvitation {
 }
 
 func TestTripStore_CreateTrip(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	trip := createTestTrip()
 
 	t.Run("successful creation", func(t *testing.T) {
@@ -130,10 +141,10 @@ func TestTripStore_CreateTrip(t *testing.T) {
 }
 
 func TestTripStore_GetTrip(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	trip := createTestTrip()
 
 	t.Run("successful retrieval", func(t *testing.T) {
@@ -170,10 +181,10 @@ func TestTripStore_GetTrip(t *testing.T) {
 }
 
 func TestTripStore_UpdateTrip(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	tripID := uuid.NewString()
 
 	t.Run("update name", func(t *testing.T) {
@@ -226,7 +237,7 @@ func TestTripStore_UpdateTrip(t *testing.T) {
 	t.Run("invalid date range update", func(t *testing.T) {
 		newStart := time.Now().Add(10 * 24 * time.Hour)
 		newEnd := time.Now().Add(48 * time.Hour)
-		update := types.TripUpdate{
+		_ = types.TripUpdate{
 			StartDate: &newStart,
 			EndDate:   &newEnd,
 		}
@@ -236,10 +247,10 @@ func TestTripStore_UpdateTrip(t *testing.T) {
 }
 
 func TestTripStore_SoftDeleteTrip(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	tripID := uuid.NewString()
 
 	t.Run("successful soft delete", func(t *testing.T) {
@@ -268,10 +279,10 @@ func TestTripStore_SoftDeleteTrip(t *testing.T) {
 }
 
 func TestTripStore_ListUserTrips(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	userID := uuid.NewString()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -369,10 +380,10 @@ func TestTripStore_SearchTrips(t *testing.T) {
 }
 
 func TestTripStore_AddMember(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	membership := createTestTripMembership()
 
 	t.Run("successful addition", func(t *testing.T) {
@@ -412,10 +423,10 @@ func TestTripStore_AddMember(t *testing.T) {
 }
 
 func TestTripStore_UpdateMemberRole(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	tripID := uuid.NewString()
 	userID := uuid.NewString()
 
@@ -442,10 +453,10 @@ func TestTripStore_UpdateMemberRole(t *testing.T) {
 }
 
 func TestTripStore_RemoveMember(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	tripID := uuid.NewString()
 	userID := uuid.NewString()
 
@@ -471,10 +482,10 @@ func TestTripStore_RemoveMember(t *testing.T) {
 }
 
 func TestTripStore_GetTripMembers(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	tripID := uuid.NewString()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -506,10 +517,10 @@ func TestTripStore_GetTripMembers(t *testing.T) {
 }
 
 func TestTripStore_GetUserRole(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	tripID := uuid.NewString()
 	userID := uuid.NewString()
 
@@ -543,10 +554,10 @@ func TestTripStore_GetUserRole(t *testing.T) {
 }
 
 func TestTripStore_CreateInvitation(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	invitation := createTestTripInvitation()
 
 	t.Run("successful creation", func(t *testing.T) {
@@ -584,10 +595,10 @@ func TestTripStore_CreateInvitation(t *testing.T) {
 }
 
 func TestTripStore_GetInvitation(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	invitation := createTestTripInvitation()
 
 	t.Run("successful retrieval", func(t *testing.T) {
@@ -616,10 +627,10 @@ func TestTripStore_GetInvitation(t *testing.T) {
 }
 
 func TestTripStore_UpdateInvitationStatus(t *testing.T) {
-	db, mock, cleanup := setupMockDB(t)
+	_, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	_ = context.Background()
 	invitationID := uuid.NewString()
 
 	t.Run("accept invitation", func(t *testing.T) {
@@ -630,9 +641,9 @@ func TestTripStore_UpdateInvitationStatus(t *testing.T) {
 		// Would verify status updated
 	})
 
-	t.Run("reject invitation", func(t *testing.T) {
+	t.Run("decline invitation", func(t *testing.T) {
 		mock.ExpectExec("UPDATE trip_invitations SET status = \\$1").
-			WithArgs(types.InvitationStatusRejected, invitationID).
+			WithArgs(types.InvitationStatusDeclined, invitationID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 	})
 
@@ -652,10 +663,10 @@ func TestTripStore_UpdateInvitationStatus(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkTripStore_CreateTrip(b *testing.B) {
-	db, mock, cleanup := setupMockDB(b)
+	_, mock, cleanup := setupMockDB(b)
 	defer cleanup()
 
-	trip := createTestTrip()
+	_ = createTestTrip()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
