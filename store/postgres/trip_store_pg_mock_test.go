@@ -45,14 +45,14 @@ func createTestTripMembership() *types.TripMembership {
 // Helper function to create test trip invitation
 func createTestTripInvitation() *types.TripInvitation {
 	return &types.TripInvitation{
-		ID:        uuid.NewString(),
-		TripID:    uuid.NewString(),
-		Email:     "invitee@example.com",
-		Role:      types.MemberRoleMember,
-		Status:    types.InvitationStatusPending,
-		CreatedBy: uuid.NewString(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:           uuid.NewString(),
+		TripID:       uuid.NewString(),
+		InviteeEmail: "invitee@example.com",
+		Role:         types.MemberRoleMember,
+		Status:       types.InvitationStatusPending,
+		InviterID:    uuid.NewString(),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 }
 
@@ -554,10 +554,10 @@ func TestTripStore_CreateInvitation(t *testing.T) {
 			WithArgs(
 				invitation.ID,
 				invitation.TripID,
-				invitation.Email,
+				invitation.InviteeEmail,
 				invitation.Role,
 				invitation.Status,
-				invitation.CreatedBy,
+				invitation.InviterID,
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -577,7 +577,7 @@ func TestTripStore_CreateInvitation(t *testing.T) {
 
 	t.Run("invalid email", func(t *testing.T) {
 		invalidInvitation := createTestTripInvitation()
-		invalidInvitation.Email = "invalid-email"
+		invalidInvitation.InviteeEmail = "invalid-email"
 
 		// Should validate email format
 	})
@@ -592,11 +592,11 @@ func TestTripStore_GetInvitation(t *testing.T) {
 
 	t.Run("successful retrieval", func(t *testing.T) {
 		rows := sqlmock.NewRows([]string{
-			"id", "trip_id", "email", "role", "status",
-			"created_by", "created_at", "updated_at",
+			"id", "trip_id", "invitee_email", "role", "status",
+			"inviter_id", "created_at", "updated_at",
 		}).AddRow(
-			invitation.ID, invitation.TripID, invitation.Email, invitation.Role, invitation.Status,
-			invitation.CreatedBy, invitation.CreatedAt, invitation.UpdatedAt,
+			invitation.ID, invitation.TripID, invitation.InviteeEmail, invitation.Role, invitation.Status,
+			invitation.InviterID, invitation.CreatedAt, invitation.UpdatedAt,
 		)
 
 		mock.ExpectQuery("SELECT (.+) FROM trip_invitations WHERE id = \\$1").
