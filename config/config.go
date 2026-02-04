@@ -114,6 +114,16 @@ type NotificationConfig struct {
 	TimeoutSeconds int `mapstructure:"TIMEOUT_SECONDS" yaml:"timeout_seconds"`
 }
 
+// WorkerPoolConfig holds configuration for the notification worker pool.
+type WorkerPoolConfig struct {
+	// MaxWorkers is the number of concurrent workers (default: 10)
+	MaxWorkers int `mapstructure:"MAX_WORKERS" yaml:"max_workers"`
+	// QueueSize is the maximum number of pending jobs (default: 1000)
+	QueueSize int `mapstructure:"QUEUE_SIZE" yaml:"queue_size"`
+	// ShutdownTimeoutSeconds is the max time to wait for workers during shutdown (default: 30)
+	ShutdownTimeoutSeconds int `mapstructure:"SHUTDOWN_TIMEOUT_SECONDS" yaml:"shutdown_timeout_seconds"`
+}
+
 // Config aggregates all application configuration sections.
 type Config struct {
 	Server           ServerConfig       `mapstructure:"SERVER" yaml:"server"`
@@ -124,6 +134,7 @@ type Config struct {
 	EventService     EventServiceConfig `mapstructure:"EVENT_SERVICE" yaml:"event_service"`
 	RateLimit        RateLimitConfig    `mapstructure:"RATE_LIMIT" yaml:"rate_limit"`
 	Notification     NotificationConfig `mapstructure:"NOTIFICATION" yaml:"notification"`
+	WorkerPool       WorkerPoolConfig   `mapstructure:"WORKER_POOL" yaml:"worker_pool"`
 }
 
 // IsDevelopment returns true if the application is running in development environment.
@@ -187,6 +198,10 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("NOTIFICATION.API_URL", "https://ilqhxd37y4.execute-api.us-east-1.amazonaws.com/dev/notify")
 	v.SetDefault("NOTIFICATION.API_KEY", "")
 	v.SetDefault("NOTIFICATION.TIMEOUT_SECONDS", 10)
+	// +++ Set WorkerPool defaults +++
+	v.SetDefault("WORKER_POOL.MAX_WORKERS", 10)
+	v.SetDefault("WORKER_POOL.QUEUE_SIZE", 1000)
+	v.SetDefault("WORKER_POOL.SHUTDOWN_TIMEOUT_SECONDS", 30)
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -234,6 +249,10 @@ func LoadConfig() (*Config, error) {
 		{"NOTIFICATION.API_URL", "NOTIFICATION_API_URL"},
 		{"NOTIFICATION.API_KEY", "NOTIFICATION_API_KEY"},
 		{"NOTIFICATION.TIMEOUT_SECONDS", "NOTIFICATION_TIMEOUT_SECONDS"},
+		// WorkerPool config
+		{"WORKER_POOL.MAX_WORKERS", "WORKER_POOL_MAX_WORKERS"},
+		{"WORKER_POOL.QUEUE_SIZE", "WORKER_POOL_QUEUE_SIZE"},
+		{"WORKER_POOL.SHUTDOWN_TIMEOUT_SECONDS", "WORKER_POOL_SHUTDOWN_TIMEOUT_SECONDS"},
 	}
 
 	if err := bindEnvVars(v, envBindings); err != nil {
@@ -344,6 +363,17 @@ func validateConfig(cfg *Config) error {
 	// +++ Validate Notification config +++
 	if err := validateNotificationConfig(&cfg.Notification, log); err != nil {
 		return err
+	}
+
+	// +++ Validate WorkerPool config +++
+	if cfg.WorkerPool.MaxWorkers <= 0 {
+		return fmt.Errorf("worker pool max workers must be positive")
+	}
+	if cfg.WorkerPool.QueueSize <= 0 {
+		return fmt.Errorf("worker pool queue size must be positive")
+	}
+	if cfg.WorkerPool.ShutdownTimeoutSeconds <= 0 {
+		return fmt.Errorf("worker pool shutdown timeout must be positive")
 	}
 
 	return nil
