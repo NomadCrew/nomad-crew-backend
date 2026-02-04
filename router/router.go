@@ -128,9 +128,17 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 		v1.GET("/invitations/join", deps.InvitationHandler.HandleInvitationDeepLink) // For deep links from emails
 		v1.GET("/invitations/details", deps.InvitationHandler.GetInvitationDetails)  // To get details using a token (public potentially)
 
-		// Create rate limiter for auth endpoints
-		authRateLimiter := middleware.AuthRateLimiter(
+		// Create fallback limiter for when Redis is unavailable
+		fallbackLimiter := middleware.NewInMemoryRateLimiter(
+			deps.Config.RateLimit.AuthRequestsPerMinute,
+			time.Duration(deps.Config.RateLimit.WindowSeconds)*time.Second,
+		)
+
+		// Create rate limiter for auth endpoints with fallback
+		// SECURITY: Uses fail-closed behavior - rate limiting is always enforced
+		authRateLimiter := middleware.AuthRateLimiterWithFallback(
 			deps.RedisClient,
+			fallbackLimiter,
 			deps.Config.RateLimit.AuthRequestsPerMinute,
 			time.Duration(deps.Config.RateLimit.WindowSeconds)*time.Second,
 		)
