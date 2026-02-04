@@ -15,7 +15,6 @@ import (
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
-	userservice "github.com/NomadCrew/nomad-crew-backend/models/user/service"
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
@@ -103,6 +102,71 @@ func (m *MockTripModel) GetInvitationsByTripID(ctx context.Context, tripID strin
 	return args.Get(0).([]*types.TripInvitation), args.Error(1)
 }
 
+func (m *MockTripModel) AddMember(ctx context.Context, membership *types.TripMembership) error {
+	args := m.Called(ctx, membership)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error) {
+	args := m.Called(ctx, tripID, userID)
+	return args.Get(0).(types.MemberRole), args.Error(1)
+}
+
+func (m *MockTripModel) UpdateMemberRole(ctx context.Context, tripID, userID string, role types.MemberRole) (*interfaces.CommandResult, error) {
+	args := m.Called(ctx, tripID, userID, role)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*interfaces.CommandResult), args.Error(1)
+}
+
+func (m *MockTripModel) RemoveMember(ctx context.Context, tripID, userID string) error {
+	args := m.Called(ctx, tripID, userID)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error {
+	args := m.Called(ctx, invitation)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error) {
+	args := m.Called(ctx, invitationID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.TripInvitation), args.Error(1)
+}
+
+func (m *MockTripModel) UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error {
+	args := m.Called(ctx, invitationID, status)
+	return args.Error(0)
+}
+
+func (m *MockTripModel) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
+	args := m.Called(ctx, email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SupabaseUser), args.Error(1)
+}
+
+func (m *MockTripModel) GetTrip(ctx context.Context, tripID string) (*types.Trip, error) {
+	args := m.Called(ctx, tripID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Trip), args.Error(1)
+}
+
+func (m *MockTripModel) GetCommandContext() *interfaces.CommandContext {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*interfaces.CommandContext)
+}
+
 // Ensure MockTripModel implements the interface
 var _ interfaces.TripModelInterface = (*MockTripModel)(nil)
 
@@ -110,8 +174,26 @@ type MockEventPublisher struct {
 	mock.Mock
 }
 
-func (m *MockEventPublisher) PublishEvent(ctx context.Context, event *types.Event) error {
-	args := m.Called(ctx, event)
+func (m *MockEventPublisher) Publish(ctx context.Context, tripID string, event types.Event) error {
+	args := m.Called(ctx, tripID, event)
+	return args.Error(0)
+}
+
+func (m *MockEventPublisher) PublishBatch(ctx context.Context, tripID string, events []types.Event) error {
+	args := m.Called(ctx, tripID, events)
+	return args.Error(0)
+}
+
+func (m *MockEventPublisher) Subscribe(ctx context.Context, tripID string, userID string, filters ...types.EventType) (<-chan types.Event, error) {
+	args := m.Called(ctx, tripID, userID, filters)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(<-chan types.Event), args.Error(1)
+}
+
+func (m *MockEventPublisher) Unsubscribe(ctx context.Context, tripID string, userID string) error {
+	args := m.Called(ctx, tripID, userID)
 	return args.Error(0)
 }
 
@@ -119,17 +201,29 @@ type MockWeatherService struct {
 	mock.Mock
 }
 
+func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
+	m.Called(ctx, tripID, latitude, longitude)
+}
+
+func (m *MockWeatherService) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
+	m.Called(tripID, latitude, longitude)
+}
+
+func (m *MockWeatherService) DecrementSubscribers(tripID string) {
+	m.Called(tripID)
+}
+
 func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, lat, lon float64) error {
 	args := m.Called(ctx, tripID, lat, lon)
 	return args.Error(0)
 }
 
-func (m *MockWeatherService) GetTripWeather(ctx context.Context, tripID string) (*types.WeatherForecast, error) {
+func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
 	args := m.Called(ctx, tripID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*types.WeatherForecast), args.Error(1)
+	return args.Get(0).(*types.WeatherInfo), args.Error(1)
 }
 
 // MockUserService is now defined in mocks_test.go
@@ -142,6 +236,9 @@ func (m *MockPexelsClient) SearchDestinationImage(ctx context.Context, query str
 	args := m.Called(ctx, query)
 	return args.String(0), args.Error(1)
 }
+
+// Ensure MockPexelsClient implements pexels.ClientInterface
+var _ pexels.ClientInterface = (*MockPexelsClient)(nil)
 
 // Test setup helper
 func setupTestHandler() (*TripHandler, *MockTripModel, *MockEventPublisher, *MockWeatherService, *MockUserService, *MockPexelsClient) {
@@ -236,7 +333,7 @@ func TestCreateTripHandler(t *testing.T) {
 					{
 						TripID: "trip123",
 						UserID: "user123",
-						Role:   types.MembershipRoleOwner,
+						Role:   types.MemberRoleOwner,
 						Status: types.MembershipStatusActive,
 					},
 				}, nil)
@@ -447,7 +544,7 @@ func TestGetTripHandler(t *testing.T) {
 			tripID: "nonexistent",
 			userID: "user123",
 			setupMocks: func(mockTrip *MockTripModel) {
-				mockTrip.On("GetTripByID", mock.Anything, "nonexistent", "user123").Return(nil, apperrors.NotFound("Trip not found"))
+				mockTrip.On("GetTripByID", mock.Anything, "nonexistent", "user123").Return(nil, apperrors.NotFound("Trip", "not found"))
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  true,
@@ -668,7 +765,7 @@ func TestDeleteTripHandler(t *testing.T) {
 			name:   "Error - Trip not found",
 			tripID: "nonexistent",
 			setupMocks: func(mockTrip *MockTripModel) {
-				mockTrip.On("DeleteTrip", mock.Anything, "nonexistent").Return(apperrors.NotFound("Trip not found"))
+				mockTrip.On("DeleteTrip", mock.Anything, "nonexistent").Return(apperrors.NotFound("Trip", "not found"))
 			},
 			expectedStatus: http.StatusNotFound,
 		},
@@ -802,7 +899,7 @@ func TestSearchTripsHandler(t *testing.T) {
 		{
 			name: "Success - Search trips by destination",
 			requestBody: types.TripSearchCriteria{
-				Destination: stringPtr("Paris"),
+				Destination: "Paris",
 			},
 			setupMocks: func(mockTrip *MockTripModel) {
 				trips := []*types.Trip{
@@ -822,8 +919,8 @@ func TestSearchTripsHandler(t *testing.T) {
 		{
 			name: "Success - Search trips by date range",
 			requestBody: types.TripSearchCriteria{
-				StartDateFrom: timePtr(time.Now()),
-				StartDateTo:   timePtr(time.Now().Add(7 * 24 * time.Hour)),
+				StartDateFrom: time.Now(),
+				StartDateTo:   time.Now().Add(7 * 24 * time.Hour),
 			},
 			setupMocks: func(mockTrip *MockTripModel) {
 				mockTrip.On("SearchTrips", mock.Anything, mock.AnythingOfType("types.TripSearchCriteria")).Return([]*types.Trip{}, nil)
@@ -840,7 +937,7 @@ func TestSearchTripsHandler(t *testing.T) {
 		{
 			name: "Error - Search fails",
 			requestBody: types.TripSearchCriteria{
-				Destination: stringPtr("Paris"),
+				Destination: "Paris",
 			},
 			setupMocks: func(mockTrip *MockTripModel) {
 				mockTrip.On("SearchTrips", mock.Anything, mock.AnythingOfType("types.TripSearchCriteria")).Return(nil, apperrors.InternalServerError("Database error"))
@@ -895,20 +992,18 @@ func TestGetTripWithMembersHandler(t *testing.T) {
 						Name:   "Test Trip",
 						Status: types.TripStatusActive,
 					},
-					Members: []types.TripMemberWithUser{
+					Members: []*types.TripMembership{
 						{
-							UserID:   "user123",
-							Email:    "user@example.com",
-							Username: "user123",
-							Role:     types.MembershipRoleOwner,
-							Status:   types.MembershipStatusActive,
+							TripID: "trip123",
+							UserID: "user123",
+							Role:   types.MemberRoleOwner,
+							Status: types.MembershipStatusActive,
 						},
 						{
-							UserID:   "user456",
-							Email:    "member@example.com",
-							Username: "user456",
-							Role:     types.MembershipRoleMember,
-							Status:   types.MembershipStatusActive,
+							TripID: "trip123",
+							UserID: "user456",
+							Role:   types.MemberRoleMember,
+							Status: types.MembershipStatusActive,
 						},
 					},
 				}
@@ -926,7 +1021,7 @@ func TestGetTripWithMembersHandler(t *testing.T) {
 			tripID: "nonexistent",
 			userID: "user123",
 			setupMocks: func(mockTrip *MockTripModel) {
-				mockTrip.On("GetTripWithMembers", mock.Anything, "nonexistent", "user123").Return(nil, apperrors.NotFound("Trip not found"))
+				mockTrip.On("GetTripWithMembers", mock.Anything, "nonexistent", "user123").Return(nil, apperrors.NotFound("Trip", "not found"))
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  true,
@@ -999,7 +1094,7 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 			tripID: "nonexistent",
 			userID: "user123",
 			setupMocks: func(mockTrip *MockTripModel, mockWeather *MockWeatherService) {
-				mockTrip.On("GetTripByID", mock.Anything, "nonexistent", "user123").Return(nil, apperrors.NotFound("Trip not found"))
+				mockTrip.On("GetTripByID", mock.Anything, "nonexistent", "user123").Return(nil, apperrors.NotFound("Trip", "not found"))
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  true,
@@ -1169,7 +1264,7 @@ func TestHandleModelError(t *testing.T) {
 	}{
 		{
 			name:           "AppError - Not Found",
-			error:          apperrors.NotFound("Resource not found"),
+			error:          apperrors.NotFound("Resource", "not found"),
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "NOT_FOUND",
 		},

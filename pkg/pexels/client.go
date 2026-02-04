@@ -12,6 +12,11 @@ import (
 
 const pexelsAPIBaseURL = "https://api.pexels.com/v1"
 
+// ClientInterface defines the interface for Pexels client operations
+type ClientInterface interface {
+	SearchDestinationImage(ctx context.Context, query string) (string, error)
+}
+
 type Client struct {
 	apiKey     string
 	httpClient *http.Client

@@ -25,7 +25,7 @@ type TripHandler struct {
 	serverConfig   *config.ServerConfig
 	weatherService types.WeatherServiceInterface
 	userService    userservice.UserServiceInterface
-	pexelsClient   *pexels.Client
+	pexelsClient   pexels.ClientInterface
 }
 
 // NewTripHandler creates a new TripHandler with the given dependencies.
@@ -36,7 +36,7 @@ func NewTripHandler(
 	serverConfig *config.ServerConfig,
 	weatherService types.WeatherServiceInterface,
 	userService userservice.UserServiceInterface,
-	pexelsClient *pexels.Client,
+	pexelsClient pexels.ClientInterface,
 ) *TripHandler {
 	return &TripHandler{
 		tripModel:      tripModel,

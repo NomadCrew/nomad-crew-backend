@@ -152,3 +152,18 @@ func (m *MockUserService) OnboardUserFromJWTClaims(ctx context.Context, claims *
 	}
 	return args.Get(0).(*types.UserProfile), args.Error(1)
 }
+
+// SearchUsers searches for users by query
+func (m *MockUserService) SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error) {
+	args := m.Called(ctx, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*types.UserSearchResult), args.Error(1)
+}
+
+// UpdateContactEmail updates the user's contact email
+func (m *MockUserService) UpdateContactEmail(ctx context.Context, userID uuid.UUID, email string) error {
+	args := m.Called(ctx, userID, email)
+	return args.Error(0)
+}
