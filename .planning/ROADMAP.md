@@ -43,8 +43,10 @@ See [v1.2 details in archive](milestones/v1.2-ROADMAP.md) for full phase specifi
 **Plans:** 2 plans
 
 Plans:
-- [ ] 26-01-PLAN.md — Rate limiter fail-closed with in-memory fallback (SEC-01)
-- [ ] 26-02-PLAN.md — Trusted proxy configuration for IP spoofing prevention (SEC-02)
+- [x] 26-01-PLAN.md — Rate limiter fail-closed with in-memory fallback (SEC-01)
+- [x] 26-02-PLAN.md — Trusted proxy configuration for IP spoofing prevention (SEC-02)
+
+**Status:** Complete ✓
 
 **Success Criteria:**
 1. Rate limiter returns 503 (not 200) when Redis is unavailable
@@ -206,17 +208,17 @@ Phase 31 (DevX) [independent, can run in parallel]
 | 23. Real-time | v1.2 | 0/? | Not started | - |
 | 24. Bug Fixes | v1.2 | 0/? | Not started | - |
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
-| 26. Critical Security | v1.3 | 0/2 | Planned | - |
+| 26. Critical Security | v1.3 | 2/2 | Complete | 2026-02-04 |
 | 27. Test Suite Repair | v1.3 | 0/? | Not started | - |
 | 28. Goroutine Management | v1.3 | 0/? | Not started | - |
 | 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
 | 30. Dependency Migrations | v1.3 | 0/? | Not started | - |
 | 31. Developer Experience | v1.3 | 0/? | Not started | - |
 
-**Total Phases Completed:** 20
+**Total Phases Completed:** 21
 **Current Production:** https://api.nomadcrew.uk (AWS EC2 + Coolify)
 
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-02-04 - Phase 26 planned (2 plans in 2 waves)*
+*Last Updated: 2026-02-04 - Phase 26 complete (SEC-01, SEC-02 closed)*
