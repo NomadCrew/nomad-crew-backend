@@ -87,6 +87,22 @@ func (m *MockUserStore) BeginTx(ctx context.Context) (types.DatabaseTransaction,
 	panic("not implemented")
 }
 
+func (m *MockUserStore) GetUserByContactEmail(ctx context.Context, email string) (*types.User, error) {
+	args := m.Called(ctx, email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error) {
+	panic("not implemented")
+}
+
+func (m *MockUserStore) UpdateContactEmail(ctx context.Context, userID string, email string) error {
+	panic("not implemented")
+}
+
 // testUserService embeds UserService and overrides GetUserProfile for testing
 
 type testUserService struct {
