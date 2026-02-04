@@ -72,6 +72,9 @@ None currently.
 | 2026-02-04 | Remove sqlmock from pgx tests | go-sqlmock incompatible with pgx driver, use pgxmock instead |
 | 2026-02-04 | Replace jwt.Parser.Parts() with strings.Split() | jwt/v5 removed Parts() method; JWT tokens are standard period-separated format |
 | 2026-02-04 | Keep sqlmock for stdlib-based postgres tests | Tests use database/sql interface through pgx stdlib adapter; full migration to pgxmock is separate task |
+| 2026-02-04 | Create PexelsClientInterface for testable image fetching | Interface allows mock injection instead of concrete *pexels.Client type |
+| 2026-02-04 | Use local mocks when generated mocks are outdated | Generated MockWeatherService has wrong signature; local implementation faster than regenerating with mockery |
+| 2026-02-04 | Trip.Description is string, not *string | Field type changed but tests not updated; corrected across all test instantiations |
 
 ## v1.3 Research Summary
 
