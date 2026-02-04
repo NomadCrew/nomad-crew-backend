@@ -1,5 +1,40 @@
 # Project Milestones: NomadCrew Backend
 
+## v1.3 Security Remediation & Code Quality (Planned)
+
+**Goal:** Eliminate security vulnerabilities, repair broken test suite, update dependencies, and establish developer tooling.
+
+**Phases:** 26-31 (6 phases, 20 requirements)
+
+**Planned scope:**
+- Critical security fixes (rate limiter fail-open, IP spoofing)
+- Test suite repair (22 packages failing, pgx v4/v5 mismatch)
+- Goroutine management (worker pool for notifications)
+- Simulator bypass hardening (proper JWT parsing)
+- Dependency migrations (websocket, jwx, prometheus, go-redis)
+- Developer experience (Taskfile, golangci-lint v2, pre-commit)
+
+**Research:** Completed 2026-02-04 (4 parallel researchers)
+
+**Estimated effort:** 6-8 days
+
+**Dependencies:** Starts after v1.2 completes (or can be prioritized if security is urgent)
+
+**What's next:** `/gsd:plan-phase 26` to start Critical Security Fixes
+
+---
+
+## v1.2 Mobile Integration & Quality (In Progress)
+
+**Goal:** Get the mobile app working end-to-end with the backend.
+
+**Phases:** 20-25 (6 phases)
+**Status:** 1/6 phases complete (Phase 20: Windows DevX)
+
+**What's next:** Phase 21 Auth Flow Integration
+
+---
+
 ## v1.1 Infrastructure Migration (Shipped: 2026-01-12)
 
 **Delivered:** Migrated from Google Cloud Run to AWS EC2 with Coolify, establishing production infrastructure at https://api.nomadcrew.uk

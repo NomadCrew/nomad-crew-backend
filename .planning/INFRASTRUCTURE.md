@@ -430,12 +430,56 @@ curl https://kijatqtrwdzltelqzadx.supabase.co/auth/v1/.well-known/jwks.json
 redis-cli -h your-redis.upstash.io -p 6379 --tls -a YOUR_PASSWORD ping
 ```
 
+### Mobile App Issues (2026-02-02)
+
+**Google Sign-In DEVELOPER_ERROR 10**
+- **Cause:** SHA-1 fingerprint mismatch
+- **Fix:** Expo uses its own debug keystore, not system keystore
+- **Correct SHA-1:** `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`
+- Add this to Google Cloud Console OAuth Android client for `com.nomadcrew.app.dev`
+
+**Push Notifications FIS_AUTH_ERROR**
+- **Cause:** Firebase Installations API not enabled
+- **Fix:** Enable these APIs in Google Cloud Console (project: `nomadcrew-11fd4`):
+  1. Firebase Installations API
+  2. FCM Registration API
+  3. Firebase Cloud Messaging API
+- Also check API key restrictions allow these APIs
+
+**Missing Database Tables (500 errors)**
+
+Tables required by backend that may be missing after migration:
+
+| Table | Migration Gist |
+|-------|----------------|
+| `user_profiles` | https://gist.github.com/naqeebali-shamsi/2873041bd902e36cb0ea24cdccfc8ae9 |
+| `user_push_tokens` | https://gist.github.com/naqeebali-shamsi/6d85501ad0b1c0e71fc1410c904aa513 |
+
+Run migrations via EC2:
+```bash
+curl -sL <gist_raw_url> -o /tmp/migration.sql
+sudo docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -d postgres < /tmp/migration.sql
+```
+
+**ThemeProvider crash (frontend)**
+- **Error:** `Cannot read property 'get' of undefined`
+- **Cause:** Missing exports in `spacing.ts`
+- **Fix:** Added `spacing`, `spacingUtils`, `componentSpacing`, etc. exports
+
+**Notification module null error (frontend)**
+- **Error:** `setNotificationChannelAsync of null`
+- **Cause:** `Notifications` module never initialized
+- **Fix:** Added `initializeNotificationsModule()` that sets `Notifications = ExpoNotifications` on physical devices
+
 ---
 
 ## Decision Log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-02-02 | Use Firebase/FCM for Android push notifications | Android platform requirement - no alternative |
+| 2026-02-02 | Store google-services.json in SECRET/ folder | Keep sensitive config organized, gitignore if needed |
+| 2026-02-02 | Use `user_push_tokens` table for push tokens | Required for backend push notification delivery |
 | 2026-02-02 | Use `user_profiles` table for user data | Backend expects this table, separates from legacy `users` table |
 | 2026-02-02 | Link user_profiles.id to Supabase auth.users.id | Maintains referential integrity across systems |
 | 2026-02-01 | Move from Supabase DB to self-hosted | Free tier limits, project deletion risk |

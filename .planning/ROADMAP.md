@@ -7,131 +7,185 @@
 
 ---
 
-## 🚧 v1.2 Mobile Integration & Quality (In Progress)
+## v1.2 Mobile Integration & Quality (Phases 20-25)
 
 **Milestone Goal:** Get the mobile app working end-to-end with the backend, optimize developer workflow, and establish testing practices.
 
-**Phases:** 20-25 (6 phases)
+**Status:** In Progress
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 20 | Windows DevX for Mobile Development | Complete |
+| 21 | Auth Flow Integration | Not started |
+| 22 | API Gap Analysis | Not started |
+| 23 | Real-time Features | Not started |
+| 24 | Bug Discovery & Fixes | Not started |
+| 25 | E2E Testing Setup | Not started |
+
+See [v1.2 details in archive](milestones/v1.2-ROADMAP.md) for full phase specifications.
 
 ---
 
-### Phase 20: Windows DevX for Mobile Development
+## v1.3 Security Remediation & Code Quality (Phases 26-31)
 
-**Goal:** Streamline Windows development experience for building Android/iOS mobile apps with the NomadCrew frontend
-**Depends on:** Previous milestone complete
-**Research:** Likely (WSL2 performance tuning, Android toolchain optimization)
-**Research topics:** WSL2 vs native Windows for React Native, Gradle build cache, Metro bundler tuning
-**Plans:** TBD
+**Milestone Goal:** Eliminate security vulnerabilities, repair broken test suite, update dependencies, and establish developer tooling for sustainable development velocity.
 
-Plans:
-- [ ] 20-01: TBD (run /gsd:plan-phase 20 to break down)
+**Phases:** 26-31 (6 phases)
+**Requirements:** 20 total (5 SEC, 5 TEST, 4 DEP, 6 DEVX)
 
-**Scope:**
-- Shell configuration (Git Bash .bashrc)
-- Android development workflow optimization
-- WSL2 integration for React Native (optional path)
-- Environment variable cleanup
-- Development scripts and aliases
-- VS Code workspace configuration
+---
+
+### Phase 26: Critical Security Fixes
+
+**Goal:** Eliminate rate limiter fail-open vulnerability and IP spoofing that together allow unlimited brute-force attacks
+**Depends on:** v1.2 complete (or can be inserted as priority)
+**Requirements:** SEC-01, SEC-02
 
 **Success Criteria:**
-- `npm run android` works reliably from Git Bash
-- Emulator starts in < 30 seconds
-- Hot reload works consistently
-- Single command to start full development environment
-- New developer can set up in < 1 hour with guide
+1. Rate limiter returns 503 (not 200) when Redis is unavailable
+2. In-memory fallback activates within 100ms of Redis failure
+3. X-Forwarded-For header only trusted from configured proxy CIDRs
+4. `gin.Context.ClientIP()` returns actual client IP, not spoofed value
+
+**Files to modify:**
+- `middleware/rate_limit.go`
+- `main.go` (router setup)
+- `config/config.go` (TrustedProxies field)
+
+**Effort:** 1-2 days
 
 ---
 
-### Phase 21: Auth Flow Integration
+### Phase 27: Test Suite Repair
 
-**Goal:** Verify Supabase auth works end-to-end with mobile app, fix any issues discovered
-**Depends on:** Phase 20
-**Research:** Unlikely (Supabase auth patterns established)
-**Plans:** TBD
+**Goal:** All packages compile and tests can run in CI
+**Depends on:** Phase 26 (security fixes deployed first)
+**Requirements:** TEST-01, TEST-02, TEST-03, TEST-04, TEST-05
 
-Plans:
-- [ ] 21-01: TBD (run /gsd:plan-phase 21 to break down)
+**Success Criteria:**
+1. `go test ./...` compiles all 22 packages without errors
+2. pgxmock/v4 replaces broken pgx/v4 mock imports
+3. Single source of truth for each mock interface (no duplicates)
+4. CI workflow passes with current coverage threshold (30%)
+5. `go test -race ./...` detects no data races
 
-**Scope:**
-- Test JWT token flow from mobile to backend
-- Verify refresh token handling
-- Test admin role detection with app_metadata
-- Fix any auth-related bugs discovered
+**Files to modify:**
+- `go.mod` (add pgxmock/v4, miniredis/v2)
+- All `*_test.go` files with pgx/v4 imports
+- Mock consolidation across packages
 
----
-
-### Phase 22: API Gap Analysis
-
-**Goal:** Identify missing endpoints needed for mobile app, implement what mobile needs
-**Depends on:** Phase 21
-**Research:** Unlikely (internal CRUD patterns)
-**Plans:** TBD
-
-Plans:
-- [ ] 22-01: TBD (run /gsd:plan-phase 22 to break down)
-
-**Scope:**
-- Audit mobile app API calls vs backend endpoints
-- Identify missing or incomplete endpoints
-- Implement required endpoints following established patterns
-- Update API documentation
+**Effort:** 2-3 days
 
 ---
 
-### Phase 23: Real-time Features
+### Phase 28: Goroutine Management
 
-**Goal:** Implement location sharing, chat/messaging, and push notifications
-**Depends on:** Phase 22
-**Research:** Likely (real-time architecture decision, push notification services)
-**Research topics:** WebSocket vs SSE vs Supabase Realtime, FCM/APNs integration, location update frequency
-**Plans:** TBD
+**Goal:** Background tasks use bounded concurrency and shutdown gracefully
+**Depends on:** Phase 27 (tests needed for validation)
+**Requirements:** SEC-03, SEC-04
 
-Plans:
-- [ ] 23-01: TBD (run /gsd:plan-phase 23 to break down)
+**Success Criteria:**
+1. Notification service uses worker pool with configurable max workers (default: 10)
+2. Queue has bounded capacity (default: 1000) with drop-oldest or backpressure on full
+3. `SIGTERM` triggers graceful drain with configurable timeout (default: 30s)
+4. No goroutine leaks detectable via `runtime.NumGoroutine()` after shutdown
+5. Metrics exposed for queue depth and worker utilization
 
-**Scope:**
-- Location sharing between trip members
-- Real-time chat/messaging
-- Push notification integration (FCM for Android, APNs for iOS)
-- Real-time trip updates
+**Files to modify:**
+- `services/notification_facade_service.go`
+- `services/notification_worker_pool.go` (new)
+- `main.go` (shutdown sequence)
 
----
-
-### Phase 24: Bug Discovery & Fixes
-
-**Goal:** Run the app end-to-end to find what's broken, fix discovered issues
-**Depends on:** Phase 23
-**Research:** Unlikely (debugging and fixing)
-**Plans:** TBD
-
-Plans:
-- [ ] 24-01: TBD (run /gsd:plan-phase 24 to break down)
-
-**Scope:**
-- End-to-end app testing across all features
-- Document discovered bugs
-- Fix critical and high-priority issues
-- Verify fixes in staging environment
+**Effort:** 1 day
 
 ---
 
-### Phase 25: E2E Testing Setup
+### Phase 29: Simulator Bypass Hardening
 
-**Goal:** Research and implement automated testing for Go API and mobile integration
-**Depends on:** Phase 24
-**Research:** Likely (testing frameworks, CI integration)
-**Research topics:** Go API testing patterns (testify, httptest), React Native E2E (Detox), CI/CD test integration
-**Plans:** TBD
+**Goal:** Simulator bypass cannot be exploited through token manipulation
+**Depends on:** Phase 27 (tests needed)
+**Requirements:** SEC-05
 
-Plans:
-- [ ] 25-01: TBD (run /gsd:plan-phase 25 to break down)
+**Success Criteria:**
+1. JWT `sub` claim checked with exact equality, not substring match
+2. Simulator bypass requires both `SERVER_ENVIRONMENT=development` AND `ENABLE_SIMULATOR_BYPASS=true`
+3. Production binary excludes simulator code via build tags
+4. Auth middleware logs warning when simulator bypass is used
 
-**Scope:**
-- Set up Go API integration tests
-- Configure test database and fixtures
-- Explore mobile E2E testing options
-- Integrate tests into CI/CD pipeline
+**Files to modify:**
+- `middleware/auth.go`
+- `middleware/auth_simulator_dev.go` (new, build-tagged)
+- `middleware/auth_simulator_prod.go` (new, build-tagged)
+
+**Effort:** 0.5 days
+
+---
+
+### Phase 30: Dependency Migrations
+
+**Goal:** All dependencies updated to current stable versions
+**Depends on:** Phase 26 (security stable before dep changes)
+**Requirements:** DEP-01, DEP-02, DEP-03, DEP-04
+
+**Success Criteria:**
+1. `nhooyr.io/websocket` replaced with `github.com/coder/websocket` (import path only)
+2. `lestrrat-go/jwx` upgraded to v2.1.6 (NOT v3)
+3. `prometheus/client_golang` upgraded to v1.21.1
+4. `go-redis/v9` upgraded to v9.17.x
+5. All existing tests pass after upgrades
+
+**Migration order:**
+1. coder/websocket (trivial, no deps)
+2. go-redis (minor bump)
+3. prometheus (moderate, test metrics)
+4. jwx v2.1.6 (security fixes)
+
+**Effort:** 1 day
+
+---
+
+### Phase 31: Developer Experience
+
+**Goal:** Consistent, documented development workflow with automated quality checks
+**Depends on:** None (can run in parallel with Phases 28-30)
+**Requirements:** DEVX-01, DEVX-02, DEVX-03, DEVX-04, DEVX-05, DEVX-06
+
+**Success Criteria:**
+1. `task build`, `task test`, `task lint`, `task docker` all work on Windows
+2. `golangci-lint run` passes with v2 configuration
+3. `pre-commit run --all-files` passes (go-fmt, go-imports, golangci-lint)
+4. Single `.env.example` documents all environment variables with descriptions
+5. VS Code Go extension auto-configured via `.vscode/settings.json`
+
+**Files to create:**
+- `Taskfile.yml`
+- `.golangci.yml`
+- `.pre-commit-config.yaml`
+- `.editorconfig`
+- `.env.example` (consolidated)
+- `.vscode/settings.json`
+- `.vscode/extensions.json`
+
+**Effort:** 0.5 days
+
+---
+
+## Dependencies Graph
+
+```
+Phase 26 (Critical Security)
+    |
+    v
+Phase 27 (Test Suite Repair)
+    |
+    +---> Phase 28 (Goroutine Management)
+    |
+    +---> Phase 29 (Simulator Bypass)
+    |
+Phase 26 --> Phase 30 (Dependencies) [after security deployed]
+
+Phase 31 (DevX) [independent, can run in parallel]
+```
 
 ---
 
@@ -141,17 +195,23 @@ Plans:
 |-------|-----------|-------|--------|-----------|
 | 1-12 | v1.0 | 16/16 | Complete | 2026-01-12 |
 | 13-19 | v1.1 | 8/8 | Complete | 2026-01-12 |
-| 20. Windows DevX | v1.2 | 0/? | Not started | - |
+| 20. Windows DevX | v1.2 | - | Complete | 2026-01-12 |
 | 21. Auth Flow | v1.2 | 0/? | Not started | - |
 | 22. API Gaps | v1.2 | 0/? | Not started | - |
 | 23. Real-time | v1.2 | 0/? | Not started | - |
 | 24. Bug Fixes | v1.2 | 0/? | Not started | - |
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
+| 26. Critical Security | v1.3 | 0/? | Not started | - |
+| 27. Test Suite Repair | v1.3 | 0/? | Not started | - |
+| 28. Goroutine Management | v1.3 | 0/? | Not started | - |
+| 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
+| 30. Dependency Migrations | v1.3 | 0/? | Not started | - |
+| 31. Developer Experience | v1.3 | 0/? | Not started | - |
 
-**Total Phases Completed:** 19
+**Total Phases Completed:** 20
 **Current Production:** https://api.nomadcrew.uk (AWS EC2 + Coolify)
 
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-01-12 - v1.2 milestone created*
+*Last Updated: 2026-02-04 - v1.3 milestone created*

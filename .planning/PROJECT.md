@@ -1,6 +1,6 @@
 # NomadCrew Backend
 
-## Current State (v1.1)
+## Current State (v1.2 in progress, v1.3 planned)
 
 **Production URL:** https://api.nomadcrew.uk
 **Infrastructure:** AWS EC2 m8g.large (ARM Graviton4) + Coolify
@@ -9,6 +9,21 @@
 **Monitoring:** Grafana Cloud (synthetic checks)
 
 **Codebase:** 57,583 lines of Go 1.24 with clean layered architecture (Handler -> Service/Model -> Store)
+
+## Upcoming Milestone: v1.3 Security Remediation & Code Quality
+
+**Goal:** Eliminate security vulnerabilities, repair broken test suite, update dependencies, and establish developer tooling.
+
+**Key deliverables:**
+- Rate limiter fail-closed + trusted proxy configuration (critical security)
+- Test suite repair (22 packages currently failing)
+- Worker pool for notification goroutines
+- Dependency migrations (coder/websocket, jwx v2.1.6, prometheus, go-redis)
+- DevX tooling (Taskfile, golangci-lint v2, pre-commit hooks)
+
+**Phases:** 26-31 (6 phases, 20 requirements)
+**Estimated effort:** 6-8 days
+**Status:** Planned (after v1.2 completes)
 
 ## What This Is
 
@@ -50,14 +65,20 @@ Clean, maintainable code with reliable infrastructure - enabling fast feature de
 
 ### Active
 
-- [ ] Windows developer experience optimization (Phase 20)
-- [ ] Mobile app integration testing
+- [ ] Windows developer experience optimization (Phase 20) — v1.2
+- [ ] Mobile app integration testing — v1.2
+- [ ] Security remediation (rate limiter, IP spoofing, goroutine leaks) — v1.3
+- [ ] Test suite repair (22 failing packages) — v1.3
+- [ ] Dependency migrations (websocket, jwx, prometheus, go-redis) — v1.3
+- [ ] DevX tooling (Taskfile, golangci-lint, pre-commit) — v1.3
 
 ### Out of Scope
 
-- New backend features — focus on frontend/mobile development
+- New backend features — focus on remediation and mobile development
 - Database schema changes — stable schema for now
 - Performance optimization — not needed at current scale
+- JWX v3 migration — API changes too extensive, v2.1.6 is actively maintained
+- Remove simulator bypass — essential for local iOS/Android development
 
 ## Context
 
@@ -85,6 +106,9 @@ Clean, maintainable code with reliable infrastructure - enabling fast feature de
 | AWS over Oracle Cloud | OCI had no ARM capacity | Required |
 | m8g.large instance | t4g.small couldn't handle Coolify | Required |
 | Synthetic monitoring | Simple, no agent needed | Good |
+| Stay on JWX v2.x | v3 has extensive breaking changes, v2.1.6 actively maintained | — Pending |
+| Keep simulator bypass | Essential for local iOS/Android development | — Pending |
+| Full remediation scope | Address all findings from 3-pass code review | — Pending |
 
 ## Constraints
 
@@ -94,4 +118,4 @@ Clean, maintainable code with reliable infrastructure - enabling fast feature de
 - **Production stability:** Changes must not break api.nomadcrew.uk
 
 ---
-*Last updated: 2026-01-12 after v1.1 milestone*
+*Last updated: 2026-02-04 after v1.3 milestone planning*
