@@ -12,9 +12,9 @@
 Phase: 27 of 31 (Test Suite Repair)
 Plan: 02 of 05
 Status: In progress
-Last activity: 2026-02-04 - Completed 27-02-PLAN.md (Mock Consolidation)
+Last activity: 2026-02-04 - Completed 27-01-PLAN.md (Install Test Dependencies)
 
-Progress: [███=======----------] 38% (2.4/6 v1.3 phases)
+Progress: [███=======----------] 40% (2.4/6 v1.3 phases)
 
 ## Progress
 
@@ -25,14 +25,14 @@ Progress: [███=======----------] 38% (2.4/6 v1.3 phases)
 | v1.2 Mobile Integration & Quality | 20-25 | In Progress (paused) | - |
 | v1.3 Security Remediation & Code Quality | 26-31 | Active | - |
 
-**Total Phases Completed:** 21 phases, 28 plans
+**Total Phases Completed:** 21 phases, 29 plans
 
 ## v1.3 Phase Summary
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 26 | Critical Security Fixes | SEC-01, SEC-02 | ✅ Complete (2/2 plans) |
-| 27 | Test Suite Repair | TEST-01 to TEST-05 | 🔄 In progress (2/5 plans) |
+| 27 | Test Suite Repair | TEST-01 to TEST-05 | 🔄 In progress (2/5 plans complete: 01, 02) |
 | 28 | Goroutine Management | SEC-03, SEC-04 | Not started |
 | 29 | Simulator Bypass Hardening | SEC-05 | Not started |
 | 30 | Dependency Migrations | DEP-01 to DEP-04 | Not started |
@@ -68,6 +68,8 @@ None currently.
 | 2026-02-04 | Fatal error on invalid proxy config | Security configuration errors must never be silently ignored |
 | 2026-02-04 | Create handlers/mocks_test.go as canonical mock location | Eliminates duplicate declarations, single source of truth |
 | 2026-02-04 | Add ValidateAndGetClaims to all Validator mocks | Required by Validator interface for onboarding flow |
+| 2026-02-04 | Use pgxmock/v4 for pgx v5 mocking | pgxmock v4 is official mock library for jackc/pgx/v5 |
+| 2026-02-04 | Remove sqlmock from pgx tests | go-sqlmock incompatible with pgx driver, use pgxmock instead |
 
 ## v1.3 Research Summary
 
@@ -108,19 +110,22 @@ None currently.
 - `c.Error()` + `c.Abort()` for error handling
 - `IsAdminKey` context for admin status
 - `events.PublishEventWithContext()` for event publishing
+- `pgxmock.NewPool()` for pgx v5 database mocking
+- `redismock.NewClientMock()` for Redis v9 mocking
 
 ### Next Steps
 
-1. `/gsd:plan-phase 27` to plan Test Suite Repair
-2. Phase 27 fixes broken test infrastructure (pgx v4/v5 mismatch, missing deps)
-3. Test suite required before Phase 28 (goroutine management needs tests)
+1. Execute Plan 27-03 (Store Test Migrations - sqlmock to pgxmock)
+2. Execute Plan 27-04 (Test Compilation Fixes)
+3. Execute Plan 27-05 (Test Coverage Validation)
+4. Complete Phase 27, then proceed to Phase 28 (Goroutine Management)
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 27-02-PLAN.md (Mock Consolidation)
+Stopped at: Completed 27-01-PLAN.md (Install Test Dependencies)
 Resume file: None
-Next: Plan 27-03 (Dependency Installation)
+Next: Plan 27-03 (Store Test Migrations)
 
 ### Research Documents
 
