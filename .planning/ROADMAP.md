@@ -40,6 +40,11 @@ See [v1.2 details in archive](milestones/v1.2-ROADMAP.md) for full phase specifi
 **Goal:** Eliminate rate limiter fail-open vulnerability and IP spoofing that together allow unlimited brute-force attacks
 **Depends on:** v1.2 complete (or can be inserted as priority)
 **Requirements:** SEC-01, SEC-02
+**Plans:** 2 plans
+
+Plans:
+- [ ] 26-01-PLAN.md — Rate limiter fail-closed with in-memory fallback (SEC-01)
+- [ ] 26-02-PLAN.md — Trusted proxy configuration for IP spoofing prevention (SEC-02)
 
 **Success Criteria:**
 1. Rate limiter returns 503 (not 200) when Redis is unavailable
@@ -49,7 +54,7 @@ See [v1.2 details in archive](milestones/v1.2-ROADMAP.md) for full phase specifi
 
 **Files to modify:**
 - `middleware/rate_limit.go`
-- `main.go` (router setup)
+- `router/router.go`
 - `config/config.go` (TrustedProxies field)
 
 **Effort:** 1-2 days
@@ -201,7 +206,7 @@ Phase 31 (DevX) [independent, can run in parallel]
 | 23. Real-time | v1.2 | 0/? | Not started | - |
 | 24. Bug Fixes | v1.2 | 0/? | Not started | - |
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
-| 26. Critical Security | v1.3 | 0/? | Not started | - |
+| 26. Critical Security | v1.3 | 0/2 | Planned | - |
 | 27. Test Suite Repair | v1.3 | 0/? | Not started | - |
 | 28. Goroutine Management | v1.3 | 0/? | Not started | - |
 | 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
@@ -214,4 +219,4 @@ Phase 31 (DevX) [independent, can run in parallel]
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-02-04 - v1.3 milestone created*
+*Last Updated: 2026-02-04 - Phase 26 planned (2 plans in 2 waves)*
