@@ -17,11 +17,11 @@ Requirements for Security Remediation & Code Quality milestone. Each maps to roa
 
 ### Testing
 
-- [ ] **TEST-01**: All 22 packages compile without errors (fix pgx v4/v5 import mismatch)
-- [ ] **TEST-02**: Missing test dependencies installed (pgxmock v4, miniredis v2)
-- [ ] **TEST-03**: Interface mismatches between mocks and implementations resolved
-- [ ] **TEST-04**: Duplicate mock declarations consolidated
-- [ ] **TEST-05**: CI test workflow passes with current coverage threshold
+- [x] **TEST-01**: All 22 packages compile without errors (fix pgx v4/v5 import mismatch)
+- [x] **TEST-02**: Missing test dependencies installed (pgxmock v4, miniredis v2)
+- [x] **TEST-03**: Interface mismatches between mocks and implementations resolved
+- [x] **TEST-04**: Duplicate mock declarations consolidated
+- [x] **TEST-05**: CI test workflow passes with current coverage threshold
 
 ### Dependencies
 
@@ -78,11 +78,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEC-03 | Phase 28 | Pending |
 | SEC-04 | Phase 28 | Pending |
 | SEC-05 | Phase 29 | Pending |
-| TEST-01 | Phase 27 | Pending |
-| TEST-02 | Phase 27 | Pending |
-| TEST-03 | Phase 27 | Pending |
-| TEST-04 | Phase 27 | Pending |
-| TEST-05 | Phase 27 | Pending |
+| TEST-01 | Phase 27 | Complete |
+| TEST-02 | Phase 27 | Complete |
+| TEST-03 | Phase 27 | Complete |
+| TEST-04 | Phase 27 | Complete |
+| TEST-05 | Phase 27 | Complete |
 | DEP-01 | Phase 30 | Pending |
 | DEP-02 | Phase 30 | Pending |
 | DEP-03 | Phase 30 | Pending |
@@ -101,4 +101,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 - SEC-01, SEC-02 complete (Phase 26)*
+*Last updated: 2026-02-04 - TEST-01 through TEST-05 complete (Phase 27)*

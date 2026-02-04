@@ -75,12 +75,14 @@ Plans:
 - [x] 27-02-PLAN.md — Consolidate duplicate mocks and fix interface mismatches (handlers, middleware)
 - [x] 27-03-PLAN.md — Fix interface mismatches and type errors (handlers, models)
 - [x] 27-04-PLAN.md — Fix API changes, test logic, and remaining compilation errors
-- [ ] 27-05-PLAN.md — Gap closure: Fix config package ConnectionString references
-- [ ] 27-06-PLAN.md — Gap closure: Add types import to middleware tests
-- [ ] 27-07-PLAN.md — Gap closure: Consolidate trip service mocks
-- [ ] 27-08-PLAN.md — Gap closure: Fix services pgxmock API usage
-- [ ] 27-09-PLAN.md — Gap closure: Fix internal/store/postgres unused variables
-- [ ] 27-10-PLAN.md — Gap closure: Fix store/postgres type definitions
+- [x] 27-05-PLAN.md — Gap closure: Fix config package ConnectionString references
+- [x] 27-06-PLAN.md — Gap closure: Add types import to middleware tests
+- [x] 27-07-PLAN.md — Gap closure: Consolidate trip service mocks
+- [x] 27-08-PLAN.md — Gap closure: Fix services pgxmock API usage
+- [x] 27-09-PLAN.md — Gap closure: Fix internal/store/postgres unused variables
+- [x] 27-10-PLAN.md — Gap closure: Fix store/postgres type definitions
+
+**Status:** Complete
 
 **Success Criteria:**
 1. `go test ./...` compiles all 22 packages without errors
@@ -222,16 +224,16 @@ Phase 31 (DevX) [independent, can run in parallel]
 | 24. Bug Fixes | v1.2 | 0/? | Not started | - |
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
 | 26. Critical Security | v1.3 | 2/2 | Complete | 2026-02-04 |
-| 27. Test Suite Repair | v1.3 | 4/10 | In Progress | - |
+| 27. Test Suite Repair | v1.3 | 10/10 | Complete | 2026-02-04 |
 | 28. Goroutine Management | v1.3 | 0/? | Not started | - |
 | 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
 | 30. Dependency Migrations | v1.3 | 0/? | Not started | - |
 | 31. Developer Experience | v1.3 | 0/? | Not started | - |
 
-**Total Phases Completed:** 21
+**Total Phases Completed:** 22
 **Current Production:** https://api.nomadcrew.uk (AWS EC2 + Coolify)
 
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-02-04 - Phase 27 gap closure plans created (27-05 through 27-10)*
+*Last Updated: 2026-02-04 - Phase 27 complete (all packages compile)*
