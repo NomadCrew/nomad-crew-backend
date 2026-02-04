@@ -369,6 +369,27 @@ func (m *MockUserStore) BeginTx(ctx context.Context) (types.DatabaseTransaction,
 	return args.Get(0).(types.DatabaseTransaction), args.Error(1)
 }
 
+func (m *MockUserStore) GetUserByContactEmail(ctx context.Context, contactEmail string) (*types.User, error) {
+	args := m.Called(ctx, contactEmail)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.User), args.Error(1)
+}
+
+func (m *MockUserStore) SearchUsers(ctx context.Context, query string, limit int) ([]*types.UserSearchResult, error) {
+	args := m.Called(ctx, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*types.UserSearchResult), args.Error(1)
+}
+
+func (m *MockUserStore) UpdateContactEmail(ctx context.Context, userID string, email string) error {
+	args := m.Called(ctx, userID, email)
+	return args.Error(0)
+}
+
 // --- Test Suite ---
 
 type TripServiceTestSuite struct {
