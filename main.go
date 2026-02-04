@@ -205,8 +205,15 @@ func main() {
 	pushService := services.NewExpoPushService(pushTokenStore, log.Desugar())
 	log.Info("Push notification service initialized")
 
+	// Initialize notification worker pool for bounded async operations
+	notificationWorkerPool := services.NewWorkerPool(cfg.WorkerPool)
+	notificationWorkerPool.Start()
+	log.Infow("Notification worker pool started",
+		"maxWorkers", cfg.WorkerPool.MaxWorkers,
+		"queueSize", cfg.WorkerPool.QueueSize)
+
 	// Initialize notification facade service (for chat and other notifications)
-	notificationFacadeService := services.NewNotificationFacadeService(&cfg.Notification)
+	notificationFacadeService := services.NewNotificationFacadeService(&cfg.Notification, notificationWorkerPool)
 	log.Infow("Notification facade service initialized", "enabled", notificationFacadeService.IsEnabled())
 
 	// Initialize notification service with push notification support
@@ -315,10 +322,16 @@ func main() {
 	log.Info("Shutting down server...")
 
 	// Create a deadline to wait for current operations to complete
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.WorkerPool.ShutdownTimeoutSeconds)*time.Second)
 	defer cancel()
 
-	// Shutdown WebSocket hub first to close all connections gracefully
+	// Shutdown notification worker pool first to drain pending notifications
+	log.Info("Shutting down notification worker pool...")
+	if err := notificationWorkerPool.Shutdown(ctx); err != nil {
+		log.Errorw("Error during notification worker pool shutdown", "error", err)
+	}
+
+	// Shutdown WebSocket hub to close all connections gracefully
 	log.Info("Shutting down WebSocket hub...")
 	if err := wsHub.Shutdown(ctx); err != nil {
 		log.Errorw("Error during WebSocket hub shutdown", "error", err)
