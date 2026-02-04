@@ -9,12 +9,12 @@
 
 ## Current Position
 
-Phase: 26 of 31 (Critical Security Fixes)
-Plan: 02 of 02
-Status: Phase complete
-Last activity: 2026-02-04 - Completed 26-02-PLAN.md (IP Spoofing Protection)
+Phase: 27 of 31 (Test Suite Repair)
+Plan: 02 of 05
+Status: In progress
+Last activity: 2026-02-04 - Completed 27-02-PLAN.md (Mock Consolidation)
 
-Progress: [██========----------] 33% (2/6 v1.3 phases)
+Progress: [███=======----------] 38% (2.4/6 v1.3 phases)
 
 ## Progress
 
@@ -25,14 +25,14 @@ Progress: [██========----------] 33% (2/6 v1.3 phases)
 | v1.2 Mobile Integration & Quality | 20-25 | In Progress (paused) | - |
 | v1.3 Security Remediation & Code Quality | 26-31 | Active | - |
 
-**Total Phases Completed:** 21 phases, 27 plans
+**Total Phases Completed:** 21 phases, 28 plans
 
 ## v1.3 Phase Summary
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 26 | Critical Security Fixes | SEC-01, SEC-02 | ✅ Complete (2/2 plans) |
-| 27 | Test Suite Repair | TEST-01 to TEST-05 | Not started |
+| 27 | Test Suite Repair | TEST-01 to TEST-05 | 🔄 In progress (2/5 plans) |
 | 28 | Goroutine Management | SEC-03, SEC-04 | Not started |
 | 29 | Simulator Bypass Hardening | SEC-05 | Not started |
 | 30 | Dependency Migrations | DEP-01 to DEP-04 | Not started |
@@ -66,6 +66,8 @@ None currently.
 | 2026-02-04 | X-RateLimit-Mode header | Enables monitoring of fallback mode usage |
 | 2026-02-04 | Empty TrustedProxies = safe default | SetTrustedProxies(nil) ignores all forwarded headers unless configured |
 | 2026-02-04 | Fatal error on invalid proxy config | Security configuration errors must never be silently ignored |
+| 2026-02-04 | Create handlers/mocks_test.go as canonical mock location | Eliminates duplicate declarations, single source of truth |
+| 2026-02-04 | Add ValidateAndGetClaims to all Validator mocks | Required by Validator interface for onboarding flow |
 
 ## v1.3 Research Summary
 
@@ -116,9 +118,9 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed Phase 26 (Critical Security Fixes)
+Stopped at: Completed 27-02-PLAN.md (Mock Consolidation)
 Resume file: None
-Next: Plan Phase 27 (Test Suite Repair)
+Next: Plan 27-03 (Dependency Installation)
 
 ### Research Documents
 
@@ -144,6 +146,30 @@ Next: Plan Phase 27 (Test Suite Repair)
 - ✅ IP spoofing no longer possible (trusted proxies)
 - ✅ Safe defaults (no proxies = no trust)
 - ✅ Environment-configurable for proxy setups
+
+### Phase 27 Progress (IN PROGRESS)
+
+**Plans completed:**
+- 27-01: Test compilation diagnostics (research)
+- 27-02: Mock consolidation and interface fixes
+
+**Test issues fixed:**
+- TEST-01: Duplicate MockUserService declarations → Consolidated to handlers/mocks_test.go
+- TEST-02: Incomplete Validator interface → Added ValidateAndGetClaims method
+
+**Files created:**
+- `handlers/mocks_test.go` - Canonical mock definitions
+
+**Files modified:**
+- `handlers/user_handler_test.go` - Removed duplicate mocks
+- `handlers/trip_handler_test.go` - Removed duplicate mocks
+- `middleware/auth_test.go` - Complete Validator implementation
+- `middleware/jwt_validator_test.go` - Complete Validator implementation
+
+**Next:**
+- 27-03: Install missing dependencies
+- 27-04: Fix pgx v4/v5 interface mismatches
+- 27-05: Provide test database configuration
 
 ---
 
