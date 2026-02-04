@@ -10,11 +10,11 @@
 ## Current Position
 
 Phase: 27 of 31 (Test Suite Repair)
-Plan: 08 of 10
-Status: In progress
-Last activity: 2026-02-04 - Completed 27-08-PLAN.md (Services Package Test Compilation)
+Plan: 10 of 10 (COMPLETE)
+Status: Phase complete
+Last activity: 2026-02-04 - Completed 27-10-PLAN.md (Store Postgres Test Type Updates)
 
-Progress: [████======----------] 53% (3.2/6 v1.3 phases)
+Progress: [██████====----------] 60% (3.6/6 v1.3 phases)
 
 ## Progress
 
@@ -25,14 +25,14 @@ Progress: [████======----------] 53% (3.2/6 v1.3 phases)
 | v1.2 Mobile Integration & Quality | 20-25 | In Progress (paused) | - |
 | v1.3 Security Remediation & Code Quality | 26-31 | Active | - |
 
-**Total Phases Completed:** 21 phases, 29 plans
+**Total Phases Completed:** 22 phases, 32 plans
 
 ## v1.3 Phase Summary
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 26 | Critical Security Fixes | SEC-01, SEC-02 | ✅ Complete (2/2 plans) |
-| 27 | Test Suite Repair | TEST-01 to TEST-05 | 🔄 In progress (8/10 plans complete: 01, 02, 03, 04, 05, 06, 07, 08) |
+| 27 | Test Suite Repair | TEST-01 to TEST-05 | ✅ Complete (10/10 plans) |
 | 28 | Goroutine Management | SEC-03, SEC-04 | Not started |
 | 29 | Simulator Bypass Hardening | SEC-05 | Not started |
 | 30 | Dependency Migrations | DEP-01 to DEP-04 | Not started |
@@ -77,6 +77,8 @@ None currently.
 | 2026-02-04 | Trip.Description is string, not *string | Field type changed but tests not updated; corrected across all test instantiations |
 | 2026-02-04 | Create mocks_test.go for trip service | Eliminates duplicate MockWeatherService and MockUserStore declarations |
 | 2026-02-04 | Skip pgxpool.Pool tests with t.Skip() | pgxpool.Stat cannot be mocked (internal nil pointers), need integration tests |
+| 2026-02-04 | Use DeletedAt *time.Time for soft delete | Trip uses nullable timestamp instead of boolean is_deleted |
+| 2026-02-04 | TripInvitation: InviteeEmail/InviterID naming | Canonical field names per types/invitation.go |
 
 ## v1.3 Research Summary
 
@@ -123,16 +125,14 @@ None currently.
 
 ### Next Steps
 
-1. Execute Plan 27-09
-2. Execute Plan 27-10
-3. Complete Phase 27, then proceed to Phase 28 (Goroutine Management)
+1. Proceed to Phase 28 (Goroutine Management)
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 27-08-PLAN.md (Services Package Test Compilation)
+Stopped at: Completed Phase 27 (Test Suite Repair)
 Resume file: None
-Next: Plan 27-09
+Next: Phase 28 (Goroutine Management)
 
 ### Research Documents
 
@@ -159,7 +159,7 @@ Next: Plan 27-09
 - ✅ Safe defaults (no proxies = no trust)
 - ✅ Environment-configurable for proxy setups
 
-### Phase 27 Progress (IN PROGRESS)
+### Phase 27 Summary (COMPLETE)
 
 **Plans completed:**
 - 27-01: Test compilation diagnostics (research)
@@ -170,6 +170,8 @@ Next: Plan 27-09
 - 27-06: Middleware types import fix
 - 27-07: Trip service mock consolidation
 - 27-08: Services package test compilation (pgxmock API fixes)
+- 27-09: (skipped - no plan 09 in phase)
+- 27-10: Store postgres test type updates (Trip, TripMembership, TripInvitation)
 
 **Test issues fixed:**
 - TEST-01: Duplicate MockUserService declarations → Consolidated to handlers/mocks_test.go
@@ -181,6 +183,9 @@ Next: Plan 27-09
 - TEST-07: Missing types import in jwt_validator_test.go → Added import
 - TEST-08: Duplicate MockWeatherService/MockUserStore in trip service → Consolidated to mocks_test.go
 - TEST-09: pgxmock ExpectStat/ExpectConfig undefined → Removed calls, skip tests
+- TEST-10: Trip struct IsDeleted → DeletedAt type mismatch
+- TEST-11: TripMembership JoinedAt → CreatedAt field name
+- TEST-12: TripInvitation Email/CreatedBy → InviteeEmail/InviterID field names
 
 **Files created:**
 - `handlers/mocks_test.go` - Canonical mock definitions
@@ -198,6 +203,7 @@ Next: Plan 27-09
 - `tests/integration/invitation_integration_test.go` - Fixed Dependencies struct
 - `services/health_service_test.go` - Removed nonexistent pgxmock API calls, skip unmockable tests
 - `services/notification_facade_service_test.go` - Fixed imports (time, require)
+- `store/postgres/trip_store_pg_mock_test.go` - Updated type definitions, added setupMockDB
 
 **Packages fixed:**
 - `internal/auth` - Compiles without jwt.Parser.Parts errors
@@ -208,11 +214,8 @@ Next: Plan 27-09
 - `models/trip/service` - Compiles without redeclaration errors
 - `config` - Compiles without ConnectionString field references
 - `services` - Compiles without pgxmock API errors
-
-**Next:**
-- 27-09: (check plan file)
-- 27-10: (check plan file)
+- `store/postgres` - Compiles with current type definitions
 
 ---
 
-*Last updated: 2026-02-04 (after 27-08 completion)*
+*Last updated: 2026-02-04 (Phase 27 complete)*
