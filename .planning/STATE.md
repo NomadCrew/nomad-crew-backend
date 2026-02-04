@@ -164,6 +164,7 @@ Next: Plan 27-08 (Mock Interface Compliance)
 - 27-02: Mock consolidation and interface fixes
 - 27-03: Store test migrations (sqlmock to pgxmock)
 - 27-04: Test compilation fixes (jwt.Parser.Parts, pagination, pgx v4→v5)
+- 27-05: Config package test fixes (ConnectionString field removal)
 - 27-06: Middleware types import fix
 - 27-07: Trip service mock consolidation
 
@@ -199,6 +200,7 @@ Next: Plan 27-08 (Mock Interface Compliance)
 - `internal/store/postgres` - Uses pgx v5 imports consistently
 - `middleware` - Compiles without undefined types errors
 - `models/trip/service` - Compiles without redeclaration errors
+- `config` - Compiles without ConnectionString field references
 
 **Next:**
 - 27-08: Mock Interface Compliance
