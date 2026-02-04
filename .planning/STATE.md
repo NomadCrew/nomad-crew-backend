@@ -10,11 +10,11 @@
 ## Current Position
 
 Phase: 27 of 31 (Test Suite Repair)
-Plan: 06 of 10
+Plan: 07 of 10
 Status: In progress
-Last activity: 2026-02-04 - Completed 27-06-PLAN.md (Middleware Types Import)
+Last activity: 2026-02-04 - Completed 27-07-PLAN.md (Trip Service Mock Consolidation)
 
-Progress: [████======----------] 50% (3.0/6 v1.3 phases)
+Progress: [████======----------] 52% (3.1/6 v1.3 phases)
 
 ## Progress
 
@@ -32,7 +32,7 @@ Progress: [████======----------] 50% (3.0/6 v1.3 phases)
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 26 | Critical Security Fixes | SEC-01, SEC-02 | ✅ Complete (2/2 plans) |
-| 27 | Test Suite Repair | TEST-01 to TEST-05 | 🔄 In progress (6/10 plans complete: 01, 02, 03, 04, 06) |
+| 27 | Test Suite Repair | TEST-01 to TEST-05 | 🔄 In progress (8/10 plans complete: 01, 02, 03, 04, 05, 06, 07) |
 | 28 | Goroutine Management | SEC-03, SEC-04 | Not started |
 | 29 | Simulator Bypass Hardening | SEC-05 | Not started |
 | 30 | Dependency Migrations | DEP-01 to DEP-04 | Not started |
@@ -75,6 +75,7 @@ None currently.
 | 2026-02-04 | Create PexelsClientInterface for testable image fetching | Interface allows mock injection instead of concrete *pexels.Client type |
 | 2026-02-04 | Use local mocks when generated mocks are outdated | Generated MockWeatherService has wrong signature; local implementation faster than regenerating with mockery |
 | 2026-02-04 | Trip.Description is string, not *string | Field type changed but tests not updated; corrected across all test instantiations |
+| 2026-02-04 | Create mocks_test.go for trip service | Eliminates duplicate MockWeatherService and MockUserStore declarations |
 
 ## v1.3 Research Summary
 
@@ -127,9 +128,9 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 27-06-PLAN.md (Middleware Types Import)
+Stopped at: Completed 27-07-PLAN.md (Trip Service Mock Consolidation)
 Resume file: None
-Next: Plan 27-07 (Services Package Test Fixes)
+Next: Plan 27-08 (Mock Interface Compliance)
 
 ### Research Documents
 
@@ -164,6 +165,7 @@ Next: Plan 27-07 (Services Package Test Fixes)
 - 27-03: Store test migrations (sqlmock to pgxmock)
 - 27-04: Test compilation fixes (jwt.Parser.Parts, pagination, pgx v4→v5)
 - 27-06: Middleware types import fix
+- 27-07: Trip service mock consolidation
 
 **Test issues fixed:**
 - TEST-01: Duplicate MockUserService declarations → Consolidated to handlers/mocks_test.go
@@ -173,9 +175,11 @@ Next: Plan 27-07 (Services Package Test Fixes)
 - TEST-05: LocationHandler invalid field → Removed from Dependencies struct
 - TEST-06: pgx v4/v5 import mismatch → Updated to pgx v5
 - TEST-07: Missing types import in jwt_validator_test.go → Added import
+- TEST-08: Duplicate MockWeatherService/MockUserStore in trip service → Consolidated to mocks_test.go
 
 **Files created:**
 - `handlers/mocks_test.go` - Canonical mock definitions
+- `models/trip/service/mocks_test.go` - Trip service mock definitions
 - `internal/auth/jwt_test.go` - JWT generation/validation tests
 - `internal/auth/config_validator_test.go` - Auth config validation tests
 - `internal/notification/client_test.go` - Notification client tests
@@ -194,10 +198,11 @@ Next: Plan 27-07 (Services Package Test Fixes)
 - `internal/notification` - Passes pagination test assertions
 - `internal/store/postgres` - Uses pgx v5 imports consistently
 - `middleware` - Compiles without undefined types errors
+- `models/trip/service` - Compiles without redeclaration errors
 
 **Next:**
-- 27-07: Services Package Test Fixes
+- 27-08: Mock Interface Compliance
 
 ---
 
-*Last updated: 2026-02-04 (after 27-06 completion)*
+*Last updated: 2026-02-04 (after 27-07 completion)*
