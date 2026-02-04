@@ -14,20 +14,23 @@ import (
 
 // NotificationFacadeService handles sending notifications through the facade API
 type NotificationFacadeService struct {
-	client  *notification.Client
-	enabled bool
-	logger  *zap.SugaredLogger
+	client     *notification.Client
+	enabled    bool
+	logger     *zap.SugaredLogger
+	workerPool *WorkerPool
 }
 
-// NewNotificationFacadeService creates a new notification service
-func NewNotificationFacadeService(cfg *config.NotificationConfig) *NotificationFacadeService {
+// NewNotificationFacadeService creates a new notification service.
+// The workerPool parameter is optional - if nil, async methods will use fire-and-forget goroutines (not recommended).
+func NewNotificationFacadeService(cfg *config.NotificationConfig, workerPool *WorkerPool) *NotificationFacadeService {
 	log := logger.GetLogger()
 
 	if !cfg.Enabled {
 		log.Info("Notification service disabled")
 		return &NotificationFacadeService{
-			enabled: false,
-			logger:  log,
+			enabled:    false,
+			logger:     log,
+			workerPool: workerPool,
 		}
 	}
 
@@ -43,9 +46,10 @@ func NewNotificationFacadeService(cfg *config.NotificationConfig) *NotificationF
 	)
 
 	return &NotificationFacadeService{
-		client:  client,
-		enabled: true,
-		logger:  log,
+		client:     client,
+		enabled:    true,
+		logger:     log,
+		workerPool: workerPool,
 	}
 }
 
@@ -88,14 +92,26 @@ func (s *NotificationFacadeService) SendTripUpdate(ctx context.Context, userIDs 
 	return nil
 }
 
-// SendTripUpdateAsync sends trip update notifications asynchronously
+// SendTripUpdateAsync sends trip update notifications asynchronously via worker pool.
 func (s *NotificationFacadeService) SendTripUpdateAsync(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority) {
 	if !s.enabled {
 		return
 	}
 
+	// Use worker pool if available
+	if s.workerPool != nil {
+		s.workerPool.Submit(Job{
+			Name: fmt.Sprintf("trip-update-%s", data.TripID),
+			Execute: func(jobCtx context.Context) error {
+				return s.SendTripUpdate(jobCtx, userIDs, data, priority)
+			},
+		})
+		return
+	}
+
+	// Fallback to legacy fire-and-forget (not recommended)
+	s.logger.Warn("Worker pool not configured, using fire-and-forget goroutine for async notification")
 	go func() {
-		// Create a new context with timeout for async operation
 		asyncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -144,12 +160,25 @@ func (s *NotificationFacadeService) SendChatMessage(ctx context.Context, recipie
 	return nil
 }
 
-// SendChatMessageAsync sends chat message notifications asynchronously
+// SendChatMessageAsync sends chat message notifications asynchronously via worker pool.
 func (s *NotificationFacadeService) SendChatMessageAsync(ctx context.Context, recipientIDs []string, data notification.ChatMessageData) {
 	if !s.enabled {
 		return
 	}
 
+	// Use worker pool if available
+	if s.workerPool != nil {
+		s.workerPool.Submit(Job{
+			Name: fmt.Sprintf("chat-message-%s", data.ChatID),
+			Execute: func(jobCtx context.Context) error {
+				return s.SendChatMessage(jobCtx, recipientIDs, data)
+			},
+		})
+		return
+	}
+
+	// Fallback to legacy fire-and-forget (not recommended)
+	s.logger.Warn("Worker pool not configured, using fire-and-forget goroutine for async notification")
 	go func() {
 		asyncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

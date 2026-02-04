@@ -41,8 +41,8 @@ func TestNewNotificationFacadeService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewNotificationFacadeService(tt.config)
-			
+			service := NewNotificationFacadeService(tt.config, nil)
+
 			assert.NotNil(t, service)
 			assert.Equal(t, tt.enabled, service.IsEnabled())
 		})
@@ -81,7 +81,7 @@ func TestSendTripUpdate(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.TripUpdateData{
 		TripID:      "trip-123",
@@ -95,7 +95,7 @@ func TestSendTripUpdate(t *testing.T) {
 	userIDs := []string{"user-1", "user-2", "user-3"}
 
 	err := service.SendTripUpdate(context.Background(), userIDs, data, notification.PriorityHigh)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, 3, requestCount) // One request per user
 }
@@ -105,14 +105,14 @@ func TestSendTripUpdate_Disabled(t *testing.T) {
 		Enabled: false,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.TripUpdateData{
 		TripID: "trip-123",
 	}
 
 	err := service.SendTripUpdate(context.Background(), []string{"user-1"}, data, notification.PriorityHigh)
-	
+
 	assert.NoError(t, err) // Should not error when disabled
 }
 
@@ -146,7 +146,7 @@ func TestSendTripUpdate_PartialFailure(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.TripUpdateData{
 		TripID: "trip-123",
@@ -155,7 +155,7 @@ func TestSendTripUpdate_PartialFailure(t *testing.T) {
 	userIDs := []string{"user-1", "user-2", "user-3"}
 
 	err := service.SendTripUpdate(context.Background(), userIDs, data, notification.PriorityHigh)
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send notifications to 1 users")
 	assert.Equal(t, 3, requestCount)
@@ -190,7 +190,7 @@ func TestSendChatMessage(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.ChatMessageData{
 		TripID:         "trip-123",
@@ -205,7 +205,7 @@ func TestSendChatMessage(t *testing.T) {
 	recipientIDs := []string{"user-1", "sender-123", "user-2"}
 
 	err := service.SendChatMessage(context.Background(), recipientIDs, data)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, receivedUserIDs, 2) // Should skip sender
 	assert.NotContains(t, receivedUserIDs, "sender-123")
@@ -235,7 +235,7 @@ func TestSendWeatherAlert(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.WeatherAlertData{
 		TripID:    "trip-123",
@@ -247,7 +247,7 @@ func TestSendWeatherAlert(t *testing.T) {
 	}
 
 	err := service.SendWeatherAlert(context.Background(), []string{"user-1"}, data, notification.PriorityCritical)
-	
+
 	assert.NoError(t, err)
 }
 
@@ -277,7 +277,7 @@ func TestSendLocationUpdate(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.LocationUpdateData{
 		TripID:       "trip-123",
@@ -294,7 +294,7 @@ func TestSendLocationUpdate(t *testing.T) {
 	recipientIDs := []string{"user-1", "sharer-123", "user-2"}
 
 	err := service.SendLocationUpdate(context.Background(), recipientIDs, data)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, receivedUserIDs, 2) // Should skip sharer
 	assert.NotContains(t, receivedUserIDs, "sharer-123")
@@ -324,7 +324,7 @@ func TestSendSystemAlert(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.SystemAlertData{
 		AlertType:      "payment_failed",
@@ -334,7 +334,7 @@ func TestSendSystemAlert(t *testing.T) {
 	}
 
 	err := service.SendSystemAlert(context.Background(), "user-123", data, notification.PriorityCritical)
-	
+
 	assert.NoError(t, err)
 }
 
@@ -363,10 +363,10 @@ func TestSendCustomNotification(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	customData := map[string]interface{}{
-		"customField": "custom-value",
+		"customField":  "custom-value",
 		"anotherField": 123,
 	}
 
@@ -377,7 +377,7 @@ func TestSendCustomNotification(t *testing.T) {
 		notification.PriorityMedium,
 		customData,
 	)
-	
+
 	assert.NoError(t, err)
 }
 
@@ -401,13 +401,13 @@ func TestAsyncNotifications(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.TripUpdateData{
 		TripID: "trip-123",
 	}
 
-	// Send async notification
+	// Send async notification (uses fallback goroutine since no worker pool)
 	service.SendTripUpdateAsync(context.Background(), []string{"user-1"}, data, notification.PriorityHigh)
 
 	// Wait for notification to be received
@@ -439,7 +439,7 @@ func TestChatMessageAsync(t *testing.T) {
 		TimeoutSeconds: 10,
 	}
 
-	service := NewNotificationFacadeService(cfg)
+	service := NewNotificationFacadeService(cfg, nil)
 
 	data := notification.ChatMessageData{
 		TripID:   "trip-123",
@@ -447,7 +447,7 @@ func TestChatMessageAsync(t *testing.T) {
 		SenderID: "sender-123",
 	}
 
-	// Send async notification
+	// Send async notification (uses fallback goroutine since no worker pool)
 	service.SendChatMessageAsync(context.Background(), []string{"user-1"}, data)
 
 	// Wait for notification to be received
