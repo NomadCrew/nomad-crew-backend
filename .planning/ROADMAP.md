@@ -68,13 +68,19 @@ Plans:
 **Goal:** All packages compile and tests can run in CI
 **Depends on:** Phase 26 (security fixes deployed first)
 **Requirements:** TEST-01, TEST-02, TEST-03, TEST-04, TEST-05
-**Plans:** 4 plans
+**Plans:** 10 plans (original 4 + 6 gap closure)
 
 Plans:
-- [ ] 27-01-PLAN.md — Install test dependencies and fix pgx v4 imports
-- [ ] 27-02-PLAN.md — Consolidate duplicate mocks and fix interface mismatches (handlers, middleware)
-- [ ] 27-03-PLAN.md — Fix interface mismatches and type errors (handlers, models)
-- [ ] 27-04-PLAN.md — Fix API changes, test logic, and remaining compilation errors
+- [x] 27-01-PLAN.md — Install test dependencies and fix pgx v4 imports
+- [x] 27-02-PLAN.md — Consolidate duplicate mocks and fix interface mismatches (handlers, middleware)
+- [x] 27-03-PLAN.md — Fix interface mismatches and type errors (handlers, models)
+- [x] 27-04-PLAN.md — Fix API changes, test logic, and remaining compilation errors
+- [ ] 27-05-PLAN.md — Gap closure: Fix config package ConnectionString references
+- [ ] 27-06-PLAN.md — Gap closure: Add types import to middleware tests
+- [ ] 27-07-PLAN.md — Gap closure: Consolidate trip service mocks
+- [ ] 27-08-PLAN.md — Gap closure: Fix services pgxmock API usage
+- [ ] 27-09-PLAN.md — Gap closure: Fix internal/store/postgres unused variables
+- [ ] 27-10-PLAN.md — Gap closure: Fix store/postgres type definitions
 
 **Success Criteria:**
 1. `go test ./...` compiles all 22 packages without errors
@@ -216,7 +222,7 @@ Phase 31 (DevX) [independent, can run in parallel]
 | 24. Bug Fixes | v1.2 | 0/? | Not started | - |
 | 25. E2E Testing | v1.2 | 0/? | Not started | - |
 | 26. Critical Security | v1.3 | 2/2 | Complete | 2026-02-04 |
-| 27. Test Suite Repair | v1.3 | 0/4 | Planned | - |
+| 27. Test Suite Repair | v1.3 | 4/10 | In Progress | - |
 | 28. Goroutine Management | v1.3 | 0/? | Not started | - |
 | 29. Simulator Bypass | v1.3 | 0/? | Not started | - |
 | 30. Dependency Migrations | v1.3 | 0/? | Not started | - |
@@ -228,4 +234,4 @@ Phase 31 (DevX) [independent, can run in parallel]
 ---
 
 *Created: 2026-01-10*
-*Last Updated: 2026-02-04 - Phase 27 planned (4 plans in 2 waves)*
+*Last Updated: 2026-02-04 - Phase 27 gap closure plans created (27-05 through 27-10)*
