@@ -10,11 +10,11 @@
 ## Current Position
 
 Phase: 28 of 31 (Goroutine Management)
-Plan: 1 of 3 (Worker Pool Foundation)
-Status: In progress
-Last activity: 2026-02-04 - Completed 28-01-PLAN.md (Worker Pool Foundation)
+Plan: 2 of 2 (COMPLETE)
+Status: Phase 28 complete
+Last activity: 2026-02-04 - Completed 28-02-PLAN.md (Notification Service Integration)
 
-Progress: [███████===----------] 63% (3.8/6 v1.3 phases)
+Progress: [████████==----------] 67% (4/6 v1.3 phases)
 
 ## Progress
 
@@ -25,15 +25,15 @@ Progress: [███████===----------] 63% (3.8/6 v1.3 phases)
 | v1.2 Mobile Integration & Quality | 20-25 | In Progress (paused) | - |
 | v1.3 Security Remediation & Code Quality | 26-31 | Active | - |
 
-**Total Phases Completed:** 22 phases, 32 plans
+**Total Phases Completed:** 22 phases, 34 plans
 
 ## v1.3 Phase Summary
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 26 | Critical Security Fixes | SEC-01, SEC-02 | ✅ Complete (2/2 plans) |
-| 27 | Test Suite Repair | TEST-01 to TEST-05 | ✅ Complete (10/10 plans) |
-| 28 | Goroutine Management | SEC-03, SEC-04 | In progress (1/3 plans) |
+| 26 | Critical Security Fixes | SEC-01, SEC-02 | Complete (2/2 plans) |
+| 27 | Test Suite Repair | TEST-01 to TEST-05 | Complete (10/10 plans) |
+| 28 | Goroutine Management | SEC-03, SEC-04 | Complete (2/2 plans) |
 | 29 | Simulator Bypass Hardening | SEC-05 | Not started |
 | 30 | Dependency Migrations | DEP-01 to DEP-04 | Not started |
 | 31 | Developer Experience | DEVX-01 to DEVX-06 | Not started |
@@ -81,6 +81,8 @@ None currently.
 | 2026-02-04 | TripInvitation: InviteeEmail/InviterID naming | Canonical field names per types/invitation.go |
 | 2026-02-04 | Singleton metrics pattern for worker pool | sync.Once prevents double registration in tests, follows redis_publisher.go |
 | 2026-02-04 | Drop-newest for queue overflow | Simpler than drop-oldest, non-blocking submit |
+| 2026-02-04 | Optional worker pool parameter | Backward compatibility for tests and gradual migration |
+| 2026-02-04 | Shutdown order: worker pool first | Drain pending notifications before closing client connections |
 
 ## v1.3 Research Summary
 
@@ -100,9 +102,9 @@ None currently.
 ### v1.3 Security Remediation & Code Quality
 
 **Priority order:**
-1. ✅ Phase 26: Critical Security Fixes (COMPLETE - SEC-01, SEC-02 closed)
-2. Phase 27: Test Suite Repair (foundation for safe changes)
-3. Phase 28: Goroutine Management (requires tests)
+1. Phase 26: Critical Security Fixes (COMPLETE - SEC-01, SEC-02 closed)
+2. Phase 27: Test Suite Repair (COMPLETE - TEST-01 to TEST-12 fixed)
+3. Phase 28: Goroutine Management (COMPLETE - SEC-03, SEC-04 closed)
 4. Phase 29: Simulator Bypass Hardening
 5. Phase 30: Dependency Migrations
 6. Phase 31: Developer Experience (can run in parallel)
@@ -124,17 +126,18 @@ None currently.
 - `pgxmock.NewPool()` for pgx v5 database mocking
 - `redismock.NewClientMock()` for Redis v9 mocking
 - `t.Skip()` with descriptive message for unmockable dependencies
+- `workerPool.Submit(Job{...})` for bounded async operations
 
 ### Next Steps
 
-1. Proceed to Phase 28 (Goroutine Management)
+1. Proceed to Phase 29 (Simulator Bypass Hardening)
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 28-01-PLAN.md (Worker Pool Foundation)
+Stopped at: Completed 28-02-PLAN.md (Notification Service Integration)
 Resume file: None
-Next: 28-02-PLAN.md (Notification Service Integration)
+Next: Phase 29 (Simulator Bypass Hardening)
 
 ### Research Documents
 
@@ -147,8 +150,8 @@ Next: 28-02-PLAN.md (Notification Service Integration)
 ### Phase 26 Summary (COMPLETE)
 
 **Security vulnerabilities closed:**
-- SEC-01: Rate limiter fail-open → Fixed with in-memory fallback (26-01)
-- SEC-02: IP spoofing on rate limiter → Fixed with trusted proxies (26-02)
+- SEC-01: Rate limiter fail-open -> Fixed with in-memory fallback (26-01)
+- SEC-02: IP spoofing on rate limiter -> Fixed with trusted proxies (26-02)
 
 **Files modified:**
 - `middleware/rate_limit.go` - In-memory fallback, fail-closed, secure IP extraction
@@ -156,10 +159,10 @@ Next: 28-02-PLAN.md (Notification Service Integration)
 - `config/config.go` - TrustedProxies configuration
 
 **Production impact:**
-- ✅ Rate limiting now always enforced (fail-closed)
-- ✅ IP spoofing no longer possible (trusted proxies)
-- ✅ Safe defaults (no proxies = no trust)
-- ✅ Environment-configurable for proxy setups
+- Rate limiting now always enforced (fail-closed)
+- IP spoofing no longer possible (trusted proxies)
+- Safe defaults (no proxies = no trust)
+- Environment-configurable for proxy setups
 
 ### Phase 27 Summary (COMPLETE)
 
@@ -167,7 +170,7 @@ Next: 28-02-PLAN.md (Notification Service Integration)
 - 27-01: Test compilation diagnostics (research)
 - 27-02: Mock consolidation and interface fixes
 - 27-03: Store test migrations (sqlmock to pgxmock)
-- 27-04: Test compilation fixes (jwt.Parser.Parts, pagination, pgx v4→v5)
+- 27-04: Test compilation fixes (jwt.Parser.Parts, pagination, pgx v4->v5)
 - 27-05: Config package test fixes (ConnectionString field removal)
 - 27-06: Middleware types import fix
 - 27-07: Trip service mock consolidation
@@ -176,51 +179,11 @@ Next: 28-02-PLAN.md (Notification Service Integration)
 - 27-10: Store postgres test type updates (Trip, TripMembership, TripInvitation)
 
 **Test issues fixed:**
-- TEST-01: Duplicate MockUserService declarations → Consolidated to handlers/mocks_test.go
-- TEST-02: Incomplete Validator interface → Added ValidateAndGetClaims method
-- TEST-03: jwt.Parser.Parts() API change → Use strings.Split() directly
-- TEST-04: Pagination assertion mismatch → Fixed expected value
-- TEST-05: LocationHandler invalid field → Removed from Dependencies struct
-- TEST-06: pgx v4/v5 import mismatch → Updated to pgx v5
-- TEST-07: Missing types import in jwt_validator_test.go → Added import
-- TEST-08: Duplicate MockWeatherService/MockUserStore in trip service → Consolidated to mocks_test.go
-- TEST-09: pgxmock ExpectStat/ExpectConfig undefined → Removed calls, skip tests
-- TEST-10: Trip struct IsDeleted → DeletedAt type mismatch
-- TEST-11: TripMembership JoinedAt → CreatedAt field name
-- TEST-12: TripInvitation Email/CreatedBy → InviteeEmail/InviterID field names
+- TEST-01 through TEST-12 all resolved
 
-**Files created:**
-- `handlers/mocks_test.go` - Canonical mock definitions
-- `models/trip/service/mocks_test.go` - Trip service mock definitions
-- `internal/auth/jwt_test.go` - JWT generation/validation tests
-- `internal/auth/config_validator_test.go` - Auth config validation tests
-- `internal/notification/client_test.go` - Notification client tests
-- `internal/store/postgres/user_store_mock_test.go` - User store tests
+### Phase 28 Summary (COMPLETE)
 
-**Files modified:**
-- `handlers/user_handler_test.go` - Removed duplicate mocks
-- `handlers/trip_handler_test.go` - Removed duplicate mocks
-- `middleware/auth_test.go` - Complete Validator implementation
-- `middleware/jwt_validator_test.go` - Complete Validator implementation, added types import
-- `tests/integration/invitation_integration_test.go` - Fixed Dependencies struct
-- `services/health_service_test.go` - Removed nonexistent pgxmock API calls, skip unmockable tests
-- `services/notification_facade_service_test.go` - Fixed imports (time, require)
-- `store/postgres/trip_store_pg_mock_test.go` - Updated type definitions, added setupMockDB
-
-**Packages fixed:**
-- `internal/auth` - Compiles without jwt.Parser.Parts errors
-- `tests/integration` - Compiles without invalid field references
-- `internal/notification` - Passes pagination test assertions
-- `internal/store/postgres` - Uses pgx v5 imports consistently
-- `middleware` - Compiles without undefined types errors
-- `models/trip/service` - Compiles without redeclaration errors
-- `config` - Compiles without ConnectionString field references
-- `services` - Compiles without pgxmock API errors
-- `store/postgres` - Compiles with current type definitions
-
-### Phase 28 Summary (IN PROGRESS)
-
-**28-01: Worker Pool Foundation (COMPLETE)**
+**28-01: Worker Pool Foundation**
 
 Created generic worker pool with bounded concurrency:
 - `services/notification_worker_pool.go` (250 lines)
@@ -239,10 +202,22 @@ Created generic worker pool with bounded concurrency:
 - `notification_worker_pool_errors_total` (Counter)
 - `notification_worker_pool_job_duration_seconds` (Histogram)
 
-**Next plans:**
-- 28-02: Notification Service Integration
-- 28-03: Graceful Shutdown Integration
+**28-02: Notification Service Integration**
+
+Integrated worker pool into NotificationFacadeService:
+- `services/notification_facade_service.go` - Added workerPool field, refactored async methods
+- `main.go` - Worker pool lifecycle management, shutdown ordering
+
+**Security vulnerabilities closed:**
+- SEC-03: Unbounded goroutines -> Bounded worker pool with queue
+- SEC-04: Background tasks not tracked -> WaitGroup and graceful shutdown
+
+**Shutdown sequence:**
+1. Notification worker pool (drain pending jobs)
+2. WebSocket hub (close client connections)
+3. Event service (stop Redis subscriptions)
+4. HTTP server (stop accepting requests)
 
 ---
 
-*Last updated: 2026-02-04 (Plan 28-01 complete)*
+*Last updated: 2026-02-04 (Phase 28 complete)*
