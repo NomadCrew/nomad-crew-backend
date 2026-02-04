@@ -3,7 +3,6 @@ package middleware
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -251,23 +250,10 @@ func AuthRateLimiterWithFallback(
 }
 
 // getClientIP extracts the real client IP from the request.
-// It checks X-Forwarded-For and X-Real-IP headers first (for proxies/load balancers),
-// then falls back to RemoteAddr.
+// SECURITY: Uses Gin's built-in ClientIP() which:
+// 1. Only parses X-Forwarded-For/X-Real-IP if RemoteAddr is from a trusted proxy
+// 2. Falls back to RemoteAddr if the request is not from a trusted proxy
+// 3. Trusted proxies are configured via r.SetTrustedProxies() in router setup
 func getClientIP(c *gin.Context) string {
-	// Check X-Forwarded-For header (can contain multiple IPs)
-	if forwarded := c.GetHeader("X-Forwarded-For"); forwarded != "" {
-		// Take the first IP in the chain
-		ips := strings.Split(forwarded, ",")
-		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
-		}
-	}
-
-	// Check X-Real-IP header
-	if realIP := c.GetHeader("X-Real-IP"); realIP != "" {
-		return realIP
-	}
-
-	// Fall back to RemoteAddr
 	return c.ClientIP()
 }
