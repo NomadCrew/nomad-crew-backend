@@ -9,12 +9,12 @@
 
 ## Current Position
 
-Phase: 27 of 31 (Test Suite Repair)
-Plan: 10 of 10 (COMPLETE)
-Status: Phase complete
-Last activity: 2026-02-04 - Completed 27-10-PLAN.md (Store Postgres Test Type Updates)
+Phase: 28 of 31 (Goroutine Management)
+Plan: 1 of 3 (Worker Pool Foundation)
+Status: In progress
+Last activity: 2026-02-04 - Completed 28-01-PLAN.md (Worker Pool Foundation)
 
-Progress: [██████====----------] 60% (3.6/6 v1.3 phases)
+Progress: [███████===----------] 63% (3.8/6 v1.3 phases)
 
 ## Progress
 
@@ -33,7 +33,7 @@ Progress: [██████====----------] 60% (3.6/6 v1.3 phases)
 |-------|------|--------------|--------|
 | 26 | Critical Security Fixes | SEC-01, SEC-02 | ✅ Complete (2/2 plans) |
 | 27 | Test Suite Repair | TEST-01 to TEST-05 | ✅ Complete (10/10 plans) |
-| 28 | Goroutine Management | SEC-03, SEC-04 | Not started |
+| 28 | Goroutine Management | SEC-03, SEC-04 | In progress (1/3 plans) |
 | 29 | Simulator Bypass Hardening | SEC-05 | Not started |
 | 30 | Dependency Migrations | DEP-01 to DEP-04 | Not started |
 | 31 | Developer Experience | DEVX-01 to DEVX-06 | Not started |
@@ -79,6 +79,8 @@ None currently.
 | 2026-02-04 | Skip pgxpool.Pool tests with t.Skip() | pgxpool.Stat cannot be mocked (internal nil pointers), need integration tests |
 | 2026-02-04 | Use DeletedAt *time.Time for soft delete | Trip uses nullable timestamp instead of boolean is_deleted |
 | 2026-02-04 | TripInvitation: InviteeEmail/InviterID naming | Canonical field names per types/invitation.go |
+| 2026-02-04 | Singleton metrics pattern for worker pool | sync.Once prevents double registration in tests, follows redis_publisher.go |
+| 2026-02-04 | Drop-newest for queue overflow | Simpler than drop-oldest, non-blocking submit |
 
 ## v1.3 Research Summary
 
@@ -130,9 +132,9 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed Phase 27 (Test Suite Repair)
+Stopped at: Completed 28-01-PLAN.md (Worker Pool Foundation)
 Resume file: None
-Next: Phase 28 (Goroutine Management)
+Next: 28-02-PLAN.md (Notification Service Integration)
 
 ### Research Documents
 
@@ -216,6 +218,31 @@ Next: Phase 28 (Goroutine Management)
 - `services` - Compiles without pgxmock API errors
 - `store/postgres` - Compiles with current type definitions
 
+### Phase 28 Summary (IN PROGRESS)
+
+**28-01: Worker Pool Foundation (COMPLETE)**
+
+Created generic worker pool with bounded concurrency:
+- `services/notification_worker_pool.go` (250 lines)
+- `services/notification_worker_pool_test.go` (256 lines, 7 tests)
+- `config/config.go` - Added WorkerPoolConfig
+
+**Exports:**
+- `WorkerPool`, `Job`, `NewWorkerPool`
+- Methods: `Start()`, `Submit()`, `Shutdown()`, `QueueDepth()`, `IsRunning()`
+
+**Prometheus metrics:**
+- `notification_worker_pool_queue_depth` (Gauge)
+- `notification_worker_pool_active_workers` (Gauge)
+- `notification_worker_pool_completed_jobs_total` (Counter)
+- `notification_worker_pool_dropped_jobs_total` (Counter)
+- `notification_worker_pool_errors_total` (Counter)
+- `notification_worker_pool_job_duration_seconds` (Histogram)
+
+**Next plans:**
+- 28-02: Notification Service Integration
+- 28-03: Graceful Shutdown Integration
+
 ---
 
-*Last updated: 2026-02-04 (Phase 27 complete)*
+*Last updated: 2026-02-04 (Plan 28-01 complete)*
