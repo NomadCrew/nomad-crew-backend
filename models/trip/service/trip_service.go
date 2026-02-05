@@ -62,7 +62,7 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	err = events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
-		EventTypeTripCreated,
+		string(types.EventTypeTripCreated), // Use canonical event type
 		trip.ID,
 		createdByUserID,
 		map[string]interface{}{
@@ -372,7 +372,7 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 	err = events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
-		EventTypeTripUpdated,
+		string(types.EventTypeTripUpdated), // Use canonical event type
 		id,
 		userID, // Use the authenticated user ID
 		map[string]interface{}{
@@ -429,7 +429,7 @@ func (s *TripManagementService) DeleteTrip(ctx context.Context, id string) error
 	err = events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
-		EventTypeTripDeleted,
+		string(types.EventTypeTripDeleted), // Use canonical event type
 		id,
 		userID,
 		map[string]interface{}{

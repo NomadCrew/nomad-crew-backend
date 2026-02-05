@@ -65,7 +65,7 @@ func (s *TripMemberService) AddMember(ctx context.Context, membership *types.Tri
 	}
 
 	// Publish event for member added
-	s.publishEvent(ctx, EventTypeMemberAdded, membership.TripID, membership.UserID, map[string]interface{}{
+	s.publishEvent(ctx, string(types.EventTypeMemberAdded), membership.TripID, membership.UserID, map[string]interface{}{
 		"role": membership.Role,
 	})
 
@@ -125,7 +125,7 @@ func (s *TripMemberService) UpdateMemberRole(ctx context.Context, tripID, member
 	}
 
 	// Publish event for role change
-	s.publishEvent(ctx, EventTypeMemberRoleChanged, tripID, memberID, map[string]interface{}{
+	s.publishEvent(ctx, string(types.EventTypeMemberRoleUpdated), tripID, memberID, map[string]interface{}{
 		"old_role": oldRole,
 		"new_role": newRole,
 	})
@@ -173,7 +173,7 @@ func (s *TripMemberService) RemoveMember(ctx context.Context, tripID, userID str
 	}
 
 	// Publish event for member removed
-	s.publishEvent(ctx, EventTypeMemberRemoved, tripID, userID, nil)
+	s.publishEvent(ctx, string(types.EventTypeMemberRemoved), tripID, userID, nil)
 
 	return nil
 }

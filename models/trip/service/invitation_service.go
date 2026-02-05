@@ -13,13 +13,6 @@ import (
 	"github.com/supabase-community/supabase-go"
 )
 
-// Event topic for invitations
-/*
-const (
-	EventTopicInvitation = "invitations"
-)
-*/
-
 // InvitationService handles trip invitation operations
 type InvitationService struct {
 	store          store.TripStore
@@ -80,7 +73,7 @@ func (s *InvitationService) CreateInvitation(ctx context.Context, invitation *ty
 	err = events.PublishEventWithContext(
 		s.eventPublisher,
 		ctx,
-		EventTypeInvitationCreated, // Corrected event type from events.go
+		string(types.EventTypeInvitationCreated), // Use canonical event type from types/events.go
 		invitation.TripID,
 		invitation.InviterID,
 		map[string]interface{}{
