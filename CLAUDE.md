@@ -220,3 +220,26 @@ docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -d postgres < /
 ```bash
 docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "\dt"
 ```
+
+## Push Notifications
+
+Push notifications are sent via Expo Push API → APNs (iOS) / FCM (Android).
+
+### Key Files
+- `services/push_service.go` - Expo Push API client
+- `models/notification/service/notification_service.go` - Notification creation & push triggering
+
+### Debugging Push Failures
+1. Check logs for ticket ID: `Push notification ticket successful {"ticketId": "..."}`
+2. Query Expo receipt API:
+   ```bash
+   curl -X POST https://exp.host/--/api/v2/push/getReceipts \
+     -H "Content-Type: application/json" \
+     -d '{"ids": ["<TICKET_ID>"]}'
+   ```
+3. `{"status": "ok"}` = delivered; `{"status": "error", ...}` = check error details
+
+### iOS APNs Configuration
+- APNs keys (.p8 files) are configured in Expo, NOT in the backend
+- **Full setup guide:** See `nomad-crew-frontend/docs/PUSH_NOTIFICATIONS_SETUP.md`
+- Common errors: `InvalidProviderToken`, `BadEnvironmentKeyInToken` → usually need new APNs key
