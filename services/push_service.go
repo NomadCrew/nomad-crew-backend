@@ -241,9 +241,14 @@ func (s *expoPushService) sendBatch(ctx context.Context, messages []ExpoMessage)
 	// Parse response to check for individual ticket errors
 	var expoResp ExpoResponse
 	if err := json.Unmarshal(respBody, &expoResp); err != nil {
-		s.logger.Warn("Failed to parse Expo response", zap.Error(err))
+		s.logger.Warn("Failed to parse Expo response", zap.Error(err), zap.String("responseBody", string(respBody)))
 		return nil // Don't fail if we can't parse, the push was likely successful
 	}
+
+	// Log the raw Expo response for debugging
+	s.logger.Info("Expo push response received",
+		zap.Int("ticketCount", len(expoResp.Data)),
+		zap.Int("messageCount", len(messages)))
 
 	// Process tickets to handle errors
 	s.processTickets(ctx, messages, expoResp.Data)
@@ -258,11 +263,18 @@ func (s *expoPushService) processTickets(ctx context.Context, messages []ExpoMes
 			break
 		}
 
+		token := messages[i].To
+
 		if ticket.Status == "error" {
-			token := messages[i].To
+			errorDetails := ""
+			if ticket.Details != nil {
+				errorDetails = ticket.Details.Error
+			}
 			s.logger.Warn("Push notification failed",
 				zap.String("token", s.maskToken(token)),
-				zap.String("error", ticket.Message))
+				zap.String("status", ticket.Status),
+				zap.String("message", ticket.Message),
+				zap.String("errorDetails", errorDetails))
 
 			// If the device is not registered, invalidate the token
 			if ticket.Details != nil && ticket.Details.Error == "DeviceNotRegistered" {
@@ -272,11 +284,21 @@ func (s *expoPushService) processTickets(ctx context.Context, messages []ExpoMes
 				}
 			}
 		} else if ticket.Status == "ok" {
+			// Log successful ticket for debugging
+			s.logger.Info("Push notification ticket successful",
+				zap.String("token", s.maskToken(token)),
+				zap.String("ticketId", ticket.ID))
+
 			// Update last used timestamp for successful sends
-			token := messages[i].To
 			if err := s.pushTokenStore.UpdateTokenLastUsed(ctx, token); err != nil {
 				s.logger.Warn("Failed to update token last used", zap.Error(err))
 			}
+		} else {
+			// Log unexpected status
+			s.logger.Warn("Unexpected push ticket status",
+				zap.String("token", s.maskToken(token)),
+				zap.String("status", ticket.Status),
+				zap.String("message", ticket.Message))
 		}
 	}
 }
