@@ -106,28 +106,36 @@ func LogError(ctx context.Context, err error, message string, metadata map[strin
 	log.Desugar().Error(message, fields...)
 }
 
-// LogHTTPError logs an HTTP request error with context from a gin.Context
+// LogHTTPError logs an HTTP request error with context from a gin.Context.
+// Uses WARN level for 4xx client errors and ERROR level for 5xx server errors.
 func LogHTTPError(c *gin.Context, err error, statusCode int, message string) {
+	log := GetLogger()
+
 	userID, _ := c.Get("userID")
 	requestID, _ := c.Get("request_id")
 
-	metadata := map[string]interface{}{
-		"status_code": statusCode,
-		"path":        c.Request.URL.Path,
-		"method":      c.Request.Method,
-		"client_ip":   c.ClientIP(),
-		"headers":     filterSensitiveHeaders(c.Request.Header),
+	fields := []zap.Field{
+		zap.Error(err),
+		zap.Int("status_code", statusCode),
+		zap.String("path", c.Request.URL.Path),
+		zap.String("method", c.Request.Method),
+		zap.String("client_ip", c.ClientIP()),
 	}
 
 	if userID != nil {
-		metadata["user_id"] = userID
+		fields = append(fields, zap.Any("user_id", userID))
 	}
 
 	if requestID != nil {
-		metadata["request_id"] = requestID
+		fields = append(fields, zap.Any("request_id", requestID))
 	}
 
-	LogError(c, err, message, metadata)
+	// 4xx = client error (WARN), 5xx = server error (ERROR)
+	if statusCode >= 500 {
+		log.Desugar().Error(message, fields...)
+	} else {
+		log.Desugar().Warn(message, fields...)
+	}
 }
 
 // getErrorType extracts a clean type name from an error

@@ -125,9 +125,7 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 		// Step 1: Extract Token
 		token, err := extractToken(c)
 		if err != nil {
-			// Pass through the original error from extractToken which already has the correct message and status
-			log.Warnw("Authentication failed: Token extraction error", "error", err, "path", requestPath)
-			_ = c.Error(err) // Pass the original error with its specific message
+			_ = c.Error(err)
 			c.Abort()
 			return
 		}
@@ -135,8 +133,6 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 		// Step 2: Validate Token and extract claims (including admin status)
 		claims, err := validator.ValidateAndGetClaims(token)
 		if err != nil {
-			// Determine appropriate error response based on validation error type
-			log.Warnw("Authentication failed: Token validation error", "error", err, "path", requestPath)
 
 			if stderrors.Is(err, auth.ErrTokenExpired) {
 				_ = c.Error(apperrors.Unauthorized("token_expired", "Invalid or expired token"))
@@ -171,10 +167,9 @@ func AuthMiddleware(validator Validator, userResolver UserResolver) gin.HandlerF
 
 		// Step 5: Store User Information in Context (single-ID era)
 		// In the new schema user.ID === supabaseUserID; we no longer generate a second identifier.
-		log.Infow("Authentication successful",
+		log.Debugw("Authentication successful",
 			"supabaseUserID", supabaseUserID,
 			"username", user.Username,
-			"isAdmin", claims.IsAdmin,
 			"path", requestPath)
 
 		// Store in Gin context

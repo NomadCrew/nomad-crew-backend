@@ -73,9 +73,7 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	for _, field := range requiredFields {
 		if _, ok := data.TemplateData[field]; !ok {
 			s.metrics.errorCount.Inc()
-			err := fmt.Errorf("missing required template field: %s", field)
-			log.Errorw("Invalid template data", "error", err)
-			return err
+			return fmt.Errorf("missing required template field: %s", field)
 		}
 	}
 
@@ -83,14 +81,12 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	tmpl, err := template.New("invitation").Parse(invitationEmailTemplate)
 	if err != nil {
 		s.metrics.errorCount.Inc()
-		log.Errorw("Failed to parse email template", "error", err)
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
 	var htmlContent bytes.Buffer
 	if err := tmpl.Execute(&htmlContent, data.TemplateData); err != nil {
 		s.metrics.errorCount.Inc()
-		log.Errorw("Failed to execute email template", "error", err)
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
 
@@ -106,10 +102,6 @@ func (s *EmailService) SendInvitationEmail(ctx context.Context, data types.Email
 	_, err = s.client.Emails.Send(params)
 	if err != nil {
 		s.metrics.errorCount.Inc()
-		log.Errorw("Failed to send email",
-			"error", err,
-			"to", data.To,
-			"subject", data.Subject)
 		return fmt.Errorf("email send failed: %w", err)
 	}
 

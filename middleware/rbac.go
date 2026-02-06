@@ -39,19 +39,12 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 		)
 
 		if tripID == "" {
-			log.Warnw("Unauthorized: Missing trip ID", "tripID", tripID)
 			_ = c.Error(apperrors.ValidationFailed("missing_trip_id", "Trip ID is required"))
 			c.Abort()
 			return
 		}
 
 		if userID == "" {
-			log.Warnw("Unauthorized: Missing user ID",
-				"tripID", tripID,
-				"userID", userID,
-				"authHeader", c.GetHeader("Authorization"),
-				"contextKeys", c.Keys,
-			)
 			_ = c.Error(apperrors.Unauthorized("missing_user_id", "Authentication required"))
 			c.Abort()
 			return
@@ -60,11 +53,6 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 		// Fetch user role
 		role, err := tripModel.GetUserRole(c.Request.Context(), tripID, userID)
 		if err != nil {
-			log.Warnw("Failed to get user role",
-				"tripID", tripID,
-				"userID", userID,
-				"error", err,
-			)
 			_ = c.Error(apperrors.Forbidden("not_trip_member", "You are not a member of this trip"))
 			c.Abort()
 			return
@@ -72,12 +60,6 @@ func RequireRole(tripModel tripinterfaces.TripModelInterface, requiredRole types
 
 		// Check if role has sufficient permissions
 		if !role.IsAuthorizedFor(requiredRole) {
-			log.Warnw("Permission denied",
-				"tripID", tripID,
-				"userID", userID,
-				"userRole", role,
-				"requiredRole", requiredRole,
-			)
 			_ = c.Error(apperrors.Forbidden("insufficient_permissions", "You don't have permission to perform this action"))
 			c.Abort()
 			return
@@ -128,21 +110,12 @@ func RequirePermission(
 
 		// Validate required context
 		if tripID == "" {
-			log.Warnw("Permission denied: Missing trip ID",
-				"action", action,
-				"resource", resource,
-			)
 			_ = c.Error(apperrors.ValidationFailed("missing_trip_id", "Trip ID is required"))
 			c.Abort()
 			return
 		}
 
 		if userID == "" {
-			log.Warnw("Permission denied: Missing user ID",
-				"tripID", tripID,
-				"action", action,
-				"resource", resource,
-			)
 			_ = c.Error(apperrors.Unauthorized("missing_user_id", "Authentication required"))
 			c.Abort()
 			return
@@ -151,11 +124,6 @@ func RequirePermission(
 		// Fetch user role in this trip
 		role, err := tripModel.GetUserRole(c.Request.Context(), tripID, userID)
 		if err != nil {
-			log.Warnw("Permission denied: Failed to get user role",
-				"tripID", tripID,
-				"userID", userID,
-				"error", err,
-			)
 			_ = c.Error(apperrors.Forbidden("not_trip_member", "You are not a member of this trip"))
 			c.Abort()
 			return
@@ -176,22 +144,6 @@ func RequirePermission(
 		allowed := types.CanPerformWithOwnership(role, action, resource, isOwner)
 
 		if !allowed {
-			minRole := types.GetMinRoleForAction(resource, action)
-			minRoleStr := "N/A"
-			if minRole != nil {
-				minRoleStr = string(*minRole)
-			}
-
-			log.Warnw("Permission denied",
-				"tripID", tripID,
-				"userID", userID,
-				"userRole", role,
-				"action", action,
-				"resource", resource,
-				"isOwner", isOwner,
-				"requiredRole", minRoleStr,
-			)
-
 			_ = c.Error(apperrors.Forbidden("insufficient_permissions", "You don't have permission to perform this action"))
 			c.Abort()
 			return

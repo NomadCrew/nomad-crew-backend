@@ -206,14 +206,10 @@ func (s *ChatServiceImpl) CreateGroup(ctx context.Context, tripID, groupName, cr
 	// Verify user can create a group for this trip
 	role, err := s.tripStore.GetUserRole(ctx, tripID, createdByUserID)
 	if err != nil {
-		// Simplified error check: if GetUserRole returns any error, assume user is not a member or not authorized.
-		// This can be refined once the custom error structure (apperrors.Error, apperrors.ErrorCodeNotFound) is confirmed.
 		var specificError *apperrors.AppError
 		if errors.As(err, &specificError) && specificError.Type == apperrors.NotFoundError {
-			s.log.Warnw("User not found or not an active member during group creation", "tripID", tripID, "userID", createdByUserID, "error", err)
 			return nil, fmt.Errorf("user is not an active member of this trip or trip does not exist")
 		}
-		s.log.Errorw("Error checking trip membership during group creation", "tripID", tripID, "userID", createdByUserID, "error", err)
 		return nil, fmt.Errorf("permission denied or error checking trip membership: %w", err)
 	}
 
@@ -221,7 +217,6 @@ func (s *ChatServiceImpl) CreateGroup(ctx context.Context, tripID, groupName, cr
 	// Check if the user's role is sufficient to create a group.
 	// For example, allow only ADMIN or OWNER.
 	if !(role == types.MemberRoleOwner || role == types.MemberRoleAdmin) { // Example: Only Owner or Admin can create.
-		s.log.Warnw("User does not have permission to create group", "tripID", tripID, "userID", createdByUserID, "userRole", role)
 		return nil, fmt.Errorf("user (role: %s) does not have sufficient permission to create a group", role)
 	}
 
@@ -234,22 +229,18 @@ func (s *ChatServiceImpl) CreateGroup(ctx context.Context, tripID, groupName, cr
 
 	groupID, err := s.chatStore.CreateChatGroup(ctx, group)
 	if err != nil {
-		s.log.Errorw("Failed to create chat group in store", "tripID", tripID, "groupName", groupName, "error", err)
 		return nil, fmt.Errorf("error creating chat group: %w", err)
 	}
 
 	// Add the creator as a member
 	err = s.chatStore.AddChatGroupMember(ctx, groupID, createdByUserID)
 	if err != nil {
-		s.log.Errorw("Failed to add creator to chat group", "groupID", groupID, "userID", createdByUserID, "error", err)
-		// Potentially rollback group creation or handle inconsistency
 		return nil, fmt.Errorf("error adding creator to chat group: %w", err)
 	}
 
 	// Get the created group
 	createdGroup, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
-		s.log.Errorw("Failed to retrieve created chat group", "groupID", groupID, "error", err)
 		return nil, fmt.Errorf("error retrieving created chat group: %w", err)
 	}
 
@@ -261,8 +252,7 @@ func (s *ChatServiceImpl) GetGroup(ctx context.Context, groupID, requestingUserI
 	// Get the group
 	group, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
-		s.log.Errorw("Failed to get chat group from store", "groupID", groupID, "error", err)
-		return nil, fmt.Errorf("error getting chat group: %w", err) // Or apperrors.NotFound if applicable
+		return nil, fmt.Errorf("error getting chat group: %w", err)
 	}
 
 	// Verify the user making the request is part of the trip
@@ -270,10 +260,8 @@ func (s *ChatServiceImpl) GetGroup(ctx context.Context, groupID, requestingUserI
 	if err != nil {
 		var specificError *apperrors.AppError
 		if errors.As(err, &specificError) && specificError.Type == apperrors.NotFoundError {
-			s.log.Warnw("User not found or not an active member during get group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
 			return nil, fmt.Errorf("user is not an active member of this trip or trip does not exist")
 		}
-		s.log.Errorw("Error checking trip membership during get group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
 		return nil, fmt.Errorf("permission denied or error checking trip membership: %w", err)
 	}
 
@@ -289,7 +277,6 @@ func (s *ChatServiceImpl) UpdateGroup(ctx context.Context, groupID, requestingUs
 	// Get the group to find its TripID
 	group, err := s.chatStore.GetChatGroup(ctx, groupID)
 	if err != nil {
-		s.log.Errorw("Failed to get chat group for update", "groupID", groupID, "error", err)
 		return nil, fmt.Errorf("error finding group to update: %w", err)
 	}
 
@@ -298,22 +285,18 @@ func (s *ChatServiceImpl) UpdateGroup(ctx context.Context, groupID, requestingUs
 	if err != nil {
 		var specificError *apperrors.AppError
 		if errors.As(err, &specificError) && specificError.Type == apperrors.NotFoundError {
-			s.log.Warnw("User not found or not an active member during update group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
 			return nil, fmt.Errorf("user is not an active member of this trip or trip does not exist")
 		}
-		s.log.Errorw("Error checking trip membership during update group", "tripID", group.TripID, "userID", requestingUserID, "error", err)
 		return nil, fmt.Errorf("permission denied or error checking trip membership: %w", err)
 	}
 
 	if !(role == types.MemberRoleAdmin || role == types.MemberRoleOwner) {
-		s.log.Warnw("User does not have permission to update group", "groupID", groupID, "userID", requestingUserID, "userRole", role)
 		return nil, fmt.Errorf("user (role: %s) does not have permission to update this group", role)
 	}
 
 	// Perform the update
 	err = s.chatStore.UpdateChatGroup(ctx, groupID, updateReq)
 	if err != nil {
-		s.log.Errorw("Failed to update chat group in store", "groupID", groupID, "error", err)
 		return nil, fmt.Errorf("error updating chat group: %w", err)
 	}
 

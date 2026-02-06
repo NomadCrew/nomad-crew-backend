@@ -92,7 +92,6 @@ func (s *UserService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.Us
 	userIDStr := id.String()
 	typesUser, err := s.userStore.GetUserByID(ctx, userIDStr)
 	if err != nil {
-		log.Errorw("Failed to get user by ID from store", "error", err, "userID", userIDStr)
 		return nil, err
 	}
 
@@ -146,7 +145,6 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models
 
 	typesUser, err := s.userStore.GetUserByEmail(ctx, email)
 	if err != nil {
-		log.Errorw("Failed to get user by email from store", "error", err, "email", maskEmail(email))
 		return nil, err
 	}
 
@@ -156,7 +154,6 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models
 
 	userID, parseErr := uuid.Parse(typesUser.ID)
 	if parseErr != nil {
-		log.Errorw("Failed to parse user ID from types.User", "error", parseErr, "userIDStr", typesUser.ID)
 		return nil, fmt.Errorf("failed to parse user ID from store data: %w", parseErr)
 	}
 
@@ -190,7 +187,6 @@ func (s *UserService) GetUserBySupabaseID(ctx context.Context, supabaseID string
 
 	typesUser, err := s.userStore.GetUserBySupabaseID(ctx, supabaseID)
 	if err != nil {
-		log.Errorw("Failed to get user by Supabase ID from store", "error", err, "supabaseID", supabaseID)
 		// If not found, try to sync from Supabase (SyncWithSupabase returns *models.User)
 		if errors.Is(err, appstore.ErrNotFound) || (typesUser == nil && err.Error() == "user not found") { // Broaden check for not found
 			log.Infow("User not found locally by SupabaseID, syncing from Supabase", "supabaseID", supabaseID)
@@ -208,7 +204,6 @@ func (s *UserService) GetUserBySupabaseID(ctx context.Context, supabaseID string
 
 	userID, parseErr := uuid.Parse(typesUser.ID)
 	if parseErr != nil {
-		log.Errorw("Failed to parse user ID from types.User", "error", parseErr, "userIDStr", typesUser.ID)
 		return nil, fmt.Errorf("failed to parse user ID from store data: %w", parseErr)
 	}
 
@@ -295,14 +290,11 @@ func (s *UserService) CreateUser(ctx context.Context, user *models.User) (uuid.U
 
 	createdUserIDStr, err := s.userStore.CreateUser(ctx, typesUser)
 	if err != nil {
-		log.Errorw("Failed to create user in store", "error", err)
 		return uuid.Nil, err
 	}
 
 	createdUUID, parseErr := uuid.Parse(createdUserIDStr)
 	if parseErr != nil {
-		log.Errorw("Failed to parse created user ID string from store", "error", parseErr, "userIDStr", createdUserIDStr)
-		// This is problematic as user is created but we can't return proper ID
 		return uuid.Nil, fmt.Errorf("failed to parse created user ID from store: %w", parseErr)
 	}
 
@@ -359,7 +351,6 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, updates mode
 
 	updatedTypesUser, err := s.userStore.UpdateUser(ctx, userIDStr, updatesMap)
 	if err != nil {
-		log.Errorw("Failed to update user in store", "error", err, "userID", userIDStr)
 		return nil, err
 	}
 
@@ -448,8 +439,6 @@ func (s *UserService) ValidateUserUpdateRequest(update models.UserUpdateRequest)
 
 // UpdateUserProfile handles profile updates with authorization and validation
 func (s *UserService) UpdateUserProfile(ctx context.Context, id uuid.UUID, currentUserID uuid.UUID, isAdmin bool, updates models.UserUpdateRequest) (*models.User, error) {
-	log := logger.GetLogger()
-
 	// Authorization check - only allow users to update their own profile unless they're admin
 	if !isAdmin && currentUserID != id {
 		return nil, errors.New("Unauthorized: You can only update your own profile")
@@ -457,7 +446,6 @@ func (s *UserService) UpdateUserProfile(ctx context.Context, id uuid.UUID, curre
 
 	// Validate the update request
 	if err := s.ValidateUserUpdateRequest(updates); err != nil {
-		log.Errorw("Invalid user update request", "error", err, "userID", id)
 		return nil, err
 	}
 
@@ -489,7 +477,6 @@ func (s *UserService) ListUsers(ctx context.Context, offset, limit int) ([]*mode
 	// istore.UserStore.ListUsers returns []*types.User
 	typesUsers, total, err := s.userStore.ListUsers(ctx, offset, limit)
 	if err != nil {
-		log.Errorw("Failed to list users from store", "error", err, "offset", offset, "limit", limit)
 		return nil, 0, err
 	}
 
@@ -545,19 +532,16 @@ func (s *UserService) SyncWithSupabase(ctx context.Context, supabaseID string) (
 
 	typesUser, err := s.userStore.SyncUserFromSupabase(ctx, supabaseID)
 	if err != nil {
-		log.Errorw("Failed to sync user from Supabase via store", "error", err)
 		return nil, err
 	}
 
 	if typesUser == nil {
-		log.Error("User store returned nil user from SyncUserFromSupabase without error")
 		return nil, errors.New("failed to sync user from Supabase: store returned nil user")
 	}
 
 	// Convert *types.User to *models.User
 	userID, parseErr := uuid.Parse(typesUser.ID)
 	if parseErr != nil {
-		log.Errorw("Failed to parse user ID from synced types.User", "error", parseErr, "userIDStr", typesUser.ID)
 		return nil, fmt.Errorf("failed to parse synced user ID: %w", parseErr)
 	}
 
@@ -589,11 +573,8 @@ func (s *UserService) SyncWithSupabase(ctx context.Context, supabaseID string) (
 
 // GetUserProfile gets a user profile for API responses
 func (s *UserService) GetUserProfile(ctx context.Context, id uuid.UUID) (*types.UserProfile, error) {
-	log := logger.GetLogger()
-
 	user, err := s.GetUserByID(ctx, id)
 	if err != nil {
-		log.Errorw("Failed to get user profile", "error", err, "userID", id)
 		return nil, err
 	}
 
@@ -646,8 +627,6 @@ func (s *UserService) GetUserProfiles(ctx context.Context, ids []uuid.UUID) (map
 
 // UpdateLastSeen updates a user's last seen timestamp
 func (s *UserService) UpdateLastSeen(ctx context.Context, id uuid.UUID) error {
-	log := logger.GetLogger()
-
 	timestamp := time.Now()
 	updates := map[string]interface{}{
 		"lastSeenAt": timestamp,
@@ -655,18 +634,15 @@ func (s *UserService) UpdateLastSeen(ctx context.Context, id uuid.UUID) error {
 
 	_, err := s.userStore.UpdateUser(ctx, id.String(), updates)
 	if err != nil {
-		log.Errorw("Failed to update last seen", "error", err, "userID", id)
 		return err
 	}
 
-	log.Debugw("Updated user last seen timestamp", "userID", id, "timestamp", timestamp)
+	logger.GetLogger().Debugw("Updated user last seen timestamp", "userID", id, "timestamp", timestamp)
 	return nil
 }
 
 // SetOnlineStatus sets a user's online status
 func (s *UserService) SetOnlineStatus(ctx context.Context, id uuid.UUID, isOnline bool) error {
-	log := logger.GetLogger()
-
 	updates := map[string]interface{}{
 		"isOnline": isOnline,
 	}
@@ -678,11 +654,10 @@ func (s *UserService) SetOnlineStatus(ctx context.Context, id uuid.UUID, isOnlin
 
 	_, err := s.userStore.UpdateUser(ctx, id.String(), updates)
 	if err != nil {
-		log.Errorw("Failed to set online status", "error", err, "userID", id, "isOnline", isOnline)
 		return err
 	}
 
-	log.Infow("Updated user online status", "userID", id, "isOnline", isOnline)
+	logger.GetLogger().Infow("Updated user online status", "userID", id, "isOnline", isOnline)
 	return nil
 }
 
@@ -693,7 +668,6 @@ func (s *UserService) UpdateUserPreferences(ctx context.Context, id uuid.UUID, p
 	// First, get the current user to ensure they exist
 	user, err := s.GetUserByID(ctx, id)
 	if err != nil {
-		log.Errorw("Failed to get user for preference update", "error", err, "userID", id)
 		return err
 	}
 
@@ -701,7 +675,7 @@ func (s *UserService) UpdateUserPreferences(ctx context.Context, id uuid.UUID, p
 	currentPreferences := make(map[string]interface{})
 	if len(user.Preferences) > 0 {
 		if err := json.Unmarshal([]byte(user.Preferences), &currentPreferences); err != nil {
-			log.Errorw("Failed to parse existing preferences", "error", err, "userID", id)
+			log.Warnw("Failed to parse existing preferences, starting fresh", "error", err, "userID", id)
 			// If we can't parse existing preferences, start fresh
 			currentPreferences = make(map[string]interface{})
 		}
@@ -720,7 +694,6 @@ func (s *UserService) UpdateUserPreferences(ctx context.Context, id uuid.UUID, p
 	// Convert back to JSON
 	preferencesJSON, err := json.Marshal(currentPreferences)
 	if err != nil {
-		log.Errorw("Failed to marshal preferences", "error", err, "userID", id)
 		return err
 	}
 
@@ -731,7 +704,6 @@ func (s *UserService) UpdateUserPreferences(ctx context.Context, id uuid.UUID, p
 
 	_, err = s.userStore.UpdateUser(ctx, id.String(), updates)
 	if err != nil {
-		log.Errorw("Failed to update preferences", "error", err, "userID", id)
 		return err
 	}
 
@@ -862,7 +834,6 @@ func (s *UserService) SearchUsers(ctx context.Context, query string, limit int) 
 
 	results, err := s.userStore.SearchUsers(ctx, query, limit)
 	if err != nil {
-		log.Errorw("Failed to search users", "query", query, "error", err)
 		return nil, fmt.Errorf("error searching users: %w", err)
 	}
 
@@ -885,7 +856,6 @@ func (s *UserService) UpdateContactEmail(ctx context.Context, userID uuid.UUID, 
 
 	err := s.userStore.UpdateContactEmail(ctx, userID.String(), email)
 	if err != nil {
-		log.Errorw("Failed to update contact email", "userID", userID, "error", err)
 		return fmt.Errorf("error updating contact email: %w", err)
 	}
 

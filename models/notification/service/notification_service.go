@@ -71,7 +71,6 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 	// 1. Marshal the specific metadata input to JSON
 	metadataJSON, err := json.Marshal(metadataInput)
 	if err != nil {
-		log.Error("Failed to marshal notification metadata", zap.Any("metadataInput", metadataInput), zap.Error(err))
 		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
@@ -87,7 +86,6 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 
 	// 3. Save the notification to the store
 	if err := s.notificationStore.Create(ctx, notification); err != nil {
-		log.Error("Failed to save notification to store", zap.Error(err))
 		return nil, fmt.Errorf("failed to save notification: %w", err)
 	}
 
@@ -317,7 +315,6 @@ func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.
 
 	notifications, err := s.notificationStore.GetByUser(ctx, userID, limit, offset, status)
 	if err != nil {
-		s.logger.Error("Failed to get notifications from store", zap.String("userID", userID.String()), zap.Error(err))
 		return nil, fmt.Errorf("failed to get notifications: %w", err)
 	}
 	return notifications, nil
@@ -327,11 +324,6 @@ func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.
 func (s *notificationService) MarkNotificationAsRead(ctx context.Context, userID, notificationID uuid.UUID) error {
 	err := s.notificationStore.MarkRead(ctx, notificationID, userID)
 	if err != nil {
-		s.logger.Error("Failed to mark notification as read",
-			zap.String("userID", userID.String()),
-			zap.String("notificationID", notificationID.String()),
-			zap.Error(err))
-
 		if errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -348,7 +340,6 @@ func (s *notificationService) MarkNotificationAsRead(ctx context.Context, userID
 func (s *notificationService) MarkAllNotificationsAsRead(ctx context.Context, userID uuid.UUID) (int64, error) {
 	affectedRows, err := s.notificationStore.MarkAllReadByUser(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to mark all notifications as read", zap.String("userID", userID.String()), zap.Error(err))
 		return 0, fmt.Errorf("failed to mark all notifications as read: %w", err)
 	}
 	s.logger.Info("All notifications marked as read", zap.String("userID", userID.String()), zap.Int64("affectedRows", affectedRows))
@@ -359,7 +350,6 @@ func (s *notificationService) MarkAllNotificationsAsRead(ctx context.Context, us
 func (s *notificationService) GetUnreadNotificationCount(ctx context.Context, userID uuid.UUID) (int64, error) {
 	count, err := s.notificationStore.GetUnreadCount(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get unread notification count", zap.String("userID", userID.String()), zap.Error(err))
 		return 0, fmt.Errorf("failed to get unread count: %w", err)
 	}
 	return count, nil
@@ -371,8 +361,6 @@ func (s *notificationService) DeleteNotification(ctx context.Context, userID, no
 
 	err := s.notificationStore.Delete(ctx, notificationID, userID)
 	if err != nil {
-		log.Error("Failed to delete notification from store", zap.Error(err))
-
 		// Propagate specific errors (NotFound, Forbidden) for the handler
 		if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden) {
 			return err
@@ -389,7 +377,6 @@ func (s *notificationService) DeleteNotification(ctx context.Context, userID, no
 func (s *notificationService) DeleteAllNotifications(ctx context.Context, userID uuid.UUID) (int64, error) {
 	deletedCount, err := s.notificationStore.DeleteAllByUser(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to delete all notifications", zap.String("userID", userID.String()), zap.Error(err))
 		return 0, fmt.Errorf("failed to delete all notifications: %w", err)
 	}
 	s.logger.Info("All notifications deleted", zap.String("userID", userID.String()), zap.Int64("deletedCount", deletedCount))

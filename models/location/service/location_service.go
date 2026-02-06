@@ -47,14 +47,12 @@ func (s *ManagementService) UpdateLocation(ctx context.Context, userID string, u
 	// Store the location in the database
 	location, err := s.store.UpdateLocation(ctx, userID, update) // Changed from s.locationDB
 	if err != nil {
-		log.Errorw("Failed to update location in database", "userID", userID, "error", err)
-		// Use apperrors for database error
 		return nil, apperrors.NewDatabaseError(err)
 	}
 
 	// Publish location update event
 	if err := s.publishLocationUpdateEvent(ctx, location); err != nil {
-		log.Errorw("Failed to publish location update event", "userID", userID, "error", err)
+		log.Warnw("Failed to publish location update event", "userID", userID, "error", err)
 		// Non-critical error, so we don't return it, just log
 	}
 
@@ -64,25 +62,19 @@ func (s *ManagementService) UpdateLocation(ctx context.Context, userID string, u
 // GetTripMemberLocations retrieves the latest locations for all members of a trip
 // Added userID parameter and permission check
 func (s *ManagementService) GetTripMemberLocations(ctx context.Context, tripID string, userID string) ([]types.MemberLocation, error) {
-	log := logger.GetLogger()
-
 	// Validate Permission: Check if the user is at least a member of the trip
 	_, err := s.store.GetUserRole(ctx, tripID, userID) // Assuming store has GetUserRole
 	if err != nil {
 		// Handle specific errors like NotFound
 		if appErr, ok := err.(*apperrors.AppError); ok && appErr.Type == apperrors.NotFoundError {
-			log.Warnw("Access denied for GetTripMemberLocations", "userID", userID, "tripID", tripID)
 			return nil, apperrors.Forbidden("access_denied", "User is not a member of this trip or trip does not exist")
 		}
-		// Handle other potential errors (e.g., database connection)
-		log.Errorw("Failed to check user role for trip", "userID", userID, "tripID", tripID, "error", err)
 		return nil, apperrors.Wrap(err, apperrors.ServerError, "failed to get trip member locations")
 	}
 
 	// Fetch locations if permission check passes
 	locations, err := s.store.GetTripMemberLocations(ctx, tripID) // Changed from s.locationDB
 	if err != nil {
-		log.Errorw("Failed to get trip member locations from store", "tripID", tripID, "error", err)
 		return nil, apperrors.NewDatabaseError(err)
 	}
 	return locations, nil
@@ -128,19 +120,13 @@ func (s *ManagementService) validateLocationUpdate(update types.LocationUpdate) 
 
 // publishLocationUpdateEvent publishes a location update event using the centralized helper
 func (s *ManagementService) publishLocationUpdateEvent(ctx context.Context, location *types.Location) error {
-	log := logger.GetLogger()
-
 	// Convert location struct to map[string]interface{} for the payload
 	var payloadMap map[string]interface{}
 	locationJSON, err := json.Marshal(location)
 	if err != nil {
-		log.Errorw("Failed to marshal location data for event payload", "error", err, "userID", location.UserID)
-		// Use apperrors for marshalling error - ServerError seems appropriate
 		return apperrors.Wrap(err, apperrors.ServerError, "failed to marshal location data")
 	}
 	if err := json.Unmarshal(locationJSON, &payloadMap); err != nil {
-		log.Errorw("Failed to unmarshal location data into map for event payload", "error", err, "userID", location.UserID)
-		// Use apperrors for unmarshalling error - ServerError seems appropriate
 		return apperrors.Wrap(err, apperrors.ServerError, "failed to unmarshal location payload")
 	}
 
@@ -154,8 +140,6 @@ func (s *ManagementService) publishLocationUpdateEvent(ctx context.Context, loca
 		payloadMap,
 		"location-management-service", // Updated service name
 	); pubErr != nil {
-		log.Warnw("Failed to publish location update event via helper", "error", pubErr, "userID", location.UserID)
-		// Wrap the publishing error as ServerError
 		return apperrors.Wrap(pubErr, apperrors.ServerError, "failed to publish location update event")
 	}
 

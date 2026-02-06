@@ -45,8 +45,6 @@ func NewTodoModel(store store.TodoStore, tripModel TripModelInterface, eventPubl
 // It validates the input, verifies trip membership, and uses the store to create the todo.
 // Returns the ID of the created todo and any error encountered.
 func (tm *TodoModel) CreateTodo(ctx context.Context, todo *types.Todo) (string, error) {
-	log := logger.GetLogger()
-
 	if err := validateTodo(todo); err != nil {
 		return "", err
 	}
@@ -59,10 +57,6 @@ func (tm *TodoModel) CreateTodo(ctx context.Context, todo *types.Todo) (string, 
 	// Correctly handle the returned ID and error
 	newTodoID, err := tm.store.CreateTodo(ctx, todo)
 	if err != nil {
-		log.Errorw("Failed to create todo",
-			"tripId", todo.TripID,
-			"error", err,
-		)
 		return "", errors.NewDatabaseError(err)
 	}
 	// Assign the ID back to the input object for the caller
@@ -104,8 +98,6 @@ func (tm *TodoModel) CreateTodoWithEvent(ctx context.Context, todo *types.Todo) 
 }
 
 func (tm *TodoModel) UpdateTodo(ctx context.Context, id string, userID string, update *types.TodoUpdate) error {
-	log := logger.GetLogger()
-
 	// Verify todo exists
 	todo, err := tm.store.GetTodo(ctx, id)
 	if err != nil {
@@ -133,11 +125,7 @@ func (tm *TodoModel) UpdateTodo(ctx context.Context, id string, userID string, u
 	// Correctly handle the returned Todo and error
 	updatedTodo, err := tm.store.UpdateTodo(ctx, id, update)
 	if err != nil {
-		log.Errorw("Failed to update todo",
-			"todoId", id,
-			"error", err,
-		)
-		return err // Propagate the error (might be AppError already)
+		return err
 	}
 
 	// Use the updatedTodo if needed

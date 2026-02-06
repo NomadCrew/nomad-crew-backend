@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"fmt"
-	"runtime/debug"
 	"strconv"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
@@ -19,9 +18,6 @@ type ErrorResponse struct {
 
 func ErrorHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Capture stack trace before Next() to preserve the full call stack
-		stackTrace := debug.Stack()
-
 		c.Next()
 
 		// Check if there are any errors
@@ -30,11 +26,10 @@ func ErrorHandler() gin.HandlerFunc {
 
 			// Basic metadata for all errors
 			metadata := map[string]interface{}{
-				"path":        c.Request.URL.Path,
-				"method":      c.Request.Method,
-				"client_ip":   c.ClientIP(),
-				"user_agent":  c.Request.UserAgent(),
-				"stack_trace": string(stackTrace),
+				"path":       c.Request.URL.Path,
+				"method":     c.Request.Method,
+				"client_ip":  c.ClientIP(),
+				"user_agent": c.Request.UserAgent(),
 			}
 
 			// Handle AppError
@@ -49,11 +44,7 @@ func ErrorHandler() gin.HandlerFunc {
 					metadata["error_detail"] = appError.Detail
 				}
 
-				// Auth errors are already logged at WARN level in auth middleware (auth.go:129/139)
-				// so skip the duplicate log here. Non-auth errors still get full logging.
-				if appError.Type != errors.AuthError {
-					logger.LogHTTPError(c, err, statusCode, fmt.Sprintf("%s error", appError.Type))
-				}
+				logger.LogHTTPError(c, err, statusCode, fmt.Sprintf("%s error", appError.Type))
 
 				// Create the response
 				response := map[string]interface{}{

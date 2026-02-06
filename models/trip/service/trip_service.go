@@ -79,9 +79,8 @@ func (s *TripManagementService) CreateTrip(ctx context.Context, trip *types.Trip
 	// Trigger weather update if the trip starts as active and has a valid destination
 	if trip.Status == types.TripStatusActive && s.shouldUpdateWeather(trip) {
 		if err := s.triggerWeatherUpdate(ctx, trip); err != nil {
-			log := logger.GetLogger()
-			log.Errorw("Failed to trigger weather update during trip creation", "error", err, "tripID", trip.ID)
-			// Decide if this error should be returned or just logged. For now, just logging.
+			logger.GetLogger().Warnw("Failed to trigger weather update during trip creation", "error", err, "tripID", trip.ID)
+			// Non-fatal: trip was created successfully, weather update is best-effort
 		}
 	}
 
@@ -284,11 +283,10 @@ func (s *TripManagementService) UpdateTrip(ctx context.Context, id string, userI
 
 	// If critical weather-related fields changed, or if trip became active, trigger weather update
 	if s.hasWeatherCriticalChanges(existingTrip, updatedTrip) && s.shouldUpdateWeather(updatedTrip) {
-		log := logger.GetLogger()
-		log.Debugw("Weather critical fields changed, triggering update", "tripID", id)
+		logger.GetLogger().Debugw("Weather critical fields changed, triggering update", "tripID", id)
 		if err := s.triggerWeatherUpdate(ctx, updatedTrip); err != nil {
-			log.Errorw("Failed to trigger weather update during trip update", "error", err, "tripID", id)
-			// Decide if this error should be returned or just logged. For now, just logging.
+			logger.GetLogger().Warnw("Failed to trigger weather update during trip update", "error", err, "tripID", id)
+			// Non-fatal: trip was updated successfully, weather update is best-effort
 		}
 	}
 
@@ -456,8 +454,6 @@ func (s *TripManagementService) SearchTrips(ctx context.Context, criteria types.
 
 // UpdateTripStatus updates the status of a trip
 func (s *TripManagementService) UpdateTripStatus(ctx context.Context, tripID, userID string, newStatus types.TripStatus) error {
-	log := logger.GetLogger()
-
 	// Validate Permission: Check if the user is an owner of the trip
 	role, err := s.store.GetUserRole(ctx, tripID, userID)
 	if err != nil {
@@ -487,15 +483,14 @@ func (s *TripManagementService) UpdateTripStatus(ctx context.Context, tripID, us
 	}
 	updatedTrip, err := s.store.UpdateTrip(ctx, tripID, update) // updatedTrip is now used
 	if err != nil {
-		log.Errorw("Failed to update trip status in store", "error", err, "tripID", tripID, "newStatus", newStatus)
 		return apperrors.NewDatabaseError(err)
 	}
 
 	// Trigger weather update if the trip becomes active and has a valid destination
 	if newStatus == types.TripStatusActive && s.shouldUpdateWeather(updatedTrip) {
 		if err := s.triggerWeatherUpdate(ctx, updatedTrip); err != nil {
-			log.Errorw("Failed to trigger weather update during status change to active", "error", err, "tripID", updatedTrip.ID)
-			// Decide if this error should be returned or just logged. For now, just logging.
+			logger.GetLogger().Warnw("Failed to trigger weather update during status change to active", "error", err, "tripID", updatedTrip.ID)
+			// Non-fatal: status was updated successfully, weather update is best-effort
 		}
 	}
 
@@ -547,13 +542,11 @@ func (s *TripManagementService) TriggerWeatherUpdate(ctx context.Context, tripID
 	// Use internal getter without permission checks
 	trip, err := s.getTripInternal(ctx, tripID)
 	if err != nil {
-		log.Errorw("Failed to get trip for weather trigger", "error", err, "tripID", tripID)
 		return err
 	}
 	if s.shouldUpdateWeather(trip) {
 		if err := s.triggerWeatherUpdate(ctx, trip); err != nil {
-			log.Errorw("Failed to manually trigger weather update", "error", err, "tripID", tripID)
-			return err // Propagate the error
+			return err
 		}
 		log.Infow("Manually triggered weather update", "tripID", tripID)
 		return nil
@@ -604,13 +597,10 @@ func (s *TripManagementService) triggerWeatherUpdate(ctx context.Context, trip *
 	if trip.DestinationLatitude != 0 || trip.DestinationLongitude != 0 {
 		log.Infow("Triggering immediate weather update for trip", "tripID", trip.ID, "lat", trip.DestinationLatitude, "lon", trip.DestinationLongitude)
 		if err := s.weatherSvc.TriggerImmediateUpdate(ctx, trip.ID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
-			log.Errorw("Failed to trigger weather update via weather service", "error", err, "tripID", trip.ID)
-			return err // Propagate error
+			return err
 		}
 	} else {
 		log.Warnw("Skipping weather update trigger due to invalid/missing destination coordinates", "tripID", trip.ID)
-		// Optionally return a specific error here if this case should be an error
-		// return apperrors.ValidationFailed("missing_destination_coords", "Cannot trigger weather update without destination coordinates.")
 	}
 	return nil
 }
@@ -636,10 +626,6 @@ func (s *TripManagementService) GetWeatherForTrip(ctx context.Context, tripID st
 
 	weatherInfo, err := s.weatherSvc.GetWeather(ctx, tripID)
 	if err != nil {
-		// Handle errors from the weather service (e.g., API error, not found in cache)
-		// Consider wrapping the error or returning specific AppErrors based on the error type
-		logger.GetLogger().Errorw("Failed to get weather from weather service", "error", err, "tripID", tripID)
-		// Use ServerError for dependency failures
 		return nil, apperrors.Wrap(err, apperrors.ServerError, "failed to retrieve weather information")
 	}
 
