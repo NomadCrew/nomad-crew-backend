@@ -5,7 +5,6 @@ import (
 	"runtime/debug"
 	"strconv"
 
-	"github.com/NomadCrew/nomad-crew-backend/config"
 	"github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/gin-gonic/gin"
@@ -28,7 +27,6 @@ func ErrorHandler() gin.HandlerFunc {
 		// Check if there are any errors
 		if len(c.Errors) > 0 {
 			err := c.Errors.Last().Err
-			log := logger.GetLogger()
 
 			// Basic metadata for all errors
 			metadata := map[string]interface{}{
@@ -51,24 +49,9 @@ func ErrorHandler() gin.HandlerFunc {
 					metadata["error_detail"] = appError.Detail
 				}
 
-				// Extra logging for auth errors
-				if appError.Type == errors.AuthError {
-					logger.LogHTTPError(c, err, statusCode, "Authentication error")
-
-					// Try to load config for environment checks
-					cfg, err := config.LoadConfig()
-					if err == nil {
-						log.Infow("Auth error environment check",
-							"SUPABASE_URL_SET", cfg.ExternalServices.SupabaseURL != "",
-							"SUPABASE_URL_LENGTH", len(cfg.ExternalServices.SupabaseURL),
-							"SUPABASE_ANON_KEY_SET", cfg.ExternalServices.SupabaseAnonKey != "",
-							"SUPABASE_ANON_KEY_LENGTH", len(cfg.ExternalServices.SupabaseAnonKey),
-							"SUPABASE_JWT_SECRET_SET", cfg.ExternalServices.SupabaseJWTSecret != "",
-							"SUPABASE_JWT_SECRET_LENGTH", len(cfg.ExternalServices.SupabaseJWTSecret))
-					} else {
-						log.Warnw("Failed to load config for environment check", "error", err)
-					}
-				} else {
+				// Auth errors are already logged at WARN level in auth middleware (auth.go:129/139)
+				// so skip the duplicate log here. Non-auth errors still get full logging.
+				if appError.Type != errors.AuthError {
 					logger.LogHTTPError(c, err, statusCode, fmt.Sprintf("%s error", appError.Type))
 				}
 
