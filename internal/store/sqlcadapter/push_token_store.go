@@ -37,7 +37,6 @@ func (s *sqlcPushTokenStore) RegisterToken(ctx context.Context, userID, token, d
 		DeviceType: deviceType,
 	})
 	if err != nil {
-		log.Errorw("Failed to register push token", "error", err, "userID", userID)
 		return nil, fmt.Errorf("failed to register push token: %w", err)
 	}
 
@@ -55,7 +54,6 @@ func (s *sqlcPushTokenStore) DeactivateToken(ctx context.Context, userID, token 
 		Token:  token,
 	})
 	if err != nil {
-		log.Errorw("Failed to deactivate push token", "error", err, "userID", userID)
 		return fmt.Errorf("failed to deactivate push token: %w", err)
 	}
 
@@ -69,7 +67,6 @@ func (s *sqlcPushTokenStore) DeactivateAllUserTokens(ctx context.Context, userID
 
 	err := s.queries.DeactivateAllUserTokens(ctx, userID)
 	if err != nil {
-		log.Errorw("Failed to deactivate all user tokens", "error", err, "userID", userID)
 		return fmt.Errorf("failed to deactivate all user tokens: %w", err)
 	}
 
@@ -79,11 +76,8 @@ func (s *sqlcPushTokenStore) DeactivateAllUserTokens(ctx context.Context, userID
 
 // GetActiveTokensForUser retrieves all active push tokens for a user
 func (s *sqlcPushTokenStore) GetActiveTokensForUser(ctx context.Context, userID string) ([]*types.PushToken, error) {
-	log := logger.GetLogger()
-
 	tokens, err := s.queries.GetActiveTokensForUser(ctx, userID)
 	if err != nil {
-		log.Errorw("Failed to get active tokens for user", "error", err, "userID", userID)
 		return nil, fmt.Errorf("failed to get active tokens: %w", err)
 	}
 
@@ -97,11 +91,8 @@ func (s *sqlcPushTokenStore) GetActiveTokensForUser(ctx context.Context, userID 
 
 // GetActiveTokensForUsers retrieves all active push tokens for multiple users
 func (s *sqlcPushTokenStore) GetActiveTokensForUsers(ctx context.Context, userIDs []string) ([]*types.PushToken, error) {
-	log := logger.GetLogger()
-
 	tokens, err := s.queries.GetActiveTokensForUsers(ctx, userIDs)
 	if err != nil {
-		log.Errorw("Failed to get active tokens for users", "error", err, "userCount", len(userIDs))
 		return nil, fmt.Errorf("failed to get active tokens for users: %w", err)
 	}
 
@@ -119,7 +110,6 @@ func (s *sqlcPushTokenStore) InvalidateToken(ctx context.Context, token string) 
 
 	err := s.queries.InvalidateToken(ctx, token)
 	if err != nil {
-		log.Errorw("Failed to invalidate push token", "error", err)
 		return fmt.Errorf("failed to invalidate push token: %w", err)
 	}
 

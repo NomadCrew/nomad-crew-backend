@@ -238,8 +238,6 @@ func getUserIDFromContext(c *gin.Context) string {
 // Returns true if binding succeeded, false if error was set (caller should return).
 func bindJSONOrError(c *gin.Context, obj interface{}) bool {
 	if err := c.ShouldBindJSON(obj); err != nil {
-		log := logger.GetLogger()
-		log.Errorw("Invalid request payload", "error", err)
 		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
 		return false
 	}
@@ -506,7 +504,6 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // @Router /trips/{id}/weather/trigger [post]
 // @Security BearerAuth
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
 	userID := getUserIDFromContext(c)
 
@@ -517,19 +514,16 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	}
 
 	if trip.DestinationLatitude == 0 && trip.DestinationLongitude == 0 {
-		log.Warnw("Cannot trigger weather update, trip has no destination", "tripID", tripID)
 		_ = c.Error(apperrors.Forbidden("no_destination", "Trip has no destination set for weather updates."))
 		return
 	}
 
 	if h.weatherService == nil {
-		log.Errorw("Weather service not available", "tripID", tripID)
 		_ = c.Error(apperrors.InternalServerError("Weather service is not configured."))
 		return
 	}
 
 	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
-		log.Errorw("Failed to trigger weather update", "tripID", tripID, "error", err)
 		appErr, ok := err.(*apperrors.AppError)
 		if !ok {
 			appErr = apperrors.InternalServerError("Failed to trigger weather update due to an unexpected error")

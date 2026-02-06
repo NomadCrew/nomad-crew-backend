@@ -485,7 +485,7 @@ func (s *SupabaseService) UpdateTypingStatus(ctx context.Context, userID string,
 func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data map[string]interface{}) error {
 	// Log function entry with payload data
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: postToSupabase function entry",
+		s.logger.Debugw("DIAGNOSTIC: postToSupabase function entry",
 			"table", table,
 			"data_keys", func() []string {
 				keys := make([]string, 0, len(data))
@@ -509,7 +509,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: JSON marshal failed",
+			s.logger.Debugw("DIAGNOSTIC: JSON marshal failed",
 				"error", err.Error(),
 				"data", data)
 		}
@@ -517,7 +517,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	}
 
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: JSON marshal successful",
+		s.logger.Debugw("DIAGNOSTIC: JSON marshal successful",
 			"json_length", len(jsonData))
 	}
 
@@ -525,7 +525,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: HTTP request creation failed",
+			s.logger.Debugw("DIAGNOSTIC: HTTP request creation failed",
 				"error", err.Error(),
 				"url", url)
 		}
@@ -533,12 +533,12 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	}
 
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: HTTP request created successfully")
+		s.logger.Debugw("DIAGNOSTIC: HTTP request created successfully")
 	}
 
 	// PRODUCTION DIAGNOSTIC: Force ERROR level logging to appear in production logs
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: Starting Supabase request validation",
+		s.logger.Debugw("DIAGNOSTIC: Starting Supabase request validation",
 			"table", table,
 			"url", url)
 	}
@@ -549,7 +549,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	}
 
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: Supabase key validation passed, setting headers",
+		s.logger.Debugw("DIAGNOSTIC: Supabase key validation passed, setting headers",
 			"cleaned_key_length", len(cleanedKey))
 	}
 
@@ -559,13 +559,13 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	req.Header.Set("Prefer", "resolution=merge-duplicates,return=minimal")
 
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: Headers set, making HTTP request to Supabase")
+		s.logger.Debugw("DIAGNOSTIC: Headers set, making HTTP request to Supabase")
 	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: HTTP request failed",
+			s.logger.Debugw("DIAGNOSTIC: HTTP request failed",
 				"error", err.Error(),
 				"error_type", fmt.Sprintf("%T", err))
 		}
@@ -574,7 +574,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	defer resp.Body.Close()
 
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: HTTP request completed",
+		s.logger.Debugw("DIAGNOSTIC: HTTP request completed",
 			"status_code", resp.StatusCode,
 			"status", resp.Status)
 	}
@@ -597,7 +597,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 		}
 
 		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase returned error status",
+			s.logger.Debugw("DIAGNOSTIC: Supabase returned error status",
 				"status_code", resp.StatusCode,
 				"response_body", errorDetails)
 		}
@@ -606,7 +606,7 @@ func (s *SupabaseService) postToSupabase(ctx context.Context, table string, data
 	}
 
 	if s.logger != nil {
-		s.logger.Errorw("DIAGNOSTIC: Supabase request completed successfully")
+		s.logger.Debugw("DIAGNOSTIC: Supabase request completed successfully")
 	}
 	return nil
 }
@@ -762,7 +762,7 @@ func (s *SupabaseService) validateAndCleanAPIKey(methodName string) (string, err
 	cleanedKey := strings.TrimSpace(s.supabaseKey)
 	if cleanedKey != s.supabaseKey {
 		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED",
+			s.logger.Debugw("DIAGNOSTIC: Supabase key had leading/trailing whitespace - TRIMMED",
 				"method", methodName,
 				"original_length", len(s.supabaseKey),
 				"cleaned_length", len(cleanedKey))
@@ -782,7 +782,7 @@ func (s *SupabaseService) validateAndCleanAPIKey(methodName string) (string, err
 				if contextEnd > len(cleanedKey) {
 					contextEnd = len(cleanedKey)
 				}
-				s.logger.Errorw("DIAGNOSTIC: Invalid character found in Supabase key",
+				s.logger.Debugw("DIAGNOSTIC: Invalid character found in Supabase key",
 					"method", methodName,
 					"position", i,
 					"character_code", int(r),
@@ -798,7 +798,7 @@ func (s *SupabaseService) validateAndCleanAPIKey(methodName string) (string, err
 	// Add validation for empty key after cleaning
 	if len(cleanedKey) == 0 {
 		if s.logger != nil {
-			s.logger.Errorw("DIAGNOSTIC: Supabase key is empty after cleaning",
+			s.logger.Debugw("DIAGNOSTIC: Supabase key is empty after cleaning",
 				"method", methodName)
 		}
 		return "", fmt.Errorf("Supabase key is empty after cleaning")

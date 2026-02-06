@@ -64,7 +64,6 @@ func (s *sqlcTripStore) CreateTrip(ctx context.Context, trip types.Trip) (string
 		BackgroundImageUrl:   StringPtr(trip.BackgroundImageURL),
 	})
 	if err != nil {
-		log.Errorw("Failed to create trip", "error", err)
 		return "", fmt.Errorf("failed to insert trip: %w", err)
 	}
 
@@ -77,7 +76,6 @@ func (s *sqlcTripStore) CreateTrip(ctx context.Context, trip types.Trip) (string
 			Status: sqlc.MembershipStatusACTIVE,
 		})
 		if err != nil {
-			log.Errorw("Failed to add creator as owner", "tripId", tripID, "error", err)
 			return "", fmt.Errorf("failed to add creator membership: %w", err)
 		}
 	}
@@ -93,15 +91,11 @@ func (s *sqlcTripStore) CreateTrip(ctx context.Context, trip types.Trip) (string
 
 // GetTrip retrieves a trip by ID
 func (s *sqlcTripStore) GetTrip(ctx context.Context, id string) (*types.Trip, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetTrip(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("Trip not found", "tripId", id)
 			return nil, apperrors.NotFound("trip", id)
 		}
-		log.Errorw("Failed to get trip", "tripId", id, "error", err)
 		return nil, fmt.Errorf("failed to get trip: %w", err)
 	}
 
@@ -240,7 +234,6 @@ func (s *sqlcTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
 	log := logger.GetLogger()
 
 	if err := s.queries.SoftDeleteTrip(ctx, id); err != nil {
-		log.Errorw("Failed to soft-delete trip", "tripId", id, "error", err)
 		return fmt.Errorf("failed to soft-delete trip: %w", err)
 	}
 
@@ -252,7 +245,6 @@ func (s *sqlcTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
 func (s *sqlcTripStore) ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error) {
 	rows, err := s.queries.ListUserTrips(ctx, &userID)
 	if err != nil {
-		logger.GetLogger().Errorw("Failed to list user trips", "userID", userID, "error", err)
 		return nil, fmt.Errorf("failed to list user trips: %w", err)
 	}
 
@@ -286,7 +278,6 @@ func (s *sqlcTripStore) SearchTrips(ctx context.Context, criteria types.TripSear
 		EndDateTo:     OptionalTimeToPgDate(criteria.EndDate),
 	})
 	if err != nil {
-		logger.GetLogger().Errorw("Failed to search trips", "error", err)
 		return nil, fmt.Errorf("failed to search trips: %w", err)
 	}
 
@@ -309,7 +300,6 @@ func (s *sqlcTripStore) AddMember(ctx context.Context, membership *types.TripMem
 		Status: MemberStatusToSqlc(membership.Status),
 	})
 	if err != nil {
-		log.Errorw("Failed to add member", "tripID", membership.TripID, "userID", membership.UserID, "error", err)
 		return fmt.Errorf("failed to add member: %w", err)
 	}
 
@@ -327,7 +317,6 @@ func (s *sqlcTripStore) UpdateMemberRole(ctx context.Context, tripID string, use
 		Role:   MemberRoleToSqlc(role),
 	})
 	if err != nil {
-		log.Errorw("Failed to update member role", "tripID", tripID, "userID", userID, "error", err)
 		return fmt.Errorf("failed to update member role: %w", err)
 	}
 
@@ -344,7 +333,6 @@ func (s *sqlcTripStore) RemoveMember(ctx context.Context, tripID string, userID 
 		UserID: userID,
 	})
 	if err != nil {
-		log.Errorw("Failed to remove member", "tripID", tripID, "userID", userID, "error", err)
 		return fmt.Errorf("failed to remove member: %w", err)
 	}
 
@@ -358,7 +346,6 @@ func (s *sqlcTripStore) GetTripMembers(ctx context.Context, tripID string) ([]ty
 
 	rows, err := s.queries.GetTripMembers(ctx, tripID)
 	if err != nil {
-		log.Errorw("Failed to get trip members", "tripID", tripID, "error", err)
 		return nil, fmt.Errorf("failed to get trip members: %w", err)
 	}
 
@@ -373,8 +360,6 @@ func (s *sqlcTripStore) GetTripMembers(ctx context.Context, tripID string) ([]ty
 
 // GetUserRole retrieves the role of a user in a trip
 func (s *sqlcTripStore) GetUserRole(ctx context.Context, tripID string, userID string) (types.MemberRole, error) {
-	log := logger.GetLogger()
-
 	role, err := s.queries.GetUserRole(ctx, sqlc.GetUserRoleParams{
 		TripID: tripID,
 		UserID: userID,
@@ -383,7 +368,6 @@ func (s *sqlcTripStore) GetUserRole(ctx context.Context, tripID string, userID s
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", apperrors.NotFound("membership", fmt.Sprintf("user %s in trip %s", userID, tripID))
 		}
-		log.Errorw("Failed to get user role", "tripID", tripID, "userID", userID, "error", err)
 		return "", fmt.Errorf("failed to get user role: %w", err)
 	}
 
@@ -392,14 +376,11 @@ func (s *sqlcTripStore) GetUserRole(ctx context.Context, tripID string, userID s
 
 // LookupUserByEmail looks up a user by email
 func (s *sqlcTripStore) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetUserProfileByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, apperrors.NotFound("User with email", email)
 		}
-		log.Errorw("Failed to lookup user by email", "email", email, "error", err)
 		return nil, fmt.Errorf("failed to lookup user: %w", err)
 	}
 
@@ -431,7 +412,6 @@ func (s *sqlcTripStore) CreateInvitation(ctx context.Context, invitation *types.
 		ExpiresAt:    TimePtrToPgTimestamptz(invitation.ExpiresAt),
 	})
 	if err != nil {
-		log.Errorw("Failed to create invitation", "tripID", invitation.TripID, "error", err)
 		return fmt.Errorf("failed to create invitation: %w", err)
 	}
 
@@ -441,14 +421,11 @@ func (s *sqlcTripStore) CreateInvitation(ctx context.Context, invitation *types.
 
 // GetInvitation retrieves an invitation by ID
 func (s *sqlcTripStore) GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetInvitation(ctx, invitationID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, apperrors.NotFound("Invitation", invitationID)
 		}
-		log.Errorw("Failed to get invitation", "invitationID", invitationID, "error", err)
 		return nil, fmt.Errorf("failed to get invitation: %w", err)
 	}
 
@@ -461,7 +438,6 @@ func (s *sqlcTripStore) GetInvitationsByTripID(ctx context.Context, tripID strin
 
 	rows, err := s.queries.GetInvitationsByTripID(ctx, tripID)
 	if err != nil {
-		log.Errorw("Failed to get invitations by trip ID", "tripID", tripID, "error", err)
 		return nil, fmt.Errorf("failed to get invitations: %w", err)
 	}
 
@@ -483,7 +459,6 @@ func (s *sqlcTripStore) UpdateInvitationStatus(ctx context.Context, invitationID
 		Status: InvitationStatusToSqlc(status),
 	})
 	if err != nil {
-		log.Errorw("Failed to update invitation status", "invitationID", invitationID, "error", err)
 		return fmt.Errorf("failed to update invitation status: %w", err)
 	}
 

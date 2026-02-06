@@ -100,7 +100,6 @@ func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("Failed to send message to Supabase", zap.Error(err))
 		_ = c.Error(errors.InternalServerError("failed to send message"))
 		return
 	}
@@ -283,7 +282,6 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("Failed to add reaction in Supabase", zap.Error(err))
 		_ = c.Error(errors.InternalServerError("failed to add reaction"))
 		return
 	}
@@ -341,7 +339,6 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("Failed to remove reaction from Supabase", zap.Error(err))
 		_ = c.Error(errors.InternalServerError("failed to remove reaction"))
 		return
 	}

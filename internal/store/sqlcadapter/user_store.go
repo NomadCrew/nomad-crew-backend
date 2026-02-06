@@ -49,15 +49,11 @@ func (s *sqlcUserStore) GetPool() *pgxpool.Pool {
 
 // GetUserByID retrieves a user by their ID
 func (s *sqlcUserStore) GetUserByID(ctx context.Context, userID string) (*types.User, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetUserProfileByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("User not found", "userID", userID)
 			return nil, apperrors.NotFound("user", userID)
 		}
-		log.Errorw("Failed to get user by ID", "userID", userID, "error", err)
 		return nil, fmt.Errorf("error getting user by ID: %w", err)
 	}
 
@@ -66,15 +62,11 @@ func (s *sqlcUserStore) GetUserByID(ctx context.Context, userID string) (*types.
 
 // GetUserByEmail retrieves a user by their email address
 func (s *sqlcUserStore) GetUserByEmail(ctx context.Context, email string) (*types.User, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetUserProfileByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("User not found by email", "email", email)
 			return nil, apperrors.NotFound("user with email", email)
 		}
-		log.Errorw("Failed to get user by email", "email", email, "error", err)
 		return nil, fmt.Errorf("error getting user by email: %w", err)
 	}
 
@@ -83,16 +75,12 @@ func (s *sqlcUserStore) GetUserByEmail(ctx context.Context, email string) (*type
 
 // GetUserBySupabaseID retrieves a user by their Supabase ID
 func (s *sqlcUserStore) GetUserBySupabaseID(ctx context.Context, supabaseID string) (*types.User, error) {
-	log := logger.GetLogger()
-
 	// In our schema, id IS the supabase ID, so use GetUserProfileByID
 	row, err := s.queries.GetUserProfileByID(ctx, supabaseID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("User not found by Supabase ID", "supabaseID", supabaseID)
 			return nil, apperrors.NotFound("user with supabase ID", supabaseID)
 		}
-		log.Errorw("Failed to get user by Supabase ID", "supabaseID", supabaseID, "error", err)
 		return nil, fmt.Errorf("error getting user by Supabase ID: %w", err)
 	}
 
@@ -101,15 +89,11 @@ func (s *sqlcUserStore) GetUserBySupabaseID(ctx context.Context, supabaseID stri
 
 // GetUserByUsername retrieves a user by their username
 func (s *sqlcUserStore) GetUserByUsername(ctx context.Context, username string) (*types.User, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetUserProfileByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("User not found by username", "username", username)
 			return nil, nil // Not found is not an error for username lookup
 		}
-		log.Errorw("Failed to get user by username", "username", username, "error", err)
 		return nil, fmt.Errorf("error getting user by username: %w", err)
 	}
 
@@ -134,7 +118,6 @@ func (s *sqlcUserStore) CreateUser(ctx context.Context, user *types.User) (strin
 		ON CONFLICT (id) DO NOTHING`
 
 	if _, err = tx.Exec(ctx, authQuery, user.ID, user.Email); err != nil {
-		log.Errorw("Failed to create auth user", "userID", user.ID, "error", err)
 		return "", fmt.Errorf("error creating auth user: %w", err)
 	}
 
@@ -154,7 +137,6 @@ func (s *sqlcUserStore) CreateUser(ctx context.Context, user *types.User) (strin
 			log.Warnw("User already exists", "userID", user.ID, "username", user.Username)
 			return "", fmt.Errorf("user already exists: %w", err)
 		}
-		log.Errorw("Failed to create user profile", "userID", user.ID, "error", err)
 		return "", fmt.Errorf("error creating user: %w", err)
 	}
 
@@ -198,7 +180,6 @@ func (s *sqlcUserStore) UpdateUser(ctx context.Context, userID string, updates m
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, apperrors.NotFound("user", userID)
 		}
-		log.Errorw("Failed to update user", "userID", userID, "error", err)
 		return nil, fmt.Errorf("error updating user: %w", err)
 	}
 
@@ -215,7 +196,6 @@ func (s *sqlcUserStore) ListUsers(ctx context.Context, offset, limit int) ([]*ty
 	var total int
 	err := s.pool.QueryRow(ctx, countQuery).Scan(&total)
 	if err != nil {
-		log.Errorw("Failed to count users", "error", err)
 		return nil, 0, fmt.Errorf("error counting users: %w", err)
 	}
 
@@ -225,7 +205,6 @@ func (s *sqlcUserStore) ListUsers(ctx context.Context, offset, limit int) ([]*ty
 		Offset: int32(offset),
 	})
 	if err != nil {
-		log.Errorw("Failed to list users", "error", err)
 		return nil, 0, fmt.Errorf("error listing users: %w", err)
 	}
 
@@ -252,7 +231,6 @@ func (s *sqlcUserStore) SyncUserFromSupabase(ctx context.Context, supabaseID str
 	// User doesn't exist, fetch from Supabase
 	supabaseUser, err := s.getSupabaseUserByID(ctx, supabaseID)
 	if err != nil {
-		log.Errorw("Failed to fetch user from Supabase", "supabaseID", supabaseID, "error", err)
 		return nil, fmt.Errorf("error fetching user from Supabase: %w", err)
 	}
 
@@ -278,7 +256,6 @@ func (s *sqlcUserStore) SyncUserFromSupabase(ctx context.Context, supabaseID str
 	// Create the user in our database
 	id, err := s.CreateUser(ctx, user)
 	if err != nil {
-		log.Errorw("Failed to create user from Supabase data", "supabaseID", supabaseID, "error", err)
 		return nil, fmt.Errorf("error creating user from Supabase data: %w", err)
 	}
 
@@ -384,7 +361,6 @@ func (s *sqlcUserStore) GetUserProfiles(ctx context.Context, userIDs []string) (
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
-		log.Errorw("Failed to query user profiles", "error", err)
 		return nil, fmt.Errorf("error querying user profiles: %w", err)
 	}
 	defer rows.Close()
@@ -396,7 +372,6 @@ func (s *sqlcUserStore) GetUserProfiles(ctx context.Context, userIDs []string) (
 
 		err := rows.Scan(&id, &email, &username, &firstName, &lastName, &avatarURL, &createdAt, &updatedAt)
 		if err != nil {
-			log.Errorw("Failed to scan user profile row", "error", err)
 			return nil, fmt.Errorf("error scanning user profile row: %w", err)
 		}
 
@@ -422,7 +397,6 @@ func (s *sqlcUserStore) GetUserProfiles(ctx context.Context, userIDs []string) (
 	}
 
 	if err = rows.Err(); err != nil {
-		log.Errorw("Error iterating user profile rows", "error", err)
 		return nil, fmt.Errorf("error iterating user profile rows: %w", err)
 	}
 
@@ -441,7 +415,6 @@ func (s *sqlcUserStore) UpdateLastSeen(ctx context.Context, userID string) error
 
 	_, err := s.pool.Exec(ctx, query, userID)
 	if err != nil {
-		log.Errorw("Failed to update last seen", "userID", userID, "error", err)
 		return fmt.Errorf("error updating last seen: %w", err)
 	}
 
@@ -460,7 +433,6 @@ func (s *sqlcUserStore) SetOnlineStatus(ctx context.Context, userID string, isOn
 
 	_, err := s.pool.Exec(ctx, query, userID)
 	if err != nil {
-		log.Errorw("Failed to set online status", "userID", userID, "error", err)
 		return fmt.Errorf("error setting online status: %w", err)
 	}
 
@@ -493,7 +465,6 @@ func (s *sqlcUserStore) UpdateUserPreferences(ctx context.Context, userID string
 	}
 	_, err = s.UpdateUser(ctx, userID, updates)
 	if err != nil {
-		log.Errorw("Failed to update user preferences", "userID", userID, "error", err)
 		return fmt.Errorf("error updating user preferences: %w", err)
 	}
 
@@ -519,7 +490,6 @@ func (s *sqlcUserStore) SearchUsers(ctx context.Context, query string, limit int
 		Limit:   int32(limit),
 	})
 	if err != nil {
-		log.Errorw("Failed to search users", "query", query, "error", err)
 		return nil, fmt.Errorf("error searching users: %w", err)
 	}
 
@@ -541,7 +511,6 @@ func (s *sqlcUserStore) UpdateContactEmail(ctx context.Context, userID string, e
 		ContactEmail: &email,
 	})
 	if err != nil {
-		log.Errorw("Failed to update contact email", "userID", userID, "error", err)
 		return fmt.Errorf("error updating contact email: %w", err)
 	}
 
@@ -551,15 +520,11 @@ func (s *sqlcUserStore) UpdateContactEmail(ctx context.Context, userID string, e
 
 // GetUserByContactEmail retrieves a user by their contact email
 func (s *sqlcUserStore) GetUserByContactEmail(ctx context.Context, contactEmail string) (*types.User, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetUserProfileByContactEmail(ctx, &contactEmail)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("User not found by contact email", "contactEmail", contactEmail)
 			return nil, apperrors.NotFound("user with contact email", contactEmail)
 		}
-		log.Errorw("Failed to get user by contact email", "contactEmail", contactEmail, "error", err)
 		return nil, fmt.Errorf("error getting user by contact email: %w", err)
 	}
 

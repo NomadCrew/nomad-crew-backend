@@ -49,14 +49,12 @@ func (s *sqlcNotificationStore) Create(ctx context.Context, notification *models
 		Metadata: notification.Metadata,
 	})
 	if err != nil {
-		log.Errorw("Failed to create notification", "error", err, "userID", notification.UserID)
 		return fmt.Errorf("failed to create notification: %w", err)
 	}
 
 	// Parse the returned ID and set it on the notification
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
-		log.Errorw("Failed to parse notification ID", "id", id, "error", err)
 		return fmt.Errorf("failed to parse notification ID: %w", err)
 	}
 	notification.ID = parsedID
@@ -67,15 +65,11 @@ func (s *sqlcNotificationStore) Create(ctx context.Context, notification *models
 
 // GetByID retrieves a notification by its ID
 func (s *sqlcNotificationStore) GetByID(ctx context.Context, id uuid.UUID) (*models.Notification, error) {
-	log := logger.GetLogger()
-
 	notification, err := s.queries.GetNotification(ctx, id.String())
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("Notification not found", "notificationID", id)
 			return nil, apperrors.NotFound("notification", id.String())
 		}
-		log.Errorw("Failed to get notification", "notificationID", id, "error", err)
 		return nil, fmt.Errorf("failed to get notification: %w", err)
 	}
 
@@ -93,7 +87,6 @@ func (s *sqlcNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID,
 	if status != nil && !*status {
 		notifications, err = s.queries.GetUnreadNotifications(ctx, userID.String())
 		if err != nil {
-			log.Errorw("Failed to get unread notifications", "userID", userID, "error", err)
 			return nil, fmt.Errorf("failed to get unread notifications: %w", err)
 		}
 		// Apply pagination manually for unread notifications
@@ -115,7 +108,6 @@ func (s *sqlcNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID,
 			Offset: int32(offset),
 		})
 		if err != nil {
-			log.Errorw("Failed to get user notifications", "userID", userID, "error", err)
 			return nil, fmt.Errorf("failed to get user notifications: %w", err)
 		}
 
@@ -153,7 +145,6 @@ func (s *sqlcNotificationStore) MarkRead(ctx context.Context, id uuid.UUID, user
 		UserID: userID.String(),
 	})
 	if err != nil {
-		log.Errorw("Failed to mark notification as read", "notificationID", id, "userID", userID, "error", err)
 		return fmt.Errorf("failed to mark notification as read: %w", err)
 	}
 
@@ -168,13 +159,11 @@ func (s *sqlcNotificationStore) MarkAllReadByUser(ctx context.Context, userID uu
 	// Get count before marking as read
 	count, err := s.queries.CountUnreadNotifications(ctx, userID.String())
 	if err != nil {
-		log.Errorw("Failed to count unread notifications", "userID", userID, "error", err)
 		return 0, fmt.Errorf("failed to count unread notifications: %w", err)
 	}
 
 	err = s.queries.MarkAllNotificationsRead(ctx, userID.String())
 	if err != nil {
-		log.Errorw("Failed to mark all notifications as read", "userID", userID, "error", err)
 		return 0, fmt.Errorf("failed to mark all notifications as read: %w", err)
 	}
 
@@ -184,15 +173,11 @@ func (s *sqlcNotificationStore) MarkAllReadByUser(ctx context.Context, userID uu
 
 // GetUnreadCount retrieves the count of unread notifications for a specific user
 func (s *sqlcNotificationStore) GetUnreadCount(ctx context.Context, userID uuid.UUID) (int64, error) {
-	log := logger.GetLogger()
-
 	count, err := s.queries.CountUnreadNotifications(ctx, userID.String())
 	if err != nil {
-		log.Errorw("Failed to get unread notification count", "userID", userID, "error", err)
 		return 0, fmt.Errorf("failed to get unread notification count: %w", err)
 	}
 
-	log.Infow("Successfully retrieved unread notification count", "userID", userID, "count", count)
 	return count, nil
 }
 
@@ -205,7 +190,6 @@ func (s *sqlcNotificationStore) Delete(ctx context.Context, id uuid.UUID, userID
 		UserID: userID.String(),
 	})
 	if err != nil {
-		log.Errorw("Failed to delete notification", "notificationID", id, "userID", userID, "error", err)
 		return fmt.Errorf("failed to delete notification: %w", err)
 	}
 
@@ -220,13 +204,11 @@ func (s *sqlcNotificationStore) DeleteAllByUser(ctx context.Context, userID uuid
 	// Get count before deleting
 	count, err := s.queries.CountAllNotifications(ctx, userID.String())
 	if err != nil {
-		log.Errorw("Failed to count notifications", "userID", userID, "error", err)
 		return 0, fmt.Errorf("failed to count notifications: %w", err)
 	}
 
 	err = s.queries.DeleteAllNotificationsByUser(ctx, userID.String())
 	if err != nil {
-		log.Errorw("Failed to delete all notifications", "userID", userID, "error", err)
 		return 0, fmt.Errorf("failed to delete all notifications: %w", err)
 	}
 

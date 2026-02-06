@@ -68,15 +68,11 @@ type TripMemberResponse struct {
 // @Router /trips/{tripId}/members [post]
 // @Security BearerAuth
 func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid add member request", "error", err, "tripID", tripID)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
 		return
 	}
 
@@ -113,16 +109,12 @@ func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
 // @Router /trips/{tripId}/members/{userId}/role [put]
 // @Security BearerAuth
 func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
 	memberUserID := c.Param("userId")
 
 	var req UpdateMemberRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid update member role request", "error", err, "tripID", tripID, "memberUserID", memberUserID)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
 		return
 	}
 

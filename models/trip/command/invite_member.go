@@ -93,7 +93,6 @@ func (c *InviteMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 
 	log := logger.GetLogger()
 	log.Infow("Generated invitation acceptance URL",
-		"url", acceptanceURL,
 		"inviteeEmail", c.Invitation.InviteeEmail,
 		"tripId", c.Invitation.TripID)
 

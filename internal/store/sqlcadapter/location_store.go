@@ -35,8 +35,6 @@ func NewSqlcLocationStore(pool *pgxpool.Pool) store.LocationStore {
 // It first verifies the user is part of an active trip.
 // Returns the newly created Location object or an error.
 func (s *sqlcLocationStore) UpdateLocation(ctx context.Context, userID string, update types.LocationUpdate) (*types.Location, error) {
-	log := logger.GetLogger()
-
 	// Convert timestamp from milliseconds to time.Time
 	timestamp := time.UnixMilli(update.Timestamp)
 
@@ -56,10 +54,8 @@ func (s *sqlcLocationStore) UpdateLocation(ctx context.Context, userID string, u
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("User is not a member of any active trips, cannot update location", "userID", userID)
 			return nil, apperrors.ValidationFailed("no_active_trip", "User is not currently a member of any active trip.")
 		}
-		log.Errorw("Failed to check user trip membership", "userID", userID, "error", err)
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to check user trip membership: %w", err))
 	}
 
@@ -77,7 +73,6 @@ func (s *sqlcLocationStore) UpdateLocation(ctx context.Context, userID string, u
 		Status:       nil,
 	})
 	if err != nil {
-		log.Errorw("Failed to insert location", "userID", userID, "error", err)
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to insert location: %w", err))
 	}
 
@@ -105,7 +100,6 @@ func (s *sqlcLocationStore) GetTripMemberLocations(ctx context.Context, tripID s
 
 	rows, err := s.queries.GetTripMemberLocations(ctx, tripID)
 	if err != nil {
-		log.Errorw("Failed to get trip member locations", "tripID", tripID, "error", err)
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to query trip member locations: %w", err))
 	}
 
@@ -157,7 +151,6 @@ func (s *sqlcLocationStore) GetUserRole(ctx context.Context, tripID string, user
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", apperrors.NotFound("membership", fmt.Sprintf("active user %s in trip %s", userID, tripID))
 		}
-		log.Errorw("Failed to get user role from database", "tripID", tripID, "userID", userID, "error", err)
 		return "", apperrors.NewDatabaseError(err)
 	}
 

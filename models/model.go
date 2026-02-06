@@ -77,24 +77,24 @@ func (tm *TripModelFacade) UpdateTrip(ctx context.Context, id string, update *ty
 	// First check if the trip exists
 	existingTrip, errGT := tm.store.GetTrip(ctx, id)
 	if errGT != nil {
-		log.Infow("UpdateTrip: GetTrip failed", "tripID", id, "error", errGT)
+		log.Debugw("UpdateTrip: GetTrip failed", "tripID", id, "error", errGT)
 		return errGT
 	}
 
 	// Validate the update payload against the existing trip
 	validationErr := validation.ValidateTripUpdate(update, existingTrip)
 	if validationErr != nil {
-		log.Infow("UpdateTrip: Validation failed", "tripID", id, "updatePayload", update, "existingTrip", existingTrip, "error", validationErr)
+		log.Debugw("UpdateTrip: Validation failed", "tripID", id, "error", validationErr)
 		return validationErr // Explicitly return the validation error
 	}
 
-	log.Infow("UpdateTrip: Validation passed, proceeding to call store.UpdateTrip", "tripID", id, "updatePayload", update)
+	log.Debugw("UpdateTrip: Validation passed, proceeding to store", "tripID", id)
 	updatedTrip, errUT := tm.store.UpdateTrip(ctx, id, *update)
 	if errUT != nil {
-		log.Infow("UpdateTrip: store.UpdateTrip failed", "tripID", id, "error", errUT)
+		log.Debugw("UpdateTrip: store.UpdateTrip failed", "tripID", id, "error", errUT)
 		return errUT
 	}
-	log.Infow("UpdateTrip: store.UpdateTrip succeeded", "tripID", id, "updatedTrip", updatedTrip)
+	log.Debugw("UpdateTrip: store.UpdateTrip succeeded", "tripID", id, "updatedTrip", updatedTrip)
 
 	// Simulate publishing an event
 	if tm.eventPublisher != nil {

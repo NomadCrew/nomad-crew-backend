@@ -41,7 +41,6 @@ func (s *sqlcTodoStore) CreateTodo(ctx context.Context, todo *types.Todo) (strin
 		CreatedBy: todo.CreatedBy,
 	})
 	if err != nil {
-		log.Errorw("Failed to create todo", "error", err)
 		return "", fmt.Errorf("failed to insert todo: %w", err)
 	}
 
@@ -51,15 +50,11 @@ func (s *sqlcTodoStore) CreateTodo(ctx context.Context, todo *types.Todo) (strin
 
 // GetTodo retrieves a todo item by its ID
 func (s *sqlcTodoStore) GetTodo(ctx context.Context, id string) (*types.Todo, error) {
-	log := logger.GetLogger()
-
 	row, err := s.queries.GetTodo(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Warnw("Todo not found", "todoID", id)
 			return nil, apperrors.NotFound("todo", id)
 		}
-		log.Errorw("Failed to get todo", "todoID", id, "error", err)
 		return nil, fmt.Errorf("failed to get todo: %w", err)
 	}
 
@@ -72,7 +67,6 @@ func (s *sqlcTodoStore) ListTodos(ctx context.Context, tripID string) ([]*types.
 
 	rows, err := s.queries.ListTodosByTrip(ctx, tripID)
 	if err != nil {
-		log.Errorw("Failed to list todos", "tripID", tripID, "error", err)
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
 
@@ -126,7 +120,6 @@ func (s *sqlcTodoStore) DeleteTodo(ctx context.Context, id string) error {
 	log := logger.GetLogger()
 
 	if err := s.queries.SoftDeleteTodo(ctx, id); err != nil {
-		log.Errorw("Failed to soft-delete todo", "todoID", id, "error", err)
 		return fmt.Errorf("failed to soft-delete todo: %w", err)
 	}
 

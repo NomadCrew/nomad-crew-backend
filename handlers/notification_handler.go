@@ -50,7 +50,6 @@ func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
@@ -87,7 +86,6 @@ func (h *NotificationHandler) GetNotificationsByUser(c *gin.Context) {
 
 	notifications, err := h.notificationService.GetNotifications(c.Request.Context(), userID, limit, offset, status)
 	if err != nil {
-		h.logger.Error("Failed to get notifications", zap.String("userID", userID.String()), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("failed to retrieve notifications"))
 		return
 	}
@@ -119,7 +117,6 @@ func (h *NotificationHandler) MarkNotificationAsRead(c *gin.Context) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
@@ -138,10 +135,6 @@ func (h *NotificationHandler) MarkNotificationAsRead(c *gin.Context) {
 		} else if errors.Is(err, store.ErrForbidden) {
 			_ = c.Error(apperrors.Forbidden("not_authorized", "you are not authorized to update this notification"))
 		} else {
-			h.logger.Error("Failed to mark notification as read",
-				zap.String("userID", userID.String()),
-				zap.String("notificationID", notificationIDStr),
-				zap.Error(err))
 			_ = c.Error(apperrors.InternalServerError("failed to mark notification as read"))
 		}
 		return
@@ -170,14 +163,12 @@ func (h *NotificationHandler) MarkAllNotificationsRead(c *gin.Context) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
 	affectedRows, err := h.notificationService.MarkAllNotificationsAsRead(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("Failed to mark all notifications as read", zap.String("userID", userID.String()), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("failed to mark all notifications as read"))
 		return
 	}
@@ -208,7 +199,6 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
@@ -225,16 +215,10 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 	err = h.notificationService.DeleteNotification(c.Request.Context(), userID, notificationID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			h.logger.Warn("DeleteNotification: Notification not found", zap.String("notificationID", notificationIDStr), zap.String("userID", userID.String()))
 			_ = c.Error(apperrors.NotFound("notification", notificationIDStr))
 		} else if errors.Is(err, store.ErrForbidden) {
-			h.logger.Warn("DeleteNotification: Forbidden", zap.String("notificationID", notificationIDStr), zap.String("userID", userID.String()))
 			_ = c.Error(apperrors.Forbidden("not_authorized", "you are not authorized to delete this notification"))
 		} else {
-			h.logger.Error("Failed to delete notification",
-				zap.String("userID", userID.String()),
-				zap.String("notificationID", notificationIDStr),
-				zap.Error(err))
 			_ = c.Error(apperrors.InternalServerError("failed to delete notification"))
 		}
 		return
@@ -263,14 +247,12 @@ func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		h.logger.Error("Failed to parse user ID from context", zap.String("userIDStr", userIDStr), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("invalid user ID format"))
 		return
 	}
 
 	deletedCount, err := h.notificationService.DeleteAllNotifications(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("Failed to delete all notifications", zap.String("userID", userID.String()), zap.Error(err))
 		_ = c.Error(apperrors.InternalServerError("failed to delete all notifications"))
 		return
 	}

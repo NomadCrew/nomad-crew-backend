@@ -108,10 +108,7 @@ func (h *InvitationHandler) InviteMemberHandler(c *gin.Context) {
 
 	var req InviteMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid invite member request", "error", err, "tripID", tripID)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
 		return
 	}
 
@@ -189,10 +186,7 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 
 	var req AcceptInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid accept invitation request", "error", err)
-		if err := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); err != nil {
-			log.Errorw("Failed to set error in context", "error", err)
-		}
+		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
 		return
 	}
 
@@ -293,10 +287,7 @@ func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 
 	var req DeclineInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Errorw("Invalid decline invitation request", "error", err)
-		if appErr := c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error())); appErr != nil {
-			log.Errorw("Failed to set error in context for decline invitation", "error", appErr)
-		}
+		_ = c.Error(apperrors.ValidationFailed("invalid_request_payload", err.Error()))
 		return
 	}
 

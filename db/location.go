@@ -35,8 +35,6 @@ var _ store.LocationStore = (*LocationDB)(nil)
 // It first verifies the user is part of an active trip.
 // Returns the newly created Location object or an error.
 func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update types.LocationUpdate) (*types.Location, error) {
-	log := logger.GetLogger()
-
 	// Convert timestamp from milliseconds to time.Time
 	timestamp := time.UnixMilli(update.Timestamp)
 
@@ -58,11 +56,9 @@ func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			log.Warnw("User is not a member of any active trips, cannot update location", "userID", userID)
 			// Return a specific application error instead of fmt.Errorf
 			return nil, apperrors.ValidationFailed("no_active_trip", "User is not currently a member of any active trip.")
 		}
-		log.Errorw("Failed to check user trip membership", "userID", userID, "error", err)
 		// Return a database error
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to check user trip membership: %w", err))
 	}
@@ -92,7 +88,6 @@ func (ldb *LocationDB) UpdateLocation(ctx context.Context, userID string, update
 	)
 
 	if err != nil {
-		log.Errorw("Failed to insert location", "userID", userID, "error", err)
 		// Return a database error
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to insert location: %w", err))
 	}
@@ -141,7 +136,6 @@ func (ldb *LocationDB) GetTripMemberLocations(ctx context.Context, tripID string
 	`, tripID)
 
 	if err != nil {
-		log.Errorw("Failed to query trip member locations", "tripID", tripID, "error", err)
 		// Return database error
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("failed to query trip member locations: %w", err))
 	}
@@ -174,7 +168,6 @@ func (ldb *LocationDB) GetTripMemberLocations(ctx context.Context, tripID string
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Errorw("Error iterating member location rows", "error", err)
 		// Return database error
 		return nil, apperrors.NewDatabaseError(fmt.Errorf("error iterating member location rows: %w", err))
 	}
@@ -196,7 +189,6 @@ func (ldb *LocationDB) GetUserRole(ctx context.Context, tripID string, userID st
 			// User is not an active member of this trip.
 			return "", apperrors.NotFound("membership", fmt.Sprintf("active user %s in trip %s", userID, tripID))
 		}
-		log.Errorw("Failed to get user role from database", "tripID", tripID, "userID", userID, "error", err)
 		return "", apperrors.NewDatabaseError(err)
 	}
 

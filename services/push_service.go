@@ -246,7 +246,7 @@ func (s *expoPushService) sendBatch(ctx context.Context, messages []ExpoMessage)
 	}
 
 	// Log the raw Expo response for debugging
-	s.logger.Info("Expo push response received",
+	s.logger.Debug("Expo push response received",
 		zap.Int("ticketCount", len(expoResp.Data)),
 		zap.Int("messageCount", len(messages)))
 
@@ -258,6 +258,7 @@ func (s *expoPushService) sendBatch(ctx context.Context, messages []ExpoMessage)
 
 // processTickets handles the response tickets from Expo
 func (s *expoPushService) processTickets(ctx context.Context, messages []ExpoMessage, tickets []ExpoTicket) {
+	var okCount, errCount int
 	for i, ticket := range tickets {
 		if i >= len(messages) {
 			break
@@ -266,6 +267,7 @@ func (s *expoPushService) processTickets(ctx context.Context, messages []ExpoMes
 		token := messages[i].To
 
 		if ticket.Status == "error" {
+			errCount++
 			errorDetails := ""
 			if ticket.Details != nil {
 				errorDetails = ticket.Details.Error
@@ -278,14 +280,15 @@ func (s *expoPushService) processTickets(ctx context.Context, messages []ExpoMes
 
 			// If the device is not registered, invalidate the token
 			if ticket.Details != nil && ticket.Details.Error == "DeviceNotRegistered" {
-				s.logger.Info("Invalidating unregistered token", zap.String("token", s.maskToken(token)))
+				s.logger.Debug("Invalidating unregistered token", zap.String("token", s.maskToken(token)))
 				if err := s.pushTokenStore.InvalidateToken(ctx, token); err != nil {
 					s.logger.Error("Failed to invalidate token", zap.Error(err))
 				}
 			}
 		} else if ticket.Status == "ok" {
-			// Log successful ticket for debugging
-			s.logger.Info("Push notification ticket successful",
+			okCount++
+			// Log successful ticket at debug level to avoid per-token noise
+			s.logger.Debug("Push notification ticket successful",
 				zap.String("token", s.maskToken(token)),
 				zap.String("ticketId", ticket.ID))
 
@@ -301,6 +304,11 @@ func (s *expoPushService) processTickets(ctx context.Context, messages []ExpoMes
 				zap.String("message", ticket.Message))
 		}
 	}
+
+	s.logger.Info("Push notification batch processed",
+		zap.Int("total", len(tickets)),
+		zap.Int("ok", okCount),
+		zap.Int("errors", errCount))
 }
 
 // maskToken masks a token for logging (shows first and last few characters)

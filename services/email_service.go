@@ -32,7 +32,7 @@ func NewEmailService(cfg *config.EmailConfig) *EmailService {
 
 func NewEmailServiceWithRegistry(cfg *config.EmailConfig, reg prometheus.Registerer) *EmailService {
 	logger.GetLogger().Infow("Initializing email service",
-		"from", cfg.FromAddress, "apikey", cfg.ResendAPIKey)
+		"from", cfg.FromAddress)
 	client := resend.NewClient(cfg.ResendAPIKey)
 	metrics := &EmailMetrics{
 		sendLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
