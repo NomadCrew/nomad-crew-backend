@@ -121,15 +121,62 @@ psql -d <db> -f db/migrations/init.sql
 3. **Error Handling:**
    - Use custom error types from `errors/`
    - Wrap errors with context
-   - Log at appropriate levels
+   - See Logging Architecture below for where to log
 
 4. **WebSocket Pattern:**
    - Trip-specific: `/v1/trips/:id/chat/ws/events`
    - General updates: `/v1/ws`
 
+## Logging Architecture
+
+Errors log **once** at the middleware boundary. No manual logging before `c.Error()`.
+
+### Rules by Layer
+
+| Layer | Rule |
+|---|---|
+| **DB/Store** (`internal/store/`, `db/`) | Return errors only. Never log errors. |
+| **Services** (`models/*/service/`, `services/`) | Return errors only. Never log errors that are returned. |
+| **Handlers** (`handlers/`) | Call `c.Error(err)` only. Never call `log.Error/Warn` before `c.Error()`. |
+| **Auth/RBAC middleware** | Call `c.Error(err)` only. No manual logging. |
+| **Error handler middleware** | Logs once per error: **WARN** for 4xx, **ERROR** for 5xx. |
+
+### Exceptions (when logging IS allowed)
+
+- **Non-fatal errors where execution continues** (e.g., weather update fails but trip creation succeeds) — use `Warnw`
+- **Background goroutines** that don't return errors to callers — log at appropriate level
+- **Event publishing failures** where the error is swallowed — use `Warnw`
+- **Debug-level tracing** — always fine, filtered by `LOG_LEVEL`
+
+### What NOT to do
+
+```go
+// BAD: log-and-return (creates duplicate when caller also logs)
+log.Errorw("Failed to get user", "error", err)
+return nil, fmt.Errorf("failed to get user: %w", err)
+
+// GOOD: just return (let the caller/middleware log)
+return nil, fmt.Errorf("failed to get user: %w", err)
+
+// BAD: log-then-c.Error (middleware already logs via c.Error)
+log.Errorw("Failed to list items", "error", err)
+c.Error(errors.NewDatabaseError(err))
+
+// GOOD: just c.Error (middleware logs once)
+c.Error(errors.NewDatabaseError(err))
+```
+
+### Security
+
+Never log secrets, tokens, or API keys. Use `logger.MaskJWT()`, `logger.MaskEmail()`, etc.
+
+### Reference Implementation
+
+`handlers/todo_handler.go` — uses `c.Error()` exclusively with no manual logging.
+
 ## Code Principles
 
-- Use structured logging (Zap)
+- Use structured logging (Zap) — see Logging Architecture above
 - Validate all input at handler level
 - Check permissions in service layer
 - Use context for request-scoped values
