@@ -32,17 +32,15 @@ const lastManualMigration = 6
 func RunMigrations(dbURL string) error {
 	log := logger.GetLogger()
 
-	// Create an iofs source from the embedded migration files
 	source, err := iofs.New(migrationFiles, "migrations")
 	if err != nil {
-		return fmt.Errorf("failed to create migration source: %w", err)
+		return fmt.Errorf("create migration source: %w", err)
 	}
 
-	// Create the migrate instance
-	// golang-migrate uses pgx v5 driver, connection string must use pgx5:// scheme
+	// golang-migrate's pgx v5 driver requires the pgx5:// scheme.
 	m, err := migrate.NewWithSourceInstance("iofs", source, convertToPgx5URL(dbURL))
 	if err != nil {
-		return fmt.Errorf("failed to create migrate instance: %w", err)
+		return fmt.Errorf("create migrate instance: %w", err)
 	}
 	defer m.Close()
 
@@ -52,13 +50,13 @@ func RunMigrations(dbURL string) error {
 		if errors.Is(err, migrate.ErrNilVersion) {
 			// Bootstrap: pre-existing database without schema_migrations table.
 			// Force-set to lastManualMigration so we skip already-applied migrations.
-			log.Infow("No schema_migrations table found, bootstrapping from manual migrations",
+			log.Infow("Bootstrapping migrations from manual baseline",
 				"forcingVersion", lastManualMigration)
 			if err := m.Force(lastManualMigration); err != nil {
-				return fmt.Errorf("failed to force migration version: %w", err)
+				return fmt.Errorf("bootstrap force version %d: %w", lastManualMigration, err)
 			}
 		} else {
-			return fmt.Errorf("failed to read migration version: %w", err)
+			return fmt.Errorf("read migration version: %w", err)
 		}
 	} else if dirty {
 		// A previous migration failed partway, leaving dirty state.
@@ -71,30 +69,28 @@ func RunMigrations(dbURL string) error {
 			"dirtyVersion", version,
 			"resettingTo", cleanVersion)
 		if err := m.Force(int(cleanVersion)); err != nil {
-			return fmt.Errorf("failed to reset dirty migration: %w", err)
+			return fmt.Errorf("reset dirty migration to version %d: %w", cleanVersion, err)
 		}
 	} else {
-		log.Infow("Current migration version", "version", version)
+		log.Debugw("Current migration version", "version", version)
 	}
 
-	// Apply all pending migrations
-	err = m.Up()
-	if err != nil {
+	// Apply all pending migrations.
+	if err := m.Up(); err != nil {
 		if errors.Is(err, migrate.ErrNoChange) {
-			log.Info("Database is up to date, no migrations to apply")
+			log.Debugw("Database schema is up to date")
 			return nil
 		}
-		return fmt.Errorf("migration failed: %w", err)
+		return fmt.Errorf("apply migrations: %w", err)
 	}
 
-	// Get the current version after migration
-	version, dirty, err = m.Version()
-	if err != nil {
-		log.Infow("Migrations applied successfully")
-	} else {
+	// Log the post-migration version.
+	if version, dirty, err := m.Version(); err == nil {
 		log.Infow("Migrations applied successfully",
 			"currentVersion", version,
 			"dirty", dirty)
+	} else {
+		log.Infow("Migrations applied successfully")
 	}
 
 	return nil
