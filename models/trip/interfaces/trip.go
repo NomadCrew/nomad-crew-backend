@@ -26,5 +26,6 @@ type TripModelInterface interface {
 	UpdateTripStatus(ctx context.Context, tripID string, newStatus types.TripStatus) error
 	GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
 	GetTrip(ctx context.Context, tripID string) (*types.Trip, error)
+	GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
 	GetCommandContext() *CommandContext
 }

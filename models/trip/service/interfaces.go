@@ -37,6 +37,7 @@ type InvitationServiceInterface interface {
 	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
 	LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error)
 	FindInvitationByTripAndEmail(ctx context.Context, tripID, email string) (*types.TripInvitation, error)
+	GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
 }
 
 // TripChatServiceInterface is deprecated - use models/chat/service.ChatServiceInterface instead

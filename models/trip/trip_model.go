@@ -159,6 +159,10 @@ func (tm *TripModel) GetTrip(ctx context.Context, tripID string) (*types.Trip, e
 	return tm.coordinator.GetTrip(ctx, tripID)
 }
 
+func (tm *TripModel) GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error) {
+	return tm.coordinator.GetInvitationsByTripID(ctx, tripID)
+}
+
 // GetCommandContext returns the command context from the coordinator
 func (tm *TripModel) GetCommandContext() *interfaces.CommandContext {
 	return tm.coordinator.GetCommandContext() // Delegate to coordinator

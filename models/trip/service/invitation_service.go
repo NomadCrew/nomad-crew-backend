@@ -123,6 +123,11 @@ func (s *InvitationService) FindInvitationByTripAndEmail(ctx context.Context, tr
 	return nil, internal_errors.NewNotFoundError("Invitation", email) // Use internal error
 }
 
+// GetInvitationsByTripID retrieves all invitations for a trip
+func (s *InvitationService) GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error) {
+	return s.store.GetInvitationsByTripID(ctx, tripID)
+}
+
 // LookupUserByEmail looks up a user by email using Supabase
 func (s *InvitationService) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
 	// Use the store's implementation

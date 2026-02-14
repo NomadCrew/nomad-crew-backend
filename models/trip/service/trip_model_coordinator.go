@@ -161,6 +161,11 @@ func (c *TripModelCoordinator) GetTripWithMembers(ctx context.Context, tripID st
 	return c.TripService.GetTripWithMembers(ctx, tripID, userID)
 }
 
+// GetInvitationsByTripID delegates to InvitationService
+func (c *TripModelCoordinator) GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error) {
+	return c.InvitationService.GetInvitationsByTripID(ctx, tripID)
+}
+
 // FindInvitationByTripAndEmail delegates to InvitationService
 func (c *TripModelCoordinator) FindInvitationByTripAndEmail(ctx context.Context, tripID, email string) (*types.TripInvitation, error) {
 	return c.InvitationService.FindInvitationByTripAndEmail(ctx, tripID, email)
