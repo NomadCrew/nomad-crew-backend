@@ -178,7 +178,8 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			// Token-based accept/decline (for email deep links)
 			authRoutes.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)
 			authRoutes.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler)
-			// ID-based accept/decline (for in-app notifications)
+			// ID-based endpoints (for in-app notifications)
+			authRoutes.GET("/invitations/:invitationId", deps.InvitationHandler.GetInvitationByIDHandler)
 			authRoutes.POST("/invitations/:invitationId/accept", deps.InvitationHandler.AcceptInvitationByIDHandler)
 			authRoutes.POST("/invitations/:invitationId/decline", deps.InvitationHandler.DeclineInvitationByIDHandler)
 

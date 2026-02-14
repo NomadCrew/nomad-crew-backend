@@ -42,13 +42,14 @@ type InvitationClaims struct {
 
 // InvitationDetailsResponse defines the structure for detailed invitation responses
 type InvitationDetailsResponse struct {
-	ID        string           `json:"id"`
-	TripID    string           `json:"tripId"`
-	Email     string           `json:"email"` // Represents InviteeEmail
-	Status    InvitationStatus `json:"status"`
-	Role      MemberRole       `json:"role"`
-	CreatedAt time.Time        `json:"createdAt"`
-	ExpiresAt *time.Time       `json:"expiresAt,omitempty"`
-	Trip      *TripBasicInfo   `json:"trip,omitempty"`    // Assumes TripBasicInfo will be defined
-	Inviter   *UserResponse    `json:"inviter,omitempty"` // Assumes UserResponse is defined
+	ID          string           `json:"id"`
+	TripID      string           `json:"tripId"`
+	Email       string           `json:"email"` // Represents InviteeEmail
+	Status      InvitationStatus `json:"status"`
+	Role        MemberRole       `json:"role"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	ExpiresAt   *time.Time       `json:"expiresAt,omitempty"`
+	Trip        *TripBasicInfo   `json:"trip,omitempty"`    // Assumes TripBasicInfo will be defined
+	Inviter     *UserResponse    `json:"inviter,omitempty"` // Assumes UserResponse is defined
+	MemberCount int              `json:"memberCount"`
 }

@@ -360,6 +360,12 @@ func (h *InvitationHandler) AcceptInvitationByIDHandler(c *gin.Context) {
 		return
 	}
 
+	// Check if invitation has expired
+	if invitation.ExpiresAt != nil && invitation.ExpiresAt.Before(time.Now()) {
+		handleModelError(c, apperrors.ValidationFailed("invitation_expired", "This invitation has expired."))
+		return
+	}
+
 	// Security check: If invitation is bound to a specific user ID, verify it matches
 	if invitation.InviteeID != nil && *invitation.InviteeID != "" && *invitation.InviteeID != acceptingUserID {
 		log.Warnw("User trying to accept invitation not meant for them", "invitationID", invitation.ID, "inviteeID", *invitation.InviteeID, "acceptingUserID", acceptingUserID)
@@ -399,6 +405,11 @@ func (h *InvitationHandler) AcceptInvitationByIDHandler(c *gin.Context) {
 		Status: types.MembershipStatusActive,
 	}
 
+	// TODO: This should be atomic — AddMember and UpdateInvitationStatus should be
+	// wrapped in a single database transaction to prevent partial state (member added
+	// but invitation still marked as pending, or vice versa). Add an
+	// AcceptInvitationAtomically(ctx, invitationID, membership) method to
+	// TripModelInterface that performs both operations in a single transaction.
 	if err := h.tripModel.AddMember(c.Request.Context(), membership); err != nil {
 		handleModelError(c, err)
 		return
@@ -456,6 +467,12 @@ func (h *InvitationHandler) DeclineInvitationByIDHandler(c *gin.Context) {
 		return
 	}
 
+	// Check if invitation has expired
+	if invitation.ExpiresAt != nil && invitation.ExpiresAt.Before(time.Now()) {
+		handleModelError(c, apperrors.ValidationFailed("invitation_expired", "This invitation has expired."))
+		return
+	}
+
 	// Security check: If invitation is bound to a specific user ID, verify it matches
 	if invitation.InviteeID != nil && *invitation.InviteeID != "" && *invitation.InviteeID != userID {
 		log.Warnw("User trying to decline invitation not meant for them", "invitationID", invitation.ID, "inviteeID", *invitation.InviteeID, "decliningUserID", userID)
@@ -488,6 +505,112 @@ func (h *InvitationHandler) DeclineInvitationByIDHandler(c *gin.Context) {
 
 	log.Infow("Successfully declined invitation by ID", "invitationID", invitation.ID, "userID", userID)
 	c.Status(http.StatusNoContent)
+}
+
+// GetInvitationByIDHandler godoc
+// @Summary Get invitation details by ID
+// @Description Retrieves details about an invitation using its ID. The authenticated user must be the invitee (email match required).
+// @Tags trips-invitations
+// @Produce json
+// @Param invitationId path string true "Invitation ID (UUID)"
+// @Success 200 {object} types.InvitationDetailsResponse "Invitation details"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Missing invitation ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not authenticated"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User is not the invitee"
+// @Failure 404 {object} types.ErrorResponse "Not found - Invitation not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /invitations/{invitationId} [get]
+// @Security BearerAuth
+func (h *InvitationHandler) GetInvitationByIDHandler(c *gin.Context) {
+	log := logger.GetLogger()
+	userID := c.GetString(string(middleware.UserIDKey))
+	if userID == "" {
+		log.Warn("GetInvitationByIDHandler: missing user ID in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	invitationIDStr := c.Param("invitationId")
+	if invitationIDStr == "" {
+		handleModelError(c, apperrors.ValidationFailed("missing_invitation_id", "Invitation ID is required"))
+		return
+	}
+
+	invitation, err := h.tripModel.GetInvitation(c.Request.Context(), invitationIDStr)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	// Security check: Verify the requesting user's email matches the invitation email
+	requestingUser, err := h.userStore.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+	if !strings.EqualFold(requestingUser.Email, invitation.InviteeEmail) {
+		handleModelError(c, apperrors.Forbidden("email_mismatch", "You can only view invitations sent to your email address."))
+		return
+	}
+
+	// Fetch trip details
+	var tripBasicInfo types.TripBasicInfo
+	trip, err := h.tripModel.GetTrip(c.Request.Context(), invitation.TripID)
+	if err != nil {
+		log.Errorw("Failed to get trip details for invitation", "tripID", invitation.TripID, "invitationID", invitation.ID, "error", err)
+	} else if trip != nil {
+		tripBasicInfo = types.TripBasicInfo{
+			ID:          trip.ID,
+			Name:        trip.Name,
+			Description: trip.Description,
+			StartDate:   trip.StartDate,
+			EndDate:     trip.EndDate,
+		}
+	}
+
+	// Fetch inviter details (without email for privacy)
+	var inviterResponse types.UserResponse
+	if inviterUUID, pErr := uuid.Parse(invitation.InviterID); pErr == nil {
+		inviter, iErr := h.userStore.GetUserByID(c.Request.Context(), inviterUUID.String())
+		if iErr != nil {
+			log.Errorw("Failed to get inviter details for invitation", "inviterID", invitation.InviterID, "invitationID", invitation.ID, "error", iErr)
+		} else if inviter != nil {
+			inviterResponse = types.UserResponse{
+				ID:          inviter.ID,
+				Username:    inviter.Username,
+				FirstName:   inviter.FirstName,
+				LastName:    inviter.LastName,
+				AvatarURL:   inviter.ProfilePictureURL,
+				DisplayName: inviter.GetFullName(),
+			}
+		}
+	} else {
+		log.Errorw("Failed to parse inviter ID from invitation", "inviterID", invitation.InviterID, "invitationID", invitation.ID, "error", pErr)
+	}
+
+	// Get member count
+	var memberCount int
+	members, err := h.tripModel.GetTripMembers(c.Request.Context(), invitation.TripID)
+	if err != nil {
+		log.Errorw("Failed to get trip members for invitation", "tripID", invitation.TripID, "invitationID", invitation.ID, "error", err)
+	} else {
+		memberCount = len(members)
+	}
+
+	response := types.InvitationDetailsResponse{
+		ID:          invitation.ID,
+		TripID:      invitation.TripID,
+		Email:       invitation.InviteeEmail,
+		Status:      invitation.Status,
+		Role:        invitation.Role,
+		CreatedAt:   invitation.CreatedAt,
+		ExpiresAt:   invitation.ExpiresAt,
+		Trip:        &tripBasicInfo,
+		Inviter:     &inviterResponse,
+		MemberCount: memberCount,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // HandleInvitationDeepLink godoc
