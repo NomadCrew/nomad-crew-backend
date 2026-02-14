@@ -629,6 +629,72 @@ func (h *InvitationHandler) GetInvitationDetails(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// ListTripInvitationsHandler godoc
+// @Summary List all invitations for a trip
+// @Description Retrieves all invitations for a specific trip. Requires ADMIN+ permissions.
+// @Tags trips-invitations
+// @Produce json
+// @Param tripId path string true "Trip ID"
+// @Success 200 {array} types.TripInvitation "List of invitations"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not authenticated"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - Insufficient permissions"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{tripId}/invitations [get]
+// @Security BearerAuth
+func (h *InvitationHandler) ListTripInvitationsHandler(c *gin.Context) {
+	tripID := c.Param("id")
+
+	invitations, err := h.tripModel.GetInvitationsByTripID(c.Request.Context(), tripID)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, invitations)
+}
+
+// DeleteInvitationHandler godoc
+// @Summary Revoke a trip invitation
+// @Description Revokes (cancels) a pending invitation. Requires ADMIN+ permissions.
+// @Tags trips-invitations
+// @Produce json
+// @Param tripId path string true "Trip ID"
+// @Param invitationId path string true "Invitation ID (UUID)"
+// @Success 204 "Successfully revoked invitation"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invitation not pending"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not authenticated"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - Insufficient permissions"
+// @Failure 404 {object} types.ErrorResponse "Not found - Invitation not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{tripId}/invitations/{invitationId} [delete]
+// @Security BearerAuth
+func (h *InvitationHandler) DeleteInvitationHandler(c *gin.Context) {
+	invitationID := c.Param("invitationId")
+	if invitationID == "" {
+		_ = c.Error(apperrors.ValidationFailed("missing_invitation_id", "Invitation ID is required"))
+		return
+	}
+
+	invitation, err := h.tripModel.GetInvitation(c.Request.Context(), invitationID)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	if invitation.Status != types.InvitationStatusPending {
+		_ = c.Error(apperrors.ValidationFailed("invitation_not_pending", "Only pending invitations can be revoked"))
+		return
+	}
+
+	if err := h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitationID, types.InvitationStatusDeclined); err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 // Note: handleModelError is assumed to be available from the member_handler.go or a shared utility.
 // If it's not in the same package or a shared one, it needs to be defined/imported.
 
