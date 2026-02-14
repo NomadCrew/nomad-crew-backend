@@ -247,13 +247,12 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					invitationRoutes.POST("",
 						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceInvitation, nil),
 						deps.InvitationHandler.InviteMemberHandler)
-					// Note: Add other invitation routes as they are implemented
-					// invitationRoutes.GET("",
-					//     middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceInvitation, nil),
-					//     deps.InvitationHandler.ListTripInvitationsHandler)
-					// invitationRoutes.DELETE("/:invitationId",
-					//     middleware.RequirePermission(deps.TripModel, types.ActionDelete, types.ResourceInvitation, nil),
-					//     deps.InvitationHandler.DeleteInvitationHandler)
+					invitationRoutes.GET("",
+						middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceInvitation, nil),
+						deps.InvitationHandler.ListTripInvitationsHandler)
+					invitationRoutes.DELETE("/:invitationId",
+						middleware.RequirePermission(deps.TripModel, types.ActionDelete, types.ResourceInvitation, nil),
+						deps.InvitationHandler.DeleteInvitationHandler)
 				}
 
 				// Trip Location Routes - users can only update/delete their own location

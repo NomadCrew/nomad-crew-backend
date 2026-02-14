@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
@@ -9,7 +10,6 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // MemberHandler handles HTTP requests related to trip members.
@@ -76,10 +76,17 @@ func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
 		return
 	}
 
+	// Normalize role to uppercase to match database enum
+	normalizedRole := types.MemberRole(strings.ToUpper(string(req.Role)))
+	if !normalizedRole.IsValid() {
+		_ = c.Error(apperrors.ValidationFailed("invalid_role", "Role must be one of: OWNER, ADMIN, MEMBER"))
+		return
+	}
+
 	newMembership := &types.TripMembership{
 		TripID: tripID,
 		UserID: req.UserID,
-		Role:   req.Role,
+		Role:   normalizedRole,
 	}
 
 	err := h.tripModel.AddMember(c.Request.Context(), newMembership)
@@ -110,7 +117,7 @@ func (h *MemberHandler) AddMemberHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	memberUserID := c.Param("userId")
+	memberUserID := c.Param("memberId")
 
 	var req UpdateMemberRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -118,7 +125,14 @@ func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 		return
 	}
 
-	_, err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, memberUserID, req.Role)
+	// Normalize role to uppercase to match database enum
+	normalizedRole := types.MemberRole(strings.ToUpper(string(req.Role)))
+	if !normalizedRole.IsValid() {
+		_ = c.Error(apperrors.ValidationFailed("invalid_role", "Role must be one of: OWNER, ADMIN, MEMBER"))
+		return
+	}
+
+	_, err := h.tripModel.UpdateMemberRole(c.Request.Context(), tripID, memberUserID, normalizedRole)
 	if err != nil {
 		handleModelError(c, err)
 		return
@@ -127,7 +141,7 @@ func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 	responseMembership := types.TripMembership{
 		TripID: tripID,
 		UserID: memberUserID,
-		Role:   req.Role,
+		Role:   normalizedRole,
 	}
 	c.JSON(http.StatusOK, responseMembership)
 }
@@ -149,7 +163,7 @@ func (h *MemberHandler) UpdateMemberRoleHandler(c *gin.Context) {
 // @Security BearerAuth
 func (h *MemberHandler) RemoveMemberHandler(c *gin.Context) {
 	tripID := c.Param("id")
-	memberUserID := c.Param("userId")
+	memberUserID := c.Param("memberId")
 
 	err := h.tripModel.RemoveMember(c.Request.Context(), tripID, memberUserID)
 	if err != nil {
@@ -175,7 +189,6 @@ func (h *MemberHandler) RemoveMemberHandler(c *gin.Context) {
 // @Router /trips/{tripId}/members [get]
 // @Security BearerAuth
 func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {
-	log := logger.GetLogger()
 	tripID := c.Param("id")
 
 	memberships, err := h.tripModel.GetTripMembers(c.Request.Context(), tripID)
@@ -184,17 +197,23 @@ func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {
 		return
 	}
 
-	var membersResponse []TripMemberResponse
+	// Collect all user IDs for a single batch lookup instead of N+1 queries
+	userIDs := make([]string, 0, len(memberships))
 	for _, member := range memberships {
-		userUUID, err := uuid.Parse(member.UserID)
-		if err != nil {
-			log.Errorw("Failed to parse member UserID", "userID", member.UserID, "error", err, "tripID", tripID)
-			continue
-		}
+		userIDs = append(userIDs, member.UserID)
+	}
 
-		profile, err := h.userStore.GetUserByID(c.Request.Context(), userUUID.String())
-		if err != nil {
-			log.Errorw("Failed to get user profile for member", "userID", member.UserID, "error", err, "tripID", tripID)
+	// Batch fetch all user profiles in one query
+	profiles, err := h.userStore.GetUserProfiles(c.Request.Context(), userIDs)
+	if err != nil {
+		_ = c.Error(apperrors.InternalServerError("failed to fetch member profiles"))
+		return
+	}
+
+	membersResponse := make([]TripMemberResponse, 0, len(memberships))
+	for _, member := range memberships {
+		profile, ok := profiles[member.UserID]
+		if !ok {
 			membersResponse = append(membersResponse, TripMemberResponse{
 				Membership: member,
 				User:       types.UserResponse{ID: member.UserID, Username: "User not found"},
@@ -210,8 +229,8 @@ func (h *MemberHandler) GetTripMembersHandler(c *gin.Context) {
 				Email:       profile.Email,
 				FirstName:   profile.FirstName,
 				LastName:    profile.LastName,
-				AvatarURL:   profile.ProfilePictureURL,
-				DisplayName: profile.GetFullName(),
+				AvatarURL:   profile.AvatarURL,
+				DisplayName: profile.DisplayName,
 			},
 		})
 	}
