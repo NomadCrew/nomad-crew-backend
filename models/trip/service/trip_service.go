@@ -21,6 +21,7 @@ type TripManagementService struct {
 	eventPublisher  types.EventPublisher
 	weatherSvc      types.WeatherServiceInterface
 	supabaseService *services.SupabaseService
+	notificationSvc TripNotificationService
 }
 
 // NewTripManagementService creates a new trip management service
@@ -30,6 +31,7 @@ func NewTripManagementService(
 	eventPublisher types.EventPublisher,
 	weatherSvc types.WeatherServiceInterface,
 	supabaseService *services.SupabaseService,
+	notificationSvc TripNotificationService,
 ) *TripManagementService {
 	return &TripManagementService{
 		store:           store,
@@ -37,6 +39,7 @@ func NewTripManagementService(
 		eventPublisher:  eventPublisher,
 		weatherSvc:      weatherSvc,
 		supabaseService: supabaseService,
+		notificationSvc: notificationSvc,
 	}
 }
 

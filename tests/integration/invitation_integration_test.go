@@ -300,6 +300,7 @@ func setupTestRouterAndDeps(t *testing.T) *gin.Engine {
 		&testCFG.Server,
 		emailService,
 		nil, // supabaseService - not needed for integration tests
+		nil, // notificationSvc - not needed for integration tests
 	)
 
 	// UserHandler expects user_service.UserServiceInterface

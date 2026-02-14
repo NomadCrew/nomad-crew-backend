@@ -34,6 +34,7 @@ func NewTripModel(
 	config *config.ServerConfig,
 	emailSvc types.EmailService,
 	supabaseService *services.SupabaseService,
+	notificationSvc service.TripNotificationService,
 ) *TripModel {
 	// Create the coordinator
 	var internalTripStore istore.TripStore = tripStoreApp
@@ -49,6 +50,7 @@ func NewTripModel(
 		config,
 		emailSvc,
 		supabaseService,
+		notificationSvc,
 	)
 
 	return &TripModel{

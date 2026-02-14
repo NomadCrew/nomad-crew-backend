@@ -3,9 +3,18 @@ package service
 import (
 	"context"
 
+	"github.com/NomadCrew/nomad-crew-backend/internal/notification"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces" // For CommandResult if needed
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
+
+// TripNotificationService sends trip-related notifications (create, update, delete).
+// Implemented by services.NotificationFacadeService.
+type TripNotificationService interface {
+	IsEnabled() bool
+	SendTripUpdate(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority) error
+	SendTripUpdateAsync(ctx context.Context, userIDs []string, data notification.TripUpdateData, priority notification.Priority)
+}
 
 // Interfaces defining the methods used by TripModelCoordinator
 

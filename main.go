@@ -232,6 +232,7 @@ func main() {
 		&cfg.Server,
 		emailService,
 		supabaseService,
+		notificationFacadeService,
 	)
 	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
 

@@ -40,6 +40,7 @@ func NewTripModelCoordinator(
 	config *config.ServerConfig,
 	emailSvc types.EmailService, // Assuming EmailService is an interface
 	supabaseService *services.SupabaseService,
+	notificationSvc TripNotificationService,
 ) *TripModelCoordinator {
 	// Create the command context for backward compatibility
 	cmdCtx := &interfaces.CommandContext{
@@ -55,7 +56,7 @@ func NewTripModelCoordinator(
 	}
 
 	// Create the concrete service instances
-	tripServiceInstance := NewTripManagementService(tripStore, userStore, eventBus, weatherSvc, supabaseService)
+	tripServiceInstance := NewTripManagementService(tripStore, userStore, eventBus, weatherSvc, supabaseService, notificationSvc)
 	memberServiceInstance := NewTripMemberService(tripStore, eventBus, supabaseService)
 	invitationServiceInstance := NewInvitationService(tripStore, emailSvc, supabaseClient, config.FrontendURL, eventBus)
 
