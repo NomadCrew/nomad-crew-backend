@@ -281,7 +281,7 @@ func (h *LocationHandlerSupabase) generateLocationResponse(userID, tripID string
 // @Produce json
 // @Param tripId path string true "Trip ID"
 // @Param location body types.LocationUpdate true "Location update data"
-// @Success 200 {object} types.Response
+// @Success 200 {object} types.StatusResponse
 // @Failure 400 {object} types.ErrorResponse
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 403 {object} types.ErrorResponse
@@ -325,7 +325,7 @@ func (h *LocationHandlerSupabase) UpdateLocation(c *gin.Context) {
 // @Tags locations
 // @Produce json
 // @Param tripId path string true "Trip ID"
-// @Success 200 {object} LocationsResponse
+// @Success 200 {object} types.LocationsResponse
 // @Failure 400 {object} types.ErrorResponse
 // @Failure 401 {object} types.ErrorResponse
 // @Failure 403 {object} types.ErrorResponse

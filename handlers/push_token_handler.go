@@ -32,9 +32,9 @@ func NewPushTokenHandler(pts store.PushTokenStore, logger *zap.Logger) *PushToke
 // @Produce json
 // @Param body body types.RegisterPushTokenRequest true "Push token registration request"
 // @Success 200 {object} types.PushToken "Token registered successfully"
-// @Failure 400 {object} docs.ErrorResponse "Invalid request body"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized"
-// @Failure 500 {object} docs.ErrorResponse "Internal Server Error"
+// @Failure 400 {object} types.ErrorResponse "Invalid request body"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /users/push-token [post]
 // @Security BearerAuth
 func (h *PushTokenHandler) RegisterPushToken(c *gin.Context) {
@@ -85,9 +85,9 @@ func (h *PushTokenHandler) RegisterPushToken(c *gin.Context) {
 // @Produce json
 // @Param body body types.DeregisterPushTokenRequest true "Push token deregistration request"
 // @Success 204 "Token deregistered successfully"
-// @Failure 400 {object} docs.ErrorResponse "Invalid request body"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized"
-// @Failure 500 {object} docs.ErrorResponse "Internal Server Error"
+// @Failure 400 {object} types.ErrorResponse "Invalid request body"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /users/push-token [delete]
 // @Security BearerAuth
 func (h *PushTokenHandler) DeregisterPushToken(c *gin.Context) {
@@ -127,8 +127,8 @@ func (h *PushTokenHandler) DeregisterPushToken(c *gin.Context) {
 // @Tags push-tokens
 // @Produce json
 // @Success 204 "All tokens deregistered successfully"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized"
-// @Failure 500 {object} docs.ErrorResponse "Internal Server Error"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /users/push-tokens [delete]
 // @Security BearerAuth
 func (h *PushTokenHandler) DeregisterAllPushTokens(c *gin.Context) {

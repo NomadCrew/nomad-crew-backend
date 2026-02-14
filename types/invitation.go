@@ -28,7 +28,7 @@ type TripInvitation struct {
 	CreatedAt    time.Time        `json:"createdAt"`
 	UpdatedAt    time.Time        `json:"updatedAt"`
 	ExpiresAt    *time.Time       `json:"expiresAt,omitempty"`
-	Token        sql.NullString   `json:"token,omitempty"` // Changed to sql.NullString
+	Token        sql.NullString   `json:"token,omitempty" swaggertype:"string"` // Changed to sql.NullString
 }
 
 // InvitationClaims represents the data stored in a JWT for invitation links

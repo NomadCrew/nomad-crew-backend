@@ -56,8 +56,8 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} types.UserProfile "User profile"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - No authenticated user"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - No authenticated user"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/me [get]
 // @Security BearerAuth
 // GetCurrentUser returns the currently authenticated user's profile
@@ -105,9 +105,9 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 // @Produce json
 // @Param id path string true "User ID"
 // @Success 200 {object} types.UserProfile "User profile"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid user ID format"
-// @Failure 404 {object} docs.ErrorResponse "Not found - User not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid user ID format"
+// @Failure 404 {object} types.ErrorResponse "Not found - User not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/{id} [get]
 // @Security BearerAuth
 // GetUserByID retrieves a user by ID
@@ -149,9 +149,9 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 // @Produce json
 // @Param offset query int false "Pagination offset (default 0)"
 // @Param limit query int false "Pagination limit (default 20, max 100)"
-// @Success 200 {object} docs.UserListResponse "List of users with pagination info"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid pagination parameters"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {object} types.UserListResponse "List of users with pagination info"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid pagination parameters"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users [get]
 // @Security BearerAuth
 // ListUsers retrieves a paginated list of users
@@ -224,13 +224,13 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID to update"
-// @Param request body docs.UserUpdateRequest true "User fields to update"
+// @Param request body types.UserUpdateRequest true "User fields to update"
 // @Success 200 {object} types.UserProfile "Successfully updated user profile"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid user ID or request body"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this profile"
-// @Failure 404 {object} docs.ErrorResponse "Not found - User not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid user ID or request body"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to update this profile"
+// @Failure 404 {object} types.ErrorResponse "Not found - User not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/{id} [put]
 // @Security BearerAuth
 func (h *UserHandler) UpdateUser(c *gin.Context) {
@@ -307,13 +307,13 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID whose preferences to update"
-// @Param request body docs.UserPreferencesRequest true "User preferences map"
+// @Param request body types.UserPreferencesRequest true "User preferences map"
 // @Success 204 "Preferences updated successfully"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid user ID or preferences format"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update these preferences"
-// @Failure 404 {object} docs.ErrorResponse "Not found - User not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid user ID or preferences format"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to update these preferences"
+// @Failure 404 {object} types.ErrorResponse "Not found - User not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/{id}/preferences [put]
 // @Security BearerAuth
 func (h *UserHandler) UpdateUserPreferences(c *gin.Context) {
@@ -517,9 +517,9 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} types.UserProfile "User profile"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid or missing JWT"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - Invalid token"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid or missing JWT"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - Invalid token"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/onboard [post]
 // @Security BearerAuth
 func (h *UserHandler) OnboardUser(c *gin.Context) {
@@ -576,8 +576,8 @@ func (h *UserHandler) OnboardUser(c *gin.Context) {
 // @Param q query string true "Search query (min 2 characters)"
 // @Param limit query int false "Max results (default 10, max 20)"
 // @Success 200 {object} types.UserSearchResponse "Search results"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid query"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid query"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/search [get]
 // @Security BearerAuth
 func (h *UserHandler) SearchUsers(c *gin.Context) {
@@ -625,9 +625,9 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 // @Produce json
 // @Param request body types.UpdateContactEmailRequest true "Contact email"
 // @Success 200 {object} map[string]string "Contact email updated"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid email format"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - No authenticated user"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid email format"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - No authenticated user"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /users/me/contact-email [put]
 // @Security BearerAuth
 func (h *UserHandler) UpdateContactEmail(c *gin.Context) {

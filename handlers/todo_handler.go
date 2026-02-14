@@ -38,12 +38,12 @@ func NewTodoHandler(model *models.TodoModel, eventService types.EventPublisher, 
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Param request body docs.TodoCreateRequest true "Todo details"
-// @Success 201 {object} docs.TodoResponse "Successfully created todo item"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input data or missing Trip ID"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to create todos for this trip"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Param request body types.TodoCreateRequest true "Todo details"
+// @Success 201 {object} types.TodoResponse "Successfully created todo item"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input data or missing Trip ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to create todos for this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/todos [post]
 // @Security BearerAuth
 // Uses the trip ID from the parent route to create todos with correct association.
@@ -99,13 +99,13 @@ func (h *TodoHandler) CreateTodoHandler(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param todoID path string true "Todo ID to update"
-// @Param request body docs.TodoUpdateRequest true "Fields to update"
-// @Success 200 {object} docs.TodoResponse "Successfully updated todo item"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input data or IDs"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this todo"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Todo item not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Param request body types.TodoUpdateRequest true "Fields to update"
+// @Success 200 {object} types.TodoResponse "Successfully updated todo item"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input data or IDs"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to update this todo"
+// @Failure 404 {object} types.ErrorResponse "Not found - Todo item not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/todos/{todoID} [put]
 // @Security BearerAuth
 // Extracts trip ID from the parent route and todo ID from c.Param("todoID").
@@ -145,12 +145,12 @@ func (h *TodoHandler) UpdateTodoHandler(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param todoID path string true "Todo ID to delete"
-// @Success 200 {object} docs.StatusResponse "Todo item deleted successfully"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid IDs"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to delete this todo"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Todo item not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {object} types.StatusResponse "Todo item deleted successfully"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid IDs"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to delete this todo"
+// @Failure 404 {object} types.ErrorResponse "Not found - Todo item not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/todos/{todoID} [delete]
 // @Security BearerAuth
 // Uses trip ID from c.Param("id") and todo ID from c.Param("todoID").
@@ -206,11 +206,11 @@ func getPaginationParams(c *gin.Context, defaultLimit, defaultOffset int) Pagina
 // @Param id path string true "Trip ID"
 // @Param limit query int false "Number of items to return (default 100)"
 // @Param offset query int false "Offset for pagination (default 0)"
-// @Success 200 {array} docs.TodoResponse "List of todo items"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid Trip ID or pagination parameters"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view todos for this trip"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {array} types.TodoResponse "List of todo items"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid Trip ID or pagination parameters"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to view todos for this trip"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/todos [get]
 // @Security BearerAuth
 // ListTodosHandler retrieves todos for a given trip.
@@ -247,12 +247,12 @@ func (h *TodoHandler) ListTodosHandler(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param todoID path string true "Todo ID to retrieve"
-// @Success 200 {object} docs.TodoResponse "Details of the todo item"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid IDs"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view this todo"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Todo item not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {object} types.TodoResponse "Details of the todo item"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid IDs"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to view this todo"
+// @Failure 404 {object} types.ErrorResponse "Not found - Todo item not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/todos/{todoID} [get]
 // @Security BearerAuth
 // Uses todo ID from the URL parameter.

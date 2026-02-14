@@ -48,10 +48,10 @@ func NewChatHandlerSupabase(
 // @Param tripId path string true "Trip ID"
 // @Param message body types.ChatSendMessageRequest true "Message data"
 // @Success 201 {object} types.ChatSendMessageResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 400 {object} types.ErrorResponse
+// @Failure 401 {object} types.ErrorResponse
+// @Failure 403 {object} types.ErrorResponse
+// @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages [post]
 func (h *ChatHandlerSupabase) SendMessage(c *gin.Context) {
 	tripID := c.Param("id")
@@ -181,10 +181,10 @@ func (h *ChatHandlerSupabase) sendChatNotifications(tripID, senderID, messageID,
 // @Param limit query int false "Maximum number of messages to return" default(50)
 // @Param before query string false "Return messages before this message ID (for pagination)"
 // @Success 200 {object} types.ChatGetMessagesResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 400 {object} types.ErrorResponse
+// @Failure 401 {object} types.ErrorResponse
+// @Failure 403 {object} types.ErrorResponse
+// @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages [get]
 func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 	tripID := c.Param("id")
@@ -242,10 +242,10 @@ func (h *ChatHandlerSupabase) GetMessages(c *gin.Context) {
 // @Param messageId path string true "Message ID"
 // @Param reaction body types.ChatAddReactionRequest true "Reaction data"
 // @Success 201 {object} types.ChatReactionResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 400 {object} types.ErrorResponse
+// @Failure 401 {object} types.ErrorResponse
+// @Failure 403 {object} types.ErrorResponse
+// @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions [post]
 func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 	tripID := c.Param("id")
@@ -302,11 +302,11 @@ func (h *ChatHandlerSupabase) AddReaction(c *gin.Context) {
 // @Param tripId path string true "Trip ID"
 // @Param messageId path string true "Message ID"
 // @Param emoji path string true "Emoji to remove"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} types.StatusResponse
+// @Failure 400 {object} types.ErrorResponse
+// @Failure 401 {object} types.ErrorResponse
+// @Failure 403 {object} types.ErrorResponse
+// @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/messages/{messageId}/reactions/{emoji} [delete]
 func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 	tripID := c.Param("id")
@@ -357,11 +357,11 @@ func (h *ChatHandlerSupabase) RemoveReaction(c *gin.Context) {
 // @Produce json
 // @Param tripId path string true "Trip ID"
 // @Param status body types.ChatUpdateReadStatusRequest true "Read status data"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} types.StatusResponse
+// @Failure 400 {object} types.ErrorResponse
+// @Failure 401 {object} types.ErrorResponse
+// @Failure 403 {object} types.ErrorResponse
+// @Failure 500 {object} types.ErrorResponse
 // @Router /api/v1/trips/{tripId}/chat/read-status [put]
 func (h *ChatHandlerSupabase) UpdateReadStatus(c *gin.Context) {
 	tripID := c.Param("id")

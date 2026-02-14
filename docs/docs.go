@@ -23,6 +23,570 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/location/update": {
+            "post": {
+                "description": "Updates the current user's location globally (legacy compatibility)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "locations"
+                ],
+                "summary": "Update user's location (legacy endpoint)",
+                "parameters": [
+                    {
+                        "description": "Location data",
+                        "name": "location",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.LocationUpdate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.LocationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/trips/{tripId}/chat/messages": {
+            "get": {
+                "description": "Retrieves messages from a trip chat with pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Get chat messages",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Maximum number of messages to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Return messages before this message ID (for pagination)",
+                        "name": "before",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.ChatGetMessagesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Sends a new message to a trip chat",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Send a chat message",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Message data",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.ChatSendMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/types.ChatSendMessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/trips/{tripId}/chat/messages/{messageId}/reactions": {
+            "post": {
+                "description": "Adds an emoji reaction to a chat message",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Add a reaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID",
+                        "name": "messageId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Reaction data",
+                        "name": "reaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.ChatAddReactionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/types.ChatReactionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/trips/{tripId}/chat/messages/{messageId}/reactions/{emoji}": {
+            "delete": {
+                "description": "Removes an emoji reaction from a chat message",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Remove a reaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID",
+                        "name": "messageId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Emoji to remove",
+                        "name": "emoji",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/trips/{tripId}/chat/read-status": {
+            "put": {
+                "description": "Updates the user's last read message for a trip",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Update read status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Read status data",
+                        "name": "status",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.ChatUpdateReadStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/trips/{tripId}/locations": {
+            "get": {
+                "description": "Retrieves the latest locations of all trip members",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "locations"
+                ],
+                "summary": "Get trip member locations",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.LocationsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates the current user's location for a specific trip",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "locations"
+                ],
+                "summary": "Update user's location",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Location update data",
+                        "name": "location",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.LocationUpdate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Posts the current user's location for a specific trip",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "locations"
+                ],
+                "summary": "Create/Post user's location",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Location data",
+                        "name": "location",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.LocationUpdate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/types.LocationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Provides detailed health information about all service dependencies",
@@ -125,25 +689,25 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid or expired token",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User ID in token does not match logged-in user (if applicable)",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Invitation not found or already processed",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -185,25 +749,25 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid or expired token",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not authenticated or token mismatch",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Invitation not found or already processed",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -241,19 +805,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Missing or invalid token",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Invitation not found or token invalid",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -288,76 +852,220 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid or expired token",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Invitation not found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/locations": {
-            "put": {
+        "/invitations/{invitationId}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Updates the current user's location",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Retrieves details about an invitation using its ID. The authenticated user must be the invitee (email match required).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "location"
+                    "trips-invitations"
                 ],
-                "summary": "Update user location",
+                "summary": "Get invitation details by ID",
                 "parameters": [
                     {
-                        "description": "Location update data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.LocationUpdate"
-                        }
+                        "type": "string",
+                        "description": "Invitation ID (UUID)",
+                        "name": "invitationId",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Updated location",
+                        "description": "Invitation details",
                         "schema": {
-                            "$ref": "#/definitions/types.Location"
+                            "$ref": "#/definitions/types.InvitationDetailsResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad request - Invalid location data",
+                        "description": "Bad request - Missing invitation ID",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized - User not logged in",
+                        "description": "Unauthorized - User not authenticated",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - User is not the invitee",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found - Invitation not found",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/invitations/{invitationId}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Allows an authenticated user to accept an invitation using the invitation ID. The user must be the invitee.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trips-invitations"
+                ],
+                "summary": "Accept a trip invitation by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation ID (UUID)",
+                        "name": "invitationId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully joined trip",
+                        "schema": {
+                            "$ref": "#/definitions/types.TripMembership"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - Invalid invitation ID",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - User not authenticated",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - User is not the invitee",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found - Invitation not found",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict - Already a member or invitation not pending",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/invitations/{invitationId}/decline": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Allows an authenticated user to decline an invitation using the invitation ID. The user must be the invitee.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trips-invitations"
+                ],
+                "summary": "Decline a trip invitation by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation ID (UUID)",
+                        "name": "invitationId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successfully declined invitation"
+                    },
+                    "400": {
+                        "description": "Bad request - Invalid invitation ID",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - User not authenticated",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - User is not the invitee",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found - Invitation not found",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict - Invitation not pending",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -404,26 +1112,64 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/docs.NotificationResponse"
+                                "$ref": "#/definitions/types.NotificationResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Invalid query parameters",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes all notifications for the authenticated user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Delete all notifications",
+                "responses": {
+                    "200": {
+                        "description": "Returns the number of notifications deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -460,13 +1206,13 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -503,31 +1249,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid Notification ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden (Notification does not belong to user)",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Notification Not Found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -567,31 +1313,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid Notification ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden (Notification does not belong to user)",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Notification Not Found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -621,20 +1367,20 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/docs.TripResponse"
+                                "$ref": "#/definitions/types.TripResponse"
                             }
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -663,7 +1409,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.CreateTripRequest"
+                            "$ref": "#/definitions/types.CreateTripRequest"
                         }
                     }
                 ],
@@ -671,25 +1417,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Successfully created trip details",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripResponse"
+                            "$ref": "#/definitions/types.TripResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid input data",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -720,7 +1466,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.TripSearchRequest"
+                            "$ref": "#/definitions/types.TripSearchRequest"
                         }
                     }
                 ],
@@ -730,26 +1476,26 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/docs.TripResponse"
+                                "$ref": "#/definitions/types.TripResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid search criteria",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -786,37 +1532,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Trip details",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripResponse"
+                            "$ref": "#/definitions/types.TripResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid trip ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not a member of this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -852,7 +1598,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.TripUpdateRequest"
+                            "$ref": "#/definitions/types.TripUpdateRequest"
                         }
                     }
                 ],
@@ -860,37 +1606,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Successfully updated trip details",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripResponse"
+                            "$ref": "#/definitions/types.TripResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid trip ID or update data",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to update this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -928,691 +1674,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid trip ID format",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to delete this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/chat/last-read": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Updates the last read message timestamp for the current user in the trip's chat.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "Update last read message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Last read message ID",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/docs.ChatLastReadRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Successfully updated last read timestamp"
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid input",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found - Message or chat group not found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/chat/members": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves a list of members in the trip's primary chat group.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "List chat members",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of chat members",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found - Chat group not found for the trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/chat/messages": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves messages for a trip's chat with pagination",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "List chat messages",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Number of messages to return (default 50)",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Offset for pagination (default 0)",
-                        "name": "offset",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of chat messages with pagination info",
-                        "schema": {
-                            "$ref": "#/definitions/types.ChatMessagePaginatedResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID or query parameters",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Sends a new message in a trip's chat",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "Send chat message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Message content",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.ChatMessageCreateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created message details",
-                        "schema": {
-                            "$ref": "#/definitions/types.ChatMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID or message content",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/chat/messages/{messageId}": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Updates the content of an existing message in a trip's chat. User must be the author.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "Update chat message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID to update",
-                        "name": "messageId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "New message content",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/docs.ChatMessageUpdateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Updated message details",
-                        "schema": {
-                            "$ref": "#/definitions/types.ChatMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid input or message ID",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip or not the message author",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found - Message not found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Deletes a message from a trip's chat",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "Delete chat message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID",
-                        "name": "messageId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success response with message",
-                        "schema": {
-                            "$ref": "#/definitions/docs.StatusResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID or message ID",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/chat/messages/{messageId}/reactions": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves all reactions for a specific message in a trip's chat.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "List reactions for a message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID",
-                        "name": "messageId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of reactions for the message",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/docs.ChatMessageReactionResponse"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID or message ID",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found - Message not found",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "501": {
-                        "description": "Not implemented - This feature is not yet available",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Adds a reaction to a message in a trip's chat",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "Add reaction to message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID",
-                        "name": "messageId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Reaction details",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.ChatMessageReactionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success response with message",
-                        "schema": {
-                            "$ref": "#/definitions/docs.StatusResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID, message ID, or reaction",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/chat/messages/{messageId}/reactions/{reactionType}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Removes a reaction from a message in a trip's chat",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chat"
-                ],
-                "summary": "Remove reaction from message",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID",
-                        "name": "messageId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Reaction type",
-                        "name": "reactionType",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success response with message",
-                        "schema": {
-                            "$ref": "#/definitions/docs.StatusResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID, message ID, or reaction type",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -1649,37 +1735,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Trip details including members",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripWithMembersResponse"
+                            "$ref": "#/definitions/types.TripWithMembersResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid trip ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to view this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -1719,32 +1805,32 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/docs.ImageResponse"
+                                "$ref": "#/definitions/types.ImageResponse"
                             }
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to view images for this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -1787,37 +1873,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Image uploaded successfully",
                         "schema": {
-                            "$ref": "#/definitions/docs.ImageUploadResponse"
+                            "$ref": "#/definitions/types.ImageUploadResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - No file, invalid file type/size, or invalid trip ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to upload images for this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error - Upload failed",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -1865,86 +1951,25 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to delete this image",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip or image not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{id}/locations": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves the current locations of all members in a trip",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "location"
-                ],
-                "summary": "Get trip member locations",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of member locations",
-                        "schema": {
-                            "$ref": "#/definitions/docs.MemberLocationListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid or missing trip ID",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User is not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -1982,7 +2007,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.UpdateTripStatusRequest"
+                            "$ref": "#/definitions/types.UpdateTripStatusRequest"
                         }
                     }
                 ],
@@ -1990,37 +2015,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Successfully updated trip status",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripStatusUpdateResponse"
+                            "$ref": "#/definitions/types.TripResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid trip ID or status value",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to update this trip's status, or invalid status transition",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2071,32 +2096,32 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/docs.TodoResponse"
+                                "$ref": "#/definitions/types.TodoResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid Trip ID or pagination parameters",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to view todos for this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2132,7 +2157,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.TodoCreateRequest"
+                            "$ref": "#/definitions/types.TodoCreateRequest"
                         }
                     }
                 ],
@@ -2140,31 +2165,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Successfully created todo item",
                         "schema": {
-                            "$ref": "#/definitions/docs.TodoResponse"
+                            "$ref": "#/definitions/types.TodoResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid input data or missing Trip ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to create todos for this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2208,37 +2233,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Details of the todo item",
                         "schema": {
-                            "$ref": "#/definitions/docs.TodoResponse"
+                            "$ref": "#/definitions/types.TodoResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid IDs",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to view this todo",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Todo item not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2281,7 +2306,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.TodoUpdateRequest"
+                            "$ref": "#/definitions/types.TodoUpdateRequest"
                         }
                     }
                 ],
@@ -2289,37 +2314,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Successfully updated todo item",
                         "schema": {
-                            "$ref": "#/definitions/docs.TodoResponse"
+                            "$ref": "#/definitions/types.TodoResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid input data or IDs",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to update this todo",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Todo item not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2361,50 +2386,50 @@ const docTemplate = `{
                     "200": {
                         "description": "Todo item deleted successfully",
                         "schema": {
-                            "$ref": "#/definitions/docs.StatusResponse"
+                            "$ref": "#/definitions/types.StatusResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid IDs",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to delete this todo",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Todo item not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/trips/{id}/weather/trigger-update": {
+        "/trips/{id}/weather/trigger": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Manually triggers a weather data update for the specified trip if conditions are met (e.g., trip is active or planning).",
+                "description": "Manually triggers an immediate weather forecast update for the specified trip if it has a valid destination.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2427,256 +2452,104 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Weather update triggered successfully or already up-to-date",
+                        "description": "Successfully triggered weather update",
                         "schema": {
-                            "$ref": "#/definitions/docs.StatusResponse"
+                            "$ref": "#/definitions/types.StatusResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad request - Invalid trip ID or conditions not met for update (e.g. trip completed)",
+                        "description": "Bad request - Invalid trip ID",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
-                        "description": "Forbidden - User not authorized to trigger weather updates for this trip",
+                        "description": "Forbidden - User not authorized or trip has no destination",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal server error or weather service error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{tripID}/ws": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Upgrades HTTP connection to WebSocket for real-time trip chat",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "websocket",
-                    "chat"
-                ],
-                "summary": "Establish trip chat WebSocket connection",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "tripID",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "101": {
-                        "description": "Switching Protocols to WebSocket"
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "429": {
-                        "description": "Too Many Requests - Rate limit exceeded",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{tripId}/chat/messages": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves a paginated list of chat messages for a specific trip.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "trips-chat"
-                ],
-                "summary": "List messages for a trip",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "tripId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Timestamp to fetch messages before (ISO 8601)",
-                        "name": "before",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Number of messages to fetch (default 50)",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of chat messages",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/types.ChatMessage"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid parameters",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found - Trip not found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{tripId}/chat/read": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Updates the timestamp of the last message read by the user in a specific trip's chat.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "trips-chat"
-                ],
-                "summary": "Update user's last read message in a trip",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "tripId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Last read message ID",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ChatLastReadRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successfully updated last read timestamp",
-                        "schema": {
-                            "$ref": "#/definitions/docs.StatusResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid input",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found - Trip or Message not found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
             }
         },
         "/trips/{tripId}/invitations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all invitations for a specific trip. Requires ADMIN+ permissions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trips-invitations"
+                ],
+                "summary": "List all invitations for a trip",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of invitations",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/types.TripInvitation"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - User not authenticated",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - Insufficient permissions",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found - Trip not found",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -2722,31 +2595,99 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid input or user already member/invited",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User does not have permission to invite",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/trips/{tripId}/invitations/{invitationId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revokes (cancels) a pending invitation. Requires ADMIN+ permissions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trips-invitations"
+                ],
+                "summary": "Revoke a trip invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trip ID",
+                        "name": "tripId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invitation ID (UUID)",
+                        "name": "invitationId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successfully revoked invitation"
+                    },
+                    "400": {
+                        "description": "Bad request - Invitation not pending",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - User not authenticated",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - Insufficient permissions",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found - Invitation not found",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2785,32 +2726,32 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/docs.TripMemberDetailResponse"
+                                "$ref": "#/definitions/types.TripMemberDetailResponse"
                             }
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User is not a member of this trip",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2846,7 +2787,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.AddMemberRequest"
+                            "$ref": "#/definitions/types.AddMemberRequest"
                         }
                     }
                 ],
@@ -2854,37 +2795,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Successfully added member",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripMemberResponse"
+                            "$ref": "#/definitions/types.TripMemberResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid input or user already member",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User does not have permission to add members",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip or User not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2931,25 +2872,25 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User does not have permission to remove members",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip or User not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -2994,7 +2935,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.UpdateMemberRoleRequest"
+                            "$ref": "#/definitions/types.UpdateMemberRoleRequest"
                         }
                     }
                 ],
@@ -3002,89 +2943,37 @@ const docTemplate = `{
                     "200": {
                         "description": "Successfully updated member's role",
                         "schema": {
-                            "$ref": "#/definitions/docs.TripMemberResponse"
+                            "$ref": "#/definitions/types.TripMemberResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid input",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User does not have permission to update roles",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - Trip, User, or Membership not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/trips/{tripId}/ws/events": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Establishes a WebSocket connection to stream real-time events for a trip (chat, updates, etc.).",
-                "tags": [
-                    "trips-chat websocket"
-                ],
-                "summary": "WebSocket stream for trip events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trip ID",
-                        "name": "tripId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "101": {
-                        "description": "Switching Protocols"
-                    },
-                    "400": {
-                        "description": "Bad request - Invalid trip ID or user not authorized",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - User not a member of this trip",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error - Failed to upgrade connection",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -3126,19 +3015,19 @@ const docTemplate = `{
                     "200": {
                         "description": "List of users with pagination info",
                         "schema": {
-                            "$ref": "#/definitions/docs.UserListResponse"
+                            "$ref": "#/definitions/types.UserListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - Invalid pagination parameters",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -3172,13 +3061,317 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized - No authenticated user",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/me/contact-email": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the current user's contact email (for Apple Sign-In users with private relay emails)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "summary": "Update contact email",
+                "parameters": [
+                    {
+                        "description": "Contact email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.UpdateContactEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Contact email updated",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - Invalid email format",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - No authenticated user",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/onboard": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upserts the user into the backend users table using info from the Supabase JWT",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "summary": "Onboard or upsert user from Supabase JWT",
+                "responses": {
+                    "200": {
+                        "description": "User profile",
+                        "schema": {
+                            "$ref": "#/definitions/types.UserProfile"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - Invalid or missing JWT",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/push-token": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Registers or updates a push notification token for the authenticated user's device",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "push-tokens"
+                ],
+                "summary": "Register a push notification token",
+                "parameters": [
+                    {
+                        "description": "Push token registration request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.RegisterPushTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Token registered successfully",
+                        "schema": {
+                            "$ref": "#/definitions/types.PushToken"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deactivates a push notification token for the authenticated user (typically on logout)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "push-tokens"
+                ],
+                "summary": "Deregister a push notification token",
+                "parameters": [
+                    {
+                        "description": "Push token deregistration request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.DeregisterPushTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Token deregistered successfully"
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/push-tokens": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deactivates all push notification tokens for the authenticated user (e.g., on account logout from all devices)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "push-tokens"
+                ],
+                "summary": "Deregister all push notification tokens",
+                "responses": {
+                    "204": {
+                        "description": "All tokens deregistered successfully"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Search for users by username, email, contact_email, first name, or last name",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "summary": "Search users",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query (min 2 characters)",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max results (default 10, max 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Search results",
+                        "schema": {
+                            "$ref": "#/definitions/types.UserSearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - Invalid query",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -3221,19 +3414,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid user ID format",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - User not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -3269,7 +3462,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.UserUpdateRequest"
+                            "$ref": "#/definitions/types.UserUpdateRequest"
                         }
                     }
                 ],
@@ -3283,31 +3476,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid user ID or request body",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to update this profile",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - User not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -3345,7 +3538,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/docs.UserPreferencesRequest"
+                            "$ref": "#/definitions/types.UserPreferencesRequest"
                         }
                     }
                 ],
@@ -3356,68 +3549,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad request - Invalid user ID or preferences format",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized - User not logged in",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden - User not authorized to update these preferences",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not found - User not found",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/docs.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/ws": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Upgrades HTTP connection to WebSocket for real-time communication",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "websocket"
-                ],
-                "summary": "Establish WebSocket connection",
-                "responses": {
-                    "101": {
-                        "description": "Switching Protocols to WebSocket"
-                    },
-                    "401": {
-                        "description": "Unauthorized - User not logged in",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
-                        }
-                    },
-                    "429": {
-                        "description": "Too Many Requests - Rate limit exceeded",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse"
+                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -3425,712 +3581,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "docs.AddMemberRequest": {
-            "description": "Request body for adding a member to a trip.",
-            "type": "object",
-            "required": [
-                "role",
-                "userId"
-            ],
-            "properties": {
-                "role": {
-                    "description": "Role to assign to the new member (e.g., MEMBER, ADMIN, OWNER)",
-                    "type": "string",
-                    "example": "MEMBER"
-                },
-                "userId": {
-                    "description": "User ID of the member to add",
-                    "type": "string",
-                    "example": "user-uuid-abc"
-                }
-            }
-        },
-        "docs.ChatLastReadRequest": {
-            "description": "Request to update the last read message ID for the user in a trip's chat.",
-            "type": "object",
-            "required": [
-                "lastReadMessageId"
-            ],
-            "properties": {
-                "lastReadMessageId": {
-                    "type": "string",
-                    "example": "message-uuid-xyz"
-                }
-            }
-        },
-        "docs.ChatMessageReactionResponse": {
-            "description": "Detailed information about a chat message reaction.",
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string",
-                    "example": "2023-10-27T10:00:00Z"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "reaction-uuid-123"
-                },
-                "messageId": {
-                    "type": "string",
-                    "example": "message-uuid-456"
-                },
-                "reaction": {
-                    "description": "The emoji character(s)",
-                    "type": "string",
-                    "example": "👍"
-                },
-                "userId": {
-                    "type": "string",
-                    "example": "user-uuid-789"
-                }
-            }
-        },
-        "docs.ChatMessageUpdateRequest": {
-            "description": "Request body for updating a chat message.",
-            "type": "object",
-            "required": [
-                "content"
-            ],
-            "properties": {
-                "content": {
-                    "type": "string",
-                    "example": "Updated message content here."
-                }
-            }
-        },
-        "docs.Coordinates": {
-            "description": "Geographic coordinates",
-            "type": "object",
-            "properties": {
-                "lat": {
-                    "description": "Latitude",
-                    "type": "number",
-                    "example": 48.8566
-                },
-                "lng": {
-                    "description": "Longitude",
-                    "type": "number",
-                    "example": 2.3522
-                }
-            }
-        },
-        "docs.CreateTripRequest": {
-            "description": "Trip creation information",
-            "type": "object",
-            "required": [
-                "destination",
-                "endDate",
-                "name",
-                "startDate"
-            ],
-            "properties": {
-                "description": {
-                    "description": "Trip description",
-                    "type": "string",
-                    "example": "A relaxing trip to the beach"
-                },
-                "destination": {
-                    "description": "Trip destination information",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/docs.DestinationInfo"
-                        }
-                    ]
-                },
-                "endDate": {
-                    "description": "Trip end date",
-                    "type": "string",
-                    "example": "2024-07-10T00:00:00Z"
-                },
-                "name": {
-                    "description": "The trip name",
-                    "type": "string",
-                    "example": "Summer Vacation"
-                },
-                "startDate": {
-                    "description": "Trip start date",
-                    "type": "string",
-                    "example": "2024-07-01T00:00:00Z"
-                },
-                "status": {
-                    "description": "Trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)\nDefaults to PLANNING if not provided.",
-                    "type": "string",
-                    "example": "PLANNING"
-                }
-            }
-        },
-        "docs.DestinationInfo": {
-            "description": "Destination information",
-            "type": "object",
-            "properties": {
-                "address": {
-                    "description": "Destination address",
-                    "type": "string",
-                    "example": "Paris, France"
-                },
-                "coordinates": {
-                    "description": "Coordinates information",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/docs.Coordinates"
-                        }
-                    ]
-                },
-                "placeId": {
-                    "description": "Google Maps place ID",
-                    "type": "string",
-                    "example": "ChIJD7fiBh9u5kcRYJSMaMOCCwQ"
-                }
-            }
-        },
-        "docs.ErrorResponse": {
-            "description": "Error information",
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Error code",
-                    "type": "string",
-                    "example": "VALIDATION_ERROR"
-                },
-                "error": {
-                    "description": "Detailed error information",
-                    "type": "string",
-                    "example": "Field 'name' is required"
-                },
-                "message": {
-                    "description": "Error message",
-                    "type": "string",
-                    "example": "Invalid request parameters"
-                }
-            }
-        },
-        "docs.ImageResponse": {
-            "description": "Image details",
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "example": "image-uuid-123"
-                },
-                "uploadedAt": {
-                    "type": "string",
-                    "example": "2023-01-01T12:00:00Z"
-                },
-                "url": {
-                    "type": "string",
-                    "example": "https://example.com/image.jpg"
-                }
-            }
-        },
-        "docs.ImageUploadResponse": {
-            "description": "Response after successful image upload",
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "example": "image-uuid-123"
-                },
-                "url": {
-                    "type": "string",
-                    "example": "https://example.com/image.jpg"
-                }
-            }
-        },
-        "docs.MemberLocationListResponse": {
-            "description": "A list of locations for trip members.",
-            "type": "object",
-            "properties": {
-                "locations": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.MemberLocation"
-                    }
-                }
-            }
-        },
-        "docs.NotificationResponse": {
-            "description": "Notification information",
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "description": "When the notification was created",
-                    "type": "string",
-                    "example": "2023-01-01T00:00:00Z"
-                },
-                "id": {
-                    "description": "The notification ID",
-                    "type": "string",
-                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                },
-                "message": {
-                    "description": "The notification message",
-                    "type": "string",
-                    "example": "You've been invited to join a trip to Paris"
-                },
-                "metadata": {
-                    "description": "Additional data related to the notification (if any)",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "read": {
-                    "description": "Whether the notification has been read",
-                    "type": "boolean",
-                    "example": false
-                },
-                "title": {
-                    "description": "The notification title",
-                    "type": "string",
-                    "example": "New Trip Invitation"
-                },
-                "type": {
-                    "description": "The notification type",
-                    "type": "string",
-                    "example": "TRIP_INVITATION"
-                },
-                "userId": {
-                    "description": "The user ID this notification belongs to",
-                    "type": "string",
-                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                }
-            }
-        },
-        "docs.StatusResponse": {
-            "description": "Generic status message response",
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "Operation successful"
-                }
-            }
-        },
-        "docs.TodoCreateRequest": {
-            "description": "Request body for creating a new todo. TripID is taken from the path.",
-            "type": "object",
-            "required": [
-                "text"
-            ],
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "example": "Buy groceries"
-                }
-            }
-        },
-        "docs.TodoResponse": {
-            "description": "Detailed information about a todo item.",
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string",
-                    "example": "2023-10-26T10:00:00Z"
-                },
-                "createdBy": {
-                    "type": "string",
-                    "example": "user-uuid-789"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "todo-uuid-123"
-                },
-                "status": {
-                    "description": "Status of the todo item (e.g., COMPLETE, INCOMPLETE)",
-                    "type": "string",
-                    "example": "INCOMPLETE"
-                },
-                "text": {
-                    "type": "string",
-                    "example": "Buy groceries"
-                },
-                "tripId": {
-                    "type": "string",
-                    "example": "trip-uuid-456"
-                },
-                "updatedAt": {
-                    "type": "string",
-                    "example": "2023-10-26T10:05:00Z"
-                }
-            }
-        },
-        "docs.TodoUpdateRequest": {
-            "description": "Fields for updating a todo. All fields are optional.",
-            "type": "object",
-            "properties": {
-                "status": {
-                    "description": "New status for the todo item (e.g., COMPLETE, INCOMPLETE)",
-                    "type": "string",
-                    "example": "COMPLETE"
-                },
-                "text": {
-                    "description": "New text for the todo item",
-                    "type": "string",
-                    "example": "Buy milk and eggs"
-                }
-            }
-        },
-        "docs.TripMemberDetailResponse": {
-            "description": "Detailed information about a trip member, including their membership details and user profile.",
-            "type": "object",
-            "properties": {
-                "membership": {
-                    "description": "Reusing existing docs.TripMemberResponse for membership details",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/docs.TripMemberResponse"
-                        }
-                    ]
-                },
-                "user": {
-                    "description": "Assuming types.UserResponse is suitable for direct use here",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse"
-                        }
-                    ]
-                }
-            }
-        },
-        "docs.TripMemberResponse": {
-            "description": "Detailed information about a trip member",
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string",
-                    "example": "2023-01-01T10:00:00Z"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "membership-uuid-123"
-                },
-                "role": {
-                    "description": "Role of the member in the trip (e.g., OWNER, MEMBER, ADMIN)",
-                    "type": "string",
-                    "example": "MEMBER"
-                },
-                "status": {
-                    "description": "Status of the membership (e.g., ACTIVE, INACTIVE, INVITED)",
-                    "type": "string",
-                    "example": "ACTIVE"
-                },
-                "tripId": {
-                    "type": "string",
-                    "example": "trip-uuid-456"
-                },
-                "updatedAt": {
-                    "type": "string",
-                    "example": "2023-01-01T11:00:00Z"
-                },
-                "userId": {
-                    "type": "string",
-                    "example": "user-uuid-789"
-                }
-            }
-        },
-        "docs.TripResponse": {
-            "description": "Trip information",
-            "type": "object",
-            "properties": {
-                "backgroundImageUrl": {
-                    "description": "URL to trip background image",
-                    "type": "string",
-                    "example": "https://example.com/images/paris.jpg"
-                },
-                "createdAt": {
-                    "description": "Trip creation time",
-                    "type": "string",
-                    "example": "2023-01-01T00:00:00Z"
-                },
-                "createdBy": {
-                    "description": "ID of user who created the trip",
-                    "type": "string",
-                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                },
-                "description": {
-                    "description": "Trip description",
-                    "type": "string",
-                    "example": "A wonderful week in Paris"
-                },
-                "destination": {
-                    "description": "Trip destination information",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/docs.DestinationInfo"
-                        }
-                    ]
-                },
-                "endDate": {
-                    "description": "Trip end date",
-                    "type": "string",
-                    "example": "2023-06-07T00:00:00Z"
-                },
-                "id": {
-                    "description": "The trip ID",
-                    "type": "string",
-                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                },
-                "name": {
-                    "description": "The trip name",
-                    "type": "string",
-                    "example": "Trip to Paris"
-                },
-                "startDate": {
-                    "description": "Trip start date",
-                    "type": "string",
-                    "example": "2023-06-01T00:00:00Z"
-                },
-                "status": {
-                    "description": "Trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)",
-                    "type": "string",
-                    "example": "PLANNING"
-                },
-                "updatedAt": {
-                    "description": "Trip last update time",
-                    "type": "string",
-                    "example": "2023-01-02T00:00:00Z"
-                }
-            }
-        },
-        "docs.TripSearchRequest": {
-            "description": "Criteria for searching trips. All fields are optional.",
-            "type": "object",
-            "properties": {
-                "destination": {
-                    "description": "Optional: Filter by destination (e.g., address, place name)",
-                    "type": "string",
-                    "example": "Paris"
-                },
-                "endDate": {
-                    "description": "Optional: Filter by exact end date",
-                    "type": "string",
-                    "example": "2024-08-10T00:00:00Z"
-                },
-                "limit": {
-                    "description": "Optional: Limit number of results",
-                    "type": "integer",
-                    "example": 20
-                },
-                "offset": {
-                    "description": "Optional: Offset for pagination",
-                    "type": "integer",
-                    "example": 0
-                },
-                "startDate": {
-                    "description": "Optional: Filter by exact start date",
-                    "type": "string",
-                    "example": "2024-08-01T00:00:00Z"
-                },
-                "startDateFrom": {
-                    "description": "Optional: Filter by start date range (from this date)",
-                    "type": "string",
-                    "example": "2024-08-01T00:00:00Z"
-                },
-                "startDateTo": {
-                    "description": "Optional: Filter by start date range (to this date)",
-                    "type": "string",
-                    "example": "2024-08-31T00:00:00Z"
-                },
-                "userId": {
-                    "description": "Optional: User ID to filter trips by (admin capability or specific use cases)",
-                    "type": "string",
-                    "example": "user-uuid-123"
-                }
-            }
-        },
-        "docs.TripStatusUpdateResponse": {
-            "description": "Response after updating trip status",
-            "type": "object",
-            "properties": {
-                "data": {
-                    "description": "Trip details might be omitted if refetch fails",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/docs.TripResponse"
-                        }
-                    ]
-                },
-                "message": {
-                    "type": "string",
-                    "example": "Trip status updated successfully"
-                }
-            }
-        },
-        "docs.TripUpdateRequest": {
-            "description": "Updatable trip fields. All fields are optional.",
-            "type": "object",
-            "properties": {
-                "description": {
-                    "description": "New trip description",
-                    "type": "string",
-                    "example": "An even more relaxing trip"
-                },
-                "destination": {
-                    "description": "New trip destination information",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/docs.DestinationInfo"
-                        }
-                    ]
-                },
-                "endDate": {
-                    "description": "New trip end date",
-                    "type": "string",
-                    "example": "2024-07-11T00:00:00Z"
-                },
-                "name": {
-                    "description": "The new trip name",
-                    "type": "string",
-                    "example": "Updated Summer Vacation"
-                },
-                "startDate": {
-                    "description": "New trip start date",
-                    "type": "string",
-                    "example": "2024-07-02T00:00:00Z"
-                },
-                "status": {
-                    "description": "New trip status (PLANNING, ACTIVE, COMPLETED, CANCELLED)",
-                    "type": "string",
-                    "example": "PLANNING"
-                }
-            }
-        },
-        "docs.TripWithMembersResponse": {
-            "description": "Detailed trip information along with a list of its members",
-            "type": "object",
-            "properties": {
-                "members": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/docs.TripMemberResponse"
-                    }
-                },
-                "trip": {
-                    "$ref": "#/definitions/docs.TripResponse"
-                }
-            }
-        },
-        "docs.UpdateMemberRoleRequest": {
-            "description": "Request body for updating a trip member's role.",
-            "type": "object",
-            "required": [
-                "role"
-            ],
-            "properties": {
-                "role": {
-                    "description": "New role for the member (e.g., MEMBER, ADMIN, OWNER)",
-                    "type": "string",
-                    "example": "ADMIN"
-                }
-            }
-        },
-        "docs.UpdateTripStatusRequest": {
-            "description": "Request body for updating trip status",
-            "type": "object",
-            "required": [
-                "status"
-            ],
-            "properties": {
-                "status": {
-                    "description": "The new trip status (e.g., PLANNING, ACTIVE, COMPLETED, CANCELLED)",
-                    "type": "string",
-                    "example": "ACTIVE"
-                }
-            }
-        },
-        "docs.UserListResponse": {
-            "description": "A paginated list of user profiles.",
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "example": 20
-                },
-                "offset": {
-                    "type": "integer",
-                    "example": 0
-                },
-                "total": {
-                    "type": "integer",
-                    "example": 100
-                },
-                "users": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.UserProfile"
-                    }
-                }
-            }
-        },
-        "docs.UserPreferencesRequest": {
-            "description": "A map of preference keys to their values.",
-            "type": "object",
-            "additionalProperties": true
-        },
-        "docs.UserUpdateRequest": {
-            "description": "Fields for updating a user profile. All fields are optional.",
-            "type": "object",
-            "properties": {
-                "firstName": {
-                    "type": "string",
-                    "example": "Jonathan"
-                },
-                "lastName": {
-                    "type": "string",
-                    "example": "Doer"
-                },
-                "profilePictureUrl": {
-                    "type": "string",
-                    "example": "https://example.com/new_avatar.png"
-                },
-                "username": {
-                    "type": "string",
-                    "example": "new.john.doe"
-                }
-            }
-        },
-        "github_com_NomadCrew_nomad-crew-backend_types.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_NomadCrew_nomad-crew-backend_types.UserResponse": {
-            "type": "object",
-            "properties": {
-                "avatarUrl": {
-                    "description": "Changed from ProfilePicture to match Supabase",
-                    "type": "string"
-                },
-                "displayName": {
-                    "description": "Added for UI display purposes",
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "firstName": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "lastName": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.AcceptInvitationRequest": {
             "type": "object",
             "required": [
@@ -4138,17 +3588,6 @@ const docTemplate = `{
             ],
             "properties": {
                 "token": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.ChatLastReadRequest": {
-            "type": "object",
-            "required": [
-                "lastReadMessageId"
-            ],
-            "properties": {
-                "lastReadMessageId": {
                     "type": "string"
                 }
             }
@@ -4179,116 +3618,111 @@ const docTemplate = `{
                 }
             }
         },
-        "sql.NullString": {
+        "types.AddMemberRequest": {
+            "description": "Request body for adding a member to a trip.",
             "type": "object",
+            "required": [
+                "role",
+                "userId"
+            ],
             "properties": {
-                "string": {
-                    "type": "string"
-                },
-                "valid": {
-                    "description": "Valid is true if String is not NULL",
-                    "type": "boolean"
-                }
-            }
-        },
-        "types.ChatMessage": {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "contentType": {
-                    "description": "Added: e.g., \"text\", \"image_url\", \"system\"",
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "groupId": {
-                    "description": "Specific group within the trip, if applicable",
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "isDeleted": {
-                    "type": "boolean"
-                },
-                "isEdited": {
-                    "type": "boolean"
-                },
-                "reactions": {
-                    "description": "Added",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.ChatMessageReaction"
-                    }
-                },
-                "sender": {
-                    "description": "Added for sender details",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/types.MessageSender"
-                        }
-                    ]
-                },
-                "tripId": {
-                    "description": "Often the primary key for partitioning/lookup",
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
+                "role": {
+                    "type": "string",
+                    "example": "MEMBER"
                 },
                 "userId": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "user-uuid-abc"
                 }
             }
         },
-        "types.ChatMessageCreateRequest": {
+        "types.ChatAddReactionRequest": {
+            "type": "object",
+            "required": [
+                "emoji"
+            ],
+            "properties": {
+                "emoji": {
+                    "type": "string",
+                    "maxLength": 10
+                }
+            }
+        },
+        "types.ChatGetMessagesResponse": {
             "type": "object",
             "properties": {
-                "content": {
+                "messages": {
+                    "type": "array",
+                    "items": {}
+                },
+                "pagination": {
+                    "$ref": "#/definitions/types.ChatPaginationInfo"
+                }
+            }
+        },
+        "types.ChatPaginationInfo": {
+            "type": "object",
+            "properties": {
+                "before": {
                     "type": "string"
                 },
-                "tripId": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.ChatMessagePaginatedResponse": {
-            "type": "object",
-            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
                 "limit": {
                     "type": "integer"
                 },
-                "messages": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.ChatMessageWithUser"
-                    }
-                },
-                "offset": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },
-        "types.ChatMessageReaction": {
+        "types.ChatReactionResponse": {
             "type": "object",
             "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "id": {
+                "emoji": {
                     "type": "string"
                 },
                 "messageId": {
                     "type": "string"
                 },
-                "reaction": {
-                    "description": "The emoji character(s)",
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.ChatSendMessageRequest": {
+            "type": "object",
+            "required": [
+                "message"
+            ],
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 1
+                },
+                "replyToId": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.ChatSendMessageResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "replyToId": {
+                    "type": "string"
+                },
+                "tripId": {
                     "type": "string"
                 },
                 "userId": {
@@ -4296,22 +3730,113 @@ const docTemplate = `{
                 }
             }
         },
-        "types.ChatMessageReactionRequest": {
+        "types.ChatUpdateReadStatusRequest": {
             "type": "object",
+            "required": [
+                "lastReadMessageId"
+            ],
             "properties": {
-                "reaction": {
+                "lastReadMessageId": {
                     "type": "string"
                 }
             }
         },
-        "types.ChatMessageWithUser": {
+        "types.Coordinates": {
             "type": "object",
             "properties": {
-                "message": {
-                    "$ref": "#/definitions/types.ChatMessage"
+                "lat": {
+                    "type": "number"
                 },
-                "user": {
-                    "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse"
+                "lng": {
+                    "type": "number"
+                }
+            }
+        },
+        "types.CreateTripRequest": {
+            "description": "Trip creation information",
+            "type": "object",
+            "required": [
+                "destination",
+                "endDate",
+                "name",
+                "startDate"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "A relaxing trip to the beach"
+                },
+                "destination": {
+                    "$ref": "#/definitions/types.DestinationInfo"
+                },
+                "endDate": {
+                    "type": "string",
+                    "example": "2024-07-10T00:00:00Z"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Summer Vacation"
+                },
+                "startDate": {
+                    "type": "string",
+                    "example": "2024-07-01T00:00:00Z"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "PLANNING"
+                }
+            }
+        },
+        "types.DeregisterPushTokenRequest": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.DestinationInfo": {
+            "description": "Destination information",
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "example": "Paris, France"
+                },
+                "coordinates": {
+                    "$ref": "#/definitions/types.Coordinates"
+                },
+                "placeId": {
+                    "type": "string",
+                    "example": "ChIJD7fiBh9u5kcRYJSMaMOCCwQ"
+                }
+            }
+        },
+        "types.DeviceType": {
+            "type": "string",
+            "enum": [
+                "ios",
+                "android"
+            ],
+            "x-enum-varnames": [
+                "DeviceTypeIOS",
+                "DeviceTypeAndroid"
+            ]
+        },
+        "types.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -4362,6 +3887,38 @@ const docTemplate = `{
                 "HealthStatusDegraded"
             ]
         },
+        "types.ImageResponse": {
+            "description": "Image details",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "image-uuid-123"
+                },
+                "uploadedAt": {
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://example.com/image.jpg"
+                }
+            }
+        },
+        "types.ImageUploadResponse": {
+            "description": "Response after successful image upload",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "image-uuid-123"
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://example.com/image.jpg"
+                }
+            }
+        },
         "types.InvitationDetailsResponse": {
             "type": "object",
             "properties": {
@@ -4382,9 +3939,12 @@ const docTemplate = `{
                     "description": "Assumes UserResponse is defined",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_NomadCrew_nomad-crew-backend_types.UserResponse"
+                            "$ref": "#/definitions/types.UserResponse"
                         }
                     ]
+                },
+                "memberCount": {
+                    "type": "integer"
                 },
                 "role": {
                     "$ref": "#/definitions/types.MemberRole"
@@ -4418,35 +3978,78 @@ const docTemplate = `{
                 "InvitationStatusDeclined"
             ]
         },
-        "types.Location": {
+        "types.LocationPagination": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "types.LocationPrivacy": {
+            "type": "string",
+            "enum": [
+                "hidden",
+                "approximate",
+                "precise"
+            ],
+            "x-enum-varnames": [
+                "LocationPrivacyHidden",
+                "LocationPrivacyApproximate",
+                "LocationPrivacyPrecise"
+            ]
+        },
+        "types.LocationResponse": {
             "type": "object",
             "properties": {
                 "accuracy": {
-                    "type": "number"
+                    "type": "number",
+                    "example": 10.5
                 },
-                "createdAt": {
-                    "type": "string"
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-02-14T12:00:00Z"
                 },
                 "id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "user123_trip456_20260214"
                 },
                 "latitude": {
-                    "type": "number"
+                    "type": "number",
+                    "example": 40.7128
                 },
                 "longitude": {
-                    "type": "number"
+                    "type": "number",
+                    "example": -74.006
+                },
+                "privacy_level": {
+                    "type": "string",
+                    "example": "approximate"
                 },
                 "timestamp": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "2026-02-14T12:00:00Z"
                 },
-                "tripId": {
-                    "type": "string"
+                "trip_id": {
+                    "type": "string",
+                    "example": "trip-uuid-456"
                 },
-                "updatedAt": {
-                    "type": "string"
+                "updated_at": {
+                    "type": "string",
+                    "example": "2026-02-14T12:00:00Z"
                 },
-                "userId": {
-                    "type": "string"
+                "user_id": {
+                    "type": "string",
+                    "example": "user-uuid-123"
                 }
             }
         },
@@ -4462,15 +4065,39 @@ const docTemplate = `{
                 "accuracy": {
                     "type": "number"
                 },
+                "isSharingEnabled": {
+                    "type": "boolean"
+                },
                 "latitude": {
                     "type": "number"
                 },
                 "longitude": {
                     "type": "number"
                 },
+                "privacy": {
+                    "$ref": "#/definitions/types.LocationPrivacy"
+                },
+                "sharingExpiresIn": {
+                    "description": "Duration in seconds for how long to share location",
+                    "type": "integer"
+                },
                 "timestamp": {
                     "description": "Unix timestamp in milliseconds",
                     "type": "integer"
+                }
+            }
+        },
+        "types.LocationsResponse": {
+            "type": "object",
+            "properties": {
+                "locations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.MemberLocation"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/types.LocationPagination"
                 }
             }
         },
@@ -4486,11 +4113,20 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "isSharingEnabled": {
+                    "type": "boolean"
+                },
                 "latitude": {
                     "type": "number"
                 },
                 "longitude": {
                     "type": "number"
+                },
+                "privacy": {
+                    "$ref": "#/definitions/types.LocationPrivacy"
+                },
+                "sharingExpiresAt": {
+                    "type": "string"
                 },
                 "timestamp": {
                     "type": "string"
@@ -4515,13 +4151,11 @@ const docTemplate = `{
         "types.MemberRole": {
             "type": "string",
             "enum": [
-                "NONE",
                 "OWNER",
                 "MEMBER",
                 "ADMIN"
             ],
             "x-enum-varnames": [
-                "MemberRoleNone",
                 "MemberRoleOwner",
                 "MemberRoleMember",
                 "MemberRoleAdmin"
@@ -4531,26 +4165,168 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "ACTIVE",
-                "INACTIVE",
-                "INVITED"
+                "INACTIVE"
             ],
             "x-enum-varnames": [
                 "MembershipStatusActive",
-                "MembershipStatusInactive",
-                "MembershipStatusInvited"
+                "MembershipStatusInactive"
             ]
         },
-        "types.MessageSender": {
+        "types.NotificationResponse": {
+            "description": "Notification information",
             "type": "object",
             "properties": {
-                "avatarUrl": {
+                "createdAt": {
+                    "type": "string",
+                    "example": "2023-01-01T00:00:00Z"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "You've been invited to join a trip to Paris"
+                },
+                "metadata": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "read": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "title": {
+                    "type": "string",
+                    "example": "New Trip Invitation"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "TRIP_INVITATION"
+                },
+                "userId": {
+                    "type": "string",
+                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                }
+            }
+        },
+        "types.PushToken": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
                     "type": "string"
+                },
+                "deviceType": {
+                    "$ref": "#/definitions/types.DeviceType"
                 },
                 "id": {
                     "type": "string"
                 },
-                "name": {
+                "isActive": {
+                    "type": "boolean"
+                },
+                "lastUsedAt": {
                     "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.RegisterPushTokenRequest": {
+            "type": "object",
+            "required": [
+                "deviceType",
+                "token"
+            ],
+            "properties": {
+                "deviceType": {
+                    "type": "string",
+                    "enum": [
+                        "ios",
+                        "android"
+                    ]
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "success"
+                }
+            }
+        },
+        "types.TodoCreateRequest": {
+            "description": "Request body for creating a new todo. TripID is taken from the path.",
+            "type": "object",
+            "required": [
+                "text"
+            ],
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "example": "Buy groceries"
+                }
+            }
+        },
+        "types.TodoResponse": {
+            "description": "Detailed information about a todo item.",
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string",
+                    "example": "2023-10-26T10:00:00Z"
+                },
+                "createdBy": {
+                    "type": "string",
+                    "example": "user-uuid-789"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "todo-uuid-123"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "INCOMPLETE"
+                },
+                "text": {
+                    "type": "string",
+                    "example": "Buy groceries"
+                },
+                "tripId": {
+                    "type": "string",
+                    "example": "trip-uuid-456"
+                },
+                "updatedAt": {
+                    "type": "string",
+                    "example": "2023-10-26T10:05:00Z"
+                }
+            }
+        },
+        "types.TodoUpdateRequest": {
+            "description": "Fields for updating a todo. All fields are optional.",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "COMPLETE"
+                },
+                "text": {
+                    "type": "string",
+                    "example": "Buy milk and eggs"
                 }
             }
         },
@@ -4604,11 +4380,7 @@ const docTemplate = `{
                 },
                 "token": {
                     "description": "Changed to sql.NullString",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/sql.NullString"
-                        }
-                    ]
+                    "type": "string"
                 },
                 "tripId": {
                     "type": "string"
@@ -4618,10 +4390,60 @@ const docTemplate = `{
                 }
             }
         },
+        "types.TripMemberDetailResponse": {
+            "description": "Detailed information about a trip member, including their membership details and user profile.",
+            "type": "object",
+            "properties": {
+                "membership": {
+                    "$ref": "#/definitions/types.TripMemberResponse"
+                },
+                "user": {
+                    "$ref": "#/definitions/types.UserResponse"
+                }
+            }
+        },
+        "types.TripMemberResponse": {
+            "description": "Detailed information about a trip member",
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string",
+                    "example": "2023-01-01T10:00:00Z"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "membership-uuid-123"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "MEMBER"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ACTIVE"
+                },
+                "tripId": {
+                    "type": "string",
+                    "example": "trip-uuid-456"
+                },
+                "updatedAt": {
+                    "type": "string",
+                    "example": "2023-01-01T11:00:00Z"
+                },
+                "userId": {
+                    "type": "string",
+                    "example": "user-uuid-789"
+                }
+            }
+        },
         "types.TripMembership": {
             "type": "object",
             "properties": {
                 "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "description": "Added for soft delete",
                     "type": "string"
                 },
                 "id": {
@@ -4643,6 +4465,203 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "types.TripResponse": {
+            "description": "Trip information",
+            "type": "object",
+            "properties": {
+                "backgroundImageUrl": {
+                    "type": "string",
+                    "example": "https://example.com/images/paris.jpg"
+                },
+                "createdAt": {
+                    "type": "string",
+                    "example": "2023-01-01T00:00:00Z"
+                },
+                "createdBy": {
+                    "type": "string",
+                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "A wonderful week in Paris"
+                },
+                "destination": {
+                    "$ref": "#/definitions/types.DestinationInfo"
+                },
+                "endDate": {
+                    "type": "string",
+                    "example": "2023-06-07T00:00:00Z"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Trip to Paris"
+                },
+                "startDate": {
+                    "type": "string",
+                    "example": "2023-06-01T00:00:00Z"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "PLANNING"
+                },
+                "updatedAt": {
+                    "type": "string",
+                    "example": "2023-01-02T00:00:00Z"
+                }
+            }
+        },
+        "types.TripSearchRequest": {
+            "description": "Criteria for searching trips. All fields are optional.",
+            "type": "object",
+            "properties": {
+                "destination": {
+                    "type": "string",
+                    "example": "Paris"
+                },
+                "endDate": {
+                    "type": "string",
+                    "example": "2024-08-10T00:00:00Z"
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "offset": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "startDate": {
+                    "type": "string",
+                    "example": "2024-08-01T00:00:00Z"
+                },
+                "startDateFrom": {
+                    "type": "string",
+                    "example": "2024-08-01T00:00:00Z"
+                },
+                "startDateTo": {
+                    "type": "string",
+                    "example": "2024-08-31T00:00:00Z"
+                },
+                "userId": {
+                    "type": "string",
+                    "example": "user-uuid-123"
+                }
+            }
+        },
+        "types.TripUpdateRequest": {
+            "description": "Updatable trip fields. All fields are optional.",
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "An even more relaxing trip"
+                },
+                "destination": {
+                    "$ref": "#/definitions/types.DestinationInfo"
+                },
+                "endDate": {
+                    "type": "string",
+                    "example": "2024-07-11T00:00:00Z"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Updated Summer Vacation"
+                },
+                "startDate": {
+                    "type": "string",
+                    "example": "2024-07-02T00:00:00Z"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "PLANNING"
+                }
+            }
+        },
+        "types.TripWithMembersResponse": {
+            "description": "Detailed trip information along with a list of its members",
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.TripMemberResponse"
+                    }
+                },
+                "trip": {
+                    "$ref": "#/definitions/types.TripResponse"
+                }
+            }
+        },
+        "types.UpdateContactEmailRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.UpdateMemberRoleRequest": {
+            "description": "Request body for updating a trip member's role.",
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "example": "ADMIN"
+                }
+            }
+        },
+        "types.UpdateTripStatusRequest": {
+            "description": "Request body for updating trip status",
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ACTIVE"
+                }
+            }
+        },
+        "types.UserListResponse": {
+            "description": "A paginated list of user profiles.",
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "offset": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "total": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.UserProfile"
+                    }
+                }
+            }
+        },
+        "types.UserPreferencesRequest": {
+            "description": "A map of preference keys to their values.",
+            "type": "object",
+            "additionalProperties": true
         },
         "types.UserProfile": {
             "type": "object",
@@ -4669,6 +4688,92 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "lastSeenAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.UserResponse": {
+            "type": "object",
+            "properties": {
+                "avatarUrl": {
+                    "description": "Changed from ProfilePicture to match Supabase",
+                    "type": "string"
+                },
+                "displayName": {
+                    "description": "Added for UI display purposes",
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.UserSearchResponse": {
+            "type": "object",
+            "properties": {
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.UserSearchResult"
+                    }
+                }
+            }
+        },
+        "types.UserSearchResult": {
+            "type": "object",
+            "properties": {
+                "avatarUrl": {
+                    "type": "string"
+                },
+                "contactEmail": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "firstName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isMember": {
+                    "description": "Whether user is already a member of the trip (when tripId provided)",
+                    "type": "boolean"
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.UserUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "firstName": {
+                    "type": "string"
+                },
+                "lastName": {
+                    "type": "string"
+                },
+                "profilePictureUrl": {
                     "type": "string"
                 },
                 "username": {

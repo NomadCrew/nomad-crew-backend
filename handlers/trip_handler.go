@@ -103,11 +103,11 @@ type TripWithMembersAndInvitationsResponse struct {
 // @Tags trips
 // @Accept json
 // @Produce json
-// @Param request body docs.CreateTripRequest true "Trip creation details"
-// @Success 201 {object} docs.TripResponse "Successfully created trip details"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid input data"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Param request body types.CreateTripRequest true "Trip creation details"
+// @Success 201 {object} types.TripResponse "Successfully created trip details"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid input data"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips [post]
 // @Security BearerAuth
 func (h *TripHandler) CreateTripHandler(c *gin.Context) {
@@ -251,12 +251,12 @@ func bindJSONOrError(c *gin.Context, obj interface{}) bool {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Success 200 {object} docs.TripResponse "Trip details"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not a member of this trip"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {object} types.TripResponse "Trip details"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not a member of this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id} [get]
 // @Security BearerAuth
 func (h *TripHandler) GetTripHandler(c *gin.Context) {
@@ -279,13 +279,13 @@ func (h *TripHandler) GetTripHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Param request body docs.TripUpdateRequest true "Fields to update"
-// @Success 200 {object} docs.TripResponse "Successfully updated trip details"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or update data"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this trip"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Param request body types.TripUpdateRequest true "Fields to update"
+// @Success 200 {object} types.TripResponse "Successfully updated trip details"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or update data"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to update this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id} [put]
 // @Security BearerAuth
 func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
@@ -313,13 +313,13 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Param request body docs.UpdateTripStatusRequest true "New status for the trip"
-// @Success 200 {object} docs.TripResponse "Successfully updated trip status"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or status value"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this trip's status, or invalid status transition"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Param request body types.UpdateTripStatusRequest true "New status for the trip"
+// @Success 200 {object} types.TripResponse "Successfully updated trip status"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID or status value"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to update this trip's status, or invalid status transition"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/status [patch]
 // @Security BearerAuth
 // UpdateTripStatusHandler updates trip status using the facade
@@ -379,9 +379,9 @@ func (h *TripHandler) handleModelError(c *gin.Context, err error) {
 // @Tags trips
 // @Accept json
 // @Produce json
-// @Success 200 {array} docs.TripResponse "List of user's trips"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {array} types.TripResponse "List of user's trips"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips [get]
 // @Security BearerAuth
 func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
@@ -410,11 +410,11 @@ func (h *TripHandler) ListUserTripsHandler(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Success 204 "Successfully deleted"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID format"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to delete this trip"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID format"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to delete this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id} [delete]
 // @Security BearerAuth
 func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
@@ -435,11 +435,11 @@ func (h *TripHandler) DeleteTripHandler(c *gin.Context) {
 // @Tags trips
 // @Accept json
 // @Produce json
-// @Param request body docs.TripSearchRequest true "Search criteria"
-// @Success 200 {array} docs.TripResponse "A list of trips matching the criteria"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid search criteria"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Param request body types.TripSearchRequest true "Search criteria"
+// @Success 200 {array} types.TripResponse "A list of trips matching the criteria"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid search criteria"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/search [post]
 // @Security BearerAuth
 func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
@@ -464,12 +464,12 @@ func (h *TripHandler) SearchTripsHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Success 200 {object} docs.TripWithMembersResponse "Trip details including members"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view this trip"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {object} types.TripWithMembersResponse "Trip details including members"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to view this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/details [get]
 // @Security BearerAuth
 func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
@@ -492,12 +492,12 @@ func (h *TripHandler) GetTripWithMembersHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Success 200 {object} docs.SuccessResponse "Successfully triggered weather update"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized or trip has no destination"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error or weather service error"
+// @Success 200 {object} types.StatusResponse "Successfully triggered weather update"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized or trip has no destination"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error or weather service error"
 // @Router /trips/{id}/weather/trigger [post]
 // @Security BearerAuth
 func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
@@ -541,12 +541,12 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param image formData file true "Image file to upload"
-// @Success 201 {object} docs.ImageUploadResponse "Image uploaded successfully"
-// @Failure 400 {object} docs.ErrorResponse "Bad request - No file, invalid file type/size, or invalid trip ID"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to upload images for this trip"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error - Upload failed"
+// @Success 201 {object} types.ImageUploadResponse "Image uploaded successfully"
+// @Failure 400 {object} types.ErrorResponse "Bad request - No file, invalid file type/size, or invalid trip ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to upload images for this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error - Upload failed"
 // @Router /trips/{id}/images [post]
 // @Security BearerAuth
 func (h *TripHandler) UploadTripImage(c *gin.Context) {
@@ -562,11 +562,11 @@ func (h *TripHandler) UploadTripImage(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Trip ID"
-// @Success 200 {array} docs.ImageResponse "List of trip images"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to view images for this trip"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Success 200 {array} types.ImageResponse "List of trip images"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to view images for this trip"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/images [get]
 // @Security BearerAuth
 func (h *TripHandler) ListTripImages(c *gin.Context) {
@@ -584,10 +584,10 @@ func (h *TripHandler) ListTripImages(c *gin.Context) {
 // @Param id path string true "Trip ID"
 // @Param imageId path string true "Image ID to delete"
 // @Success 204 "Image deleted successfully"
-// @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
-// @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to delete this image"
-// @Failure 404 {object} docs.ErrorResponse "Not found - Trip or image not found"
-// @Failure 500 {object} docs.ErrorResponse "Internal server error"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized to delete this image"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip or image not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /trips/{id}/images/{imageId} [delete]
 // @Security BearerAuth
 func (h *TripHandler) DeleteTripImage(c *gin.Context) {
