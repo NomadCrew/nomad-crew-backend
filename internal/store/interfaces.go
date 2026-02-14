@@ -194,6 +194,7 @@ type PollStore interface {
 	GetUserVotesForPoll(ctx context.Context, pollID, userID string) ([]*types.PollVote, error)
 	GetVoteCountsByPoll(ctx context.Context, pollID string) (map[string]int, error)
 	ListVotesByPoll(ctx context.Context, pollID string) ([]*types.PollVote, error)
+	CountUniqueVotersByPoll(ctx context.Context, pollID string) (int, error)
 
 	// Transaction
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)

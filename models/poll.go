@@ -50,6 +50,13 @@ func (pm *PollModel) CreatePollWithEvent(ctx context.Context, tripID, userID str
 		CreatedBy:          userID,
 	}
 
+	// Calculate expiration
+	durationMins := 1440 // default: 24 hours
+	if req.DurationMinutes != nil {
+		durationMins = *req.DurationMinutes
+	}
+	poll.ExpiresAt = time.Now().Add(time.Duration(durationMins) * time.Minute)
+
 	// Build options with trimmed text
 	options := make([]*types.PollOption, 0, len(req.Options))
 	for i, optText := range req.Options {
@@ -212,6 +219,11 @@ func (pm *PollModel) CastVoteWithEvent(ctx context.Context, tripID, pollID, opti
 		return errors.ValidationFailed("poll_closed", "cannot vote on a closed poll")
 	}
 
+	// Check poll is not expired
+	if poll.IsExpired() {
+		return errors.ValidationFailed("poll_expired", "cannot vote on an expired poll")
+	}
+
 	// Validate optionID belongs to this poll
 	options, err := pm.store.ListPollOptions(ctx, pollID)
 	if err != nil {
@@ -312,6 +324,30 @@ func (pm *PollModel) ClosePollWithEvent(ctx context.Context, tripID, pollID, use
 
 	if !types.CanPerformWithOwnership(role, types.ActionUpdate, types.ResourcePoll, isOwner) {
 		return nil, errors.Forbidden("unauthorized", "you don't have permission to close this poll")
+	}
+
+	// Check close conditions: poll must be expired OR all members must have voted
+	if !poll.IsExpired() {
+		// Count unique voters
+		votes, err := pm.store.ListVotesByPoll(ctx, pollID)
+		if err != nil {
+			return nil, errors.NewDatabaseError(err)
+		}
+		uniqueVoters := make(map[string]bool)
+		for _, v := range votes {
+			uniqueVoters[v.UserID] = true
+		}
+
+		// Count active trip members
+		members, err := pm.tripModel.GetTripMembers(ctx, tripID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get trip members: %w", err)
+		}
+
+		if len(uniqueVoters) < len(members) {
+			return nil, errors.ValidationFailed("poll_close_restricted",
+				"poll cannot be closed until all members have voted or the poll expires")
+		}
 	}
 
 	// Close the poll (returns the updated poll)
@@ -465,6 +501,11 @@ func validatePollCreate(req *types.PollCreate) error {
 	}
 	if len(req.Options) > 20 {
 		validationErrors = append(validationErrors, "maximum 20 options allowed")
+	}
+	if req.DurationMinutes != nil {
+		if *req.DurationMinutes < 5 || *req.DurationMinutes > 2880 {
+			validationErrors = append(validationErrors, "durationMinutes must be between 5 and 2880 (5 minutes to 48 hours)")
+		}
 	}
 	seen := make(map[string]bool, len(req.Options))
 	for i, opt := range req.Options {

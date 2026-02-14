@@ -18,8 +18,13 @@ type Poll struct {
 	CreatedBy          string     `json:"createdBy"`
 	ClosedBy           *string    `json:"closedBy,omitempty"`
 	ClosedAt           *time.Time `json:"closedAt,omitempty"`
+	ExpiresAt          time.Time  `json:"expiresAt"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	UpdatedAt          time.Time  `json:"updatedAt"`
+}
+
+func (p *Poll) IsExpired() bool {
+	return time.Now().After(p.ExpiresAt)
 }
 
 type PollOption struct {
@@ -45,6 +50,7 @@ type PollCreate struct {
 	Question           string   `json:"question" binding:"required,max=500"`
 	Options            []string `json:"options" binding:"required,min=2,max=20,dive,min=1,max=200"`
 	AllowMultipleVotes bool     `json:"allowMultipleVotes"`
+	DurationMinutes    *int     `json:"durationMinutes,omitempty"`
 }
 
 type PollUpdate struct {

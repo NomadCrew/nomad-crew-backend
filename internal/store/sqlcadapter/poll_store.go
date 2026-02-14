@@ -31,10 +31,10 @@ func NewSqlcPollStore(pool *pgxpool.Pool) internal_store.PollStore {
 func (s *sqlcPollStore) CreatePoll(ctx context.Context, poll *types.Poll) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by)
-		VALUES ($1, $2, $3, $4)
+		`INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`,
-		poll.TripID, poll.Question, poll.AllowMultipleVotes, poll.CreatedBy,
+		poll.TripID, poll.Question, poll.AllowMultipleVotes, poll.CreatedBy, poll.ExpiresAt,
 	).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("failed to create poll: %w", err)
@@ -54,10 +54,10 @@ func (s *sqlcPollStore) CreatePollWithOptions(ctx context.Context, poll *types.P
 
 	var pollID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by)
-		VALUES ($1, $2, $3, $4)
+		`INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`,
-		poll.TripID, poll.Question, poll.AllowMultipleVotes, poll.CreatedBy,
+		poll.TripID, poll.Question, poll.AllowMultipleVotes, poll.CreatedBy, poll.ExpiresAt,
 	).Scan(&pollID)
 	if err != nil {
 		return "", fmt.Errorf("failed to create poll: %w", err)
@@ -85,7 +85,7 @@ func (s *sqlcPollStore) CreatePollWithOptions(ctx context.Context, poll *types.P
 func (s *sqlcPollStore) GetPoll(ctx context.Context, id, tripID string) (*types.Poll, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT id, trip_id, question, allow_multiple_votes, status, created_by,
-		        closed_by, closed_at, created_at, updated_at
+		        closed_by, closed_at, expires_at, created_at, updated_at
 		FROM polls
 		WHERE id = $1 AND trip_id = $2 AND deleted_at IS NULL`,
 		id, tripID,
@@ -109,7 +109,7 @@ func (s *sqlcPollStore) ListPolls(ctx context.Context, tripID string, limit, off
 	// Get paginated results
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, trip_id, question, allow_multiple_votes, status, created_by,
-		        closed_by, closed_at, created_at, updated_at
+		        closed_by, closed_at, expires_at, created_at, updated_at
 		FROM polls
 		WHERE trip_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -143,7 +143,7 @@ func (s *sqlcPollStore) UpdatePollQuestion(ctx context.Context, id, tripID, ques
 		SET question = $3, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1 AND trip_id = $2 AND deleted_at IS NULL
 		RETURNING id, trip_id, question, allow_multiple_votes, status, created_by,
-		          closed_by, closed_at, created_at, updated_at`,
+		          closed_by, closed_at, expires_at, created_at, updated_at`,
 		id, tripID, question,
 	)
 
@@ -164,7 +164,7 @@ func (s *sqlcPollStore) ClosePoll(ctx context.Context, id, tripID, closedBy stri
 		SET status = 'CLOSED', closed_by = $3, closed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1 AND trip_id = $2 AND deleted_at IS NULL AND status = 'ACTIVE'
 		RETURNING id, trip_id, question, allow_multiple_votes, status, created_by,
-		          closed_by, closed_at, created_at, updated_at`,
+		          closed_by, closed_at, expires_at, created_at, updated_at`,
 		id, tripID, closedBy,
 	)
 
@@ -425,12 +425,13 @@ func (s *sqlcPollStore) scanPoll(row pgx.Row) (*types.Poll, error) {
 	var status string
 	var closedBy *string
 	var closedAt pgtype.Timestamptz
+	var expiresAt pgtype.Timestamptz
 	var createdAt pgtype.Timestamptz
 	var updatedAt pgtype.Timestamptz
 
 	err := row.Scan(
 		&p.ID, &p.TripID, &p.Question, &p.AllowMultipleVotes, &status, &p.CreatedBy,
-		&closedBy, &closedAt, &createdAt, &updatedAt,
+		&closedBy, &closedAt, &expiresAt, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -442,6 +443,7 @@ func (s *sqlcPollStore) scanPoll(row pgx.Row) (*types.Poll, error) {
 	p.Status = types.PollStatus(status)
 	p.ClosedBy = closedBy
 	p.ClosedAt = PgTimestamptzToTimePtr(closedAt)
+	p.ExpiresAt = PgTimestamptzToTime(expiresAt)
 	p.CreatedAt = PgTimestamptzToTime(createdAt)
 	p.UpdatedAt = PgTimestamptzToTime(updatedAt)
 
@@ -454,12 +456,13 @@ func (s *sqlcPollStore) scanPollRows(rows pgx.Rows) (*types.Poll, error) {
 	var status string
 	var closedBy *string
 	var closedAt pgtype.Timestamptz
+	var expiresAt pgtype.Timestamptz
 	var createdAt pgtype.Timestamptz
 	var updatedAt pgtype.Timestamptz
 
 	err := rows.Scan(
 		&p.ID, &p.TripID, &p.Question, &p.AllowMultipleVotes, &status, &p.CreatedBy,
-		&closedBy, &closedAt, &createdAt, &updatedAt,
+		&closedBy, &closedAt, &expiresAt, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -468,8 +471,19 @@ func (s *sqlcPollStore) scanPollRows(rows pgx.Rows) (*types.Poll, error) {
 	p.Status = types.PollStatus(status)
 	p.ClosedBy = closedBy
 	p.ClosedAt = PgTimestamptzToTimePtr(closedAt)
+	p.ExpiresAt = PgTimestamptzToTime(expiresAt)
 	p.CreatedAt = PgTimestamptzToTime(createdAt)
 	p.UpdatedAt = PgTimestamptzToTime(updatedAt)
 
 	return &p, nil
+}
+
+// CountUniqueVotersByPoll returns the count of distinct users who voted on a poll
+func (s *sqlcPollStore) CountUniqueVotersByPoll(ctx context.Context, pollID string) (int, error) {
+	row := s.pool.QueryRow(ctx, "SELECT COUNT(DISTINCT user_id) FROM poll_votes WHERE poll_id = $1", pollID)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count unique voters: %w", err)
+	}
+	return count, nil
 }

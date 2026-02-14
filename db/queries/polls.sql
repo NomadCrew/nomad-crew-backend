@@ -1,8 +1,8 @@
 -- Poll Operations
 
 -- name: CreatePoll :one
-INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by)
-VALUES ($1, $2, $3, $4)
+INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by, expires_at)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetPoll :one
@@ -71,4 +71,9 @@ GROUP BY option_id;
 
 -- name: ListVotesByPoll :many
 SELECT * FROM poll_votes
+WHERE poll_id = $1;
+
+-- name: CountUniqueVotersByPoll :one
+SELECT COUNT(DISTINCT user_id) as count
+FROM poll_votes
 WHERE poll_id = $1;

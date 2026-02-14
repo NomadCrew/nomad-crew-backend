@@ -14,9 +14,10 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
 
-// TripModelInterface defines the interface for trip model methods used by TodoModel
+// TripModelInterface defines the interface for trip model methods used by TodoModel and PollModel
 type TripModelInterface interface {
 	GetUserRole(ctx context.Context, tripID, userID string) (types.MemberRole, error)
+	GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error)
 }
 
 // EventPublisherInterface defines the interface for publishing events

@@ -9,6 +9,7 @@ sql:
       - "db/migrations/000005_add_push_tokens.up.sql"
       - "db/migrations/000006_add_contact_email.up.sql"
       - "db/migrations/000007_add_polls.up.sql"
+      - "db/migrations/000008_add_poll_expiration.up.sql"
     gen:
       go:
         package: "sqlc"
