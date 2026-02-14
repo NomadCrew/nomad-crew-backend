@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/NomadCrew/nomad-crew-backend/logger"
@@ -54,8 +55,11 @@ type DatabaseConfig struct {
 }
 
 // URL returns a postgres:// connection URL suitable for golang-migrate and other
-// URL-based database tools.
+// URL-based database tools. If DATABASE_URL env var is set, it is used directly.
 func (c *DatabaseConfig) URL() string {
+	if envURL := os.Getenv("DATABASE_URL"); envURL != "" {
+		return envURL
+	}
 	sslmode := c.SSLMode
 	if sslmode == "" {
 		sslmode = "disable"

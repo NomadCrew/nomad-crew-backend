@@ -116,7 +116,12 @@ func main() {
 		defer pool.Close()
 
 		// Run database migrations on startup using golang-migrate
-		if err := db.RunMigrations(cfg.Database.URL()); err != nil {
+		migrationURL := cfg.Database.URL()
+		log.Infow("Running database migrations",
+			"host", cfg.Database.Host,
+			"database", cfg.Database.Name,
+			"sslmode", cfg.Database.SSLMode)
+		if err := db.RunMigrations(migrationURL); err != nil {
 			log.Errorw("Failed to run database migrations", "error", err)
 			// Don't fatal — the app can still run if tables already exist
 		}
