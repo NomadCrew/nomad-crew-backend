@@ -105,12 +105,6 @@ type UpdateTripStatusRequest struct {
 	Status string `json:"status" binding:"required" example:"ACTIVE"`
 }
 
-// TripStatusUpdateResponse is used for Swagger documentation of the response after updating a trip's status
-// @Description Response after updating trip status
-type TripStatusUpdateResponse struct {
-	Message string        `json:"message" example:"Trip status updated successfully"`
-	Data    *TripResponse `json:"data,omitempty"` // Trip details might be omitted if refetch fails
-}
 
 // TripSearchRequest is used for Swagger documentation for searching trips
 // @Description Criteria for searching trips. All fields are optional.

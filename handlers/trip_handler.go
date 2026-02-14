@@ -314,7 +314,7 @@ func (h *TripHandler) UpdateTripHandler(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Trip ID"
 // @Param request body docs.UpdateTripStatusRequest true "New status for the trip"
-// @Success 200 {object} docs.TripStatusUpdateResponse "Successfully updated trip status"
+// @Success 200 {object} docs.TripResponse "Successfully updated trip status"
 // @Failure 400 {object} docs.ErrorResponse "Bad request - Invalid trip ID or status value"
 // @Failure 401 {object} docs.ErrorResponse "Unauthorized - User not logged in"
 // @Failure 403 {object} docs.ErrorResponse "Forbidden - User not authorized to update this trip's status, or invalid status transition"

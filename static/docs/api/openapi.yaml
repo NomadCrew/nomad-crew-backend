@@ -580,9 +580,19 @@ paths:
                 - status
       responses:
         '200':
-          description: Status updated successfully
+          description: Successfully updated trip status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
         '400':
           description: Validation error
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - invalid status transition or insufficient permissions
+        '404':
+          description: Trip not found
       security:
         - BearerAuth: []
   /trips/{id}/members:
