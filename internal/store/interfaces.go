@@ -13,6 +13,7 @@ type Store interface {
 	Todo() TodoStore
 	Chat() ChatStore
 	User() UserStore
+	Poll() PollStore
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
@@ -168,6 +169,34 @@ type UserStore interface {
 
 	// GetUserByContactEmail retrieves a user by their contact email
 	GetUserByContactEmail(ctx context.Context, contactEmail string) (*types.User, error)
+}
+
+// PollStore handles poll-related data operations
+type PollStore interface {
+	// Poll CRUD
+	CreatePoll(ctx context.Context, poll *types.Poll) (string, error)
+	CreatePollWithOptions(ctx context.Context, poll *types.Poll, options []*types.PollOption) (string, error)
+	GetPoll(ctx context.Context, id, tripID string) (*types.Poll, error)
+	ListPolls(ctx context.Context, tripID string, limit, offset int) ([]*types.Poll, int, error)
+	UpdatePollQuestion(ctx context.Context, id, tripID, question string) (*types.Poll, error)
+	ClosePoll(ctx context.Context, id, tripID, closedBy string) (*types.Poll, error)
+	SoftDeletePoll(ctx context.Context, id, tripID string) error
+
+	// Options
+	CreatePollOption(ctx context.Context, option *types.PollOption) (string, error)
+	ListPollOptions(ctx context.Context, pollID string) ([]*types.PollOption, error)
+
+	// Votes
+	CastVote(ctx context.Context, pollID, optionID, userID string) error
+	SwapVote(ctx context.Context, pollID, optionID, userID string) error
+	RemoveVote(ctx context.Context, pollID, optionID, userID string) error
+	RemoveAllUserVotesForPoll(ctx context.Context, pollID, userID string) error
+	GetUserVotesForPoll(ctx context.Context, pollID, userID string) ([]*types.PollVote, error)
+	GetVoteCountsByPoll(ctx context.Context, pollID string) (map[string]int, error)
+	ListVotesByPoll(ctx context.Context, pollID string) ([]*types.PollVote, error)
+
+	// Transaction
+	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
 // Use types.DatabaseTransaction here instead of a local interface

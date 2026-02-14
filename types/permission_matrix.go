@@ -60,6 +60,12 @@ var permissionMatrix = map[Resource]map[Action]PermissionRule{
 		ActionUpdate: {MinRole: rolePtr(MemberRoleMember), OwnerOnly: true}, // Only update own location
 		ActionDelete: {MinRole: rolePtr(MemberRoleMember), OwnerOnly: true}, // Only delete own location
 	},
+	ResourcePoll: {
+		ActionCreate: {MinRole: rolePtr(MemberRoleMember)},                      // Any member can create polls
+		ActionRead:   {MinRole: rolePtr(MemberRoleMember)},                      // Any member can view polls
+		ActionUpdate: {MinRole: rolePtr(MemberRoleAdmin), OwnerOrMinRole: true}, // ADMIN+ or creator
+		ActionDelete: {MinRole: rolePtr(MemberRoleAdmin), OwnerOrMinRole: true}, // ADMIN+ or creator
+	},
 }
 
 // rolePtr is a helper to create a pointer to a MemberRole.

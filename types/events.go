@@ -39,6 +39,7 @@ const (
 	CategoryLocation = "LOCATION"
 	CategoryMember   = "MEMBER"
 	CategoryChat     = "CHAT"
+	CategoryPoll     = "POLL"
 )
 
 const (
@@ -72,6 +73,14 @@ const (
 	EventTypeInvitationCreated       EventType = CategoryTrip + "_INVITATION_CREATED"
 	EventTypeInvitationAccepted      EventType = CategoryTrip + "_INVITATION_ACCEPTED"
 	EventTypeInvitationStatusUpdated EventType = "invitation_status_updated"
+
+	// Poll events
+	EventTypePollCreated     EventType = CategoryPoll + "_CREATED"
+	EventTypePollUpdated     EventType = CategoryPoll + "_UPDATED"
+	EventTypePollVoteCast    EventType = CategoryPoll + "_VOTE_CAST"
+	EventTypePollVoteRemoved EventType = CategoryPoll + "_VOTE_REMOVED"
+	EventTypePollClosed      EventType = CategoryPoll + "_CLOSED"
+	EventTypePollDeleted     EventType = CategoryPoll + "_DELETED"
 
 	// Chat events
 	EventTypeChatGroupCreated       EventType = CategoryChat + "_GROUP_CREATED"
@@ -233,6 +242,44 @@ type ChatGroupEvent struct {
 	TripID    string `json:"tripId"`
 	UserID    string `json:"userId"`              // User performing the action
 	GroupName string `json:"groupName,omitempty"` // Included for create/update
+}
+
+// Poll event payloads
+type PollCreatedEvent struct {
+	PollID   string `json:"pollId"`
+	TripID   string `json:"tripId"`
+	Question string `json:"question"`
+}
+
+type PollUpdatedEvent struct {
+	PollID   string `json:"pollId"`
+	TripID   string `json:"tripId"`
+	Question string `json:"question"`
+}
+
+type PollVoteCastEvent struct {
+	PollID   string `json:"pollId"`
+	TripID   string `json:"tripId"`
+	OptionID string `json:"optionId"`
+	UserID   string `json:"userId"`
+}
+
+type PollVoteRemovedEvent struct {
+	PollID   string `json:"pollId"`
+	TripID   string `json:"tripId"`
+	OptionID string `json:"optionId"`
+	UserID   string `json:"userId"`
+}
+
+type PollClosedEvent struct {
+	PollID   string `json:"pollId"`
+	TripID   string `json:"tripId"`
+	ClosedBy string `json:"closedBy"`
+}
+
+type PollDeletedEvent struct {
+	PollID string `json:"pollId"`
+	TripID string `json:"tripId"`
 }
 
 // NotificationCreatedEvent signifies that a new notification has been created.

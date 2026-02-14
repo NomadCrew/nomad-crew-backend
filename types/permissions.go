@@ -30,6 +30,7 @@ const (
 	ResourceTodo       Resource = "todo"
 	ResourceExpense    Resource = "expense"
 	ResourceLocation   Resource = "location"
+	ResourcePoll       Resource = "poll"
 )
 
 // String returns the string representation of an Action.
@@ -56,7 +57,7 @@ func (a Action) IsValid() bool {
 func (r Resource) IsValid() bool {
 	switch r {
 	case ResourceTrip, ResourceMember, ResourceInvitation,
-		ResourceChat, ResourceTodo, ResourceExpense, ResourceLocation:
+		ResourceChat, ResourceTodo, ResourceExpense, ResourceLocation, ResourcePoll:
 		return true
 	}
 	return false

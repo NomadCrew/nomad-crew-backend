@@ -53,6 +53,23 @@ type DatabaseConfig struct {
 	ConnMaxLife    string `mapstructure:"CONN_MAX_LIFE" yaml:"conn_max_life"`
 }
 
+// URL returns a postgres:// connection URL suitable for golang-migrate and other
+// URL-based database tools.
+func (c *DatabaseConfig) URL() string {
+	sslmode := c.SSLMode
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		url.QueryEscape(c.User),
+		url.QueryEscape(c.Password),
+		c.Host,
+		c.Port,
+		c.Name,
+		sslmode,
+	)
+}
+
 // RedisConfig holds Redis connection details.
 type RedisConfig struct {
 	Address      string `mapstructure:"ADDRESS" yaml:"address"`

@@ -1,0 +1,3 @@
+-- 000004_schema_cleanup.up.sql
+-- No-op: schema cleanup was completed in migration 000003.
+-- This file exists to satisfy golang-migrate's requirement for paired up/down files.

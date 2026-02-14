@@ -359,6 +359,16 @@ func ListTodosByTripRowToTodo(row *sqlc.ListTodosByTripRow) *types.Todo {
 	}
 }
 
+// PollStatusToString converts types.PollStatus to string
+func PollStatusToString(s types.PollStatus) string {
+	return string(s)
+}
+
+// StringToPollStatus converts string to types.PollStatus
+func StringToPollStatus(s string) types.PollStatus {
+	return types.PollStatus(s)
+}
+
 // LocationPrivacyToSqlc converts types.LocationPrivacy to sqlc.LocationPrivacy
 func LocationPrivacyToSqlc(p types.LocationPrivacy) sqlc.LocationPrivacy {
 	return sqlc.LocationPrivacy(p)

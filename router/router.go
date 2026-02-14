@@ -45,6 +45,8 @@ type Dependencies struct {
 	WebSocketHandler *websocket.Handler
 	// Push token handler for push notification registration
 	PushTokenHandler *handlers.PushTokenHandler
+	// Poll handler for polls feature
+	PollHandler *handlers.PollHandler
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -294,6 +296,37 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					chatRoutes.DELETE("/messages/:messageId/reactions/:emoji",
 						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceChat, nil),
 						deps.ChatHandlerSupabase.RemoveReaction)
+				}
+
+				// Trip Poll Routes - ADMIN+ can manage any, MEMBER can manage own
+				pollRoutes := tripRoutes.Group("/:id/polls")
+				{
+					if deps.PollHandler != nil {
+						pollRoutes.GET("",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourcePoll, nil),
+							deps.PollHandler.ListPollsHandler)
+						pollRoutes.POST("",
+							middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourcePoll, nil),
+							deps.PollHandler.CreatePollHandler)
+						pollRoutes.GET("/:pollID",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourcePoll, nil),
+							deps.PollHandler.GetPollHandler)
+						pollRoutes.PUT("/:pollID",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.PollHandler.UpdatePollHandler)
+						pollRoutes.DELETE("/:pollID",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.PollHandler.DeletePollHandler)
+						pollRoutes.POST("/:pollID/vote",
+							middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourcePoll, nil),
+							deps.PollHandler.CastVoteHandler)
+						pollRoutes.DELETE("/:pollID/vote/:optionID",
+							middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourcePoll, nil),
+							deps.PollHandler.RemoveVoteHandler)
+						pollRoutes.POST("/:pollID/close",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.PollHandler.ClosePollHandler)
+					}
 				}
 
 				// Trip Todo Routes - ADMIN+ can manage any, MEMBER can manage own

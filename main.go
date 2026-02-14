@@ -114,6 +114,12 @@ func main() {
 	} else {
 		log.Info("Successfully established initial database connection")
 		defer pool.Close()
+
+		// Run database migrations on startup using golang-migrate
+		if err := db.RunMigrations(cfg.Database.URL()); err != nil {
+			log.Errorw("Failed to run database migrations", "error", err)
+			// Don't fatal — the app can still run if tables already exist
+		}
 	}
 
 	// Initialize database dependencies with enhanced resilient client
@@ -236,6 +242,12 @@ func main() {
 	)
 	todoModel := models.NewTodoModel(todoStore, tripModel, eventService)
 
+	// Poll store, model, and handler
+	pollStore := sqlcadapter.NewSqlcPollStore(dbClient.GetPool())
+	log.Info("Using SQLC-based poll store")
+	pollModel := models.NewPollModel(pollStore, tripModel, eventService)
+	pollHandler := handlers.NewPollHandler(pollModel)
+
 	// Initialize User Service and Handler
 	// Pass jwtValidator to enable JWKS validation for onboarding (new Supabase API keys)
 	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret, supabaseService, jwtValidator)
@@ -294,6 +306,7 @@ func main() {
 	routerDeps.LocationHandlerSupabase = locationHandlerSupabase
 	routerDeps.WebSocketHandler = wsHandler
 	routerDeps.PushTokenHandler = pushTokenHandler
+	routerDeps.PollHandler = pollHandler
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)
