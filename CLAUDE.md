@@ -1,53 +1,6 @@
-# CLAUDE.md
+# CLAUDE.md — NomadCrew Backend
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Response Protocol
-
-Before executing ANY non-trivial task, first compile the request into a structured specification:
-
-### Step 1: Classify Intent
-Identify the primary intent: `research` | `decision` | `design` | `code` | `writing` | `ops`
-
-### Step 2: State the Objective
-Write a single clear sentence describing what success looks like.
-
-### Step 3: Document Assumptions
-List any defaults being applied due to missing information. Format:
-- **Assumption:** [What you're assuming]
-- **Reason:** [Why this is a reasonable default]
-
-### Step 4: Define Verification Criteria
-List pass/fail criteria that will confirm the task is complete.
-
-### Step 5: Execute
-Only after completing steps 1-4, proceed with the work.
-
-### When to Skip This Protocol
-- Simple questions with obvious answers
-- Single-file edits with clear instructions
-- Commands the user explicitly specifies
-
-### Example
-
-**User:** "Add rate limiting to the trips endpoint"
-
-**Compiled:**
-- **Intent:** code
-- **Objective:** Implement rate limiting middleware for trip-related API endpoints
-- **Assumptions:**
-  - Use existing Redis connection for rate limit storage (infrastructure exists)
-  - Apply to all /v1/trips/* routes (standard scope)
-  - 100 requests/minute per user (reasonable default, not specified)
-- **Verification:**
-  - [ ] Rate limiter middleware created
-  - [ ] Applied to trip routes
-  - [ ] Returns 429 when limit exceeded
-  - [ ] Tests pass
-
-**Then execute.**
-
----
+Parent context: `../CLAUDE.md` (project-wide rules, cross-repo integration, agent patterns)
 
 ## Development Commands
 
