@@ -347,10 +347,7 @@ func (h *TripHandler) UpdateTripStatusHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Trip status updated successfully",
-		"data":    updatedTrip,
-	})
+	c.JSON(http.StatusOK, updatedTrip)
 }
 
 func (h *TripHandler) handleModelError(c *gin.Context, err error) {
