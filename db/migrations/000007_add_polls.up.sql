@@ -1,7 +1,7 @@
 -- Polls Feature Migration
 -- Follows existing patterns: UUID PKs, TIMESTAMPTZ, soft deletes, CASCADE
-
-BEGIN;
+-- Note: golang-migrate wraps each migration in a transaction automatically.
+-- Do NOT add BEGIN/COMMIT here.
 
 -- Enum for poll status
 CREATE TYPE poll_status AS ENUM ('ACTIVE', 'CLOSED');
@@ -55,5 +55,3 @@ CREATE TRIGGER update_polls_updated_at
     BEFORE UPDATE ON polls
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
-
-COMMIT;

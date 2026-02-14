@@ -46,12 +46,12 @@ func RunMigrations(dbURL string) error {
 	}
 	defer m.Close()
 
-	// Bootstrap: detect if this is a pre-existing database without schema_migrations.
-	// If Version() returns ErrNilVersion, the tracking table doesn't exist yet.
-	// Force-set to lastManualMigration so we skip already-applied migrations.
-	version, _, err := m.Version()
+	// Check current migration state and handle edge cases.
+	version, dirty, err := m.Version()
 	if err != nil {
 		if errors.Is(err, migrate.ErrNilVersion) {
+			// Bootstrap: pre-existing database without schema_migrations table.
+			// Force-set to lastManualMigration so we skip already-applied migrations.
 			log.Infow("No schema_migrations table found, bootstrapping from manual migrations",
 				"forcingVersion", lastManualMigration)
 			if err := m.Force(lastManualMigration); err != nil {
@@ -59,6 +59,19 @@ func RunMigrations(dbURL string) error {
 			}
 		} else {
 			return fmt.Errorf("failed to read migration version: %w", err)
+		}
+	} else if dirty {
+		// A previous migration failed partway, leaving dirty state.
+		// Force-set to the last known good version so we can retry cleanly.
+		cleanVersion := version - 1
+		if cleanVersion < uint(lastManualMigration) {
+			cleanVersion = uint(lastManualMigration)
+		}
+		log.Infow("Dirty migration state detected, resetting to retry",
+			"dirtyVersion", version,
+			"resettingTo", cleanVersion)
+		if err := m.Force(int(cleanVersion)); err != nil {
+			return fmt.Errorf("failed to reset dirty migration: %w", err)
 		}
 	} else {
 		log.Infow("Current migration version", "version", version)
@@ -75,7 +88,7 @@ func RunMigrations(dbURL string) error {
 	}
 
 	// Get the current version after migration
-	version, dirty, err := m.Version()
+	version, dirty, err = m.Version()
 	if err != nil {
 		log.Infow("Migrations applied successfully")
 	} else {
