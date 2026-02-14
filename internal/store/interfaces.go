@@ -45,6 +45,9 @@ type TripStore interface {
 	GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error)
 	GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error)
 	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
+	AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error
+	RemoveMemberWithOwnerLock(ctx context.Context, tripID, userID string) error
+	UpdateMemberRoleWithOwnerLock(ctx context.Context, tripID, userID string, newRole types.MemberRole) error
 
 	// Transaction support
 	// BeginTx starts a new database transaction. Use the returned DatabaseTransaction

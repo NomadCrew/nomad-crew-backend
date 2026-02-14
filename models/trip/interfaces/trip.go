@@ -21,6 +21,7 @@ type TripModelInterface interface {
 	CreateInvitation(ctx context.Context, invitation *types.TripInvitation) error
 	GetInvitation(ctx context.Context, invitationID string) (*types.TripInvitation, error)
 	UpdateInvitationStatus(ctx context.Context, invitationID string, status types.InvitationStatus) error
+	AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error
 	LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error)
 	GetTripWithMembers(ctx context.Context, tripID string, userID string) (*types.TripWithMembers, error)
 	UpdateTripStatus(ctx context.Context, tripID string, newStatus types.TripStatus) error

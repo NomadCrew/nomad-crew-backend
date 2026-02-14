@@ -102,6 +102,10 @@ func (tm *TripModel) UpdateInvitationStatus(ctx context.Context, invitationID st
 	return tm.coordinator.UpdateInvitationStatus(ctx, invitationID, status)
 }
 
+func (tm *TripModel) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	return tm.coordinator.AcceptInvitationAtomically(ctx, invitationID, membership)
+}
+
 func (tm *TripModel) SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error) {
 	return tm.coordinator.SearchTrips(ctx, criteria)
 }

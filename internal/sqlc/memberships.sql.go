@@ -250,6 +250,51 @@ func (q *Queries) GetTripMembers(ctx context.Context, tripID string) ([]*GetTrip
 	return items, nil
 }
 
+const getTripMembersForUpdate = `-- name: GetTripMembersForUpdate :many
+SELECT id, trip_id, user_id, role, status, created_at, updated_at
+FROM trip_memberships
+WHERE trip_id = $1 AND status = 'ACTIVE'
+FOR UPDATE
+`
+
+type GetTripMembersForUpdateRow struct {
+	ID        string           `db:"id" json:"id"`
+	TripID    string           `db:"trip_id" json:"trip_id"`
+	UserID    string           `db:"user_id" json:"user_id"`
+	Role      MembershipRole   `db:"role" json:"role"`
+	Status    MembershipStatus `db:"status" json:"status"`
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) GetTripMembersForUpdate(ctx context.Context, tripID string) ([]*GetTripMembersForUpdateRow, error) {
+	rows, err := q.db.Query(ctx, getTripMembersForUpdate, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*GetTripMembersForUpdateRow{}
+	for rows.Next() {
+		var i GetTripMembersForUpdateRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TripID,
+			&i.UserID,
+			&i.Role,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserRole = `-- name: GetUserRole :one
 SELECT role
 FROM trip_memberships
@@ -311,8 +356,10 @@ ON CONFLICT (trip_id, user_id)
 DO UPDATE SET
     role = EXCLUDED.role,
     status = EXCLUDED.status,
+    deleted_at = NULL,
     updated_at = CURRENT_TIMESTAMP
 WHERE trip_memberships.status != EXCLUDED.status
+   OR trip_memberships.deleted_at IS NOT NULL
 `
 
 type UpsertMembershipParams struct {

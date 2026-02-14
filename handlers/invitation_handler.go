@@ -209,6 +209,12 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 		return
 	}
 
+	// Check if invitation has expired
+	if invitation.ExpiresAt != nil && invitation.ExpiresAt.Before(time.Now()) {
+		handleModelError(c, apperrors.ValidationFailed("invitation_expired", "This invitation has expired."))
+		return
+	}
+
 	// Security check: If invitation is bound to a specific user ID, verify it matches
 	if invitation.InviteeID != nil && *invitation.InviteeID != "" && *invitation.InviteeID != acceptingUserID {
 		log.Warnw("User trying to accept invitation not meant for them", "invitationID", invitation.ID, "inviteeID", *invitation.InviteeID, "acceptingUserID", acceptingUserID)
@@ -248,13 +254,7 @@ func (h *InvitationHandler) AcceptInvitationHandler(c *gin.Context) {
 		Role:   invitation.Role,
 	}
 
-	if err := h.tripModel.AddMember(c.Request.Context(), membership); err != nil {
-		handleModelError(c, err)
-		return
-	}
-
-	if err := h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitation.ID, types.InvitationStatusAccepted); err != nil {
-		log.Errorw("Failed to update invitation status after member addition", "invitationID", invitation.ID, "error", err)
+	if err := h.tripModel.AcceptInvitationAtomically(c.Request.Context(), invitation.ID, membership); err != nil {
 		handleModelError(c, err)
 		return
 	}
@@ -295,6 +295,18 @@ func (h *InvitationHandler) DeclineInvitationHandler(c *gin.Context) {
 	if err != nil {
 		log.Warnw("Invalid invitation token for decline", "tokenLength", len(req.Token), "error", err)
 		handleModelError(c, apperrors.AuthenticationFailed("Invalid or expired token"))
+		return
+	}
+
+	// Fetch invitation and check expiry
+	invitation, err := h.tripModel.GetInvitation(c.Request.Context(), claims.InvitationID)
+	if err != nil {
+		handleModelError(c, err)
+		return
+	}
+
+	if invitation.ExpiresAt != nil && invitation.ExpiresAt.Before(time.Now()) {
+		handleModelError(c, apperrors.ValidationFailed("invitation_expired", "This invitation has expired."))
 		return
 	}
 
@@ -405,18 +417,7 @@ func (h *InvitationHandler) AcceptInvitationByIDHandler(c *gin.Context) {
 		Status: types.MembershipStatusActive,
 	}
 
-	// TODO: This should be atomic — AddMember and UpdateInvitationStatus should be
-	// wrapped in a single database transaction to prevent partial state (member added
-	// but invitation still marked as pending, or vice versa). Add an
-	// AcceptInvitationAtomically(ctx, invitationID, membership) method to
-	// TripModelInterface that performs both operations in a single transaction.
-	if err := h.tripModel.AddMember(c.Request.Context(), membership); err != nil {
-		handleModelError(c, err)
-		return
-	}
-
-	if err := h.tripModel.UpdateInvitationStatus(c.Request.Context(), invitation.ID, types.InvitationStatusAccepted); err != nil {
-		log.Errorw("Failed to update invitation status after member addition", "invitationID", invitation.ID, "error", err)
+	if err := h.tripModel.AcceptInvitationAtomically(c.Request.Context(), invitation.ID, membership); err != nil {
 		handleModelError(c, err)
 		return
 	}
@@ -726,7 +727,6 @@ func (h *InvitationHandler) GetInvitationDetails(c *gin.Context) {
 			inviterResponse = types.UserResponse{
 				ID:          inviter.ID,
 				Username:    inviter.Username,
-				Email:       inviter.Email,
 				FirstName:   inviter.FirstName,
 				LastName:    inviter.LastName,
 				AvatarURL:   inviter.ProfilePictureURL,

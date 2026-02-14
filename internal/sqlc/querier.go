@@ -81,6 +81,7 @@ type Querier interface {
 	// Get latest locations for all members of a trip with user info
 	GetTripMemberLocations(ctx context.Context, tripID string) ([]*GetTripMemberLocationsRow, error)
 	GetTripMembers(ctx context.Context, tripID string) ([]*GetTripMembersRow, error)
+	GetTripMembersForUpdate(ctx context.Context, tripID string) ([]*GetTripMembersForUpdateRow, error)
 	GetTripStatus(ctx context.Context, id string) (*GetTripStatusRow, error)
 	GetUnreadNotifications(ctx context.Context, userID string) ([]*Notification, error)
 	// Get the latest location for a user in a specific trip

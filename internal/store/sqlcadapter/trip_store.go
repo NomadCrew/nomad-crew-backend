@@ -466,6 +466,136 @@ func (s *sqlcTripStore) UpdateInvitationStatus(ctx context.Context, invitationID
 	return nil
 }
 
+// AcceptInvitationAtomically adds a member and updates invitation status in a single transaction
+func (s *sqlcTripStore) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	err = qtx.UpsertMembership(ctx, sqlc.UpsertMembershipParams{
+		TripID: membership.TripID,
+		UserID: membership.UserID,
+		Role:   MemberRoleToSqlc(membership.Role),
+		Status: MemberStatusToSqlc(membership.Status),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add member: %w", err)
+	}
+
+	err = qtx.UpdateInvitationStatus(ctx, sqlc.UpdateInvitationStatusParams{
+		ID:     invitationID,
+		Status: InvitationStatusToSqlc(types.InvitationStatusAccepted),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update invitation status: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveMemberWithOwnerLock removes a member using FOR UPDATE to prevent TOCTOU race on last owner check
+func (s *sqlcTripStore) RemoveMemberWithOwnerLock(ctx context.Context, tripID, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	// Lock all active members with FOR UPDATE to prevent concurrent modifications
+	members, err := qtx.GetTripMembersForUpdate(ctx, tripID)
+	if err != nil {
+		return fmt.Errorf("failed to get trip members for update: %w", err)
+	}
+
+	// Find the target member's role and count owners
+	var targetRole sqlc.MembershipRole
+	var found bool
+	ownerCount := 0
+	for _, m := range members {
+		if m.Role == sqlc.MembershipRoleOWNER {
+			ownerCount++
+		}
+		if m.UserID == userID {
+			targetRole = m.Role
+			found = true
+		}
+	}
+
+	if !found {
+		return apperrors.NotFound("membership", fmt.Sprintf("user %s in trip %s", userID, tripID))
+	}
+
+	if targetRole == sqlc.MembershipRoleOWNER && ownerCount <= 1 {
+		return apperrors.ValidationFailed("Cannot remove last owner", "There must be at least one owner remaining in the trip")
+	}
+
+	err = qtx.DeactivateMembership(ctx, sqlc.DeactivateMembershipParams{
+		TripID: tripID,
+		UserID: userID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to remove member: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// UpdateMemberRoleWithOwnerLock updates a member role using FOR UPDATE to prevent TOCTOU race on last owner check
+func (s *sqlcTripStore) UpdateMemberRoleWithOwnerLock(ctx context.Context, tripID, userID string, newRole types.MemberRole) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	// Lock all active members with FOR UPDATE to prevent concurrent modifications
+	members, err := qtx.GetTripMembersForUpdate(ctx, tripID)
+	if err != nil {
+		return fmt.Errorf("failed to get trip members for update: %w", err)
+	}
+
+	// Count owners — only relevant when demoting away from OWNER
+	if newRole != types.MemberRoleOwner {
+		ownerCount := 0
+		for _, m := range members {
+			if m.Role == sqlc.MembershipRoleOWNER {
+				ownerCount++
+			}
+		}
+		if ownerCount <= 1 {
+			// Check if the target user is the last owner
+			for _, m := range members {
+				if m.UserID == userID && m.Role == sqlc.MembershipRoleOWNER {
+					return apperrors.ValidationFailed("last_owner", "Cannot change role of last owner")
+				}
+			}
+		}
+	}
+
+	err = qtx.UpdateMemberRole(ctx, sqlc.UpdateMemberRoleParams{
+		TripID: tripID,
+		UserID: userID,
+		Role:   MemberRoleToSqlc(newRole),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update member role: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
 // BeginTx starts a new transaction
 func (s *sqlcTripStore) BeginTx(ctx context.Context) (types.DatabaseTransaction, error) {
 	tx, err := s.pool.Begin(ctx)

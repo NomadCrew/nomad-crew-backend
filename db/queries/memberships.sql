@@ -11,8 +11,10 @@ ON CONFLICT (trip_id, user_id)
 DO UPDATE SET
     role = EXCLUDED.role,
     status = EXCLUDED.status,
+    deleted_at = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE trip_memberships.status != EXCLUDED.status;
+WHERE trip_memberships.status != EXCLUDED.status
+   OR trip_memberships.deleted_at IS NOT NULL;
 
 -- name: GetMembership :one
 SELECT id, trip_id, user_id, role, status, created_at, updated_at
@@ -55,6 +57,12 @@ SELECT EXISTS(
     SELECT 1 FROM trip_memberships
     WHERE trip_id = $1 AND user_id = $2 AND status = 'ACTIVE'
 ) as is_member;
+
+-- name: GetTripMembersForUpdate :many
+SELECT id, trip_id, user_id, role, status, created_at, updated_at
+FROM trip_memberships
+WHERE trip_id = $1 AND status = 'ACTIVE'
+FOR UPDATE;
 
 -- name: GetMemberWithUserDetails :many
 -- Get members with user profile information

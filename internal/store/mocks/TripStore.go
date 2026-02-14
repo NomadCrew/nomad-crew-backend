@@ -35,6 +35,60 @@ func (_m *TripStore) AddMember(ctx context.Context, membership *types.TripMember
 }
 
 // BeginTx provides a mock function with given fields: ctx
+// AcceptInvitationAtomically provides a mock function with given fields: ctx, invitationID, membership
+func (_m *TripStore) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	ret := _m.Called(ctx, invitationID, membership)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AcceptInvitationAtomically")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, *types.TripMembership) error); ok {
+		r0 = rf(ctx, invitationID, membership)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// RemoveMemberWithOwnerLock provides a mock function with given fields: ctx, tripID, userID
+func (_m *TripStore) RemoveMemberWithOwnerLock(ctx context.Context, tripID string, userID string) error {
+	ret := _m.Called(ctx, tripID, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveMemberWithOwnerLock")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, tripID, userID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// UpdateMemberRoleWithOwnerLock provides a mock function with given fields: ctx, tripID, userID, newRole
+func (_m *TripStore) UpdateMemberRoleWithOwnerLock(ctx context.Context, tripID string, userID string, newRole types.MemberRole) error {
+	ret := _m.Called(ctx, tripID, userID, newRole)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateMemberRoleWithOwnerLock")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, types.MemberRole) error); ok {
+		r0 = rf(ctx, tripID, userID, newRole)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 func (_m *TripStore) BeginTx(ctx context.Context) (types.DatabaseTransaction, error) {
 	ret := _m.Called(ctx)
 

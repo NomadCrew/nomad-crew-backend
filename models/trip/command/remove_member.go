@@ -42,37 +42,9 @@ func (c *RemoveMemberCommand) Execute(ctx context.Context) (*interfaces.CommandR
 		return nil, err
 	}
 
-	targetRole, err := c.Ctx.Store.GetUserRole(ctx, c.TripID, c.MemberID)
-	if err != nil {
-		return nil, errors.NotFound("member_not_found", "member not found in trip")
-	}
-
-	// The ValidateRoleTransition check with MemberRoleNone is removed as it's redundant
-	// and MemberRoleNone is deprecated. GetUserRole confirms the member exists.
-
-	// Last owner protection
-	if targetRole == types.MemberRoleOwner {
-		members, err := c.Ctx.Store.GetTripMembers(ctx, c.TripID)
-		if err != nil {
-			return nil, err
-		}
-
-		ownerCount := 0
-		for _, member := range members {
-			if member.Role == types.MemberRoleOwner {
-				ownerCount++
-			}
-		}
-
-		if ownerCount <= 1 {
-			return nil, errors.ValidationFailed(
-				"Cannot remove last owner",
-				"There must be at least one owner remaining in the trip",
-			)
-		}
-	}
-
-	if err := c.Ctx.Store.RemoveMember(ctx, c.TripID, c.MemberID); err != nil {
+	// Use the locked method that wraps owner check + removal in a transaction with FOR UPDATE
+	// This prevents TOCTOU race conditions on concurrent owner removals
+	if err := c.Ctx.Store.RemoveMemberWithOwnerLock(ctx, c.TripID, c.MemberID); err != nil {
 		return nil, err
 	}
 

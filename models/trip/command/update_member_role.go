@@ -30,29 +30,6 @@ func (c *UpdateMemberRoleCommand) Validate(ctx context.Context) error {
 		return errors.ValidationFailed("invalid_member_role", "invalid member role")
 	}
 
-	// Validate last owner protection
-	if c.NewRole != types.MemberRoleOwner {
-		// Check if this is the last owner
-		members, err := c.Ctx.Store.GetTripMembers(ctx, c.TripID)
-		if err != nil {
-			return err
-		}
-
-		ownerCount := 0
-		for _, member := range members {
-			if member.Role == types.MemberRoleOwner {
-				ownerCount++
-			}
-		}
-
-		if ownerCount <= 1 {
-			return errors.ValidationFailed(
-				"last_owner",
-				"Cannot change role of last owner",
-			)
-		}
-	}
-
 	return nil
 }
 
@@ -78,7 +55,9 @@ func (c *UpdateMemberRoleCommand) Execute(ctx context.Context) (*interfaces.Comm
 		return nil, err
 	}
 
-	if err := c.Ctx.Store.UpdateMemberRole(ctx, c.TripID, c.MemberID, c.NewRole); err != nil {
+	// Use the locked method that wraps owner check + role update in a transaction with FOR UPDATE
+	// This prevents TOCTOU race conditions on concurrent role changes
+	if err := c.Ctx.Store.UpdateMemberRoleWithOwnerLock(ctx, c.TripID, c.MemberID, c.NewRole); err != nil {
 		return nil, err
 	}
 

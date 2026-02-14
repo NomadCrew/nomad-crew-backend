@@ -9,6 +9,7 @@ import (
 	istore "github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models/trip/interfaces"
+	"github.com/NomadCrew/nomad-crew-backend/models/trip/validation"
 	"github.com/NomadCrew/nomad-crew-backend/services"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 )
@@ -35,6 +36,12 @@ func NewTripMemberService(
 
 // AddMember adds a new member to a trip
 func (s *TripMemberService) AddMember(ctx context.Context, membership *types.TripMembership) error {
+	// Prevent OWNER role assignment via AddMember — OWNER can only be set during trip creation
+	// or via explicit ownership transfer (not yet implemented)
+	if membership.Role == types.MemberRoleOwner {
+		return errors.Forbidden("owner_role_forbidden", "Cannot assign OWNER role via member addition.")
+	}
+
 	if err := s.store.AddMember(ctx, membership); err != nil {
 		return err
 	}
@@ -87,8 +94,13 @@ func (s *TripMemberService) UpdateMemberRole(ctx context.Context, tripID, member
 		return nil, err
 	}
 
-	// Update the role
-	if err := s.store.UpdateMemberRole(ctx, tripID, memberID, newRole); err != nil {
+	// Validate the role transition (prevents OWNER escalation/demotion)
+	if err := validation.ValidateRoleTransition(oldRole, newRole); err != nil {
+		return nil, err
+	}
+
+	// Update the role (with owner count locking to prevent TOCTOU race)
+	if err := s.store.UpdateMemberRoleWithOwnerLock(ctx, tripID, memberID, newRole); err != nil {
 		return nil, err
 	}
 
@@ -149,8 +161,8 @@ func (s *TripMemberService) RemoveMember(ctx context.Context, tripID, userID str
 		return err
 	}
 
-	// Remove the member
-	if err := s.store.RemoveMember(ctx, tripID, userID); err != nil {
+	// Remove the member (with owner count locking to prevent TOCTOU race)
+	if err := s.store.RemoveMemberWithOwnerLock(ctx, tripID, userID); err != nil {
 		return err
 	}
 

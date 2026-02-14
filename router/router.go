@@ -178,12 +178,12 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			// Authenticated Invitation Actions
 			// These require the user (invitee) to be logged in
 			// Token-based accept/decline (for email deep links)
-			authRoutes.POST("/invitations/accept", deps.InvitationHandler.AcceptInvitationHandler)
-			authRoutes.POST("/invitations/decline", deps.InvitationHandler.DeclineInvitationHandler)
+			authRoutes.POST("/invitations/accept", authRateLimiter, deps.InvitationHandler.AcceptInvitationHandler)
+			authRoutes.POST("/invitations/decline", authRateLimiter, deps.InvitationHandler.DeclineInvitationHandler)
 			// ID-based endpoints (for in-app notifications)
 			authRoutes.GET("/invitations/:invitationId", deps.InvitationHandler.GetInvitationByIDHandler)
-			authRoutes.POST("/invitations/:invitationId/accept", deps.InvitationHandler.AcceptInvitationByIDHandler)
-			authRoutes.POST("/invitations/:invitationId/decline", deps.InvitationHandler.DeclineInvitationByIDHandler)
+			authRoutes.POST("/invitations/:invitationId/accept", authRateLimiter, deps.InvitationHandler.AcceptInvitationByIDHandler)
+			authRoutes.POST("/invitations/:invitationId/decline", authRateLimiter, deps.InvitationHandler.DeclineInvitationByIDHandler)
 
 			// Legacy Location Routes (global location updates)
 			authRoutes.POST("/location/update", deps.LocationHandlerSupabase.LegacyUpdateLocation)
@@ -191,7 +191,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			// Trip Routes
 			tripRoutes := authRoutes.Group("/trips")
 			{
-				tripRoutes.POST("", deps.TripHandler.CreateTripHandler)
+				tripRoutes.POST("", authRateLimiter, deps.TripHandler.CreateTripHandler)
 				tripRoutes.GET("", deps.TripHandler.ListUserTripsHandler)
 				// Trip-specific routes with RBAC
 				tripRoutes.GET("/:id",
@@ -248,6 +248,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				invitationRoutes := tripRoutes.Group("/:id/invitations")
 				{
 					invitationRoutes.POST("",
+						authRateLimiter,
 						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceInvitation, nil),
 						deps.InvitationHandler.InviteMemberHandler)
 					invitationRoutes.GET("",

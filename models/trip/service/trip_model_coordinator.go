@@ -143,6 +143,11 @@ func (c *TripModelCoordinator) UpdateInvitationStatus(ctx context.Context, invit
 	return c.InvitationService.UpdateInvitationStatus(ctx, invitationID, status)
 }
 
+// AcceptInvitationAtomically adds a member and accepts the invitation in a single transaction
+func (c *TripModelCoordinator) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	return c.store.AcceptInvitationAtomically(ctx, invitationID, membership)
+}
+
 // LookupUserByEmail delegates to InvitationService
 func (c *TripModelCoordinator) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
 	return c.InvitationService.LookupUserByEmail(ctx, email)
