@@ -35,18 +35,6 @@ WHERE t.id = $1
     AND tm.status = 'ACTIVE'
     AND t.deleted_at IS NULL;
 
--- name: ListUserTrips :many
--- Get all trips created by a specific user
-SELECT
-    id, name, description, start_date, end_date,
-    destination_place_id, destination_address, destination_name,
-    destination_latitude, destination_longitude,
-    status, created_by, created_at, updated_at, deleted_at,
-    COALESCE(background_image_url, '') as background_image_url
-FROM trips
-WHERE created_by = $1 AND deleted_at IS NULL
-ORDER BY start_date DESC;
-
 -- name: ListMemberTrips :many
 -- Get all trips where user is a member (active membership)
 SELECT

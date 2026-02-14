@@ -241,16 +241,16 @@ func (s *sqlcTripStore) SoftDeleteTrip(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListUserTrips retrieves all trips for a user (as member or owner)
+// ListUserTrips retrieves all trips where the user is an active member (includes trips they created and trips they joined via invitation)
 func (s *sqlcTripStore) ListUserTrips(ctx context.Context, userID string) ([]*types.Trip, error) {
-	rows, err := s.queries.ListUserTrips(ctx, &userID)
+	rows, err := s.queries.ListMemberTrips(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list user trips: %w", err)
 	}
 
 	trips := make([]*types.Trip, 0, len(rows))
 	for _, row := range rows {
-		trips = append(trips, ListUserTripsRowToTrip(row))
+		trips = append(trips, ListMemberTripsRowToTrip(row))
 	}
 
 	return trips, nil

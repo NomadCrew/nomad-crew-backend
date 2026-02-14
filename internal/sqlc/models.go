@@ -552,6 +552,38 @@ type Notification struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type Poll struct {
+	ID                 string             `db:"id" json:"id"`
+	TripID             string             `db:"trip_id" json:"trip_id"`
+	Question           string             `db:"question" json:"question"`
+	AllowMultipleVotes bool               `db:"allow_multiple_votes" json:"allow_multiple_votes"`
+	Status             interface{}        `db:"status" json:"status"`
+	CreatedBy          string             `db:"created_by" json:"created_by"`
+	ClosedBy           *string            `db:"closed_by" json:"closed_by"`
+	ClosedAt           pgtype.Timestamptz `db:"closed_at" json:"closed_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	ExpiresAt          pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+type PollOption struct {
+	ID        string             `db:"id" json:"id"`
+	PollID    string             `db:"poll_id" json:"poll_id"`
+	Text      string             `db:"text" json:"text"`
+	Position  int16              `db:"position" json:"position"`
+	CreatedBy string             `db:"created_by" json:"created_by"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type PollVote struct {
+	ID        string             `db:"id" json:"id"`
+	PollID    string             `db:"poll_id" json:"poll_id"`
+	OptionID  string             `db:"option_id" json:"option_id"`
+	UserID    string             `db:"user_id" json:"user_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Todo struct {
 	ID        string             `db:"id" json:"id"`
 	TripID    string             `db:"trip_id" json:"trip_id"`

@@ -191,31 +191,6 @@ func GetTripRowToTrip(row *sqlc.GetTripRow) *types.Trip {
 	}
 }
 
-// ListUserTripsRowToTrip converts sqlc.ListUserTripsRow to types.Trip
-func ListUserTripsRowToTrip(row *sqlc.ListUserTripsRow) *types.Trip {
-	if row == nil {
-		return nil
-	}
-	return &types.Trip{
-		ID:                   row.ID,
-		Name:                 row.Name,
-		Description:          DerefString(row.Description),
-		DestinationPlaceID:   row.DestinationPlaceID,
-		DestinationAddress:   row.DestinationAddress,
-		DestinationName:      row.DestinationName,
-		DestinationLatitude:  row.DestinationLatitude,
-		DestinationLongitude: row.DestinationLongitude,
-		StartDate:            PgDateToTime(row.StartDate),
-		EndDate:              PgDateToTime(row.EndDate),
-		Status:               SqlcTripStatusToTypes(row.Status),
-		CreatedBy:            row.CreatedBy,
-		CreatedAt:            PgTimestampToTime(row.CreatedAt),
-		UpdatedAt:            PgTimestampToTime(row.UpdatedAt),
-		DeletedAt:            PgTimestamptzToTimePtr(row.DeletedAt),
-		BackgroundImageURL:   row.BackgroundImageUrl,
-	}
-}
-
 // ListMemberTripsRowToTrip converts sqlc.ListMemberTripsRow to types.Trip
 func ListMemberTripsRowToTrip(row *sqlc.ListMemberTripsRow) *types.Trip {
 	if row == nil {
