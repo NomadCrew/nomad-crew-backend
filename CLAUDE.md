@@ -127,6 +127,58 @@ Never log secrets, tokens, or API keys. Use `logger.MaskJWT()`, `logger.MaskEmai
 
 `handlers/todo_handler.go` — uses `c.Error()` exclusively with no manual logging.
 
+## Feature Modules
+
+**Trips:**
+- Models: Trip, Trip Member
+- Database tables: `trips`, `trip_members`
+- Service layer: `models/trip/service/`
+- Key handlers: `handlers/trip_handler.go`
+
+**Chat:**
+- Models: Message, Read Receipt
+- Database tables: `chat_messages`, `chat_read_receipts`
+- Service layer: `models/chat/service/`
+- WebSocket: `/v1/trips/:id/chat/ws/events`
+- Real-time message delivery and read status
+
+**Todos:**
+- Models: Todo, TodoAssignment
+- Database tables: `todos`, `todo_assignments`
+- Service layer: `models/todo/service/`
+- CRUD operations, assignment tracking
+- Trip integration: `TripModelInterface` in `models/todo.go` provides `GetTripMembers()`
+
+**Polls:**
+- Models: Poll, PollOption, PollVote
+- Database tables: `polls`, `poll_options`, `poll_votes`
+- Migration: `000008_add_poll_expiration.sql` (adds `expires_at` column)
+- Service layer: `models/poll/service/`
+- Features:
+  - Expiration: `expires_at` timestamp, `DurationMinutes` on create (5-2880 min, default 1440 = 24h)
+  - Close restrictions: poll can only be manually closed when expired OR all trip members have voted
+  - Voting blocked on expired polls
+  - Vote counting: `CountUniqueVotersByPoll()` in PollStore interface
+- Trip integration: Uses `GetTripMembers()` for vote quorum check
+
+**Wallet:**
+- Models: Document, Transaction
+- Database tables: `wallet_documents`
+- Service layer: `models/wallet/service/`
+- Supabase Realtime integration
+
+**Notifications:**
+- Models: Notification
+- Database tables: `notifications`
+- Service layer: `models/notification/service/`
+- Push notifications via Expo Push API
+
+**Location:**
+- Models: Location
+- Database tables: `locations`
+- Service layer: `models/location/service/`
+- WebSocket: Real-time location updates via `/v1/ws`
+
 ## Code Principles
 
 - Use structured logging (Zap) — see Logging Architecture above
