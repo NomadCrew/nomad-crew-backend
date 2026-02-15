@@ -203,6 +203,11 @@ type PollStore interface {
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
+// FeedbackStore handles feedback submission (standalone, not part of main Store interface).
+type FeedbackStore interface {
+	CreateFeedback(ctx context.Context, fb *types.Feedback) (string, error)
+}
+
 // Use types.DatabaseTransaction here instead of a local interface
 type Transaction = types.DatabaseTransaction
 

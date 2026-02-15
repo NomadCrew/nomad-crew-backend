@@ -201,8 +201,12 @@ CREATE INDEX idx_user_profiles_contact_email ON user_profiles(contact_email);
 # Server
 PORT=8080
 SERVER_ENVIRONMENT=production
-ALLOWED_ORIGINS=https://app.nomadcrew.uk
+ALLOWED_ORIGINS=https://nomadcrew.uk,https://*.nomadcrew.uk
 FRONTEND_URL=https://app.nomadcrew.uk
+# NOTE: ALLOWED_ORIGINS must include the bare domain (https://nomadcrew.uk)
+# for the landing page feedback form to work. The wildcard *.nomadcrew.uk
+# only matches subdomains, not the bare domain itself.
+# Verify this is set correctly in Coolify environment variables.
 LOG_LEVEL=info
 
 # Database (Self-hosted PostgreSQL)

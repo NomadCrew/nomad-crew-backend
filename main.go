@@ -150,6 +150,9 @@ func main() {
 	pushTokenStore := sqlcadapter.NewSqlcPushTokenStore(dbClient.GetPool())
 	log.Info("Using SQLC-based push token store")
 
+	feedbackStore := sqlcadapter.NewSqlcFeedbackStore(dbClient.GetPool())
+	log.Info("Using feedback store")
+
 	// Initialize Redis client with TLS in production
 	redisOptions := config.ConfigureUpstashRedisOptions(&cfg.Redis)
 	redisClient := redis.NewClient(redisOptions)
@@ -264,6 +267,7 @@ func main() {
 	memberHandler := handlers.NewMemberHandler(tripModel, userDB, eventService)
 	invitationHandler := handlers.NewInvitationHandlerWithNotifications(tripModel, userDB, eventService, &cfg.Server, notificationService)
 	pushTokenHandler := handlers.NewPushTokenHandler(pushTokenStore, log.Desugar())
+	feedbackHandler := handlers.NewFeedbackHandler(feedbackStore)
 
 	// Initialize Supabase Realtime handlers (always enabled)
 	chatHandlerSupabase := handlers.NewChatHandlerSupabase(
@@ -306,6 +310,7 @@ func main() {
 	routerDeps.WebSocketHandler = wsHandler
 	routerDeps.PushTokenHandler = pushTokenHandler
 	routerDeps.PollHandler = pollHandler
+	routerDeps.FeedbackHandler = feedbackHandler
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)

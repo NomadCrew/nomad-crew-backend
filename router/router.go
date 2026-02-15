@@ -47,6 +47,8 @@ type Dependencies struct {
 	PushTokenHandler *handlers.PushTokenHandler
 	// Poll handler for polls feature
 	PollHandler *handlers.PollHandler
+	// Feedback handler for public feedback submissions
+	FeedbackHandler *handlers.FeedbackHandler
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -163,6 +165,11 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			deps.Config.RateLimit.AuthRequestsPerMinute,
 			time.Duration(deps.Config.RateLimit.WindowSeconds)*time.Second,
 		)
+
+		// Public feedback route (no auth required, rate-limited)
+		if deps.FeedbackHandler != nil {
+			v1.POST("/feedback", authRateLimiter, deps.FeedbackHandler.SubmitFeedback)
+		}
 
 		// Public User routes (onboarding - creates user, so can't require existing user)
 		// Apply rate limiting to prevent brute force account creation
