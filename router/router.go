@@ -368,6 +368,7 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 			notificationRoutes := authRoutes.Group("/notifications")
 			{
 				notificationRoutes.GET("", deps.NotificationHandler.GetNotificationsByUser)
+				notificationRoutes.GET("/unread-count", deps.NotificationHandler.GetUnreadCount)
 				notificationRoutes.PATCH("/:notificationId/read", deps.NotificationHandler.MarkNotificationAsRead)
 				notificationRoutes.PATCH("/read-all", deps.NotificationHandler.MarkAllNotificationsRead)
 				notificationRoutes.DELETE("/:notificationId", deps.NotificationHandler.DeleteNotification)

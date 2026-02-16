@@ -286,6 +286,9 @@ func main() {
 	wsHandler := websocket.NewHandler(wsHub, &cfg.Server, tripMemberService)
 	log.Info("WebSocket hub and handler initialized")
 
+	// Wire WebSocket hub as the broadcaster for real-time notification delivery
+	notificationService.SetUserBroadcaster(wsHub)
+
 	// Prepare Router Dependencies
 	routerDeps := router.Dependencies{
 		Config:              cfg,

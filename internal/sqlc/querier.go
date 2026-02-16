@@ -54,7 +54,7 @@ type Querier interface {
 	DeactivatePushToken(ctx context.Context, arg DeactivatePushTokenParams) error
 	DeleteAllNotificationsByUser(ctx context.Context, userID string) error
 	DeleteExpiredInvitations(ctx context.Context) error
-	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) error
+	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) (string, error)
 	DeleteOldNotifications(ctx context.Context) error
 	// Disable location sharing that has expired
 	DisableExpiredSharing(ctx context.Context) error
@@ -91,7 +91,8 @@ type Querier interface {
 	GetTripMembers(ctx context.Context, tripID string) ([]*GetTripMembersRow, error)
 	GetTripMembersForUpdate(ctx context.Context, tripID string) ([]*GetTripMembersForUpdateRow, error)
 	GetTripStatus(ctx context.Context, id string) (*GetTripStatusRow, error)
-	GetUnreadNotifications(ctx context.Context, userID string) ([]*Notification, error)
+	GetReadNotifications(ctx context.Context, arg GetReadNotificationsParams) ([]*Notification, error)
+	GetUnreadNotifications(ctx context.Context, arg GetUnreadNotificationsParams) ([]*Notification, error)
 	// Get the latest location for a user in a specific trip
 	GetUserLocationInTrip(ctx context.Context, arg GetUserLocationInTripParams) (*GetUserLocationInTripRow, error)
 	GetUserNotifications(ctx context.Context, arg GetUserNotificationsParams) ([]*Notification, error)
@@ -116,7 +117,7 @@ type Querier interface {
 	ListUserProfiles(ctx context.Context, arg ListUserProfilesParams) ([]*ListUserProfilesRow, error)
 	ListVotesByPoll(ctx context.Context, pollID string) ([]*PollVote, error)
 	MarkAllNotificationsRead(ctx context.Context, userID string) error
-	MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) error
+	MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) (string, error)
 	// Push Token Operations
 	// Upserts a push token for a user (updates if already exists)
 	RegisterPushToken(ctx context.Context, arg RegisterPushTokenParams) (*UserPushToken, error)

@@ -29,6 +29,14 @@ type NotificationService interface {
 	DeleteNotification(ctx context.Context, userID, notificationID uuid.UUID) error
 	// DeleteAllNotifications removes all notifications for a user.
 	DeleteAllNotifications(ctx context.Context, userID uuid.UUID) (int64, error)
+	// SetUserBroadcaster sets the broadcaster for delivering real-time notifications to connected users.
+	SetUserBroadcaster(b UserBroadcaster)
+}
+
+// UserBroadcaster sends events directly to a specific user's WebSocket connection.
+// This decouples the notification service from the concrete WebSocket hub implementation.
+type UserBroadcaster interface {
+	BroadcastToUser(userID string, event types.Event) error
 }
 
 // notificationService implements NotificationService.
@@ -38,6 +46,7 @@ type notificationService struct {
 	tripStore         store.TripStore         // Remains old store.TripStore
 	eventPublisher    types.EventPublisher
 	pushService       services.PushService // Push notification service (optional)
+	userBroadcaster   UserBroadcaster      // WebSocket broadcaster (optional)
 	logger            *zap.Logger
 }
 
@@ -61,6 +70,66 @@ func NewNotificationServiceWithPush(ns store.NotificationStore, us istore.UserSt
 		eventPublisher:    ep,
 		pushService:       ps,
 		logger:            logger.Named("NotificationService"),
+	}
+}
+
+// SetUserBroadcaster sets the broadcaster for delivering real-time notifications.
+func (s *notificationService) SetUserBroadcaster(b UserBroadcaster) {
+	s.userBroadcaster = b
+}
+
+// buildNotificationDTO creates the frontend-expected notification shape from a models.Notification.
+// This is the same transformation as the handler's toNotificationResponse but returns a map
+// suitable for embedding in event payloads.
+func buildNotificationDTO(n *models.Notification) map[string]interface{} {
+	var metadata map[string]interface{}
+	if len(n.Metadata) > 0 {
+		if err := json.Unmarshal(n.Metadata, &metadata); err != nil {
+			metadata = make(map[string]interface{})
+		}
+	} else {
+		metadata = make(map[string]interface{})
+	}
+
+	return map[string]interface{}{
+		"id":        n.ID.String(),
+		"message":   generateNotificationMessage(n.Type, metadata),
+		"read":      n.IsRead,
+		"createdAt": n.CreatedAt.Format(time.RFC3339),
+		"type":      n.Type,
+		"metadata":  metadata,
+	}
+}
+
+// generateNotificationMessage produces a human-readable message from the notification type and metadata.
+func generateNotificationMessage(notifType string, metadata map[string]interface{}) string {
+	tripName := getStringFromMap(metadata, "tripName", "a trip")
+
+	switch notifType {
+	case "TRIP_INVITATION", "TRIP_INVITATION_RECEIVED":
+		inviterName := getStringFromMap(metadata, "inviterName", "Someone")
+		return fmt.Sprintf("%s invited you to %s", inviterName, tripName)
+	case "CHAT_MESSAGE", "NEW_CHAT_MESSAGE":
+		senderName := getStringFromMap(metadata, "senderName", "Someone")
+		return fmt.Sprintf("%s sent a message", senderName)
+	case "MEMBER_ADDED", "TRIP_MEMBER_JOINED", "MEMBERSHIP_CHANGE":
+		memberName := getStringFromMap(metadata, "addedUserName", getStringFromMap(metadata, "memberName", "A new member"))
+		return fmt.Sprintf("%s joined %s", memberName, tripName)
+	case "TRIP_UPDATE", "TRIP_UPDATED":
+		return fmt.Sprintf("%s has been updated", tripName)
+	case "TODO_ASSIGNED", "TASK_ASSIGNED":
+		assignerName := getStringFromMap(metadata, "assignerName", "Someone")
+		todoTitle := getStringFromMap(metadata, "todoTitle", "a task")
+		return fmt.Sprintf("%s assigned you: %s", assignerName, todoTitle)
+	case "TODO_COMPLETED", "TASK_COMPLETED":
+		completerName := getStringFromMap(metadata, "completerName", "Someone")
+		todoTitle := getStringFromMap(metadata, "todoTitle", "a task")
+		return fmt.Sprintf("%s completed: %s", completerName, todoTitle)
+	case "TRIP_MEMBER_LEFT":
+		memberName := getStringFromMap(metadata, "memberName", "A member")
+		return fmt.Sprintf("%s left %s", memberName, tripName)
+	default:
+		return "You have a new notification"
 	}
 }
 
@@ -91,15 +160,26 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 
 	log.Info("Notification created successfully", zap.String("notificationID", notification.ID.String()))
 
-	// 4. Prepare and publish NotificationCreatedEvent using the centralized helper
+	// 4. Build the frontend-expected DTO for the event payload
+	notificationDTO := buildNotificationDTO(notification)
+
+	// 5. Publish NotificationCreatedEvent via event system (for Redis/distributed listeners)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.Error("Panic in publishNotificationEvent goroutine",
+					zap.Any("panic", r),
+					zap.String("notificationID", notification.ID.String()))
+			}
+		}()
+
 		log := s.logger.With(zap.String("operation", "publishNotificationEvent"), zap.String("notificationID", notification.ID.String()))
 
-		// Prepare the specific event payload structure
 		eventPayloadData := types.NotificationCreatedEvent{
-			Timestamp:      time.Now(), // Use current time for event payload timestamp
+			Timestamp:      time.Now(),
 			NotificationID: notification.ID,
 			UserID:         notification.UserID,
+			Notification:   notificationDTO,
 		}
 
 		// Convert payload struct to map[string]interface{}
@@ -121,21 +201,71 @@ func (s *notificationService) CreateAndPublishNotification(ctx context.Context, 
 			s.eventPublisher,
 			context.Background(), // Use background context for async
 			string(types.EventTypeNotificationCreated),
-			publishScopeID,               // Use UserID as the scope identifier
+			publishScopeID,              // Use UserID as the scope identifier
 			notification.UserID.String(), // UserID who triggered/owns the notification
 			payloadMap,
 			"NotificationService",
 		); pubErr != nil {
-			// Log error but don't fail the original operation
 			log.Error("Failed to publish NotificationCreatedEvent", zap.String("scopeID", publishScopeID), zap.Error(pubErr))
 		} else {
 			log.Debug("Published NotificationCreatedEvent", zap.String("scopeID", publishScopeID))
 		}
 	}()
 
-	// 5. Send push notification if push service is configured
+	// 6. Broadcast directly to user's WebSocket connection (if connected)
+	if s.userBroadcaster != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("Panic in broadcastToUser goroutine",
+						zap.Any("panic", r),
+						zap.String("notificationID", notification.ID.String()))
+				}
+			}()
+
+			payloadJSON, err := json.Marshal(notificationDTO)
+			if err != nil {
+				s.logger.Error("Failed to marshal notification DTO for WebSocket broadcast",
+					zap.Error(err),
+					zap.String("notificationID", notification.ID.String()))
+				return
+			}
+
+			wsEvent := types.Event{
+				BaseEvent: types.BaseEvent{
+					Type:      types.EventTypeNotificationCreated,
+					UserID:    notification.UserID.String(),
+					Timestamp: time.Now(),
+					Version:   1,
+				},
+				Metadata: types.EventMetadata{
+					Source: "NotificationService",
+				},
+				Payload: payloadJSON,
+			}
+
+			if err := s.userBroadcaster.BroadcastToUser(notification.UserID.String(), wsEvent); err != nil {
+				s.logger.Warn("Failed to broadcast notification to user via WebSocket",
+					zap.Error(err),
+					zap.String("userID", notification.UserID.String()),
+					zap.String("notificationID", notification.ID.String()))
+			}
+		}()
+	}
+
+	// 7. Send push notification if push service is configured
 	if s.pushService != nil {
-		go s.sendPushNotification(notification, metadataInput)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("Panic in sendPushNotification goroutine",
+						zap.Any("panic", r),
+						zap.String("notificationID", notification.ID.String()),
+						zap.String("userID", notification.UserID.String()))
+				}
+			}()
+			s.sendPushNotification(notification, metadataInput)
+		}()
 	}
 
 	return notification, nil
@@ -272,35 +402,6 @@ func getStringFromMap(m map[string]interface{}, key, defaultValue string) string
 	}
 	return defaultValue
 }
-
-// Helper function example: Populate metadata and trigger notification creation/publish
-// This logic should reside in the service responsible for the action (e.g., TripService).
-// func (tripSvc *tripService) InviteUserToTrip(ctx context.Context, tripID, inviterID, invitedUserID uuid.UUID) error {
-// 	 // ... perform invitation logic ...
-
-// 	 // Fetch necessary details for notification
-// 	 inviter, err := tripSvc.userStore.GetUserByID(ctx, inviterID)
-// 	 if err != nil { /* handle error */ }
-// 	 trip, err := tripSvc.tripStore.GetTripByID(ctx, tripID)
-// 	 if err != nil { /* handle error */ }
-
-// 	 metadata := models.TripInvitationMetadata{
-// 	 	Type:        "TRIP_INVITATION",
-// 	 	InviterID:   inviterID,
-// 	 	InviterName: inviter.Name,
-// 	 	TripID:      tripID,
-// 	 	TripName:    trip.Name,
-// 	 }
-
-// 	 // Call the NotificationService to create and publish
-// 	 _, err = tripSvc.notificationService.CreateAndPublishNotification(ctx, invitedUserID, metadata.Type, metadata)
-// 	 if err != nil {
-// 	 	 // Log error, maybe compensate, but potentially continue
-// 	 	 tripSvc.logger.Error("Failed to create/publish trip invitation notification", zap.Error(err))
-// 	 }
-
-// 	 return nil // or original error if invitation logic failed
-// }
 
 // GetNotifications retrieves notifications for a user.
 func (s *notificationService) GetNotifications(ctx context.Context, userID uuid.UUID, limit, offset int, status *bool) ([]models.Notification, error) {

@@ -1,0 +1,4 @@
+-- PostgreSQL does not support removing values from an enum type.
+-- To roll back, you would need to create a new enum, migrate data, and swap.
+-- This is intentionally left as a no-op since removing enum values is destructive.
+-- The added values are backward-compatible and safe to keep.

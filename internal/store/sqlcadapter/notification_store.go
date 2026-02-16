@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/internal/sqlc"
 	"github.com/NomadCrew/nomad-crew-backend/logger"
 	"github.com/NomadCrew/nomad-crew-backend/models"
@@ -68,7 +67,7 @@ func (s *sqlcNotificationStore) GetByID(ctx context.Context, id uuid.UUID) (*mod
 	notification, err := s.queries.GetNotification(ctx, id.String())
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NotFound("notification", id.String())
+			return nil, store.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to get notification: %w", err)
 	}
@@ -83,25 +82,28 @@ func (s *sqlcNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID,
 	var notifications []*sqlc.Notification
 	var err error
 
-	// If status filter is provided and is false (unread only)
 	if status != nil && !*status {
-		notifications, err = s.queries.GetUnreadNotifications(ctx, userID.String())
+		// Unread only — use dedicated paginated query
+		notifications, err = s.queries.GetUnreadNotifications(ctx, sqlc.GetUnreadNotificationsParams{
+			UserID: userID.String(),
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get unread notifications: %w", err)
 		}
-		// Apply pagination manually for unread notifications
-		start := offset
-		end := offset + limit
-		if start > len(notifications) {
-			notifications = []*sqlc.Notification{}
-		} else {
-			if end > len(notifications) {
-				end = len(notifications)
-			}
-			notifications = notifications[start:end]
+	} else if status != nil && *status {
+		// Read only — use dedicated paginated query
+		notifications, err = s.queries.GetReadNotifications(ctx, sqlc.GetReadNotificationsParams{
+			UserID: userID.String(),
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get read notifications: %w", err)
 		}
 	} else {
-		// For all notifications or read-only, use GetUserNotifications with pagination
+		// All notifications — paginated
 		notifications, err = s.queries.GetUserNotifications(ctx, sqlc.GetUserNotificationsParams{
 			UserID: userID.String(),
 			Limit:  int32(limit),
@@ -110,20 +112,9 @@ func (s *sqlcNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID,
 		if err != nil {
 			return nil, fmt.Errorf("failed to get user notifications: %w", err)
 		}
-
-		// If status filter is provided and is true (read only), filter the results
-		if status != nil && *status {
-			filtered := []*sqlc.Notification{}
-			for _, n := range notifications {
-				if n.IsRead {
-					filtered = append(filtered, n)
-				}
-			}
-			notifications = filtered
-		}
 	}
 
-	// Convert to models.Notification (note: returning slice, not slice of pointers)
+	// Convert to models.Notification
 	result := make([]models.Notification, 0, len(notifications))
 	for _, n := range notifications {
 		notification := sqlcNotificationToModels(n)
@@ -138,17 +129,17 @@ func (s *sqlcNotificationStore) GetByUser(ctx context.Context, userID uuid.UUID,
 
 // MarkRead marks a single notification as read for a specific user
 func (s *sqlcNotificationStore) MarkRead(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	log := logger.GetLogger()
-
-	err := s.queries.MarkNotificationAsRead(ctx, sqlc.MarkNotificationAsReadParams{
+	_, err := s.queries.MarkNotificationAsRead(ctx, sqlc.MarkNotificationAsReadParams{
 		ID:     id.String(),
 		UserID: userID.String(),
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return store.ErrNotFound
+		}
 		return fmt.Errorf("failed to mark notification as read: %w", err)
 	}
 
-	log.Infow("Successfully marked notification as read", "notificationID", id, "userID", userID)
 	return nil
 }
 
@@ -183,17 +174,17 @@ func (s *sqlcNotificationStore) GetUnreadCount(ctx context.Context, userID uuid.
 
 // Delete removes a notification by its ID, ensuring the operation is performed by the owner
 func (s *sqlcNotificationStore) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	log := logger.GetLogger()
-
-	err := s.queries.DeleteNotification(ctx, sqlc.DeleteNotificationParams{
+	_, err := s.queries.DeleteNotification(ctx, sqlc.DeleteNotificationParams{
 		ID:     id.String(),
 		UserID: userID.String(),
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return store.ErrNotFound
+		}
 		return fmt.Errorf("failed to delete notification: %w", err)
 	}
 
-	log.Infow("Successfully deleted notification", "notificationID", id, "userID", userID)
 	return nil
 }
 

@@ -10,6 +10,7 @@ sql:
       - "db/migrations/000006_add_contact_email.up.sql"
       - "db/migrations/000007_add_polls.up.sql"
       - "db/migrations/000008_add_poll_expiration.up.sql"
+      - "db/migrations/000011_extend_notification_types.up.sql"
     gen:
       go:
         package: "sqlc"

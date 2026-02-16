@@ -283,10 +283,11 @@ type PollDeletedEvent struct {
 }
 
 // NotificationCreatedEvent signifies that a new notification has been created.
-// It contains identifiers for the consumer (e.g., WebSocket service) to fetch
-// the full notification details before broadcasting.
+// It contains the full notification in the frontend-expected format so that
+// WebSocket consumers can add it to their store without an additional API call.
 type NotificationCreatedEvent struct {
-	Timestamp      time.Time `json:"timestamp"`
-	NotificationID uuid.UUID `json:"notificationId"`
-	UserID         uuid.UUID `json:"userId"` // The ID of the user the notification is for
+	Timestamp      time.Time              `json:"timestamp"`
+	NotificationID uuid.UUID              `json:"notificationId"`
+	UserID         uuid.UUID              `json:"userId"`       // The ID of the user the notification is for
+	Notification   map[string]interface{} `json:"notification"` // Full notification in frontend DTO format
 }

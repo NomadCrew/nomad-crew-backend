@@ -66,9 +66,10 @@ func (q *Queries) DeleteAllNotificationsByUser(ctx context.Context, userID strin
 	return err
 }
 
-const deleteNotification = `-- name: DeleteNotification :exec
+const deleteNotification = `-- name: DeleteNotification :one
 DELETE FROM notifications
 WHERE id = $1 AND user_id = $2
+RETURNING id
 `
 
 type DeleteNotificationParams struct {
@@ -76,9 +77,11 @@ type DeleteNotificationParams struct {
 	UserID string `db:"user_id" json:"user_id"`
 }
 
-func (q *Queries) DeleteNotification(ctx context.Context, arg DeleteNotificationParams) error {
-	_, err := q.db.Exec(ctx, deleteNotification, arg.ID, arg.UserID)
-	return err
+func (q *Queries) DeleteNotification(ctx context.Context, arg DeleteNotificationParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteNotification, arg.ID, arg.UserID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const deleteOldNotifications = `-- name: DeleteOldNotifications :exec
@@ -112,15 +115,64 @@ func (q *Queries) GetNotification(ctx context.Context, id string) (*Notification
 	return &i, err
 }
 
+const getReadNotifications = `-- name: GetReadNotifications :many
+SELECT id, user_id, type, metadata, is_read, created_at, updated_at
+FROM notifications
+WHERE user_id = $1 AND is_read = true
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type GetReadNotificationsParams struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Limit  int32  `db:"limit" json:"limit"`
+	Offset int32  `db:"offset" json:"offset"`
+}
+
+func (q *Queries) GetReadNotifications(ctx context.Context, arg GetReadNotificationsParams) ([]*Notification, error) {
+	rows, err := q.db.Query(ctx, getReadNotifications, arg.UserID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Type,
+			&i.Metadata,
+			&i.IsRead,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUnreadNotifications = `-- name: GetUnreadNotifications :many
 SELECT id, user_id, type, metadata, is_read, created_at, updated_at
 FROM notifications
 WHERE user_id = $1 AND is_read = false
 ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) GetUnreadNotifications(ctx context.Context, userID string) ([]*Notification, error) {
-	rows, err := q.db.Query(ctx, getUnreadNotifications, userID)
+type GetUnreadNotificationsParams struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Limit  int32  `db:"limit" json:"limit"`
+	Offset int32  `db:"offset" json:"offset"`
+}
+
+func (q *Queries) GetUnreadNotifications(ctx context.Context, arg GetUnreadNotificationsParams) ([]*Notification, error) {
+	rows, err := q.db.Query(ctx, getUnreadNotifications, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -200,10 +252,11 @@ func (q *Queries) MarkAllNotificationsRead(ctx context.Context, userID string) e
 	return err
 }
 
-const markNotificationAsRead = `-- name: MarkNotificationAsRead :exec
+const markNotificationAsRead = `-- name: MarkNotificationAsRead :one
 UPDATE notifications
 SET is_read = true, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1 AND user_id = $2
+RETURNING id
 `
 
 type MarkNotificationAsReadParams struct {
@@ -211,7 +264,9 @@ type MarkNotificationAsReadParams struct {
 	UserID string `db:"user_id" json:"user_id"`
 }
 
-func (q *Queries) MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) error {
-	_, err := q.db.Exec(ctx, markNotificationAsRead, arg.ID, arg.UserID)
-	return err
+func (q *Queries) MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) (string, error) {
+	row := q.db.QueryRow(ctx, markNotificationAsRead, arg.ID, arg.UserID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }

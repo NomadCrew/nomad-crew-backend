@@ -265,6 +265,14 @@ const (
 	NotificationTypeTASKCOMPLETED          NotificationType = "TASK_COMPLETED"
 	NotificationTypeLOCATIONSHARED         NotificationType = "LOCATION_SHARED"
 	NotificationTypeMEMBERSHIPCHANGE       NotificationType = "MEMBERSHIP_CHANGE"
+	NotificationTypeTRIPINVITATION         NotificationType = "TRIP_INVITATION"
+	NotificationTypeTRIPMEMBERJOINED       NotificationType = "TRIP_MEMBER_JOINED"
+	NotificationTypeTRIPMEMBERLEFT         NotificationType = "TRIP_MEMBER_LEFT"
+	NotificationTypeTRIPUPDATED            NotificationType = "TRIP_UPDATED"
+	NotificationTypeCHATMESSAGE            NotificationType = "CHAT_MESSAGE"
+	NotificationTypeTODOASSIGNED           NotificationType = "TODO_ASSIGNED"
+	NotificationTypeTODOCOMPLETED          NotificationType = "TODO_COMPLETED"
+	NotificationTypeMEMBERADDED            NotificationType = "MEMBER_ADDED"
 )
 
 func (e *NotificationType) Scan(src interface{}) error {
@@ -313,7 +321,15 @@ func (e NotificationType) Valid() bool {
 		NotificationTypeTASKASSIGNED,
 		NotificationTypeTASKCOMPLETED,
 		NotificationTypeLOCATIONSHARED,
-		NotificationTypeMEMBERSHIPCHANGE:
+		NotificationTypeMEMBERSHIPCHANGE,
+		NotificationTypeTRIPINVITATION,
+		NotificationTypeTRIPMEMBERJOINED,
+		NotificationTypeTRIPMEMBERLEFT,
+		NotificationTypeTRIPUPDATED,
+		NotificationTypeCHATMESSAGE,
+		NotificationTypeTODOASSIGNED,
+		NotificationTypeTODOCOMPLETED,
+		NotificationTypeMEMBERADDED:
 		return true
 	}
 	return false
@@ -331,6 +347,14 @@ func AllNotificationTypeValues() []NotificationType {
 		NotificationTypeTASKCOMPLETED,
 		NotificationTypeLOCATIONSHARED,
 		NotificationTypeMEMBERSHIPCHANGE,
+		NotificationTypeTRIPINVITATION,
+		NotificationTypeTRIPMEMBERJOINED,
+		NotificationTypeTRIPMEMBERLEFT,
+		NotificationTypeTRIPUPDATED,
+		NotificationTypeCHATMESSAGE,
+		NotificationTypeTODOASSIGNED,
+		NotificationTypeTODOCOMPLETED,
+		NotificationTypeMEMBERADDED,
 	}
 }
 

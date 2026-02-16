@@ -21,21 +21,31 @@ LIMIT $2 OFFSET $3;
 SELECT id, user_id, type, metadata, is_read, created_at, updated_at
 FROM notifications
 WHERE user_id = $1 AND is_read = false
-ORDER BY created_at DESC;
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
 
--- name: MarkNotificationAsRead :exec
+-- name: GetReadNotifications :many
+SELECT id, user_id, type, metadata, is_read, created_at, updated_at
+FROM notifications
+WHERE user_id = $1 AND is_read = true
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: MarkNotificationAsRead :one
 UPDATE notifications
 SET is_read = true, updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND user_id = $2;
+WHERE id = $1 AND user_id = $2
+RETURNING id;
 
 -- name: MarkAllNotificationsRead :exec
 UPDATE notifications
 SET is_read = true, updated_at = CURRENT_TIMESTAMP
 WHERE user_id = $1 AND is_read = false;
 
--- name: DeleteNotification :exec
+-- name: DeleteNotification :one
 DELETE FROM notifications
-WHERE id = $1 AND user_id = $2;
+WHERE id = $1 AND user_id = $2
+RETURNING id;
 
 -- name: DeleteOldNotifications :exec
 DELETE FROM notifications
