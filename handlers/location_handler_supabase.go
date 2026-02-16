@@ -362,10 +362,23 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 		supabaseLocations = []services.SupabaseLocation{}
 	}
 
-	// Convert to the response format the frontend expects
+	// Convert to the response format the frontend expects, enriching with user names
 	locations := make([]gin.H, 0, len(supabaseLocations))
 	for _, loc := range supabaseLocations {
-		locations = append(locations, gin.H{
+		// Look up the user's display name
+		var userName string
+		if user, err := h.userStore.GetUserByID(c.Request.Context(), loc.UserID); err == nil && user != nil {
+			if user.FirstName != "" {
+				userName = user.FirstName
+				if user.LastName != "" {
+					userName += " " + user.LastName
+				}
+			} else if user.Username != "" {
+				userName = user.Username
+			}
+		}
+
+		entry := gin.H{
 			"user_id":            loc.UserID,
 			"trip_id":            loc.TripID,
 			"latitude":           loc.Latitude,
@@ -374,7 +387,11 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 			"privacy":            loc.Privacy,
 			"is_sharing_enabled": loc.IsSharingEnabled,
 			"timestamp":          loc.Timestamp,
-		})
+		}
+		if userName != "" {
+			entry["user_name"] = userName
+		}
+		locations = append(locations, entry)
 	}
 
 	response := gin.H{
