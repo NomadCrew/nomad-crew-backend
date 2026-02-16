@@ -735,6 +735,71 @@ func (s *SupabaseService) CheckTripExists(ctx context.Context, tripID string) (b
 	return exists, nil
 }
 
+// SupabaseLocation represents a location row from the Supabase locations table
+type SupabaseLocation struct {
+	UserID           string  `json:"user_id"`
+	TripID           string  `json:"trip_id"`
+	Latitude         float64 `json:"latitude"`
+	Longitude        float64 `json:"longitude"`
+	Accuracy         float32 `json:"accuracy"`
+	Privacy          string  `json:"privacy"`
+	IsSharingEnabled bool    `json:"is_sharing_enabled"`
+	Timestamp        string  `json:"timestamp"`
+}
+
+// GetTripLocations fetches all active locations for a trip from Supabase.
+// Uses the service key which bypasses RLS policies.
+func (s *SupabaseService) GetTripLocations(ctx context.Context, tripID string) ([]SupabaseLocation, error) {
+	if !s.isEnabled {
+		return []SupabaseLocation{}, nil
+	}
+
+	if strings.TrimSpace(tripID) == "" {
+		return nil, fmt.Errorf("trip ID cannot be empty")
+	}
+
+	// Query locations where sharing is enabled and privacy is not hidden
+	queryURL := fmt.Sprintf("%s/rest/v1/locations?trip_id=eq.%s&is_sharing_enabled=eq.true&privacy=neq.hidden&select=user_id,trip_id,latitude,longitude,accuracy,privacy,is_sharing_enabled,timestamp",
+		s.supabaseURL, url.QueryEscape(tripID))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	cleanedKey, err := s.validateAndCleanAPIKey("GetTripLocations")
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Apikey", cleanedKey)
+	req.Header.Set("Authorization", "Bearer "+cleanedKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Supabase returned status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var locations []SupabaseLocation
+	if err := json.Unmarshal(bodyBytes, &locations); err != nil {
+		return nil, fmt.Errorf("failed to parse response JSON: %w", err)
+	}
+
+	return locations, nil
+}
+
 // SyncTripImmediate performs immediate synchronous trip sync to Supabase
 // This is used when we need to ensure a trip exists in Supabase before dependent operations
 func (s *SupabaseService) SyncTripImmediate(ctx context.Context, tripData TripSyncData) error {

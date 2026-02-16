@@ -335,7 +335,7 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 	// Use Supabase user ID for trip access validation
 	supabaseUserID := c.GetString(string(middleware.UserIDKey))
 
-	_, _, ok := h.validateTripAccess(c, supabaseUserID)
+	tripID, _, ok := h.validateTripAccess(c, supabaseUserID)
 	if !ok {
 		return
 	}
@@ -355,16 +355,35 @@ func (h *LocationHandlerSupabase) GetTripMemberLocations(c *gin.Context) {
 		}
 	}
 
-	// For the Supabase implementation, return proper structure with pagination
-	// The actual location data will be retrieved by the client directly from Supabase
-	// But we need to return the expected structure to prevent frontend crashes
+	// Fetch locations from Supabase using the service key (bypasses RLS)
+	supabaseLocations, err := h.supabaseService.GetTripLocations(c.Request.Context(), tripID)
+	if err != nil {
+		h.logger.Warnw("Failed to fetch locations from Supabase, returning empty", "error", err, "tripID", tripID)
+		supabaseLocations = []services.SupabaseLocation{}
+	}
+
+	// Convert to the response format the frontend expects
+	locations := make([]gin.H, 0, len(supabaseLocations))
+	for _, loc := range supabaseLocations {
+		locations = append(locations, gin.H{
+			"user_id":            loc.UserID,
+			"trip_id":            loc.TripID,
+			"latitude":           loc.Latitude,
+			"longitude":          loc.Longitude,
+			"accuracy":           loc.Accuracy,
+			"privacy":            loc.Privacy,
+			"is_sharing_enabled": loc.IsSharingEnabled,
+			"timestamp":          loc.Timestamp,
+		})
+	}
+
 	response := gin.H{
-		"locations": []types.MemberLocation{}, // Empty array of locations
+		"locations": locations,
 		"pagination": gin.H{
-			"has_more": false,  // No more pages since we're returning empty
-			"total":    0,      // Total count is 0
-			"limit":    limit,  // Echo back the limit parameter
-			"offset":   offset, // Echo back the offset parameter
+			"has_more": false,
+			"total":    len(locations),
+			"limit":    limit,
+			"offset":   offset,
 		},
 	}
 
