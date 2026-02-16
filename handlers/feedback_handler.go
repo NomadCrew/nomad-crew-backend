@@ -52,11 +52,27 @@ func (h *FeedbackHandler) SubmitFeedback(c *gin.Context) {
 		return
 	}
 
+	// Default source to "landing" if not provided (backward-compatible with landing page)
+	source := strings.TrimSpace(req.Source)
+	if source == "" {
+		source = "landing"
+	}
+
+	allowedSources := map[string]bool{
+		"landing":      true,
+		"app_bug":      true,
+		"app_feedback": true,
+	}
+	if !allowedSources[source] {
+		_ = c.Error(errors.ValidationFailed("validation_failed", "source must be one of: landing, app_bug, app_feedback"))
+		return
+	}
+
 	fb := &types.Feedback{
 		Name:    req.Name,
 		Email:   req.Email,
 		Message: req.Message,
-		Source:  "landing",
+		Source:  source,
 	}
 
 	_, err := h.feedbackStore.CreateFeedback(c.Request.Context(), fb)

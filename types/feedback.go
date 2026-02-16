@@ -17,4 +17,5 @@ type FeedbackCreate struct {
 	Name    string `json:"name" binding:"required,min=1,max=100"`
 	Email   string `json:"email" binding:"required,email,max=255"`
 	Message string `json:"message" binding:"required,min=10,max=5000"`
+	Source  string `json:"source,omitempty"`
 }
