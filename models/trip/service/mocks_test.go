@@ -13,32 +13,7 @@ type MockWeatherService struct {
 	mock.Mock
 }
 
-func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, lat float64, lon float64) {
-	m.Called(ctx, tripID, lat, lon)
-}
-
-func (m *MockWeatherService) IncrementSubscribers(tripID string, lat float64, lon float64) {
-	m.Called(tripID, lat, lon)
-}
-
-func (m *MockWeatherService) DecrementSubscribers(tripID string) {
-	m.Called(tripID)
-}
-
-func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, lat float64, lon float64) error {
-	args := m.Called(ctx, tripID, lat, lon)
-	return args.Error(0)
-}
-
-func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
-	args := m.Called(ctx, tripID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.WeatherInfo), args.Error(1)
-}
-
-func (m *MockWeatherService) GetWeatherByCoords(ctx context.Context, tripID string, lat, lon float64) (*types.WeatherInfo, error) {
+func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string, lat, lon float64) (*types.WeatherInfo, error) {
 	args := m.Called(ctx, tripID, lat, lon)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

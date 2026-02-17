@@ -64,12 +64,7 @@ type WeatherServiceError struct {
 }
 
 type WeatherServiceInterface interface {
-	StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64)
-	IncrementSubscribers(tripID string, latitude float64, longitude float64)
-	DecrementSubscribers(tripID string)
-	TriggerImmediateUpdate(ctx context.Context, tripID string, latitude float64, longitude float64) error
-	GetWeather(ctx context.Context, tripID string) (*WeatherInfo, error)
-	GetWeatherByCoords(ctx context.Context, tripID string, latitude, longitude float64) (*WeatherInfo, error)
+	GetWeather(ctx context.Context, tripID string, latitude, longitude float64) (*WeatherInfo, error)
 }
 
 type HourlyWeather struct {

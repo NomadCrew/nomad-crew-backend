@@ -86,33 +86,7 @@ type MockWeatherService struct {
 	mock.Mock
 }
 
-func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
-	m.Called(ctx, tripID, latitude, longitude)
-}
-
-func (m *MockWeatherService) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
-	m.Called(tripID, latitude, longitude)
-}
-
-func (m *MockWeatherService) DecrementSubscribers(tripID string) {
-	m.Called(tripID)
-}
-
-func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, latitude float64, longitude float64) error {
-	args := m.Called(ctx, tripID, latitude, longitude)
-	return args.Error(0)
-}
-
-// GetWeather method to satisfy the WeatherServiceInterface
-func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
-	args := m.Called(ctx, tripID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.WeatherInfo), args.Error(1)
-}
-
-func (m *MockWeatherService) GetWeatherByCoords(ctx context.Context, tripID string, latitude, longitude float64) (*types.WeatherInfo, error) {
+func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string, latitude, longitude float64) (*types.WeatherInfo, error) {
 	args := m.Called(ctx, tripID, latitude, longitude)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -144,8 +118,6 @@ func TestTripModel_CreateTrip(t *testing.T) {
 	t.Run("successful creation", func(t *testing.T) {
 		mockStore.On("CreateTrip", ctx, *validTrip).Return(testTripID, nil).Once()
 		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
-		mockWeatherService.On("StartWeatherUpdates", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("float64"), mock.AnythingOfType("float64")).Once()
-
 		err := tripModel.CreateTrip(ctx, validTrip)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
@@ -424,8 +396,6 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 		mockStore.On("GetTrip", ctx, testTripID).Return(tripForActiveTest, nil).Once()
 		mockStore.On("UpdateTrip", ctx, testTripID, updateArg).Return(&types.Trip{ID: testTripID, Status: newStatus, DestinationLatitude: 10.0, DestinationLongitude: 20.0, CreatedBy: &userID, EndDate: tripForActiveTest.EndDate}, nil).Once()
 		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
-		mockWeatherService.On("StartWeatherUpdates", ctx, testTripID, tripForActiveTest.DestinationLatitude, tripForActiveTest.DestinationLongitude).Once()
-
 		err := tripModel.UpdateTripStatus(ctx, testTripID, newStatus)
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
@@ -473,7 +443,7 @@ func TestTripModel_UpdateTripStatus(t *testing.T) {
 		localMockStore.AssertExpectations(t) // Ensures GetTrip was called as expected
 		localMockStore.AssertNotCalled(t, "UpdateTrip", mock.Anything, mock.Anything, mock.Anything)
 		localMockEventPublisher.AssertNotCalled(t, "Publish", mock.Anything, mock.Anything, mock.Anything)
-		localMockWeatherService.AssertNotCalled(t, "StartWeatherUpdates", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		localMockWeatherService.AssertNotCalled(t, "GetWeather", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
@@ -708,7 +678,6 @@ func TestTripModel_EdgeCases(t *testing.T) {
 			Status:               types.TripStatusPlanning,
 		}
 		mockStore.On("CreateTrip", ctx, *multiYearTrip).Return(testTripID, nil).Once()
-		mockWeatherService.On("StartWeatherUpdates", mock.Anything, testTripID, multiYearTrip.DestinationLatitude, multiYearTrip.DestinationLongitude).Once()
 		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 
 		err := tripModel.CreateTrip(ctx, multiYearTrip)
@@ -732,7 +701,6 @@ func TestTripModel_EdgeCases(t *testing.T) {
 			Status:               types.TripStatusPlanning,
 		}
 		mockStore.On("CreateTrip", ctx, *sameDayTrip).Return(testTripID, nil).Once()
-		mockWeatherService.On("StartWeatherUpdates", mock.Anything, testTripID, sameDayTrip.DestinationLatitude, sameDayTrip.DestinationLongitude).Once()
 		mockEventPublisher.On("Publish", mock.Anything, testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 
 		err := tripModel.CreateTrip(ctx, sameDayTrip)

@@ -206,32 +206,7 @@ type MockWeatherService struct {
 	mock.Mock
 }
 
-func (m *MockWeatherService) StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
-	m.Called(ctx, tripID, latitude, longitude)
-}
-
-func (m *MockWeatherService) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
-	m.Called(tripID, latitude, longitude)
-}
-
-func (m *MockWeatherService) DecrementSubscribers(tripID string) {
-	m.Called(tripID)
-}
-
-func (m *MockWeatherService) TriggerImmediateUpdate(ctx context.Context, tripID string, lat, lon float64) error {
-	args := m.Called(ctx, tripID, lat, lon)
-	return args.Error(0)
-}
-
-func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
-	args := m.Called(ctx, tripID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.WeatherInfo), args.Error(1)
-}
-
-func (m *MockWeatherService) GetWeatherByCoords(ctx context.Context, tripID string, latitude, longitude float64) (*types.WeatherInfo, error) {
+func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string, latitude, longitude float64) (*types.WeatherInfo, error) {
 	args := m.Called(ctx, tripID, latitude, longitude)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -1139,8 +1114,14 @@ func TestGetTripWithMembersHandler(t *testing.T) {
 	}
 }
 
-// Test TriggerWeatherUpdateHandler
-func TestTriggerWeatherUpdateHandler(t *testing.T) {
+// Test GetWeatherHandler (also covers TriggerWeatherUpdateHandler which delegates to it)
+func TestGetWeatherHandler(t *testing.T) {
+	weatherInfo := &types.WeatherInfo{
+		TripID:             "trip123",
+		TemperatureCelsius: 22.5,
+		Description:        "Clear sky",
+	}
+
 	tests := []struct {
 		name           string
 		tripID         string
@@ -1150,7 +1131,7 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 		expectedError  bool
 	}{
 		{
-			name:   "Success - Trigger weather update",
+			name:   "Success - Get weather",
 			tripID: "trip123",
 			userID: "user123",
 			setupMocks: func(mockTrip *MockTripModel, mockWeather *MockWeatherService) {
@@ -1161,7 +1142,7 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 					DestinationLongitude: -74.0060,
 				}
 				mockTrip.On("GetTripByID", mock.Anything, "trip123", "user123").Return(trip, nil)
-				mockWeather.On("TriggerImmediateUpdate", mock.Anything, "trip123", 40.7128, -74.0060).Return(nil)
+				mockWeather.On("GetWeather", mock.Anything, "trip123", 40.7128, -74.0060).Return(weatherInfo, nil)
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1192,7 +1173,7 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 			expectedError:  true,
 		},
 		{
-			name:   "Error - Weather update fails",
+			name:   "Error - Weather fetch fails with AppError",
 			tripID: "trip123",
 			userID: "user123",
 			setupMocks: func(mockTrip *MockTripModel, mockWeather *MockWeatherService) {
@@ -1203,13 +1184,13 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 					DestinationLongitude: -74.0060,
 				}
 				mockTrip.On("GetTripByID", mock.Anything, "trip123", "user123").Return(trip, nil)
-				mockWeather.On("TriggerImmediateUpdate", mock.Anything, "trip123", 40.7128, -74.0060).Return(apperrors.InternalServerError("Weather API error"))
+				mockWeather.On("GetWeather", mock.Anything, "trip123", 40.7128, -74.0060).Return(nil, apperrors.InternalServerError("Weather API error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  true,
 		},
 		{
-			name:   "Error - Weather update fails with non-AppError",
+			name:   "Error - Weather fetch fails with generic error",
 			tripID: "trip123",
 			userID: "user123",
 			setupMocks: func(mockTrip *MockTripModel, mockWeather *MockWeatherService) {
@@ -1220,34 +1201,21 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 					DestinationLongitude: -74.0060,
 				}
 				mockTrip.On("GetTripByID", mock.Anything, "trip123", "user123").Return(trip, nil)
-				mockWeather.On("TriggerImmediateUpdate", mock.Anything, "trip123", 40.7128, -74.0060).Return(errors.New("Generic error"))
+				mockWeather.On("GetWeather", mock.Anything, "trip123", 40.7128, -74.0060).Return(nil, errors.New("Generic error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, mockWeatherService, _, _ := setupTestHandler()
+			tt.setupMocks(mockTripModel, mockWeatherService)
 
-			// Special case for nil weather service test
-			if tt.name == "Error - Weather service not available" {
-				handler.weatherService = nil
-				trip := &types.Trip{
-					ID:                   "trip123",
-					Name:                 "Test Trip",
-					DestinationLatitude:  40.7128,
-					DestinationLongitude: -74.0060,
-				}
-				mockTripModel.On("GetTripByID", mock.Anything, "trip123", "user123").Return(trip, nil)
-			} else {
-				tt.setupMocks(mockTripModel, mockWeatherService)
-			}
+			r := buildTripRouter("/trips/:id/weather", http.MethodGet, handler.GetWeatherHandler, tt.userID)
 
-			r := buildTripRouter("/trips/:id/weather/trigger", http.MethodPost, handler.TriggerWeatherUpdateHandler, tt.userID)
-
-			req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/trips/%s/weather/trigger", tt.tripID), nil)
+			req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/trips/%s/weather", tt.tripID), nil)
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)
 
@@ -1260,26 +1228,17 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 }
 
 // Test for weather service not available
-func TestTriggerWeatherUpdateHandler_NoWeatherService(t *testing.T) {
-	handler, mockTripModel, _, _, _, _ := setupTestHandler()
-	handler.weatherService = nil // Explicitly set to nil
+func TestGetWeatherHandler_NoWeatherService(t *testing.T) {
+	handler, _, _, _, _, _ := setupTestHandler()
+	handler.weatherService = nil
 
-	trip := &types.Trip{
-		ID:                   "trip123",
-		Name:                 "Test Trip",
-		DestinationLatitude:  40.7128,
-		DestinationLongitude: -74.0060,
-	}
-	mockTripModel.On("GetTripByID", mock.Anything, "trip123", "user123").Return(trip, nil)
+	r := buildTripRouter("/trips/:id/weather", http.MethodGet, handler.GetWeatherHandler, "user123")
 
-	r := buildTripRouter("/trips/:id/weather/trigger", http.MethodPost, handler.TriggerWeatherUpdateHandler, "user123")
-
-	req, _ := http.NewRequest(http.MethodPost, "/trips/trip123/weather/trigger", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/trips/trip123/weather", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	mockTripModel.AssertExpectations(t)
 }
 
 // Test NotImplemented handlers

@@ -27,7 +27,6 @@ type TripManagementServiceInterface interface {
 	SearchTrips(ctx context.Context, criteria types.TripSearchCriteria) ([]*types.Trip, error)
 	UpdateTripStatus(ctx context.Context, tripID, userID string, newStatus types.TripStatus) error
 	GetTripWithMembers(ctx context.Context, tripID string, userID string) (*types.TripWithMembers, error)
-	TriggerWeatherUpdate(ctx context.Context, tripID string) error
 	GetWeatherForTrip(ctx context.Context, tripID string) (*types.WeatherInfo, error)
 	// Add internal methods ONLY if called by coordinator
 }

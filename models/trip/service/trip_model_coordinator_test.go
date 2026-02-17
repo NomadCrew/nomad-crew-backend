@@ -75,10 +75,6 @@ func (m *MockTripManagementService) GetTripWithMembers(ctx context.Context, trip
 	}
 	return args.Get(0).(*types.TripWithMembers), args.Error(1)
 }
-func (m *MockTripManagementService) TriggerWeatherUpdate(ctx context.Context, tripID string) error {
-	args := m.Called(ctx, tripID)
-	return args.Error(0)
-}
 func (m *MockTripManagementService) GetWeatherForTrip(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
 	args := m.Called(ctx, tripID)
 	if args.Get(0) == nil {

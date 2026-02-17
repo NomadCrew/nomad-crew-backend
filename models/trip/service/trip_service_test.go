@@ -310,9 +310,6 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 	// Mock event publisher
 	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
 
-	// Expect weather service TriggerImmediateUpdate to be called because status is Active
-	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Return(nil).Once()
-
 	createdTrip, err := suite.service.CreateTrip(suite.ctx, tripToCreate)
 
 	suite.NoError(err)
@@ -324,7 +321,6 @@ func (suite *TripServiceTestSuite) TestCreateTrip_Success() {
 
 	suite.mockStore.AssertExpectations(suite.T())
 	suite.mockEventPublisher.AssertExpectations(suite.T())
-	suite.mockWeatherSvc.AssertExpectations(suite.T())
 }
 
 func (suite *TripServiceTestSuite) TestCreateTrip_Failure_StoreError() {
@@ -390,8 +386,7 @@ func (suite *TripServiceTestSuite) TestGetTrip_PermissionDenied() {
 // Add tests for SearchTrips
 // Add tests for UpdateTripStatus (success, invalid transition, not found)
 // Add tests for GetTripWithMembers (success, not found)
-// Add tests for TriggerWeatherUpdate (success, skipped, not found)
-// Add tests for GetWeatherForTrip (success, skipped, not found, not implemented yet)
+// Add tests for GetWeatherForTrip (success, skipped, not found)
 
 // --- GetTripWithMembers Tests ---
 
@@ -489,71 +484,6 @@ func (suite *TripServiceTestSuite) TestGetTripWithMembers_StoreError_Members() {
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
-// --- Weather Method Tests ---
-
-func (suite *TripServiceTestSuite) TestTriggerWeatherUpdate_Success() {
-	// Arrange
-	// Create a trip that meets the criteria for shouldUpdateWeather
-	tripToUpdate := createMockTrip(suite.testTripID, uuid.NewString())
-	tripToUpdate.Status = types.TripStatusActive
-	tripToUpdate.StartDate = time.Now().AddDate(0, 0, 1)
-	tripToUpdate.EndDate = time.Now().AddDate(0, 0, 8)
-	// Ensure Destination is valid (using helper defaults which should be valid)
-
-	// Mock internal GetTrip
-	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(tripToUpdate, nil).Once()
-	// Expect weather service call with a nil error return
-	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToUpdate.DestinationLatitude, tripToUpdate.DestinationLongitude).Return(nil).Once()
-
-	// Act
-	err := suite.service.TriggerWeatherUpdate(suite.ctx, suite.testTripID)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	suite.mockStore.AssertExpectations(suite.T())
-	suite.mockWeatherSvc.AssertExpectations(suite.T())
-}
-
-func (suite *TripServiceTestSuite) TestTriggerWeatherUpdate_Skipped() {
-	// Arrange
-	// Create a trip that does NOT meet the criteria (e.g., completed status)
-	tripToUpdate := createMockTrip(suite.testTripID, uuid.NewString())
-	tripToUpdate.Status = types.TripStatusCompleted
-
-	// Mock internal GetTrip
-	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(tripToUpdate, nil).Once()
-
-	// Act
-	err := suite.service.TriggerWeatherUpdate(suite.ctx, suite.testTripID)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	appErr, ok := err.(*apperrors.AppError)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), apperrors.ValidationError, appErr.Type)
-	suite.mockStore.AssertExpectations(suite.T())
-	suite.mockWeatherSvc.AssertNotCalled(suite.T(), "TriggerImmediateUpdate", mock.Anything, mock.Anything, mock.Anything)
-}
-
-func (suite *TripServiceTestSuite) TestTriggerWeatherUpdate_NotFound() {
-	// Arrange
-	notFoundErr := apperrors.NotFound("Trip", suite.testTripID)
-
-	// Mock internal GetTrip failure
-	suite.mockStore.On("GetTrip", suite.ctx, suite.testTripID).Return(nil, notFoundErr).Once()
-
-	// Act
-	err := suite.service.TriggerWeatherUpdate(suite.ctx, suite.testTripID)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	appErr, ok := err.(*apperrors.AppError)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), apperrors.NotFoundError, appErr.Type)
-	suite.mockStore.AssertExpectations(suite.T())
-	suite.mockWeatherSvc.AssertNotCalled(suite.T(), "TriggerImmediateUpdate", mock.Anything, mock.Anything, mock.Anything)
-}
-
 // --- GetWeatherForTrip Tests ---
 
 func (suite *TripServiceTestSuite) TestGetWeatherForTrip_NotFound() {
@@ -594,7 +524,7 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Skipped() {
 	assert.Equal(suite.T(), apperrors.ValidationError, appErr.Type)
 	suite.mockStore.AssertExpectations(suite.T())
 	// Ensure weather service GetWeather was not called
-	suite.mockWeatherSvc.AssertNotCalled(suite.T(), "GetWeather", suite.ctx, suite.testTripID)
+	suite.mockWeatherSvc.AssertNotCalled(suite.T(), "GetWeather", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Success() {
@@ -615,7 +545,7 @@ func (suite *TripServiceTestSuite) TestGetWeatherForTrip_Success() {
 		Description:        "Sunny",
 		// ... other relevant fields ...
 	}
-	suite.mockWeatherSvc.On("GetWeather", suite.ctx, suite.testTripID).Return(expectedWeather, nil).Once()
+	suite.mockWeatherSvc.On("GetWeather", suite.ctx, suite.testTripID, trip.DestinationLatitude, trip.DestinationLongitude).Return(expectedWeather, nil).Once()
 
 	// Act
 	weatherInfo, err := suite.service.GetWeatherForTrip(suite.ctx, suite.testTripID)
@@ -740,8 +670,6 @@ func (suite *TripServiceTestSuite) TestSupabaseIntegration() {
 	// NOTE: Removed AddMember expectation since store.CreateTrip handles membership creation in transaction
 	// Mock event publisher
 	suite.mockEventPublisher.On("Publish", suite.ctx, suite.testTripID, mock.AnythingOfType("types.Event")).Return(nil).Once()
-	// Mock weather service
-	suite.mockWeatherSvc.On("TriggerImmediateUpdate", suite.ctx, suite.testTripID, tripToCreate.DestinationLatitude, tripToCreate.DestinationLongitude).Return(nil).Once()
 
 	// Act
 	createdTrip, err := suite.service.CreateTrip(suite.ctx, tripToCreate)
@@ -757,5 +685,4 @@ func (suite *TripServiceTestSuite) TestSupabaseIntegration() {
 
 	// Verify the other mocks were called correctly
 	suite.mockStore.AssertExpectations(suite.T())
-	suite.mockWeatherSvc.AssertExpectations(suite.T())
 }

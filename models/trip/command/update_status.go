@@ -58,11 +58,6 @@ func (c *UpdateTripStatusCommand) Execute(ctx context.Context) (*interfaces.Comm
 		return nil, err
 	}
 
-	// Handle weather updates based on new status
-	if c.NewStatus == types.TripStatusActive || c.NewStatus == types.TripStatusPlanning {
-		c.Ctx.WeatherSvc.StartWeatherUpdates(ctx, c.TripID, trip.DestinationLatitude, trip.DestinationLongitude)
-	}
-
 	return &interfaces.CommandResult{
 		Success: true,
 		Data:    updatedTrip,

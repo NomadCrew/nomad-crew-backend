@@ -14,71 +14,12 @@ type WeatherServiceInterface struct {
 	mock.Mock
 }
 
-// DecrementSubscribers provides a mock function with given fields: tripID
-func (_m *WeatherServiceInterface) DecrementSubscribers(tripID string) {
-	_m.Called(tripID)
-}
-
-// GetWeather provides a mock function with given fields: ctx, tripID
-func (_m *WeatherServiceInterface) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
-	ret := _m.Called(ctx, tripID)
+// GetWeather provides a mock function with given fields: ctx, tripID, latitude, longitude
+func (_m *WeatherServiceInterface) GetWeather(ctx context.Context, tripID string, latitude float64, longitude float64) (*types.WeatherInfo, error) {
+	ret := _m.Called(ctx, tripID, latitude, longitude)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetWeather")
-	}
-
-	var r0 *types.WeatherInfo
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (*types.WeatherInfo, error)); ok {
-		return rf(ctx, tripID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) *types.WeatherInfo); ok {
-		r0 = rf(ctx, tripID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.WeatherInfo)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, tripID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// IncrementSubscribers provides a mock function with given fields: tripID, dest
-func (_m *WeatherServiceInterface) IncrementSubscribers(tripID string, latitude float64, longitude float64) {
-	_m.Called(tripID, latitude, longitude)
-}
-
-// StartWeatherUpdates provides a mock function with given fields: ctx, tripID, destination
-func (_m *WeatherServiceInterface) StartWeatherUpdates(ctx context.Context, tripID string, latitude float64, longitude float64) {
-	_m.Called(ctx, tripID, latitude, longitude)
-}
-
-// TriggerImmediateUpdate provides a mock function with given fields: ctx, tripID, latitude, longitude
-func (_m *WeatherServiceInterface) TriggerImmediateUpdate(ctx context.Context, tripID string, latitude float64, longitude float64) error {
-	ret := _m.Called(ctx, tripID, latitude, longitude)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, float64, float64) error); ok {
-		r0 = rf(ctx, tripID, latitude, longitude)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// GetWeatherByCoords provides a mock function with given fields: ctx, tripID, latitude, longitude
-func (_m *WeatherServiceInterface) GetWeatherByCoords(ctx context.Context, tripID string, latitude float64, longitude float64) (*types.WeatherInfo, error) {
-	ret := _m.Called(ctx, tripID, latitude, longitude)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetWeatherByCoords")
 	}
 
 	var r0 *types.WeatherInfo

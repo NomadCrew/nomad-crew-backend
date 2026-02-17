@@ -206,7 +206,7 @@ func main() {
 	// Initialize the event service from the internal/events package
 	eventService := events.NewService(redisClient, eventServiceConfig)
 
-	weatherService := weatherSvc.NewWeatherService(eventService)
+	weatherService := weatherSvc.NewWeatherService()
 	emailService := services.NewEmailService(&cfg.Email)
 	healthService := services.NewHealthService(dbClient.GetPool(), redisClient, cfg.Server.Version)
 
