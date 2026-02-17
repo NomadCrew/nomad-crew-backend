@@ -7,9 +7,7 @@ import (
 	"time"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
-	"github.com/NomadCrew/nomad-crew-backend/internal/store" // Import internal store for Transaction
 
-	// Added import
 	"github.com/NomadCrew/nomad-crew-backend/middleware"
 	tripservice "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	"github.com/NomadCrew/nomad-crew-backend/types"
@@ -161,21 +159,32 @@ func (m *MockTripStore) UpdateInvitationStatus(ctx context.Context, invitationID
 	return args.Error(0)
 }
 
+func (m *MockTripStore) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	args := m.Called(ctx, invitationID, membership)
+	return args.Error(0)
+}
+
+func (m *MockTripStore) RemoveMemberWithOwnerLock(ctx context.Context, tripID, userID string) error {
+	args := m.Called(ctx, tripID, userID)
+	return args.Error(0)
+}
+
+func (m *MockTripStore) UpdateMemberRoleWithOwnerLock(ctx context.Context, tripID, userID string, newRole types.MemberRole) error {
+	args := m.Called(ctx, tripID, userID, newRole)
+	return args.Error(0)
+}
+
 // Corrected transaction methods
-func (m *MockTripStore) BeginTx(ctx context.Context) (store.Transaction, error) {
+func (m *MockTripStore) BeginTx(ctx context.Context) (types.DatabaseTransaction, error) {
 	args := m.Called(ctx)
-	// Return a mock transaction and the error
 	mockTx := args.Get(0)
 	if mockTx == nil {
-		// If no specific mock transaction is provided, return a default one or nil
-		// depending on what the error is. If error is nil, should likely return
-		// a valid mock transaction.
 		if args.Error(1) == nil {
-			return new(MockTransaction), nil // Return a new mock transaction if no error
+			return new(MockTransaction), nil
 		}
 		return nil, args.Error(1)
 	}
-	return mockTx.(store.Transaction), args.Error(1)
+	return mockTx.(types.DatabaseTransaction), args.Error(1)
 }
 
 func (m *MockTripStore) Commit() error {
@@ -246,6 +255,7 @@ func (suite *TripServiceTestSuite) SetupTest() {
 		suite.mockEventPublisher,
 		suite.mockWeatherSvc,
 		nil, // supabaseService - not needed for unit tests
+		nil, // notificationSvc
 	)
 
 	suite.ctx = context.Background()

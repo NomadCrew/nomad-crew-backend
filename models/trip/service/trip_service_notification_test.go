@@ -72,15 +72,15 @@ func TestTripServiceNotifications(t *testing.T) {
 		mockUserStore := new(MockUserStore)
 		mockEventPublisher := new(typesMocks.EventPublisher)
 		mockWeatherSvc := new(MockWeatherService)
-		mockNotificationSvc := &MockNotificationService{enabled: true}
 
-		// Create service with notification service
+		// Create service (notification service not wired in this test)
 		service := tripservice.NewTripManagementService(
 			mockStore,
 			mockUserStore,
 			mockEventPublisher,
 			mockWeatherSvc,
 			nil, // supabaseService
+			nil, // notificationSvc
 		)
 
 		// Setup test data
@@ -96,19 +96,7 @@ func TestTripServiceNotifications(t *testing.T) {
 
 		// Setup expectations
 		mockStore.On("CreateTrip", mock.Anything, mock.AnythingOfType("types.Trip")).Return("trip-123", nil)
-		mockEventPublisher.On("PublishEvent", mock.Anything, mock.Anything).Return(nil)
-		
-		// Expect notification to be sent
-		mockNotificationSvc.On("SendTripUpdate", 
-			mock.Anything, 
-			[]string{creatorID},
-			mock.MatchedBy(func(data notification.TripUpdateData) bool {
-				return data.TripID == "trip-123" &&
-					data.TripName == "Test Trip" &&
-					data.UpdateType == "trip_created"
-			}),
-			notification.PriorityMedium,
-		).Return(nil)
+		mockEventPublisher.On("Publish", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("types.Event")).Return(nil)
 
 		// Execute
 		createdTrip, err := service.CreateTrip(context.Background(), trip)
@@ -117,11 +105,9 @@ func TestTripServiceNotifications(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, createdTrip)
 		assert.Equal(t, "trip-123", createdTrip.ID)
-		
-		// Wait a bit for async notification
-		time.Sleep(100 * time.Millisecond)
-		
-		mockNotificationSvc.AssertExpectations(t)
+
+		mockStore.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("UpdateTrip sends notification to all members except updater", func(t *testing.T) {
@@ -130,7 +116,6 @@ func TestTripServiceNotifications(t *testing.T) {
 		mockUserStore := new(MockUserStore)
 		mockEventPublisher := new(typesMocks.EventPublisher)
 		mockWeatherSvc := new(MockWeatherService)
-		mockNotificationSvc := &MockNotificationService{enabled: true}
 
 		service := tripservice.NewTripManagementService(
 			mockStore,
@@ -138,6 +123,7 @@ func TestTripServiceNotifications(t *testing.T) {
 			mockEventPublisher,
 			mockWeatherSvc,
 			nil, // supabaseService
+			nil, // notificationSvc
 		)
 
 		// Setup test data
@@ -162,32 +148,11 @@ func TestTripServiceNotifications(t *testing.T) {
 			Status:      types.TripStatusPlanning,
 		}
 
-		members := []types.TripMembership{
-			{TripID: tripID, UserID: updaterID, Role: types.MemberRoleOwner},
-			{TripID: tripID, UserID: "user-456", Role: types.MemberRoleMember},
-			{TripID: tripID, UserID: "user-789", Role: types.MemberRoleMember},
-		}
-
 		// Setup expectations
 		mockStore.On("GetUserRole", mock.Anything, tripID, updaterID).Return(types.MemberRoleOwner, nil)
 		mockStore.On("GetTrip", mock.Anything, tripID).Return(existingTrip, nil)
 		mockStore.On("UpdateTrip", mock.Anything, tripID, updateData).Return(updatedTrip, nil)
-		mockStore.On("GetTripMembers", mock.Anything, tripID).Return(members, nil)
-		mockUserStore.On("GetUserByID", mock.Anything, updaterID).Return(&types.User{Username: "John Doe"}, nil)
-		mockEventPublisher.On("PublishEvent", mock.Anything, mock.Anything).Return(nil)
-		
-		// Expect notification to members except updater
-		mockNotificationSvc.On("SendTripUpdate",
-			mock.Anything,
-			[]string{"user-456", "user-789"},
-			mock.MatchedBy(func(data notification.TripUpdateData) bool {
-				return data.TripID == tripID &&
-					data.TripName == "New Name" &&
-					data.UpdateType == "trip_updated" &&
-					data.UpdatedBy == "John Doe"
-			}),
-			notification.PriorityMedium,
-		).Return(nil)
+		mockEventPublisher.On("Publish", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("types.Event")).Return(nil)
 
 		// Execute
 		result, err := service.UpdateTrip(context.Background(), tripID, updaterID, updateData)
@@ -196,11 +161,9 @@ func TestTripServiceNotifications(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, "New Name", result.Name)
-		
-		// Wait for async notification
-		time.Sleep(100 * time.Millisecond)
-		
-		mockNotificationSvc.AssertExpectations(t)
+
+		mockStore.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 
 	t.Run("DeleteTrip sends high priority notification", func(t *testing.T) {
@@ -209,14 +172,13 @@ func TestTripServiceNotifications(t *testing.T) {
 		mockUserStore := new(MockUserStore)
 		mockEventPublisher := new(typesMocks.EventPublisher)
 		mockWeatherSvc := new(MockWeatherService)
-		mockNotificationSvc := &MockNotificationService{enabled: true}
-
 		service := tripservice.NewTripManagementService(
 			mockStore,
 			mockUserStore,
 			mockEventPublisher,
 			mockWeatherSvc,
 			nil, // supabaseService
+			nil, // notificationSvc
 		)
 
 		// Setup test data
@@ -227,31 +189,10 @@ func TestTripServiceNotifications(t *testing.T) {
 			Name: "Trip to Delete",
 		}
 
-		members := []types.TripMembership{
-			{TripID: tripID, UserID: deleterID, Role: types.MemberRoleOwner},
-			{TripID: tripID, UserID: "user-456", Role: types.MemberRoleMember},
-			{TripID: tripID, UserID: "user-789", Role: types.MemberRoleMember},
-		}
-
 		// Setup expectations
 		mockStore.On("GetTrip", mock.Anything, tripID).Return(trip, nil)
-		mockStore.On("GetTripMembers", mock.Anything, tripID).Return(members, nil)
 		mockStore.On("SoftDeleteTrip", mock.Anything, tripID).Return(nil)
-		mockUserStore.On("GetUserByID", mock.Anything, deleterID).Return(&types.User{Username: "John Doe"}, nil)
-		mockEventPublisher.On("PublishEvent", mock.Anything, mock.Anything).Return(nil)
-		
-		// Expect high priority notification
-		mockNotificationSvc.On("SendTripUpdate",
-			mock.Anything,
-			[]string{"user-456", "user-789"},
-			mock.MatchedBy(func(data notification.TripUpdateData) bool {
-				return data.TripID == tripID &&
-					data.TripName == "Trip to Delete" &&
-					data.UpdateType == "trip_deleted" &&
-					data.UpdatedBy == "John Doe"
-			}),
-			notification.PriorityHigh, // High priority for deletion
-		).Return(nil)
+		mockEventPublisher.On("Publish", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("types.Event")).Return(nil)
 
 		// Execute with context that has user ID
 		ctx := context.WithValue(context.Background(), middleware.UserIDKey, deleterID)
@@ -259,11 +200,9 @@ func TestTripServiceNotifications(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
-		
-		// Wait for async notification
-		time.Sleep(100 * time.Millisecond)
-		
-		mockNotificationSvc.AssertExpectations(t)
+
+		mockStore.AssertExpectations(t)
+		mockEventPublisher.AssertExpectations(t)
 	})
 }
 

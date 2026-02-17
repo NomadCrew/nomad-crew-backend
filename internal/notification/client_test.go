@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -633,7 +634,7 @@ func TestGetUserNotifications(t *testing.T) {
 				query := r.URL.Query()
 				if tt.opts != nil {
 					if tt.opts.Limit > 0 {
-						assert.Equal(t, "20", query.Get("limit"))
+						assert.Equal(t, fmt.Sprintf("%d", tt.opts.Limit), query.Get("limit"))
 					}
 					if tt.opts.ReadStatus != "" {
 						assert.Equal(t, tt.opts.ReadStatus, query.Get("readStatus"))

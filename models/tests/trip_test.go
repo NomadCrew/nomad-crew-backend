@@ -694,8 +694,8 @@ func TestTripModel_EdgeCases(t *testing.T) {
 			DestinationAddress:   stringPtr("Multiple"),
 			DestinationLatitude:  30.0,
 			DestinationLongitude: 40.0,
-			StartDate:            time.Date(2025, time.December, 20, 0, 0, 0, 0, time.UTC),
-			EndDate:              time.Date(2026, time.January, 5, 0, 0, 0, 0, time.UTC),
+			StartDate:            now.AddDate(0, 0, 1),
+			EndDate:              now.AddDate(1, 0, 0),
 			CreatedBy:            &userID, // Corrected: Use pointer to variable
 			Status:               types.TripStatusPlanning,
 		}

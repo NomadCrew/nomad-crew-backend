@@ -120,7 +120,7 @@ func TestSendInvitationEmail(t *testing.T) {
 				TemplateData: map[string]interface{}{
 					"UserEmail":       "user@example.com",
 					"TripName":        "Test Trip",
-					"InvitationToken": "test-token",
+					"InvitationURL": "https://nomadcrew.uk/invite/test-token",
 					"AppDeepLink":     "nomadcrew://invite/accept/test-token",
 				},
 			},
@@ -138,7 +138,7 @@ func TestSendInvitationEmail(t *testing.T) {
 				TemplateData: map[string]interface{}{
 					"UserEmail":       "user@example.com",
 					"TripName":        "Test Trip",
-					"InvitationToken": "test-token",
+					"InvitationURL": "https://nomadcrew.uk/invite/test-token",
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -154,7 +154,7 @@ func TestSendInvitationEmail(t *testing.T) {
 				Subject: "Test Invitation",
 				TemplateData: map[string]interface{}{
 					"InvalidKey": "This will cause template execution to fail",
-					// Missing required fields: UserEmail, TripName, InvitationToken
+					// Missing required fields: UserEmail, TripName, InvitationURL
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -170,7 +170,7 @@ func TestSendInvitationEmail(t *testing.T) {
 				TemplateData: map[string]interface{}{
 					"UserEmail": "user@example.com",
 					"TripName":  "Test Trip",
-					// Missing InvitationToken
+					// Missing InvitationURL
 				},
 			},
 			setupMock: func(m *mockEmailsService) {
@@ -233,7 +233,7 @@ func TestEmailMetrics(t *testing.T) {
 		TemplateData: map[string]interface{}{
 			"UserEmail":       "user@example.com",
 			"TripName":        "Test Trip",
-			"InvitationToken": "test-token",
+			"InvitationURL": "https://nomadcrew.uk/invite/test-token",
 		},
 	}
 

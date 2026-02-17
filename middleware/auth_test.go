@@ -136,8 +136,8 @@ func TestAuthMiddleware(t *testing.T) {
 			name:        "Token Validation Fails",
 			tokenHeader: fmt.Sprintf("Bearer %s", validTokenString),
 			mockSetup: func() {
-				// Mock Validate to return an empty string and an error
-				mockValidator.On("Validate", validTokenString).Return("", errors.New("validation failed")).Once()
+				// Mock ValidateAndGetClaims to return nil claims and an error
+				mockValidator.On("ValidateAndGetClaims", validTokenString).Return(nil, errors.New("validation failed")).Once()
 			},
 			expectedStatus: http.StatusUnauthorized,
 			expectedBodyCheck: func(body string) bool {
@@ -148,8 +148,10 @@ func TestAuthMiddleware(t *testing.T) {
 			name:        "User Not Found in Internal System",
 			tokenHeader: fmt.Sprintf("Bearer %s", validTokenString),
 			mockSetup: func() {
-				// Mock successful token validation
-				mockValidator.On("Validate", validTokenString).Return(testSupabaseUserID, nil).Once()
+				// Mock successful token validation returning claims
+				mockValidator.On("ValidateAndGetClaims", validTokenString).Return(&types.JWTClaims{
+					UserID: testSupabaseUserID,
+				}, nil).Once()
 				// Mock user resolver to return user not found
 				mockUserResolver.On("GetUserBySupabaseID", mock.Anything, testSupabaseUserID).Return(nil, errors.New("user not found")).Once()
 			},
@@ -162,8 +164,10 @@ func TestAuthMiddleware(t *testing.T) {
 			name:        "Successful Authentication",
 			tokenHeader: fmt.Sprintf("Bearer %s", validTokenString),
 			mockSetup: func() {
-				// Mock successful token validation
-				mockValidator.On("Validate", validTokenString).Return(testSupabaseUserID, nil).Once()
+				// Mock successful token validation returning claims
+				mockValidator.On("ValidateAndGetClaims", validTokenString).Return(&types.JWTClaims{
+					UserID: testSupabaseUserID,
+				}, nil).Once()
 				// Mock successful user resolution
 				mockUserResolver.On("GetUserBySupabaseID", mock.Anything, testSupabaseUserID).Return(testUser, nil).Once()
 			},

@@ -209,24 +209,10 @@ func TestLoadConfigWithEnvironmentVariables(t *testing.T) {
 				cleanup: func() {},
 				errMsg:  "JWT secret key must be at least",
 			},
-			{
-				name: "Missing Redis address",
-				setup: func() {
-					os.Setenv("JWT_SECRET_KEY", "this-is-a-very-long-secret-key-that-meets-requirements")
-					os.Setenv("GEOAPIFY_KEY", "key")
-					os.Setenv("PEXELS_API_KEY", "key")
-					os.Setenv("SUPABASE_ANON_KEY", "key")
-					os.Setenv("SUPABASE_SERVICE_KEY", "key-that-is-long-enough-to-meet-requirements")
-					os.Setenv("SUPABASE_URL", "https://test.supabase.co")
-					os.Setenv("SUPABASE_JWT_SECRET", "key-that-is-long-enough-to-meet-requirements")
-					os.Setenv("EMAIL_FROM_ADDRESS", "test@example.com")
-					os.Setenv("RESEND_API_KEY", "key")
-				},
-				cleanup: func() {
-					os.Unsetenv("REDIS_ADDRESS")
-				},
-				errMsg: "redis address is required",
-			},
+			// NOTE: "Missing Redis address" is not testable via LoadConfig because
+			// Viper defaults REDIS.ADDRESS to "localhost:6379" and empty env vars
+			// don't override Viper defaults. This case is already covered by
+			// TestValidateConfig which tests validateConfig() directly.
 			{
 				name: "Invalid allowed origins",
 				setup: func() {
@@ -306,6 +292,15 @@ func TestValidateConfig(t *testing.T) {
 					PublishTimeoutSeconds:   5,
 					SubscribeTimeoutSeconds: 10,
 					EventBufferSize:         100,
+				},
+				RateLimit: RateLimitConfig{
+					AuthRequestsPerMinute: 10,
+					WindowSeconds:         60,
+				},
+				WorkerPool: WorkerPoolConfig{
+					MaxWorkers:             10,
+					QueueSize:              1000,
+					ShutdownTimeoutSeconds: 30,
 				},
 			},
 			expectError: false,

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Common JWT error types
+// Common JWT error types — kept for backwards compatibility with any callers
 var (
 	ErrTokenExpired     = fmt.Errorf("token is expired")
 	ErrTokenInvalid     = fmt.Errorf("token is invalid")
@@ -36,6 +37,11 @@ func ValidateInvitationToken(tokenString, secret string) (*types.InvitationClaim
 	claims, ok := token.Claims.(*types.InvitationClaims)
 	if !ok {
 		return nil, errors.Unauthorized("invalid_claims", "Invalid token structure")
+	}
+
+	// Verify invitation-specific claims
+	if claims.InvitationID == "" {
+		return nil, errors.Unauthorized("invalid_claims", "Token is not a valid invitation token")
 	}
 
 	// Verify expiration explicitly
@@ -66,6 +72,10 @@ func ValidateAccessToken(tokenString, secret string) (*types.JWTClaims, error) {
 		return nil, errors.Unauthorized("invalid_claims", "Invalid token structure")
 	}
 
+	if claims.UserID == "" {
+		return nil, errors.Unauthorized("invalid_claims", "Token missing required user ID claim")
+	}
+
 	return claims, nil
 }
 
@@ -76,20 +86,22 @@ func mapJWTError(err error) error {
 	}
 
 	switch {
-	case err.Error() == "token is expired":
+	case stderrors.Is(err, jwt.ErrTokenExpired):
 		return errors.Unauthorized("token_expired", "Token has expired")
-	case err.Error() == "signature is invalid":
+	case stderrors.Is(err, jwt.ErrSignatureInvalid):
 		return errors.Unauthorized("invalid_signature", "Token signature is invalid")
-	case err.Error() == "token contains an invalid number of segments":
+	case stderrors.Is(err, jwt.ErrTokenMalformed):
 		return errors.Unauthorized("malformed_token", "Token is malformed")
 	default:
-		// Handle other JWT validation errors
 		return errors.Unauthorized("invalid_token", fmt.Sprintf("Token validation failed: %v", err))
 	}
 }
 
 // GenerateJWT creates a new standard JWT access token.
 func GenerateJWT(userID string, email string, secretKey string, expiryDuration time.Duration) (string, error) {
+	if secretKey == "" {
+		return "", fmt.Errorf("secret key must not be empty")
+	}
 	expirationTime := time.Now().Add(expiryDuration)
 	claims := &types.JWTClaims{
 		UserID: userID,
@@ -114,6 +126,9 @@ func GenerateJWT(userID string, email string, secretKey string, expiryDuration t
 
 // GenerateInvitationToken creates a new JWT specifically for trip invitations.
 func GenerateInvitationToken(invitationID string, tripID string, inviteeEmail string, secretKey string, expiryDuration time.Duration) (string, error) {
+	if secretKey == "" {
+		return "", fmt.Errorf("secret key must not be empty")
+	}
 	expirationTime := time.Now().Add(expiryDuration)
 	claims := &types.InvitationClaims{
 		InvitationID: invitationID,

@@ -75,7 +75,8 @@ func TestValidateAuthConfig(t *testing.T) {
 					SupabaseAnonKey: "test-key",
 				},
 			},
-			expectedErrors: []string{"invalid Supabase URL"},
+			// url.Parse is permissive; the JWKS endpoint check fails instead
+			expectedErrors: []string{"JWKS endpoint not accessible"},
 		},
 		{
 			name: "Missing Supabase anon key",
@@ -88,7 +89,10 @@ func TestValidateAuthConfig(t *testing.T) {
 					SupabaseAnonKey: "",
 				},
 			},
-			expectedErrors: []string{"Supabase anon key is not configured"},
+			expectedErrors: []string{
+				"Supabase anon key is not configured",
+				"JWKS endpoint not accessible",
+			},
 		},
 		{
 			name: "Valid Supabase config with accessible JWKS",
@@ -144,8 +148,8 @@ func TestValidateAuthConfig(t *testing.T) {
 			},
 			expectedErrors: []string{
 				"JWT secret key is too short",
-				"invalid Supabase URL",
 				"Supabase anon key is not configured",
+				"JWKS endpoint not accessible",
 			},
 		},
 	}

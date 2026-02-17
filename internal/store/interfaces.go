@@ -203,6 +203,16 @@ type PollStore interface {
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
+// WalletStore handles wallet document data operations
+type WalletStore interface {
+	CreateDocument(ctx context.Context, doc *types.WalletDocument) (string, error)
+	GetDocument(ctx context.Context, id string) (*types.WalletDocument, error)
+	ListPersonalDocuments(ctx context.Context, userID string, limit, offset int) ([]*types.WalletDocument, int, error)
+	ListGroupDocuments(ctx context.Context, tripID string, limit, offset int) ([]*types.WalletDocument, int, error)
+	UpdateDocument(ctx context.Context, id string, update *types.WalletDocumentUpdate) (*types.WalletDocument, error)
+	SoftDeleteDocument(ctx context.Context, id string) error
+}
+
 // FeedbackStore handles feedback submission (standalone, not part of main Store interface).
 type FeedbackStore interface {
 	CreateFeedback(ctx context.Context, fb *types.Feedback) (string, error)

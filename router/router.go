@@ -49,6 +49,8 @@ type Dependencies struct {
 	PollHandler *handlers.PollHandler
 	// Feedback handler for public feedback submissions
 	FeedbackHandler *handlers.FeedbackHandler
+	// Wallet handler for document management
+	WalletHandler *handlers.WalletHandler
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -361,6 +363,33 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 							middleware.RequireTripMembership(deps.TripModel),
 							deps.TodoHandler.DeleteTodoHandler)
 					}
+				}
+
+				// Group Wallet Routes - trip members can upload/view group documents
+				walletTripRoutes := tripRoutes.Group("/:id/wallet")
+				{
+					if deps.WalletHandler != nil {
+						walletTripRoutes.POST("/documents",
+							authRateLimiter,
+							middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceTrip, nil),
+							deps.WalletHandler.UploadGroupDocumentHandler)
+						walletTripRoutes.GET("/documents",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+							deps.WalletHandler.ListGroupDocumentsHandler)
+					}
+				}
+			}
+
+			// Wallet Routes - personal documents
+			walletRoutes := authRoutes.Group("/wallet")
+			{
+				if deps.WalletHandler != nil {
+					walletRoutes.POST("/documents", authRateLimiter, deps.WalletHandler.UploadPersonalDocumentHandler)
+					walletRoutes.GET("/documents", deps.WalletHandler.ListPersonalDocumentsHandler)
+					walletRoutes.GET("/documents/:docID", deps.WalletHandler.GetDocumentHandler)
+					walletRoutes.PUT("/documents/:docID", deps.WalletHandler.UpdateDocumentHandler)
+					walletRoutes.DELETE("/documents/:docID", deps.WalletHandler.DeleteDocumentHandler)
+					walletRoutes.GET("/files/:token", deps.WalletHandler.ServeFileHandler)
 				}
 			}
 

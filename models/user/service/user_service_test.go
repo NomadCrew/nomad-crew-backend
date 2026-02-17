@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -130,7 +130,7 @@ func TestOnboardUserFromJWTClaims_Success(t *testing.T) {
 	}
 
 	mockStore.On("GetUserByUsername", mock.Anything, "uniqueuser").Return(nil, nil)
-	mockStore.On("GetUserBySupabaseID", mock.Anything, "supabase-123").Return(nil, errors.New("user not found: no rows in result set"))
+	mockStore.On("GetUserBySupabaseID", mock.Anything, "supabase-123").Return(nil, apperrors.NotFound("user_not_found", "user not found"))
 	mockStore.On("CreateUser", mock.Anything, mock.Anything).Return("00000000-0000-0000-0000-000000000001", nil)
 	mockStore.On("GetUserByID", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(&types.User{ID: "00000000-0000-0000-0000-000000000001", Username: "uniqueuser", Email: "unique@example.com"}, nil)
 	mockStore.On("SyncUserFromSupabase", mock.Anything, mock.Anything).Return(&types.User{ID: "00000000-0000-0000-0000-000000000001", Username: "uniqueuser", Email: "test@example.com"}, nil)

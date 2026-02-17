@@ -162,10 +162,26 @@ Never log secrets, tokens, or API keys. Use `logger.MaskJWT()`, `logger.MaskEmai
 - Trip integration: Uses `GetTripMembers()` for vote quorum check
 
 **Wallet:**
-- Models: Document, Transaction
-- Database tables: `wallet_documents`
+- Models: WalletDocument (personal & group document storage)
+- Database tables: `wallet_documents` (with `wallet_type` and `document_type` enums)
+- Migration: `000012_wallet_documents.up.sql`
 - Service layer: `models/wallet/service/`
-- Supabase Realtime integration
+- Handler: `handlers/wallet_handler.go`
+- Features:
+  - Personal documents: passport, visa, insurance, vaccination, loyalty cards
+  - Group documents: flight bookings, hotel bookings, reservations, receipts (trip-scoped)
+  - File upload: multipart, max 10MB, allowed types: PDF, JPEG, PNG, HEIC
+  - MIME detection: `gabriel-vasile/mimetype` library (magic-byte based, not extension)
+  - File storage: local filesystem (`/var/data/wallet-files/`), swappable `FileStorage` interface
+  - Download: HMAC-signed JWT URLs → `GET /v1/wallet/files/:token` → `http.ServeFile`
+  - Soft delete: `deleted_at` column, filtered by default
+  - RBAC: personal = owner only; group = trip members (reuses `RequirePermission` middleware)
+- API endpoints:
+  - `POST/GET /v1/wallet/documents` — personal documents
+  - `GET/PUT/DELETE /v1/wallet/documents/:id` — personal document by ID
+  - `POST/GET /v1/trips/:id/wallet/documents` — group documents (trip-scoped)
+  - `GET /v1/wallet/files/:token` — signed file download
+- Test coverage: 38 service tests + 30 handler tests
 
 **Notifications:**
 - Models: Notification

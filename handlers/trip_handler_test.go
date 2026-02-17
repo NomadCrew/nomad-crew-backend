@@ -143,6 +143,11 @@ func (m *MockTripModel) UpdateInvitationStatus(ctx context.Context, invitationID
 	return args.Error(0)
 }
 
+func (m *MockTripModel) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	args := m.Called(ctx, invitationID, membership)
+	return args.Error(0)
+}
+
 func (m *MockTripModel) LookupUserByEmail(ctx context.Context, email string) (*types.SupabaseUser, error) {
 	args := m.Called(ctx, email)
 	if args.Get(0) == nil {
@@ -247,7 +252,7 @@ func setupTestHandler() (*TripHandler, *MockTripModel, *MockEventPublisher, *Moc
 	mockWeatherService := new(MockWeatherService)
 	mockUserService := new(MockUserService)
 	mockPexelsClient := new(MockPexelsClient)
-	
+
 	handler := NewTripHandler(
 		mockTripModel,
 		mockEventPublisher,
@@ -257,8 +262,35 @@ func setupTestHandler() (*TripHandler, *MockTripModel, *MockEventPublisher, *Moc
 		mockUserService,
 		mockPexelsClient,
 	)
-	
+
 	return handler, mockTripModel, mockEventPublisher, mockWeatherService, mockUserService, mockPexelsClient
+}
+
+// buildTripRouter wraps a handler in a Gin router with the error handler middleware,
+// matching the production setup so c.Error() calls produce the correct HTTP status.
+func buildTripRouter(path, method string, handler gin.HandlerFunc, userID string) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.ErrorHandler())
+	r.Use(func(c *gin.Context) {
+		if userID != "" {
+			c.Set(string(middleware.UserIDKey), userID)
+		}
+		c.Next()
+	})
+	switch method {
+	case http.MethodGet:
+		r.GET(path, handler)
+	case http.MethodPost:
+		r.POST(path, handler)
+	case http.MethodPut:
+		r.PUT(path, handler)
+	case http.MethodPatch:
+		r.PATCH(path, handler)
+	case http.MethodDelete:
+		r.DELETE(path, handler)
+	}
+	return r
 }
 
 // Helper function to setup gin context with authentication
@@ -400,12 +432,9 @@ func TestCreateTripHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "Error - Invalid request body",
-			userID: "user123",
-			requestBody: map[string]interface{}{
-				"name": "Test Trip",
-				// Missing required fields
-			},
+			name:           "Error - Invalid request body",
+			userID:         "user123",
+			requestBody:    "not json",
 			setupMocks:     func(mockTrip *MockTripModel, mockPexels *MockPexelsClient) {},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  true,
@@ -435,6 +464,7 @@ func TestCreateTripHandler(t *testing.T) {
 				EndDate:              time.Now().Add(48 * time.Hour),
 			},
 			setupMocks: func(mockTrip *MockTripModel, mockPexels *MockPexelsClient) {
+				mockPexels.On("SearchDestinationImage", mock.Anything, mock.AnythingOfType("string")).Return("", nil)
 				mockTrip.On("CreateTrip", mock.Anything, mock.AnythingOfType("*types.Trip")).Return(nil, apperrors.InternalServerError("Database error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -479,23 +509,31 @@ func TestCreateTripHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, _, _, mockPexelsClient := setupTestHandler()
 			tt.setupMocks(mockTripModel, mockPexelsClient)
-			
-			c, w := setupGinContext("POST", "/trips", tt.requestBody)
-			if tt.userID != "" {
-				c.Set(string(middleware.UserIDKey), tt.userID)
+
+			r := buildTripRouter("/trips", http.MethodPost, handler.CreateTripHandler, tt.userID)
+
+			var bodyBytes []byte
+			switch v := tt.requestBody.(type) {
+			case string:
+				bodyBytes = []byte(v)
+			default:
+				bodyBytes, _ = json.Marshal(tt.requestBody)
 			}
-			
-			handler.CreateTripHandler(c)
-			
+
+			req, _ := http.NewRequest(http.MethodPost, "/trips", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
-			
+
 			if !tt.expectedError && tt.checkResponse != nil {
 				var response map[string]interface{}
 				err := json.Unmarshal(w.Body.Bytes(), &response)
 				assert.NoError(t, err)
 				tt.checkResponse(t, response)
 			}
-			
+
 			mockTripModel.AssertExpectations(t)
 			mockPexelsClient.AssertExpectations(t)
 		})
@@ -617,12 +655,10 @@ func TestUpdateTripHandler(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "Error - Invalid request body",
-			tripID: "trip123",
-			userID: "user123",
-			requestBody: map[string]interface{}{
-				"invalid": "data",
-			},
+			name:           "Error - Invalid request body",
+			tripID:         "trip123",
+			userID:         "user123",
+			requestBody:    "not json",
 			setupMocks:     func(mockTrip *MockTripModel) {},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  true,
@@ -646,13 +682,22 @@ func TestUpdateTripHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, _, _, _ := setupTestHandler()
 			tt.setupMocks(mockTripModel)
-			
-			c, w := setupGinContext("PUT", fmt.Sprintf("/trips/%s", tt.tripID), tt.requestBody)
-			c.Params = gin.Params{{Key: "id", Value: tt.tripID}}
-			c.Set(string(middleware.UserIDKey), tt.userID)
-			
-			handler.UpdateTripHandler(c)
-			
+
+			r := buildTripRouter("/trips/:id", http.MethodPut, handler.UpdateTripHandler, tt.userID)
+
+			var bodyBytes []byte
+			switch v := tt.requestBody.(type) {
+			case string:
+				bodyBytes = []byte(v)
+			default:
+				bodyBytes, _ = json.Marshal(tt.requestBody)
+			}
+
+			req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("/trips/%s", tt.tripID), bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			mockTripModel.AssertExpectations(t)
 		})
@@ -732,13 +777,22 @@ func TestUpdateTripStatusHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, _, _, _ := setupTestHandler()
 			tt.setupMocks(mockTripModel)
-			
-			c, w := setupGinContext("PATCH", fmt.Sprintf("/trips/%s/status", tt.tripID), tt.requestBody)
-			c.Params = gin.Params{{Key: "id", Value: tt.tripID}}
-			c.Set(string(middleware.UserIDKey), tt.userID)
-			
-			handler.UpdateTripStatusHandler(c)
-			
+
+			r := buildTripRouter("/trips/:id/status", http.MethodPatch, handler.UpdateTripStatusHandler, tt.userID)
+
+			var bodyBytes []byte
+			switch v := tt.requestBody.(type) {
+			case string:
+				bodyBytes = []byte(v)
+			default:
+				bodyBytes, _ = json.Marshal(tt.requestBody)
+			}
+
+			req, _ := http.NewRequest(http.MethodPatch, fmt.Sprintf("/trips/%s/status", tt.tripID), bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			mockTripModel.AssertExpectations(t)
 		})
@@ -783,12 +837,13 @@ func TestDeleteTripHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, _, _, _ := setupTestHandler()
 			tt.setupMocks(mockTripModel)
-			
-			c, w := setupGinContext("DELETE", fmt.Sprintf("/trips/%s", tt.tripID), nil)
-			c.Params = gin.Params{{Key: "id", Value: tt.tripID}}
-			
-			handler.DeleteTripHandler(c)
-			
+
+			r := buildTripRouter("/trips/:id", http.MethodDelete, handler.DeleteTripHandler, "user123")
+
+			req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/trips/%s", tt.tripID), nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			mockTripModel.AssertExpectations(t)
 		})
@@ -951,20 +1006,31 @@ func TestSearchTripsHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, _, _, _ := setupTestHandler()
 			tt.setupMocks(mockTripModel)
-			
-			c, w := setupGinContext("POST", "/trips/search", tt.requestBody)
-			
-			handler.SearchTripsHandler(c)
-			
+
+			r := buildTripRouter("/trips/search", http.MethodPost, handler.SearchTripsHandler, "user123")
+
+			var bodyBytes []byte
+			switch v := tt.requestBody.(type) {
+			case string:
+				bodyBytes = []byte(v)
+			default:
+				bodyBytes, _ = json.Marshal(tt.requestBody)
+			}
+
+			req, _ := http.NewRequest(http.MethodPost, "/trips/search", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
-			
+
 			if !tt.expectedError && tt.checkResponse != nil {
 				var response []interface{}
 				err := json.Unmarshal(w.Body.Bytes(), &response)
 				assert.NoError(t, err)
 				tt.checkResponse(t, response)
 			}
-			
+
 			mockTripModel.AssertExpectations(t)
 		})
 	}
@@ -1011,7 +1077,9 @@ func TestGetTripWithMembersHandler(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, resp map[string]interface{}) {
-				assert.Equal(t, "trip123", resp["id"])
+				// TripWithMembers serializes as {"trip": {...}, "members": [...]}
+				trip := resp["trip"].(map[string]interface{})
+				assert.Equal(t, "trip123", trip["id"])
 				members := resp["members"].([]interface{})
 				assert.Len(t, members, 2)
 			},
@@ -1042,22 +1110,22 @@ func TestGetTripWithMembersHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, _, _, _ := setupTestHandler()
 			tt.setupMocks(mockTripModel)
-			
-			c, w := setupGinContext("GET", fmt.Sprintf("/trips/%s/details", tt.tripID), nil)
-			c.Params = gin.Params{{Key: "id", Value: tt.tripID}}
-			c.Set(string(middleware.UserIDKey), tt.userID)
-			
-			handler.GetTripWithMembersHandler(c)
-			
+
+			r := buildTripRouter("/trips/:id/details", http.MethodGet, handler.GetTripWithMembersHandler, tt.userID)
+
+			req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/trips/%s/details", tt.tripID), nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
-			
+
 			if !tt.expectedError && tt.checkResponse != nil {
 				var response map[string]interface{}
 				err := json.Unmarshal(w.Body.Bytes(), &response)
 				assert.NoError(t, err)
 				tt.checkResponse(t, response)
 			}
-			
+
 			mockTripModel.AssertExpectations(t)
 		})
 	}
@@ -1154,7 +1222,7 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockTripModel, _, mockWeatherService, _, _ := setupTestHandler()
-			
+
 			// Special case for nil weather service test
 			if tt.name == "Error - Weather service not available" {
 				handler.weatherService = nil
@@ -1168,15 +1236,15 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 			} else {
 				tt.setupMocks(mockTripModel, mockWeatherService)
 			}
-			
-			c, w := setupGinContext("POST", fmt.Sprintf("/trips/%s/weather/trigger", tt.tripID), nil)
-			c.Params = gin.Params{{Key: "id", Value: tt.tripID}}
-			c.Set(string(middleware.UserIDKey), tt.userID)
-			
-			handler.TriggerWeatherUpdateHandler(c)
-			
+
+			r := buildTripRouter("/trips/:id/weather/trigger", http.MethodPost, handler.TriggerWeatherUpdateHandler, tt.userID)
+
+			req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("/trips/%s/weather/trigger", tt.tripID), nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
-			
+
 			mockTripModel.AssertExpectations(t)
 			mockWeatherService.AssertExpectations(t)
 		})
@@ -1187,7 +1255,7 @@ func TestTriggerWeatherUpdateHandler(t *testing.T) {
 func TestTriggerWeatherUpdateHandler_NoWeatherService(t *testing.T) {
 	handler, mockTripModel, _, _, _, _ := setupTestHandler()
 	handler.weatherService = nil // Explicitly set to nil
-	
+
 	trip := &types.Trip{
 		ID:                   "trip123",
 		Name:                 "Test Trip",
@@ -1195,13 +1263,13 @@ func TestTriggerWeatherUpdateHandler_NoWeatherService(t *testing.T) {
 		DestinationLongitude: -74.0060,
 	}
 	mockTripModel.On("GetTripByID", mock.Anything, "trip123", "user123").Return(trip, nil)
-	
-	c, w := setupGinContext("POST", "/trips/trip123/weather/trigger", nil)
-	c.Params = gin.Params{{Key: "id", Value: "trip123"}}
-	c.Set(string(middleware.UserIDKey), "user123")
-	
-	handler.TriggerWeatherUpdateHandler(c)
-	
+
+	r := buildTripRouter("/trips/:id/weather/trigger", http.MethodPost, handler.TriggerWeatherUpdateHandler, "user123")
+
+	req, _ := http.NewRequest(http.MethodPost, "/trips/trip123/weather/trigger", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	mockTripModel.AssertExpectations(t)
 }
@@ -1272,13 +1340,13 @@ func TestHandleModelError(t *testing.T) {
 			name:           "AppError - Forbidden",
 			error:          apperrors.Forbidden("access_denied", "Access denied"),
 			expectedStatus: http.StatusForbidden,
-			expectedCode:   "FORBIDDEN",
+			expectedCode:   "AUTHORIZATION",
 		},
 		{
 			name:           "AppError - Validation Failed",
 			error:          apperrors.ValidationFailed("invalid_input", "Invalid input"),
 			expectedStatus: http.StatusBadRequest,
-			expectedCode:   "VALIDATION_FAILED",
+			expectedCode:   "VALIDATION",
 		},
 		{
 			name:           "Generic Error",
@@ -1362,9 +1430,11 @@ func TestFetchBackgroundImage(t *testing.T) {
 			name: "No search query available",
 			trip: &types.Trip{
 				Name: "Test Trip",
-				// No destination information
+				// No destination information — BuildSearchQuery may still return the trip name
 			},
-			setupMocks:  func() {},
+			setupMocks: func() {
+				mockPexelsClient.On("SearchDestinationImage", mock.Anything, mock.AnythingOfType("string")).Return("", nil)
+			},
 			expectedURL: "",
 		},
 	}

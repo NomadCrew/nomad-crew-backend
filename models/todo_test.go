@@ -79,6 +79,15 @@ func (m *MockTripModel) GetUserRole(ctx context.Context, tripID string, userID s
 	return args.Get(0).(types.MemberRole), args.Error(1)
 }
 
+// GetTripMembers is a mock implementation of the GetTripMembers method
+func (m *MockTripModel) GetTripMembers(ctx context.Context, tripID string) ([]types.TripMembership, error) {
+	args := m.Called(ctx, tripID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]types.TripMembership), args.Error(1)
+}
+
 // MockEventPublisher is a mock implementation of models.EventPublisherInterface
 type MockEventPublisher struct {
 	mock.Mock

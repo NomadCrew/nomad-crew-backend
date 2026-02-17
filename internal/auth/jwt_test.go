@@ -146,9 +146,8 @@ func TestValidateAccessToken(t *testing.T) {
 		{
 			name: "Token with invalid claims",
 			setupFunc: func() string {
-				// Create a token with wrong claims type
+				// Create a token without the required "sub" claim (no user ID)
 				claims := jwt.MapClaims{
-					"sub":   userID,
 					"email": email,
 					"exp":   time.Now().Add(time.Hour).Unix(),
 				}

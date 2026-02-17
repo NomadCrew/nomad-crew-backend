@@ -44,6 +44,7 @@ import (
 	"github.com/NomadCrew/nomad-crew-backend/models/trip"
 	trip_service "github.com/NomadCrew/nomad-crew-backend/models/trip/service"
 	userSvc "github.com/NomadCrew/nomad-crew-backend/models/user/service"
+	walletSvc "github.com/NomadCrew/nomad-crew-backend/models/wallet/service"
 	weatherSvc "github.com/NomadCrew/nomad-crew-backend/models/weather/service"
 	"github.com/NomadCrew/nomad-crew-backend/pkg/pexels"
 	"github.com/NomadCrew/nomad-crew-backend/router"
@@ -250,6 +251,13 @@ func main() {
 	pollModel := models.NewPollModel(pollStore, tripModel, eventService)
 	pollHandler := handlers.NewPollHandler(pollModel)
 
+	// Wallet store, service, and handler
+	walletStore := sqlcadapter.NewSqlcWalletStore(dbClient.GetPool())
+	log.Info("Using wallet store")
+	walletFileStorage := walletSvc.NewLocalFileStorage("/var/data/wallet-files")
+	walletService := walletSvc.NewWalletService(walletStore, tripStore, walletFileStorage, cfg.Server.JwtSecretKey)
+	walletHandler := handlers.NewWalletHandler(walletService)
+
 	// Initialize User Service and Handler
 	// Pass jwtValidator to enable JWKS validation for onboarding (new Supabase API keys)
 	userService := userSvc.NewUserService(userDB, cfg.ExternalServices.SupabaseJWTSecret, supabaseService, jwtValidator)
@@ -314,6 +322,7 @@ func main() {
 	routerDeps.PushTokenHandler = pushTokenHandler
 	routerDeps.PollHandler = pollHandler
 	routerDeps.FeedbackHandler = feedbackHandler
+	routerDeps.WalletHandler = walletHandler
 
 	// Setup Router using the new package
 	r := router.SetupRouter(routerDeps)

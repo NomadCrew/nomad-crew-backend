@@ -159,6 +159,14 @@ func (m *MockInvitationService) FindInvitationByTripAndEmail(ctx context.Context
 	return args.Get(0).(*types.TripInvitation), args.Error(1)
 }
 
+func (m *MockInvitationService) GetInvitationsByTripID(ctx context.Context, tripID string) ([]*types.TripInvitation, error) {
+	args := m.Called(ctx, tripID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*types.TripInvitation), args.Error(1)
+}
+
 type MockTripChatService struct {
 	mock.Mock
 }
@@ -253,20 +261,16 @@ func (suite *CoordinatorTestSuite) TestAddMember_Delegates() {
 }
 
 func (suite *CoordinatorTestSuite) TestListMessages_Delegates() {
-	// Arrange
+	// ListMessages is now a no-op (chat moved to models/chat/service)
 	limit := 10
 	before := "cursor"
-	expectedMessages := []*types.ChatMessage{{ID: "msg1"}}
-	// Expectation: Ensure error is nil
-	suite.mockChatSvc.On("ListMessages", suite.ctx, suite.testTripID, suite.testUserID, limit, before).Return(expectedMessages, nil).Once()
 
 	// Act
 	result, err := suite.coordinator.ListMessages(suite.ctx, suite.testTripID, limit, before)
 
-	// Assert
+	// Assert — returns empty slice, no error
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedMessages, result)
-	suite.mockChatSvc.AssertExpectations(suite.T())
+	assert.Empty(suite.T(), result)
 }
 
 // Test methods that extract userID from context
@@ -285,17 +289,14 @@ func (suite *CoordinatorTestSuite) TestUpdateTripStatus_Delegates() {
 }
 
 func (suite *CoordinatorTestSuite) TestUpdateLastReadMessage_Delegates() {
-	// Arrange
+	// UpdateLastReadMessage is now a no-op (chat moved to models/chat/service)
 	messageID := "msg123"
-	// Expectation: Ensure error is nil
-	suite.mockChatSvc.On("UpdateLastReadMessage", suite.ctx, suite.testTripID, suite.testUserID, messageID).Return(nil).Once()
 
 	// Act
 	err := suite.coordinator.UpdateLastReadMessage(suite.ctx, suite.testTripID, messageID)
 
-	// Assert
+	// Assert — returns nil, no error
 	assert.NoError(suite.T(), err)
-	suite.mockChatSvc.AssertExpectations(suite.T())
 }
 
 func (suite *CoordinatorTestSuite) TestGetTripByID_Delegates() {

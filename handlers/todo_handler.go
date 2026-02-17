@@ -185,6 +185,9 @@ func getPaginationParams(c *gin.Context, defaultLimit, defaultOffset int) Pagina
 	if err != nil || limit <= 0 {
 		limit = defaultLimit
 	}
+	if limit > 100 {
+		limit = 100
+	}
 
 	offset, err := strconv.Atoi(c.DefaultQuery("offset", strconv.Itoa(defaultOffset)))
 	if err != nil || offset < 0 {

@@ -3,7 +3,6 @@ package mocks
 import (
 	"context"
 
-	"github.com/NomadCrew/nomad-crew-backend/internal/store"
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/mock"
@@ -125,12 +124,27 @@ func (m *MockTripStore) GetInvitationsByTripID(ctx context.Context, tripID strin
 	return args.Get(0).([]*types.TripInvitation), args.Error(1)
 }
 
-func (m *MockTripStore) BeginTx(ctx context.Context) (store.Transaction, error) {
+func (m *MockTripStore) AcceptInvitationAtomically(ctx context.Context, invitationID string, membership *types.TripMembership) error {
+	args := m.Called(ctx, invitationID, membership)
+	return args.Error(0)
+}
+
+func (m *MockTripStore) RemoveMemberWithOwnerLock(ctx context.Context, tripID, userID string) error {
+	args := m.Called(ctx, tripID, userID)
+	return args.Error(0)
+}
+
+func (m *MockTripStore) UpdateMemberRoleWithOwnerLock(ctx context.Context, tripID, userID string, newRole types.MemberRole) error {
+	args := m.Called(ctx, tripID, userID, newRole)
+	return args.Error(0)
+}
+
+func (m *MockTripStore) BeginTx(ctx context.Context) (types.DatabaseTransaction, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(store.Transaction), args.Error(1)
+	return args.Get(0).(types.DatabaseTransaction), args.Error(1)
 }
 
 func (m *MockTripStore) Commit() error {
