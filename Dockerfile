@@ -28,7 +28,7 @@ COPY --from=builder /app/nomadcrew-backend /app/nomadcrew-backend
 # Create a non-root user to run the application
 RUN adduser -D -g '' appuser
 
-# Create wallet file storage directory with correct ownership
+# Wallet file storage directory (used in local mode; R2 mode stores remotely)
 RUN mkdir -p /var/data/wallet-files && chown appuser:appuser /var/data/wallet-files
 
 USER appuser

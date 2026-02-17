@@ -63,7 +63,7 @@ var allowedMetadataKeys = map[types.DocumentType]map[string]bool{
 type FileStorage interface {
 	Save(ctx context.Context, path string, reader io.Reader, size int64) error
 	Delete(ctx context.Context, path string) error
-	GetPath(ctx context.Context, path string) string
+	GetURL(ctx context.Context, path string) (string, error)
 }
 
 // LocalFileStorage stores files on the local filesystem
@@ -130,13 +130,10 @@ func (s *LocalFileStorage) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-// GetPath returns the absolute filesystem path for serving
-func (s *LocalFileStorage) GetPath(ctx context.Context, path string) string {
-	fullPath, err := s.containedPath(path)
-	if err != nil {
-		return "" // caller should check for empty string
-	}
-	return fullPath
+// GetURL returns the absolute filesystem path for local serving.
+// For local storage this is a filesystem path; for remote backends it would be a URL.
+func (s *LocalFileStorage) GetURL(ctx context.Context, path string) (string, error) {
+	return s.containedPath(path)
 }
 
 type countingReader struct {
@@ -483,7 +480,12 @@ func (s *WalletService) ServeFile(ctx context.Context, token string) (string, st
 		return "", "", apperrors.NotFound("wallet_document", "document has been deleted or does not exist")
 	}
 
-	return s.fileStorage.GetPath(ctx, docPath), doc.MimeType, nil
+	fileURL, err := s.fileStorage.GetURL(ctx, docPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve file location: %w", err)
+	}
+
+	return fileURL, doc.MimeType, nil
 }
 
 // sanitizeMetadata strips metadata keys that are not in the allowed set for the given document type.

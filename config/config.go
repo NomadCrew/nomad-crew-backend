@@ -43,6 +43,8 @@ type ServerConfig struct {
 	WalletSigningKey string `mapstructure:"WALLET_SIGNING_KEY" yaml:"wallet_signing_key"`
 	// WalletStoragePath is the filesystem path for wallet document storage.
 	WalletStoragePath string `mapstructure:"WALLET_STORAGE_PATH" yaml:"wallet_storage_path"`
+	// WalletStorageBackend selects the file storage backend: "local" (default) or "r2".
+	WalletStorageBackend string `mapstructure:"WALLET_STORAGE_BACKEND" yaml:"wallet_storage_backend"`
 }
 
 // DatabaseConfig holds PostgreSQL database connection details.
@@ -150,6 +152,14 @@ type WorkerPoolConfig struct {
 	ShutdownTimeoutSeconds int `mapstructure:"SHUTDOWN_TIMEOUT_SECONDS" yaml:"shutdown_timeout_seconds"`
 }
 
+// R2Config holds Cloudflare R2 storage configuration.
+type R2Config struct {
+	AccountID      string `mapstructure:"ACCOUNT_ID"`
+	BucketName     string `mapstructure:"BUCKET_NAME"`
+	AccessKeyID    string `mapstructure:"ACCESS_KEY_ID"`
+	SecretAccessKey string `mapstructure:"SECRET_ACCESS_KEY"`
+}
+
 // Config aggregates all application configuration sections.
 type Config struct {
 	Server           ServerConfig       `mapstructure:"SERVER" yaml:"server"`
@@ -161,6 +171,7 @@ type Config struct {
 	RateLimit        RateLimitConfig    `mapstructure:"RATE_LIMIT" yaml:"rate_limit"`
 	Notification     NotificationConfig `mapstructure:"NOTIFICATION" yaml:"notification"`
 	WorkerPool       WorkerPoolConfig   `mapstructure:"WORKER_POOL" yaml:"worker_pool"`
+	R2               R2Config           `mapstructure:"R2" yaml:"r2"`
 }
 
 // EffectiveWalletSigningKey returns WalletSigningKey if set, otherwise falls back to JwtSecretKey.
@@ -204,6 +215,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("SERVER.TRUSTED_PROXIES", []string{}) // Empty = trust no one (safe default)
 	v.SetDefault("SERVER.WALLET_STORAGE_PATH", "/var/data/wallet-files")
+	v.SetDefault("SERVER.WALLET_STORAGE_BACKEND", "local")
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
 	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
 	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
@@ -251,6 +263,12 @@ func LoadConfig() (*Config, error) {
 		{"SERVER.TRUSTED_PROXIES", "TRUSTED_PROXIES"},
 		{"SERVER.WALLET_SIGNING_KEY", "WALLET_SIGNING_KEY"},
 		{"SERVER.WALLET_STORAGE_PATH", "WALLET_STORAGE_PATH"},
+		{"SERVER.WALLET_STORAGE_BACKEND", "WALLET_STORAGE_BACKEND"},
+		// R2 config
+		{"R2.ACCOUNT_ID", "R2_ACCOUNT_ID"},
+		{"R2.BUCKET_NAME", "R2_BUCKET_NAME"},
+		{"R2.ACCESS_KEY_ID", "R2_ACCESS_KEY_ID"},
+		{"R2.SECRET_ACCESS_KEY", "R2_SECRET_ACCESS_KEY"},
 		// Database config
 		{"DATABASE.HOST", "DB_HOST"},
 		{"DATABASE.PORT", "DB_PORT"},
@@ -400,6 +418,22 @@ func validateConfig(cfg *Config) error {
 	// +++ Validate Notification config +++
 	if err := validateNotificationConfig(&cfg.Notification, log); err != nil {
 		return err
+	}
+
+	// Validate R2 config when backend is "r2"
+	if cfg.Server.WalletStorageBackend == "r2" {
+		if cfg.R2.AccountID == "" {
+			return fmt.Errorf("R2 account ID is required when wallet storage backend is 'r2'")
+		}
+		if cfg.R2.BucketName == "" {
+			return fmt.Errorf("R2 bucket name is required when wallet storage backend is 'r2'")
+		}
+		if cfg.R2.AccessKeyID == "" {
+			return fmt.Errorf("R2 access key ID is required when wallet storage backend is 'r2'")
+		}
+		if cfg.R2.SecretAccessKey == "" {
+			return fmt.Errorf("R2 secret access key is required when wallet storage backend is 'r2'")
+		}
 	}
 
 	// +++ Validate WorkerPool config +++

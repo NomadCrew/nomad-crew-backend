@@ -254,7 +254,24 @@ func main() {
 	// Wallet store, service, and handler
 	walletStore := sqlcadapter.NewSqlcWalletStore(dbClient.GetPool())
 	log.Info("Using wallet store")
-	walletFileStorage := walletSvc.NewLocalFileStorage(cfg.Server.WalletStoragePath)
+	var walletFileStorage walletSvc.FileStorage
+	switch cfg.Server.WalletStorageBackend {
+	case "r2":
+		r2Storage, err := walletSvc.NewR2FileStorage(
+			cfg.R2.AccountID,
+			cfg.R2.BucketName,
+			cfg.R2.AccessKeyID,
+			cfg.R2.SecretAccessKey,
+		)
+		if err != nil {
+			log.Fatalf("Failed to initialize R2 file storage: %v", err)
+		}
+		walletFileStorage = r2Storage
+		log.Info("Using R2 file storage for wallet documents")
+	default:
+		walletFileStorage = walletSvc.NewLocalFileStorage(cfg.Server.WalletStoragePath)
+		log.Info("Using local file storage for wallet documents")
+	}
 	walletService := walletSvc.NewWalletService(walletStore, tripStore, walletFileStorage, cfg.EffectiveWalletSigningKey())
 	walletHandler := handlers.NewWalletHandler(walletService)
 

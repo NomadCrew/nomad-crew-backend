@@ -164,9 +164,9 @@ func (m *MockFileStorage) Delete(ctx context.Context, path string) error {
 	args := m.Called(ctx, path)
 	return args.Error(0)
 }
-func (m *MockFileStorage) GetPath(ctx context.Context, path string) string {
+func (m *MockFileStorage) GetURL(ctx context.Context, path string) (string, error) {
 	args := m.Called(ctx, path)
-	return args.String(0)
+	return args.String(0), args.Error(1)
 }
 
 // ---------------------------------------------------------------------------
@@ -934,7 +934,7 @@ func TestServeFile_ValidToken(t *testing.T) {
 	token := svc.GenerateSignedURL("personal/user-1/doc.png", 1*time.Hour)
 	ws.On("GetDocumentByFilePath", mock.Anything, "personal/user-1/doc.png").
 		Return(&types.WalletDocument{ID: "doc-1", MimeType: "image/png"}, nil)
-	fs.On("GetPath", mock.Anything, "personal/user-1/doc.png").Return("/storage/personal/user-1/doc.png")
+	fs.On("GetURL", mock.Anything, "personal/user-1/doc.png").Return("/storage/personal/user-1/doc.png", nil)
 
 	path, mimeType, err := svc.ServeFile(context.Background(), token)
 	require.NoError(t, err)

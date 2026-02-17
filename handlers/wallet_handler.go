@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	walletSvc "github.com/NomadCrew/nomad-crew-backend/models/wallet/service"
@@ -252,21 +253,27 @@ func (h *WalletHandler) ServeFileHandler(c *gin.Context) {
 		return
 	}
 
-	filePath, mimeType, err := h.walletService.ServeFile(c.Request.Context(), token)
+	fileURL, mimeType, err := h.walletService.ServeFile(c.Request.Context(), token)
 	if err != nil {
 		_ = c.Error(err)
 		return
 	}
 
-	// Security headers for file downloads
-	c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
+	// If the storage backend returned a remote URL, redirect the client.
+	if strings.HasPrefix(fileURL, "https://") || strings.HasPrefix(fileURL, "http://") {
+		c.Redirect(http.StatusTemporaryRedirect, fileURL)
+		return
+	}
+
+	// Local file serving path
+	c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(fileURL)+"\"")
 	c.Header("Cache-Control", "no-store")
 	c.Header("X-Content-Type-Options", "nosniff")
 	if mimeType != "" {
 		c.Header("Content-Type", mimeType)
 	}
 
-	c.File(filePath)
+	c.File(fileURL)
 }
 
 // multipartUpload holds parsed multipart upload data

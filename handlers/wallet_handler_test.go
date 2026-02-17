@@ -752,3 +752,23 @@ func TestUploadGroupDocumentHandler_ForceGroupWalletTypeWithTripID(t *testing.T)
 	svc.AssertExpectations(t)
 }
 
+// ---------------------------------------------------------------------------
+// ServeFileHandler: R2 redirect test
+// ---------------------------------------------------------------------------
+
+func TestServeFileHandler_RedirectsForRemoteURL(t *testing.T) {
+	handler, svc := setupWalletHandler()
+	presignedURL := "https://account.r2.cloudflarestorage.com/bucket/path/doc.png?X-Amz-Signature=abc"
+	svc.On("ServeFile", mock.Anything, "valid-r2-token").
+		Return(presignedURL, "image/png", nil)
+
+	r := buildWalletRouter("/v1/wallet/files/:token", http.MethodGet, handler.ServeFileHandler, testUserID)
+	req, _ := http.NewRequest(http.MethodGet, "/v1/wallet/files/valid-r2-token", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	assert.Equal(t, presignedURL, w.Header().Get("Location"))
+	svc.AssertExpectations(t)
+}
+
