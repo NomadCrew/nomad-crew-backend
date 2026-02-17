@@ -38,6 +38,14 @@ func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*ty
 	return args.Get(0).(*types.WeatherInfo), args.Error(1)
 }
 
+func (m *MockWeatherService) GetWeatherByCoords(ctx context.Context, tripID string, lat, lon float64) (*types.WeatherInfo, error) {
+	args := m.Called(ctx, tripID, lat, lon)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.WeatherInfo), args.Error(1)
+}
+
 // MockUserStore is a consolidated mock for types.UserStore
 // Used by both trip_service_test.go and trip_service_notification_test.go
 type MockUserStore struct {

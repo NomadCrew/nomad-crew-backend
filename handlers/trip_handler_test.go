@@ -231,6 +231,14 @@ func (m *MockWeatherService) GetWeather(ctx context.Context, tripID string) (*ty
 	return args.Get(0).(*types.WeatherInfo), args.Error(1)
 }
 
+func (m *MockWeatherService) GetWeatherByCoords(ctx context.Context, tripID string, latitude, longitude float64) (*types.WeatherInfo, error) {
+	args := m.Called(ctx, tripID, latitude, longitude)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.WeatherInfo), args.Error(1)
+}
+
 // MockUserService is now defined in mocks_test.go
 
 type MockPexelsClient struct {

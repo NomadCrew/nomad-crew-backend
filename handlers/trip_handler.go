@@ -563,7 +563,7 @@ func (h *TripHandler) GetWeatherHandler(c *gin.Context) {
 		return
 	}
 
-	// No cached weather — fetch trip coords and trigger an immediate update
+	// No cached weather — fetch trip coords, trigger update, and fetch directly
 	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
 	if err != nil {
 		h.handleModelError(c, err)
@@ -575,28 +575,17 @@ func (h *TripHandler) GetWeatherHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
+	// Trigger update in background (publishes WebSocket event) — ignore errors
+	_ = h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude)
+
+	// Fetch weather directly using coordinates (don't rely on activeTrips cache)
+	weather, err = h.weatherService.GetWeatherByCoords(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude)
+	if err != nil {
 		appErr, ok := err.(*apperrors.AppError)
 		if !ok {
 			appErr = apperrors.InternalServerError("Failed to fetch weather data")
 		}
 		_ = c.Error(appErr)
-		return
-	}
-
-	// Retry after triggering update
-	weather, err = h.weatherService.GetWeather(c.Request.Context(), tripID)
-	if err != nil {
-		appErr, ok := err.(*apperrors.AppError)
-		if !ok {
-			appErr = apperrors.InternalServerError("Failed to retrieve weather after update")
-		}
-		_ = c.Error(appErr)
-		return
-	}
-
-	if weather == nil {
-		_ = c.Error(apperrors.InternalServerError("Weather data unavailable after update"))
 		return
 	}
 

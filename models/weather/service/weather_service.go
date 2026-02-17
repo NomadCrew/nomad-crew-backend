@@ -271,11 +271,9 @@ func (s *WeatherService) TriggerImmediateUpdate(ctx context.Context, tripID stri
 	return nil
 }
 
-// GetWeather fetches the latest weather information for a trip
-// This method implements WeatherServiceInterface
+// GetWeather fetches the latest weather information for a trip using cached coordinates.
+// Returns an error if the trip has no active weather subscription.
 func (s *WeatherService) GetWeather(ctx context.Context, tripID string) (*types.WeatherInfo, error) {
-	log := logger.GetLogger()
-
 	// Check if we have this trip in our active trips
 	actual, ok := s.activeTrips.Load(tripID)
 	if !ok {
@@ -283,13 +281,14 @@ func (s *WeatherService) GetWeather(ctx context.Context, tripID string) (*types.
 	}
 
 	subs := actual.(*tripSubscribers)
-	latitude := subs.latitude
-	longitude := subs.longitude
+	return s.GetWeatherByCoords(ctx, tripID, subs.latitude, subs.longitude)
+}
 
-	// Get the current weather
+// GetWeatherByCoords fetches weather directly using provided coordinates.
+// Does not require an active subscription — used by the GET handler as fallback.
+func (s *WeatherService) GetWeatherByCoords(ctx context.Context, tripID string, latitude, longitude float64) (*types.WeatherInfo, error) {
 	weather, err := s.getCurrentWeather(latitude, longitude)
 	if err != nil {
-		log.Errorw("Failed to get current weather data", "latitude", latitude, "longitude", longitude, "error", err, "tripID", tripID)
 		return nil, fmt.Errorf("failed to fetch weather: %w", err)
 	}
 
