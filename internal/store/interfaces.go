@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/NomadCrew/nomad-crew-backend/types"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -207,10 +208,26 @@ type PollStore interface {
 type WalletStore interface {
 	CreateDocument(ctx context.Context, doc *types.WalletDocument) (string, error)
 	GetDocument(ctx context.Context, id string) (*types.WalletDocument, error)
+	GetDocumentByFilePath(ctx context.Context, filePath string) (*types.WalletDocument, error)
 	ListPersonalDocuments(ctx context.Context, userID string, limit, offset int) ([]*types.WalletDocument, int, error)
 	ListGroupDocuments(ctx context.Context, tripID string, limit, offset int) ([]*types.WalletDocument, int, error)
 	UpdateDocument(ctx context.Context, id string, update *types.WalletDocumentUpdate) (*types.WalletDocument, error)
 	SoftDeleteDocument(ctx context.Context, id string) error
+	GetUserStorageUsage(ctx context.Context, userID string) (int64, error)
+	GetTripStorageUsage(ctx context.Context, tripID string) (int64, error)
+
+	// PurgeDeletedDocuments hard-deletes soft-deleted documents older than olderThan.
+	// Returns the file_path of each purged record so callers can clean up storage.
+	PurgeDeletedDocuments(ctx context.Context, olderThan time.Time) ([]string, error)
+
+	// HardDeleteAllByUser hard-deletes all documents for a user (for account deletion).
+	// Returns the file_path of each deleted record so callers can clean up storage.
+	HardDeleteAllByUser(ctx context.Context, userID string) ([]string, error)
+}
+
+// WalletAuditStore handles append-only audit logging for wallet operations
+type WalletAuditStore interface {
+	LogAccess(ctx context.Context, entry *types.WalletAuditEntry) error
 }
 
 // FeedbackStore handles feedback submission (standalone, not part of main Store interface).

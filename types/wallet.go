@@ -45,7 +45,7 @@ type WalletDocument struct {
 type WalletDocumentCreate struct {
 	WalletType   WalletType             `json:"walletType" binding:"required,oneof=personal group"`
 	TripID       *string                `json:"tripId,omitempty"`
-	DocumentType DocumentType           `json:"documentType" binding:"required"`
+	DocumentType DocumentType           `json:"documentType" binding:"required,oneof=passport visa insurance vaccination loyalty_card flight_booking hotel_booking reservation receipt other"`
 	Name         string                 `json:"name" binding:"required,max=255"`
 	Description  *string                `json:"description,omitempty"`
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
@@ -54,7 +54,7 @@ type WalletDocumentCreate struct {
 type WalletDocumentUpdate struct {
 	Name         *string                `json:"name,omitempty" binding:"omitempty,max=255"`
 	Description  *string                `json:"description,omitempty"`
-	DocumentType *DocumentType          `json:"documentType,omitempty"`
+	DocumentType *DocumentType          `json:"documentType,omitempty" binding:"omitempty,oneof=passport visa insurance vaccination loyalty_card flight_booking hotel_booking reservation receipt other"`
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -62,4 +62,26 @@ type WalletDocumentUpdate struct {
 type WalletDocumentResponse struct {
 	WalletDocument
 	DownloadURL string `json:"downloadUrl,omitempty"`
+}
+
+// WalletAuditAction represents the type of wallet action being audited
+type WalletAuditAction string
+
+const (
+	WalletAuditActionUpload   WalletAuditAction = "upload"
+	WalletAuditActionView     WalletAuditAction = "view"
+	WalletAuditActionDownload WalletAuditAction = "download"
+	WalletAuditActionDelete   WalletAuditAction = "delete"
+	WalletAuditActionUpdate   WalletAuditAction = "update"
+)
+
+// WalletAuditEntry represents a single audit log record for wallet operations
+type WalletAuditEntry struct {
+	ID         string            `json:"id"`
+	UserID     string            `json:"userId"`
+	DocumentID *string           `json:"documentId,omitempty"`
+	Action     WalletAuditAction `json:"action"`
+	IPAddress  string            `json:"ipAddress,omitempty"`
+	UserAgent  string            `json:"userAgent,omitempty"`
+	CreatedAt  time.Time         `json:"createdAt"`
 }

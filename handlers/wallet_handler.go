@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 
 	apperrors "github.com/NomadCrew/nomad-crew-backend/errors"
 	walletSvc "github.com/NomadCrew/nomad-crew-backend/models/wallet/service"
@@ -21,7 +22,7 @@ type WalletServiceInterface interface {
 	GetDocument(ctx context.Context, id, userID string) (*types.WalletDocumentResponse, error)
 	UpdateDocument(ctx context.Context, id, userID string, update *types.WalletDocumentUpdate) (*types.WalletDocument, error)
 	DeleteDocument(ctx context.Context, id, userID string) error
-	ServeFile(ctx context.Context, token string) (string, error)
+	ServeFile(ctx context.Context, token string) (string, string, error)
 }
 
 // Ensure the concrete service satisfies the interface at compile time.
@@ -35,6 +36,11 @@ func NewWalletHandler(walletService WalletServiceInterface) *WalletHandler {
 	return &WalletHandler{
 		walletService: walletService,
 	}
+}
+
+// auditCtx enriches the request context with client IP and User-Agent for audit logging.
+func auditCtx(c *gin.Context) context.Context {
+	return walletSvc.WithAuditMeta(c.Request.Context(), c.ClientIP(), c.Request.UserAgent())
 }
 
 // UploadPersonalDocumentHandler handles personal document uploads
@@ -56,7 +62,7 @@ func (h *WalletHandler) UploadPersonalDocumentHandler(c *gin.Context) {
 	doc.create.WalletType = types.WalletTypePersonal
 	doc.create.TripID = nil
 
-	resp, err := h.walletService.UploadDocument(c.Request.Context(), userID, doc.file, doc.fileSize, doc.create, doc.fileName, doc.mimeType)
+	resp, err := h.walletService.UploadDocument(auditCtx(c), userID, doc.file, doc.fileSize, doc.create, doc.fileName, doc.mimeType)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -90,7 +96,7 @@ func (h *WalletHandler) UploadGroupDocumentHandler(c *gin.Context) {
 	doc.create.WalletType = types.WalletTypeGroup
 	doc.create.TripID = &tripID
 
-	resp, err := h.walletService.UploadDocument(c.Request.Context(), userID, doc.file, doc.fileSize, doc.create, doc.fileName, doc.mimeType)
+	resp, err := h.walletService.UploadDocument(auditCtx(c), userID, doc.file, doc.fileSize, doc.create, doc.fileName, doc.mimeType)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -174,7 +180,7 @@ func (h *WalletHandler) GetDocumentHandler(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.walletService.GetDocument(c.Request.Context(), docID, userID)
+	resp, err := h.walletService.GetDocument(auditCtx(c), docID, userID)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -203,7 +209,7 @@ func (h *WalletHandler) UpdateDocumentHandler(c *gin.Context) {
 		return
 	}
 
-	doc, err := h.walletService.UpdateDocument(c.Request.Context(), docID, userID, &req)
+	doc, err := h.walletService.UpdateDocument(auditCtx(c), docID, userID, &req)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -227,7 +233,7 @@ func (h *WalletHandler) DeleteDocumentHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.walletService.DeleteDocument(c.Request.Context(), docID, userID); err != nil {
+	if err := h.walletService.DeleteDocument(auditCtx(c), docID, userID); err != nil {
 		_ = c.Error(err)
 		return
 	}
@@ -246,10 +252,18 @@ func (h *WalletHandler) ServeFileHandler(c *gin.Context) {
 		return
 	}
 
-	filePath, err := h.walletService.ServeFile(c.Request.Context(), token)
+	filePath, mimeType, err := h.walletService.ServeFile(c.Request.Context(), token)
 	if err != nil {
 		_ = c.Error(err)
 		return
+	}
+
+	// Security headers for file downloads
+	c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if mimeType != "" {
+		c.Header("Content-Type", mimeType)
 	}
 
 	c.File(filePath)

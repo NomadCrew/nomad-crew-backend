@@ -254,8 +254,8 @@ func main() {
 	// Wallet store, service, and handler
 	walletStore := sqlcadapter.NewSqlcWalletStore(dbClient.GetPool())
 	log.Info("Using wallet store")
-	walletFileStorage := walletSvc.NewLocalFileStorage("/var/data/wallet-files")
-	walletService := walletSvc.NewWalletService(walletStore, tripStore, walletFileStorage, cfg.Server.JwtSecretKey)
+	walletFileStorage := walletSvc.NewLocalFileStorage(cfg.Server.WalletStoragePath)
+	walletService := walletSvc.NewWalletService(walletStore, tripStore, walletFileStorage, cfg.EffectiveWalletSigningKey())
 	walletHandler := handlers.NewWalletHandler(walletService)
 
 	// Initialize User Service and Handler
@@ -338,6 +338,39 @@ func main() {
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+
+	// Start wallet document purge goroutine (GDPR: hard-delete soft-deleted docs after retention period)
+	go func() {
+		const retentionDays = 30
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		purge := func() {
+			purgeCtx, purgeCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer purgeCancel()
+			count, err := walletService.PurgeExpiredDocuments(purgeCtx, retentionDays)
+			if err != nil {
+				log.Errorw("Wallet document purge failed", "error", err)
+				return
+			}
+			if count > 0 {
+				log.Infow("Purged expired wallet documents", "count", count, "retentionDays", retentionDays)
+			}
+		}
+
+		// Run immediately on startup
+		purge()
+
+		for {
+			select {
+			case <-shutdownCtx.Done():
+				return
+			case <-ticker.C:
+				purge()
+			}
+		}
+	}()
+	log.Info("Wallet document purge goroutine started (30-day retention)")
 
 	// Start server in a goroutine so it doesn't block shutdown handling
 	go func() {

@@ -63,6 +63,35 @@ func (m *MockWalletStore) SoftDeleteDocument(ctx context.Context, id string) err
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
+func (m *MockWalletStore) GetDocumentByFilePath(ctx context.Context, filePath string) (*types.WalletDocument, error) {
+	args := m.Called(ctx, filePath)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.WalletDocument), args.Error(1)
+}
+func (m *MockWalletStore) GetUserStorageUsage(ctx context.Context, userID string) (int64, error) {
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
+}
+func (m *MockWalletStore) GetTripStorageUsage(ctx context.Context, tripID string) (int64, error) {
+	args := m.Called(ctx, tripID)
+	return args.Get(0).(int64), args.Error(1)
+}
+func (m *MockWalletStore) PurgeDeletedDocuments(ctx context.Context, olderThan time.Time) ([]string, error) {
+	args := m.Called(ctx, olderThan)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
+}
+func (m *MockWalletStore) HardDeleteAllByUser(ctx context.Context, userID string) ([]string, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
+}
 
 // MockTripStore implements store.TripStore (only methods used by WalletService are meaningful)
 type MockTripStore struct{ mock.Mock }
@@ -239,6 +268,7 @@ func TestSanitizeFilename_ViaUpload(t *testing.T) {
 					capturedPath = args.String(1)
 				}).Return(nil)
 			ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+			ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 			ctx := context.Background()
 			create := &types.WalletDocumentCreate{
@@ -276,6 +306,7 @@ func TestSanitizeFilename_DegenerateInputs(t *testing.T) {
 					capturedPath = args.String(1)
 				}).Return(nil)
 			ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+			ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 			ctx := context.Background()
 			create := &types.WalletDocumentCreate{
@@ -315,6 +346,7 @@ func TestSanitizeFilename_LongNamePreservesExtension(t *testing.T) {
 			capturedPath = args.String(1)
 		}).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	// Create a filename longer than 255 chars with a .png extension
 	longName := strings.Repeat("a", 260) + ".png"
@@ -445,6 +477,7 @@ func TestUploadDocument_AcceptsPNG(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypePersonal,
@@ -465,6 +498,7 @@ func TestUploadDocument_AcceptsJPEG(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypePersonal,
@@ -484,6 +518,7 @@ func TestUploadDocument_AcceptsPDF(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypePersonal,
@@ -597,6 +632,7 @@ func TestUploadDocument_PersonalWithTripIDClearsTripID(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			capturedDoc = args.Get(1).(*types.WalletDocument)
 		}).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypePersonal,
@@ -622,6 +658,7 @@ func TestUploadDocument_NilMetadataBecomesEmptyMap(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			capturedDoc = args.Get(1).(*types.WalletDocument)
 		}).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypePersonal,
@@ -647,6 +684,7 @@ func TestUploadDocument_DBFailureCleansUpFile(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("", errors.New("db connection lost"))
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 	fs.On("Delete", mock.Anything, mock.Anything).Return(nil)
 
 	create := &types.WalletDocumentCreate{
@@ -669,6 +707,7 @@ func TestUploadDocument_SaveFailureCleansUp(t *testing.T) {
 	svc := newTestService(ws, new(MockTripStore), fs)
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("disk full"))
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 	fs.On("Delete", mock.Anything, mock.Anything).Return(nil)
 
 	create := &types.WalletDocumentCreate{
@@ -701,6 +740,7 @@ func TestUploadDocument_RecordsActualBytesWritten(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			capturedDoc = args.Get(1).(*types.WalletDocument)
 		}).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	pngData := minimalPNG
 	// Pass a deliberately wrong client-reported size
@@ -887,21 +927,37 @@ func TestDeleteDocument_FileDeleteFailureIsBestEffort(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeFile_ValidToken(t *testing.T) {
+	ws := new(MockWalletStore)
 	fs := new(MockFileStorage)
-	svc := newTestService(new(MockWalletStore), new(MockTripStore), fs)
+	svc := newTestService(ws, new(MockTripStore), fs)
 
 	token := svc.GenerateSignedURL("personal/user-1/doc.png", 1*time.Hour)
+	ws.On("GetDocumentByFilePath", mock.Anything, "personal/user-1/doc.png").
+		Return(&types.WalletDocument{ID: "doc-1", MimeType: "image/png"}, nil)
 	fs.On("GetPath", mock.Anything, "personal/user-1/doc.png").Return("/storage/personal/user-1/doc.png")
 
-	path, err := svc.ServeFile(context.Background(), token)
+	path, mimeType, err := svc.ServeFile(context.Background(), token)
 	require.NoError(t, err)
 	assert.Equal(t, "/storage/personal/user-1/doc.png", path)
+	assert.Equal(t, "image/png", mimeType)
 }
 
 func TestServeFile_InvalidToken(t *testing.T) {
 	svc := newTestService(new(MockWalletStore), new(MockTripStore), new(MockFileStorage))
 
-	_, err := svc.ServeFile(context.Background(), "garbage-token")
+	_, _, err := svc.ServeFile(context.Background(), "garbage-token")
+	require.Error(t, err)
+}
+
+func TestServeFile_SoftDeletedDocument(t *testing.T) {
+	ws := new(MockWalletStore)
+	svc := newTestService(ws, new(MockTripStore), new(MockFileStorage))
+
+	token := svc.GenerateSignedURL("personal/user-1/doc.png", 1*time.Hour)
+	ws.On("GetDocumentByFilePath", mock.Anything, "personal/user-1/doc.png").
+		Return(nil, apperrors.NotFound("wallet_document", "personal/user-1/doc.png"))
+
+	_, _, err := svc.ServeFile(context.Background(), token)
 	require.Error(t, err)
 }
 
@@ -946,6 +1002,7 @@ func TestUploadDocument_GroupWithTripIDSucceeds(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetTripStorageUsage", mock.Anything, "trip-123").Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypeGroup,
@@ -971,6 +1028,7 @@ func TestUploadDocument_IgnoresClientMIMEType(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	create := &types.WalletDocumentCreate{
 		WalletType:   types.WalletTypePersonal,
@@ -995,6 +1053,7 @@ func TestUploadDocument_ShortFileAccepted(t *testing.T) {
 
 	fs.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	ws.On("CreateDocument", mock.Anything, mock.Anything).Return("doc-1", nil)
+	ws.On("GetUserStorageUsage", mock.Anything, mock.Anything).Return(int64(0), nil)
 
 	// minimalJPEG is only 22 bytes (well under 512)
 	create := &types.WalletDocumentCreate{

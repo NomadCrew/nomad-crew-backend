@@ -27,6 +27,10 @@ COPY --from=builder /app/nomadcrew-backend /app/nomadcrew-backend
 
 # Create a non-root user to run the application
 RUN adduser -D -g '' appuser
+
+# Create wallet file storage directory with correct ownership
+RUN mkdir -p /var/data/wallet-files && chown appuser:appuser /var/data/wallet-files
+
 USER appuser
 
 # Explicitly tell Cloud Run the container listens on this port

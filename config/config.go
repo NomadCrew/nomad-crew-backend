@@ -38,6 +38,11 @@ type ServerConfig struct {
 	// If empty, X-Forwarded-For headers are ignored entirely (safe default).
 	// Examples: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 	TrustedProxies []string `mapstructure:"TRUSTED_PROXIES" yaml:"trusted_proxies"`
+	// WalletSigningKey is the HMAC key used to sign wallet file download URLs.
+	// If empty, falls back to JwtSecretKey for backwards compatibility.
+	WalletSigningKey string `mapstructure:"WALLET_SIGNING_KEY" yaml:"wallet_signing_key"`
+	// WalletStoragePath is the filesystem path for wallet document storage.
+	WalletStoragePath string `mapstructure:"WALLET_STORAGE_PATH" yaml:"wallet_storage_path"`
 }
 
 // DatabaseConfig holds PostgreSQL database connection details.
@@ -158,6 +163,14 @@ type Config struct {
 	WorkerPool       WorkerPoolConfig   `mapstructure:"WORKER_POOL" yaml:"worker_pool"`
 }
 
+// EffectiveWalletSigningKey returns WalletSigningKey if set, otherwise falls back to JwtSecretKey.
+func (c *Config) EffectiveWalletSigningKey() string {
+	if c.Server.WalletSigningKey != "" {
+		return c.Server.WalletSigningKey
+	}
+	return c.Server.JwtSecretKey
+}
+
 // IsDevelopment returns true if the application is running in development environment.
 func (c *Config) IsDevelopment() bool {
 	return c.Server.Environment == EnvDevelopment
@@ -190,6 +203,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SERVER.PORT", "8080")
 	v.SetDefault("SERVER.ALLOWED_ORIGINS", []string{"*"})
 	v.SetDefault("SERVER.TRUSTED_PROXIES", []string{}) // Empty = trust no one (safe default)
+	v.SetDefault("SERVER.WALLET_STORAGE_PATH", "/var/data/wallet-files")
 	v.SetDefault("DATABASE.MAX_CONNECTIONS", 20)
 	v.SetDefault("DATABASE.MAX_OPEN_CONNS", 5) // Conservative for free tier
 	v.SetDefault("DATABASE.MAX_IDLE_CONNS", 2) // Conservative for free tier
@@ -235,6 +249,8 @@ func LoadConfig() (*Config, error) {
 		{"SERVER.ALLOWED_ORIGINS", "ALLOWED_ORIGINS"},
 		{"SERVER.JWT_SECRET_KEY", "JWT_SECRET_KEY"},
 		{"SERVER.TRUSTED_PROXIES", "TRUSTED_PROXIES"},
+		{"SERVER.WALLET_SIGNING_KEY", "WALLET_SIGNING_KEY"},
+		{"SERVER.WALLET_STORAGE_PATH", "WALLET_STORAGE_PATH"},
 		// Database config
 		{"DATABASE.HOST", "DB_HOST"},
 		{"DATABASE.PORT", "DB_PORT"},

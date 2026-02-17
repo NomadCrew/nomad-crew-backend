@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -34,6 +35,30 @@ var allowedMimeTypes = map[string]bool{
 // MaxFileSize is the maximum allowed file size (10MB)
 const MaxFileSize = 10 * 1024 * 1024
 
+// MaxPersonalStorageBytes is the per-user personal storage quota (100MB)
+const MaxPersonalStorageBytes int64 = 100 * 1024 * 1024
+
+// MaxGroupStorageBytes is the per-trip group storage quota (500MB)
+const MaxGroupStorageBytes int64 = 500 * 1024 * 1024
+
+// MaxMetadataSize is the maximum allowed metadata JSON size (64KB)
+const MaxMetadataSize = 64 * 1024
+
+// allowedMetadataKeys defines the permitted metadata keys per document type.
+// Keys not in this set for a given document type are stripped before insert/update.
+var allowedMetadataKeys = map[types.DocumentType]map[string]bool{
+	types.DocumentTypePassport:      {"passport_number": true, "country": true, "expiry_date": true, "issue_date": true, "nationality": true},
+	types.DocumentTypeVisa:          {"visa_number": true, "country": true, "expiry_date": true, "issue_date": true, "visa_type": true},
+	types.DocumentTypeInsurance:     {"policy_number": true, "provider": true, "expiry_date": true, "coverage_type": true},
+	types.DocumentTypeVaccination:   {"vaccine_name": true, "date_administered": true, "dose_number": true, "provider": true},
+	types.DocumentTypeLoyaltyCard:   {"card_number": true, "program_name": true, "tier": true, "expiry_date": true},
+	types.DocumentTypeFlightBooking: {"airline": true, "flight_number": true, "departure_date": true, "arrival_date": true, "booking_reference": true, "departure_airport": true, "arrival_airport": true},
+	types.DocumentTypeHotelBooking:  {"hotel_name": true, "check_in": true, "check_out": true, "booking_reference": true, "address": true},
+	types.DocumentTypeReservation:   {"venue_name": true, "reservation_date": true, "reservation_time": true, "booking_reference": true, "party_size": true},
+	types.DocumentTypeReceipt:       {"merchant": true, "amount": true, "currency": true, "transaction_date": true, "category": true},
+	types.DocumentTypeOther:         {"notes": true},
+}
+
 // FileStorage provides an abstraction over file storage backends
 type FileStorage interface {
 	Save(ctx context.Context, path string, reader io.Reader, size int64) error
@@ -48,7 +73,7 @@ type LocalFileStorage struct {
 
 // NewLocalFileStorage creates a new local file storage instance
 func NewLocalFileStorage(basePath string) *LocalFileStorage {
-	_ = os.MkdirAll(basePath, 0755)
+	_ = os.MkdirAll(basePath, 0700)
 	return &LocalFileStorage{basePath: basePath}
 }
 
@@ -77,7 +102,7 @@ func (s *LocalFileStorage) Save(ctx context.Context, path string, reader io.Read
 		return err
 	}
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -125,12 +150,30 @@ func (cr *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// Context key type for audit metadata
+type ctxKey string
+
+const (
+	// CtxKeyIPAddress is the context key for the client IP address
+	CtxKeyIPAddress ctxKey = "wallet_ip_address"
+	// CtxKeyUserAgent is the context key for the client User-Agent
+	CtxKeyUserAgent ctxKey = "wallet_user_agent"
+)
+
+// WithAuditMeta returns a context enriched with IP and User-Agent for audit logging.
+func WithAuditMeta(ctx context.Context, ip, userAgent string) context.Context {
+	ctx = context.WithValue(ctx, CtxKeyIPAddress, ip)
+	ctx = context.WithValue(ctx, CtxKeyUserAgent, userAgent)
+	return ctx
+}
+
 // WalletService handles wallet document business logic
 type WalletService struct {
 	store       store.WalletStore
 	tripStore   store.TripStore
 	fileStorage FileStorage
 	signingKey  []byte
+	auditStore  store.WalletAuditStore
 }
 
 // NewWalletService creates a new wallet service
@@ -141,6 +184,37 @@ func NewWalletService(walletStore store.WalletStore, tripStore store.TripStore, 
 		fileStorage: fileStorage,
 		signingKey:  []byte(signingKey),
 	}
+}
+
+// SetAuditStore sets the audit store for non-blocking audit logging.
+// This is optional; if not set, audit logging is silently skipped.
+func (s *WalletService) SetAuditStore(as store.WalletAuditStore) {
+	s.auditStore = as
+}
+
+// logAudit fires a non-blocking audit log entry. Failures are silently ignored
+// to avoid blocking the main operation.
+func (s *WalletService) logAudit(ctx context.Context, userID string, documentID *string, action types.WalletAuditAction) {
+	if s.auditStore == nil {
+		return
+	}
+
+	ip, _ := ctx.Value(CtxKeyIPAddress).(string)
+	ua, _ := ctx.Value(CtxKeyUserAgent).(string)
+
+	entry := &types.WalletAuditEntry{
+		UserID:     userID,
+		DocumentID: documentID,
+		Action:     action,
+		IPAddress:  ip,
+		UserAgent:  ua,
+	}
+
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.auditStore.LogAccess(bgCtx, entry)
+	}()
 }
 
 // UploadDocument handles uploading a document file and creating the database record
@@ -170,6 +244,33 @@ func (s *WalletService) UploadDocument(ctx context.Context, userID string, file 
 	}
 	if create.WalletType == types.WalletTypePersonal && create.TripID != nil {
 		create.TripID = nil // personal documents cannot have a trip ID
+	}
+
+	// Check storage quota before saving file
+	if create.WalletType == types.WalletTypePersonal {
+		usage, err := s.store.GetUserStorageUsage(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check storage quota: %w", err)
+		}
+		if usage+fileSize > MaxPersonalStorageBytes {
+			return nil, apperrors.ValidationFailed("storage_quota_exceeded",
+				fmt.Sprintf("personal storage quota exceeded: %d/%d bytes used", usage, MaxPersonalStorageBytes))
+		}
+	} else if create.WalletType == types.WalletTypeGroup && create.TripID != nil {
+		usage, err := s.store.GetTripStorageUsage(ctx, *create.TripID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check storage quota: %w", err)
+		}
+		if usage+fileSize > MaxGroupStorageBytes {
+			return nil, apperrors.ValidationFailed("storage_quota_exceeded",
+				fmt.Sprintf("trip storage quota exceeded: %d/%d bytes used", usage, MaxGroupStorageBytes))
+		}
+	}
+
+	// Validate and sanitize metadata
+	create.Metadata = sanitizeMetadata(create.DocumentType, create.Metadata)
+	if err := validateMetadataSize(create.Metadata); err != nil {
+		return nil, err
 	}
 
 	// Generate storage path: <walletType>/<userID>/<timestamp>_<filename>
@@ -216,9 +317,11 @@ func (s *WalletService) UploadDocument(ctx context.Context, userID string, file 
 	doc.CreatedAt = time.Now()
 	doc.UpdatedAt = time.Now()
 
+	s.logAudit(ctx, userID, &id, types.WalletAuditActionUpload)
+
 	return &types.WalletDocumentResponse{
 		WalletDocument: *doc,
-		DownloadURL:    s.GenerateSignedURL(storagePath, 1*time.Hour),
+		DownloadURL:    s.GenerateSignedURL(storagePath, 15*time.Minute),
 	}, nil
 }
 
@@ -250,9 +353,11 @@ func (s *WalletService) GetDocument(ctx context.Context, id, userID string) (*ty
 		}
 	}
 
+	s.logAudit(ctx, userID, &doc.ID, types.WalletAuditActionView)
+
 	return &types.WalletDocumentResponse{
 		WalletDocument: *doc,
-		DownloadURL:    s.GenerateSignedURL(doc.FilePath, 1*time.Hour),
+		DownloadURL:    s.GenerateSignedURL(doc.FilePath, 15*time.Minute),
 	}, nil
 }
 
@@ -268,7 +373,26 @@ func (s *WalletService) UpdateDocument(ctx context.Context, id, userID string, u
 		return nil, apperrors.AuthorizationFailed("forbidden", "you do not have permission to update this document")
 	}
 
-	return s.store.UpdateDocument(ctx, id, update)
+	// Validate and sanitize metadata on update
+	if update.Metadata != nil {
+		docType := doc.DocumentType
+		if update.DocumentType != nil {
+			docType = *update.DocumentType
+		}
+		update.Metadata = sanitizeMetadata(docType, update.Metadata)
+		if err := validateMetadataSize(update.Metadata); err != nil {
+			return nil, err
+		}
+	}
+
+	result, err := s.store.UpdateDocument(ctx, id, update)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logAudit(ctx, userID, &id, types.WalletAuditActionUpdate)
+
+	return result, nil
 }
 
 // DeleteDocument soft-deletes a document and removes the file
@@ -285,6 +409,8 @@ func (s *WalletService) DeleteDocument(ctx context.Context, id, userID string) e
 	if err := s.store.SoftDeleteDocument(ctx, id); err != nil {
 		return err
 	}
+
+	s.logAudit(ctx, userID, &id, types.WalletAuditActionDelete)
 
 	// Delete file from storage (best effort)
 	_ = s.fileStorage.Delete(ctx, doc.FilePath)
@@ -343,13 +469,87 @@ func (s *WalletService) ValidateSignedURL(token string) (string, error) {
 	return docPath, nil
 }
 
-// ServeFile validates a signed token and returns the local filesystem path
-func (s *WalletService) ServeFile(ctx context.Context, token string) (string, error) {
+// ServeFile validates a signed token, checks the document is not soft-deleted,
+// and returns the local filesystem path and MIME type for the response.
+func (s *WalletService) ServeFile(ctx context.Context, token string) (string, string, error) {
 	docPath, err := s.ValidateSignedURL(token)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return s.fileStorage.GetPath(ctx, docPath), nil
+
+	// Verify the document has not been soft-deleted since the URL was issued
+	doc, err := s.store.GetDocumentByFilePath(ctx, docPath)
+	if err != nil {
+		return "", "", apperrors.NotFound("wallet_document", "document has been deleted or does not exist")
+	}
+
+	return s.fileStorage.GetPath(ctx, docPath), doc.MimeType, nil
+}
+
+// sanitizeMetadata strips metadata keys that are not in the allowed set for the given document type.
+func sanitizeMetadata(docType types.DocumentType, metadata map[string]interface{}) map[string]interface{} {
+	if metadata == nil {
+		return map[string]interface{}{}
+	}
+	allowed, ok := allowedMetadataKeys[docType]
+	if !ok {
+		// Unknown document type — strip all keys
+		return map[string]interface{}{}
+	}
+	sanitized := make(map[string]interface{}, len(metadata))
+	for k, v := range metadata {
+		if allowed[k] {
+			sanitized[k] = v
+		}
+	}
+	return sanitized
+}
+
+// validateMetadataSize checks that the JSON-encoded metadata does not exceed MaxMetadataSize.
+func validateMetadataSize(metadata map[string]interface{}) error {
+	if len(metadata) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata for size check: %w", err)
+	}
+	if len(data) > MaxMetadataSize {
+		return apperrors.ValidationFailed("metadata_too_large",
+			fmt.Sprintf("metadata size %d exceeds maximum of %d bytes", len(data), MaxMetadataSize))
+	}
+	return nil
+}
+
+// PurgeExpiredDocuments hard-deletes soft-deleted documents older than retentionDays
+// and removes the associated files from storage.
+func (s *WalletService) PurgeExpiredDocuments(ctx context.Context, retentionDays int) (int, error) {
+	olderThan := time.Now().AddDate(0, 0, -retentionDays)
+	paths, err := s.store.PurgeDeletedDocuments(ctx, olderThan)
+	if err != nil {
+		return 0, fmt.Errorf("failed to purge deleted documents: %w", err)
+	}
+
+	for _, path := range paths {
+		_ = s.fileStorage.Delete(ctx, path)
+	}
+
+	return len(paths), nil
+}
+
+// DeleteAllUserDocuments hard-deletes all wallet documents for a user
+// and removes the associated files from storage. Intended for account deletion.
+func (s *WalletService) DeleteAllUserDocuments(ctx context.Context, userID string) (int, error) {
+	paths, err := s.store.HardDeleteAllByUser(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to hard-delete user documents: %w", err)
+	}
+
+	for _, path := range paths {
+		_ = s.fileStorage.Delete(ctx, path)
+	}
+
+	return len(paths), nil
 }
 
 var safeFilenameRe = regexp.MustCompile(`[^a-zA-Z0-9._\-]`)

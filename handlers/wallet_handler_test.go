@@ -70,9 +70,9 @@ func (m *MockWalletService) DeleteDocument(ctx context.Context, id, userID strin
 	return args.Error(0)
 }
 
-func (m *MockWalletService) ServeFile(ctx context.Context, token string) (string, error) {
+func (m *MockWalletService) ServeFile(ctx context.Context, token string) (string, string, error) {
 	args := m.Called(ctx, token)
-	return args.String(0), args.Error(1)
+	return args.String(0), args.String(1), args.Error(2)
 }
 
 // compile-time check
@@ -644,7 +644,7 @@ func TestServeFileHandler_EmptyToken(t *testing.T) {
 func TestServeFileHandler_InvalidToken(t *testing.T) {
 	handler, svc := setupWalletHandler()
 	svc.On("ServeFile", mock.Anything, "badtoken").
-		Return("", apperrors.ValidationFailed("invalid_token", "invalid signature"))
+		Return("", "", apperrors.ValidationFailed("invalid_token", "invalid signature"))
 
 	r := buildWalletRouter("/v1/wallet/files/:token", http.MethodGet, handler.ServeFileHandler, testUserID)
 	req, _ := http.NewRequest(http.MethodGet, "/v1/wallet/files/badtoken", nil)
@@ -658,7 +658,7 @@ func TestServeFileHandler_InvalidToken(t *testing.T) {
 func TestServeFileHandler_ExpiredToken(t *testing.T) {
 	handler, svc := setupWalletHandler()
 	svc.On("ServeFile", mock.Anything, "expiredtoken").
-		Return("", apperrors.ValidationFailed("token_expired", "download link has expired"))
+		Return("", "", apperrors.ValidationFailed("token_expired", "download link has expired"))
 
 	r := buildWalletRouter("/v1/wallet/files/:token", http.MethodGet, handler.ServeFileHandler, "")
 	req, _ := http.NewRequest(http.MethodGet, "/v1/wallet/files/expiredtoken", nil)

@@ -51,6 +51,7 @@ services:
       # Exclude these directories - they should be managed by the container
       - /app/tmp
       - /app/vendor
+      - wallet-files:/var/data/wallet-files
     env_file:
       - .env
     environment:
@@ -112,6 +113,8 @@ services:
       EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS: ${EVENT_SERVICE_PUBLISH_TIMEOUT_SECONDS:-5}
       EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS: ${EVENT_SERVICE_SUBSCRIBE_TIMEOUT_SECONDS:-10}
       EVENT_SERVICE_EVENT_BUFFER_SIZE: ${EVENT_SERVICE_EVENT_BUFFER_SIZE:-100}
+    volumes:
+      - wallet-files:/var/data/wallet-files
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,3 +124,4 @@ services:
 volumes:
   postgres_data:
   go-mod-cache:
+  wallet-files:
