@@ -224,6 +224,9 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 				tripRoutes.POST("/:id/weather/trigger",
 					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
 					deps.TripHandler.TriggerWeatherUpdateHandler)
+				tripRoutes.GET("/:id/weather",
+					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
+					deps.TripHandler.GetWeatherHandler)
 
 				// Trip Image Routes - ADMIN+ can manage, MEMBER can view
 				tripRoutes.POST("/:id/images",

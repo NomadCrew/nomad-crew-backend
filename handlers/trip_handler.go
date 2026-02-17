@@ -532,6 +532,77 @@ func (h *TripHandler) TriggerWeatherUpdateHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Weather update triggered successfully for trip " + tripID})
 }
 
+// GetWeatherHandler godoc
+// @Summary Get current weather for a trip
+// @Description Returns the current weather information for the specified trip's destination.
+// @Description If no cached weather is available, triggers an immediate fetch and retries.
+// @Tags trips,weather
+// @Produce json
+// @Param id path string true "Trip ID"
+// @Success 200 {object} types.WeatherInfo "Current weather information"
+// @Failure 400 {object} types.ErrorResponse "Bad request - Invalid trip ID"
+// @Failure 401 {object} types.ErrorResponse "Unauthorized - User not logged in"
+// @Failure 403 {object} types.ErrorResponse "Forbidden - User not authorized or trip has no destination"
+// @Failure 404 {object} types.ErrorResponse "Not found - Trip not found"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Router /trips/{id}/weather [get]
+// @Security BearerAuth
+func (h *TripHandler) GetWeatherHandler(c *gin.Context) {
+	tripID := c.Param("id")
+	userID := getUserIDFromContext(c)
+
+	if h.weatherService == nil {
+		_ = c.Error(apperrors.InternalServerError("Weather service is not configured."))
+		return
+	}
+
+	// Try to get cached weather first
+	weather, err := h.weatherService.GetWeather(c.Request.Context(), tripID)
+	if err == nil && weather != nil {
+		c.JSON(http.StatusOK, weather)
+		return
+	}
+
+	// No cached weather — fetch trip coords and trigger an immediate update
+	trip, err := h.tripModel.GetTripByID(c.Request.Context(), tripID, userID)
+	if err != nil {
+		h.handleModelError(c, err)
+		return
+	}
+
+	if trip.DestinationLatitude == 0 && trip.DestinationLongitude == 0 {
+		_ = c.Error(apperrors.Forbidden("no_destination", "Trip has no destination set for weather updates."))
+		return
+	}
+
+	if err := h.weatherService.TriggerImmediateUpdate(c.Request.Context(), tripID, trip.DestinationLatitude, trip.DestinationLongitude); err != nil {
+		appErr, ok := err.(*apperrors.AppError)
+		if !ok {
+			appErr = apperrors.InternalServerError("Failed to fetch weather data")
+		}
+		_ = c.Error(appErr)
+		return
+	}
+
+	// Retry after triggering update
+	weather, err = h.weatherService.GetWeather(c.Request.Context(), tripID)
+	if err != nil {
+		appErr, ok := err.(*apperrors.AppError)
+		if !ok {
+			appErr = apperrors.InternalServerError("Failed to retrieve weather after update")
+		}
+		_ = c.Error(appErr)
+		return
+	}
+
+	if weather == nil {
+		_ = c.Error(apperrors.InternalServerError("Weather data unavailable after update"))
+		return
+	}
+
+	c.JSON(http.StatusOK, weather)
+}
+
 // UploadTripImage godoc
 // @Summary Upload a trip image
 // @Description Uploads an image for a specific trip.
