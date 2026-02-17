@@ -177,6 +177,11 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 		// Apply rate limiting to prevent brute force account creation
 		v1.POST("/users/onboard", authRateLimiter, deps.UserHandler.OnboardUser)
 
+		// Public wallet file serving — HMAC-signed token is the credential (time-limited, validates path)
+		if deps.WalletHandler != nil {
+			v1.GET("/wallet/files/:token", deps.WalletHandler.ServeFileHandler)
+		}
+
 		// --- Authenticated Routes ---
 		// Create user resolver adapter
 		userResolver := &userServiceAdapter{userService: deps.UserService}
@@ -394,7 +399,6 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					walletRoutes.GET("/documents/:docID", deps.WalletHandler.GetDocumentHandler)
 					walletRoutes.PUT("/documents/:docID", deps.WalletHandler.UpdateDocumentHandler)
 					walletRoutes.DELETE("/documents/:docID", deps.WalletHandler.DeleteDocumentHandler)
-					walletRoutes.GET("/files/:token", deps.WalletHandler.ServeFileHandler)
 				}
 			}
 
