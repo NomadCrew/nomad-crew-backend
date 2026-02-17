@@ -58,20 +58,8 @@ type WeatherInfo struct {
 	WindGustsMS         float64   `json:"windGustsMS"`
 }
 
-type WeatherServiceError struct {
-	Message string `json:"message"`
-	Type    string `json:"type"`
-}
-
 type WeatherServiceInterface interface {
 	GetWeather(ctx context.Context, tripID string, latitude, longitude float64) (*WeatherInfo, error)
-}
-
-type HourlyWeather struct {
-	Timestamp     time.Time `json:"timestamp"`
-	Temperature2m float64   `json:"temperature_2m"`
-	WeatherCode   int       `json:"weather_code"`
-	Precipitation float64   `json:"precipitation"`
 }
 
 // GetWeatherDescription converts a WMO Weather interpretation code to a human-readable description

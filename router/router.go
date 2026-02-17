@@ -222,9 +222,11 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
 					deps.TripHandler.GetTripWithMembersHandler)
 				tripRoutes.POST("/:id/weather/trigger",
+					authRateLimiter,
 					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
 					deps.TripHandler.TriggerWeatherUpdateHandler)
 				tripRoutes.GET("/:id/weather",
+					authRateLimiter,
 					middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
 					deps.TripHandler.GetWeatherHandler)
 

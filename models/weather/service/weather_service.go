@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -65,7 +66,8 @@ func (s *WeatherService) fetchCurrentWeather(ctx context.Context, lat, lon float
 	}
 
 	var apiResp types.OpenMeteoCurrentWeatherResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+	// Limit response body to 1 MB to guard against oversized responses
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode weather response: %w", err)
 	}
 
