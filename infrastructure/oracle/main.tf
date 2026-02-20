@@ -146,6 +146,10 @@ resource "oci_core_security_list" "main" {
     }
   }
 
+  # Coolify Dashboard (port 8000) — NOT exposed publicly.
+  # Access via SSH tunnel: ssh -L 8000:localhost:8000 ubuntu@84.235.242.52
+  # Then open http://localhost:8000 in your browser.
+
   # ICMP Type 3 Code 4 (Path MTU Discovery)
   ingress_security_rules {
     protocol  = "1" # ICMP
@@ -221,7 +225,7 @@ resource "oci_core_instance" "backend" {
   }
 
   # Prevent accidental deletion
-  preserve_boot_volume = false
+  preserve_boot_volume = true
 
   # Use standard launch options for ARM
   launch_options {

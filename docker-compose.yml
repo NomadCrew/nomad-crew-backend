@@ -1,11 +1,11 @@
 services:
   # Local PostgreSQL for development (optional - you can use Neon instead)
   postgres:
-    image: postgres:latest
+    image: postgres:17-alpine
     environment:
       POSTGRES_DB: nomadcrew
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin123
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin123}
     ports:
       - "5432:5432"
     volumes:
@@ -20,7 +20,7 @@ services:
 
   # Local Redis for development (optional - you can use Upstash instead)
   redis:
-    image: redis:latest
+    image: redis:7-alpine
     ports:
       - "6379:6379"
     command: redis-server --requirepass ${REDIS_PASSWORD:-redispass}
@@ -67,51 +67,38 @@ services:
     restart: unless-stopped
     # No depends_on - uses external Neon PostgreSQL and Upstash Redis
 
-  # Production API (unchanged from original)
+  # Production API — secrets are runtime env vars only, never build args
   api:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-development}
-        JWT_SECRET_KEY: ${JWT_SECRET_KEY:-devjwtsecretkey}
-        DB_PASSWORD: ${DB_PASSWORD:-admin123}
-        REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
-        RESEND_API_KEY: ${RESEND_API_KEY:-re_development_fake_key_123456789012345678901234567890123456789012345}
-        GEOAPIFY_KEY: ${GEOAPIFY_KEY}
-        PEXELS_API_KEY: ${PEXELS_API_KEY}
-        SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-        SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
-        SUPABASE_URL: ${SUPABASE_URL}
-        SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
-        EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
-        EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NomadCrew}
-        FRONTEND_URL: ${FRONTEND_URL:-https://nomadcrew.uk}
-        ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://10.0.2.2:8080,http://localhost:19006,http://10.0.2.2:19006,exp://10.0.2.2:8081}
+        VERSION: ${VERSION:-dev}
     ports:
       - "8080:8080"
     environment:
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-admin123}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       DB_NAME: ${DB_NAME:-nomadcrew}
       DB_SSL_MODE: ${DB_SSL_MODE:-disable}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-devjwtsecretkey}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       PORT: ${PORT:-8080}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY must be set}
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL must be set}
       PEXELS_API_KEY: ${PEXELS_API_KEY}
       REDIS_ADDRESS: "redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
       REDIS_DB: ${REDIS_DB:-0}
-      LOG_LEVEL: ${LOG_LEVEL:-debug}
-      SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-development}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://10.0.2.2:8080,http://localhost:19006,http://10.0.2.2:19006,exp://10.0.2.2:8081}
-      RESEND_API_KEY: ${RESEND_API_KEY:-re_development_fake_key_123456789012345678901234567890123456789012345}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SERVER_ENVIRONMENT: ${SERVER_ENVIRONMENT:-production}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://nomadcrew.uk}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY must be set}
       GEOAPIFY_KEY: ${GEOAPIFY_KEY}
-      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
-      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:?SUPABASE_SERVICE_KEY must be set}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:?SUPABASE_JWT_SECRET must be set}
       EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-welcome@nomadcrew.uk}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-NomadCrew}
       FRONTEND_URL: ${FRONTEND_URL:-https://nomadcrew.uk}

@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ ARG SERVER_ENVIRONMENT=development
 RUN CGO_ENABLED=0 go build -ldflags "-X main.Version=${VERSION} -X main.Environment=${SERVER_ENVIRONMENT}" -o nomadcrew-backend
 
 # Use a small image for the final container
-FROM alpine:latest
+FROM alpine:3.21
 
 WORKDIR /app
 
