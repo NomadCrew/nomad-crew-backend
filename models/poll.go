@@ -556,6 +556,11 @@ func validatePollCreate(req *types.PollCreate) error {
 		validationErrors = append(validationErrors, fmt.Sprintf("invalid poll type: %s", req.PollType))
 	}
 
+	// Schedule polls always allow multiple votes (Doodle-style availability)
+	if req.PollType == types.PollTypeSchedule {
+		req.AllowMultipleVotes = true
+	}
+
 	// Determine option count from whichever field is populated
 	optionCount := len(req.Options)
 	if len(req.RichOptions) > 0 {
@@ -565,13 +570,24 @@ func validatePollCreate(req *types.PollCreate) error {
 	if optionCount < 2 {
 		validationErrors = append(validationErrors, "at least 2 options are required")
 	}
-	if optionCount > 20 {
-		validationErrors = append(validationErrors, "maximum 20 options allowed")
+	maxOptions := 20
+	if req.PollType == types.PollTypeSchedule {
+		maxOptions = 31 // schedule polls can span up to a month
+	}
+	if optionCount > maxOptions {
+		validationErrors = append(validationErrors, fmt.Sprintf("maximum %d options allowed", maxOptions))
 	}
 
 	// Binary polls must have exactly 2 options
 	if req.PollType == types.PollTypeBinary && optionCount != 2 {
 		validationErrors = append(validationErrors, "binary polls must have exactly 2 options")
+	}
+
+	// Vibe check polls: 2-10 options representing scale points
+	if req.PollType == types.PollTypeVibeCheck {
+		if optionCount < 2 || optionCount > 10 {
+			validationErrors = append(validationErrors, "vibe check polls must have 2-10 scale points")
+		}
 	}
 
 	if req.DurationMinutes != nil {
@@ -591,8 +607,8 @@ func validatePollCreate(req *types.PollCreate) error {
 			if len(opt) > 200 {
 				validationErrors = append(validationErrors, fmt.Sprintf("option %d exceeds 200 characters", i+1))
 			}
-			// Skip duplicate check for emoji polls (same emoji text is valid)
-			if req.PollType != types.PollTypeEmoji {
+			// Skip duplicate check for emoji and vibe_check polls
+			if req.PollType != types.PollTypeEmoji && req.PollType != types.PollTypeVibeCheck {
 				lower := strings.ToLower(trimmed)
 				if lower != "" && seen[lower] {
 					validationErrors = append(validationErrors, fmt.Sprintf("option %d is a duplicate", i+1))
