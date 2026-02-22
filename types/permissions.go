@@ -29,6 +29,7 @@ const (
 	ResourceChat       Resource = "chat"
 	ResourceTodo       Resource = "todo"
 	ResourceExpense    Resource = "expense"
+	ResourceSettlement Resource = "settlement"
 	ResourceLocation   Resource = "location"
 	ResourcePoll       Resource = "poll"
 )
@@ -57,7 +58,7 @@ func (a Action) IsValid() bool {
 func (r Resource) IsValid() bool {
 	switch r {
 	case ResourceTrip, ResourceMember, ResourceInvitation,
-		ResourceChat, ResourceTodo, ResourceExpense, ResourceLocation, ResourcePoll:
+		ResourceChat, ResourceTodo, ResourceExpense, ResourceSettlement, ResourceLocation, ResourcePoll:
 		return true
 	}
 	return false

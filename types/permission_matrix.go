@@ -54,6 +54,12 @@ var permissionMatrix = map[Resource]map[Action]PermissionRule{
 		ActionUpdate: {MinRole: rolePtr(MemberRoleAdmin), OwnerOrMinRole: true},         // ADMIN+ can update any, MEMBER can update own
 		ActionDelete: {MinRole: rolePtr(MemberRoleAdmin), OwnerOrMinRole: true},         // ADMIN+ can delete any, MEMBER can delete own
 	},
+	ResourceSettlement: {
+		ActionCreate: {MinRole: rolePtr(MemberRoleMember)},                              // Any member can create settlements
+		ActionRead:   {MinRole: rolePtr(MemberRoleMember)},                              // Any member can read settlements
+		ActionUpdate: {MinRole: rolePtr(MemberRoleAdmin)},                               // ADMIN+ can settle
+		ActionDelete: {MinRole: rolePtr(MemberRoleAdmin)},                               // ADMIN+ can delete settlements
+	},
 	ResourceLocation: {
 		ActionCreate: {MinRole: rolePtr(MemberRoleMember)},              // Any member can share location
 		ActionRead:   {MinRole: rolePtr(MemberRoleMember)},              // Any member can view locations (if sharing enabled)

@@ -21,6 +21,7 @@ type Querier interface {
 	CountActiveTokens(ctx context.Context, userID string) (int64, error)
 	CountAllNotifications(ctx context.Context, userID string) (int64, error)
 	CountCompletedTodosByTrip(ctx context.Context, tripID string) (int64, error)
+	CountExpensesByTrip(ctx context.Context, tripID string) (int64, error)
 	CountPendingInvitationsForTrip(ctx context.Context, tripID string) (int64, error)
 	CountPollsByTrip(ctx context.Context, tripID string) (int64, error)
 	CountTodosByTrip(ctx context.Context, tripID string) (int64, error)
@@ -31,6 +32,10 @@ type Querier interface {
 	// Chat Operations
 	CreateChatGroup(ctx context.Context, arg CreateChatGroupParams) (string, error)
 	CreateChatMessage(ctx context.Context, arg CreateChatMessageParams) (string, error)
+	// Expense Operations
+	CreateExpense(ctx context.Context, arg CreateExpenseParams) (*Expense, error)
+	CreateExpenseActivity(ctx context.Context, arg CreateExpenseActivityParams) error
+	CreateExpenseParticipant(ctx context.Context, arg CreateExpenseParticipantParams) (*ExpenseParticipant, error)
 	// Trip Invitations Operations
 	CreateInvitation(ctx context.Context, arg CreateInvitationParams) (string, error)
 	// Locations Operations
@@ -42,6 +47,7 @@ type Querier interface {
 	// Poll Operations
 	CreatePoll(ctx context.Context, arg CreatePollParams) (*Poll, error)
 	CreatePollOption(ctx context.Context, arg CreatePollOptionParams) (*PollOption, error)
+	CreateSettlement(ctx context.Context, arg CreateSettlementParams) (*Settlement, error)
 	// Todos Operations
 	CreateTodo(ctx context.Context, arg CreateTodoParams) (string, error)
 	// Trips CRUD Operations
@@ -53,6 +59,7 @@ type Querier interface {
 	// Deactivates a specific token (e.g., on logout)
 	DeactivatePushToken(ctx context.Context, arg DeactivatePushTokenParams) error
 	DeleteAllNotificationsByUser(ctx context.Context, userID string) error
+	DeleteExpenseParticipants(ctx context.Context, expenseID string) error
 	DeleteExpiredInvitations(ctx context.Context) error
 	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) (string, error)
 	DeleteOldNotifications(ctx context.Context) error
@@ -70,6 +77,8 @@ type Querier interface {
 	GetChatMessages(ctx context.Context, arg GetChatMessagesParams) ([]*GetChatMessagesRow, error)
 	// Get messages after a specific timestamp (for real-time updates)
 	GetChatMessagesAfter(ctx context.Context, arg GetChatMessagesAfterParams) ([]*GetChatMessagesAfterRow, error)
+	GetExpense(ctx context.Context, arg GetExpenseParams) (*Expense, error)
+	GetExpenseOwner(ctx context.Context, arg GetExpenseOwnerParams) (*GetExpenseOwnerRow, error)
 	GetInvitation(ctx context.Context, id string) (*GetInvitationRow, error)
 	GetInvitationByToken(ctx context.Context, token *string) (*GetInvitationByTokenRow, error)
 	GetInvitationsByTripID(ctx context.Context, tripID string) ([]*GetInvitationsByTripIDRow, error)
@@ -82,8 +91,14 @@ type Querier interface {
 	GetNotification(ctx context.Context, id string) (*Notification, error)
 	GetPendingInvitationsForUser(ctx context.Context, inviteeEmail string) ([]*GetPendingInvitationsForUserRow, error)
 	GetPoll(ctx context.Context, arg GetPollParams) (*Poll, error)
+	GetReadNotifications(ctx context.Context, arg GetReadNotificationsParams) ([]*Notification, error)
+	GetSettlement(ctx context.Context, arg GetSettlementParams) (*Settlement, error)
 	GetTodo(ctx context.Context, id string) (*GetTodoRow, error)
 	GetTrip(ctx context.Context, id string) (*GetTripRow, error)
+	// Computes per-member net balance for a trip:
+	//   net = (total they paid) - (total their shares) - (settlements they sent) + (settlements they received)
+	//   Positive = they are owed money. Negative = they owe money.
+	GetTripBalances(ctx context.Context, tripID string) ([]*GetTripBalancesRow, error)
 	// Get a trip that a specific user is a member of
 	GetTripForMember(ctx context.Context, arg GetTripForMemberParams) (*GetTripForMemberRow, error)
 	// Get latest locations for all members of a trip with user info
@@ -91,7 +106,6 @@ type Querier interface {
 	GetTripMembers(ctx context.Context, tripID string) ([]*GetTripMembersRow, error)
 	GetTripMembersForUpdate(ctx context.Context, tripID string) ([]*GetTripMembersForUpdateRow, error)
 	GetTripStatus(ctx context.Context, id string) (*GetTripStatusRow, error)
-	GetReadNotifications(ctx context.Context, arg GetReadNotificationsParams) ([]*Notification, error)
 	GetUnreadNotifications(ctx context.Context, arg GetUnreadNotificationsParams) ([]*Notification, error)
 	// Get the latest location for a user in a specific trip
 	GetUserLocationInTrip(ctx context.Context, arg GetUserLocationInTripParams) (*GetUserLocationInTripRow, error)
@@ -108,16 +122,22 @@ type Querier interface {
 	// Marks a token as invalid (e.g., when Expo reports it as invalid)
 	InvalidateToken(ctx context.Context, token string) error
 	IsUserMember(ctx context.Context, arg IsUserMemberParams) (bool, error)
+	ListExpenseActivityByTrip(ctx context.Context, arg ListExpenseActivityByTripParams) ([]*ExpenseActivity, error)
+	ListExpenseParticipants(ctx context.Context, expenseID string) ([]*ExpenseParticipant, error)
+	ListExpensesByTrip(ctx context.Context, arg ListExpensesByTripParams) ([]*Expense, error)
 	// Get all trips where user is a member (active membership)
 	ListMemberTrips(ctx context.Context, userID string) ([]*ListMemberTripsRow, error)
+	ListParticipantsByExpenseIDs(ctx context.Context, dollar_1 []string) ([]*ExpenseParticipant, error)
 	ListPollOptions(ctx context.Context, pollID string) ([]*PollOption, error)
 	ListPollsByTrip(ctx context.Context, arg ListPollsByTripParams) ([]*Poll, error)
+	ListSettlementsByTrip(ctx context.Context, arg ListSettlementsByTripParams) ([]*Settlement, error)
 	ListTodosByTrip(ctx context.Context, tripID string) ([]*ListTodosByTripRow, error)
 	ListTodosByUser(ctx context.Context, createdBy string) ([]*ListTodosByUserRow, error)
 	ListUserProfiles(ctx context.Context, arg ListUserProfilesParams) ([]*ListUserProfilesRow, error)
 	ListVotesByPoll(ctx context.Context, pollID string) ([]*PollVote, error)
 	MarkAllNotificationsRead(ctx context.Context, userID string) error
 	MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) (string, error)
+	MarkSettlementSettled(ctx context.Context, arg MarkSettlementSettledParams) (*Settlement, error)
 	// Push Token Operations
 	// Upserts a push token for a user (updates if already exists)
 	RegisterPushToken(ctx context.Context, arg RegisterPushTokenParams) (*UserPushToken, error)
@@ -131,10 +151,13 @@ type Querier interface {
 	// Results are ordered by relevance: exact prefix matches first, then partial matches
 	SearchUserProfiles(ctx context.Context, arg SearchUserProfilesParams) ([]*SearchUserProfilesRow, error)
 	SoftDeleteChatMessage(ctx context.Context, arg SoftDeleteChatMessageParams) error
+	SoftDeleteExpense(ctx context.Context, arg SoftDeleteExpenseParams) error
 	SoftDeleteLocation(ctx context.Context, id string) error
 	SoftDeletePoll(ctx context.Context, arg SoftDeletePollParams) error
+	SoftDeleteSettlement(ctx context.Context, id string) error
 	SoftDeleteTodo(ctx context.Context, id string) error
 	SoftDeleteTrip(ctx context.Context, id string) error
+	UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (*Expense, error)
 	UpdateInvitationStatus(ctx context.Context, arg UpdateInvitationStatusParams) error
 	UpdateLastReadMessage(ctx context.Context, arg UpdateLastReadMessageParams) error
 	UpdateLocation(ctx context.Context, arg UpdateLocationParams) error

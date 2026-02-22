@@ -51,6 +51,8 @@ type Dependencies struct {
 	FeedbackHandler *handlers.FeedbackHandler
 	// Wallet handler for document management
 	WalletHandler *handlers.WalletHandler
+	// Expense handler for expense splitting
+	ExpenseHandler *handlers.ExpenseHandler
 }
 
 // userServiceAdapter adapts the UserService to implement the middleware.UserResolver interface.
@@ -386,6 +388,48 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 						walletTripRoutes.GET("/documents",
 							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceTrip, nil),
 							deps.WalletHandler.ListGroupDocumentsHandler)
+					}
+				}
+
+				// Expense Routes - expense splitting within a trip
+				expenseRoutes := tripRoutes.Group("/:id/expenses")
+				{
+					if deps.ExpenseHandler != nil {
+						expenseRoutes.POST("",
+							middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceExpense, nil),
+							deps.ExpenseHandler.CreateExpenseHandler)
+						expenseRoutes.GET("",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceExpense, nil),
+							deps.ExpenseHandler.ListExpensesHandler)
+						expenseRoutes.GET("/balances",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceExpense, nil),
+							deps.ExpenseHandler.GetBalancesHandler)
+						expenseRoutes.GET("/simplified-debts",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceExpense, nil),
+							deps.ExpenseHandler.GetSimplifiedDebtsHandler)
+						expenseRoutes.GET("/:expenseId",
+							middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceExpense, nil),
+							deps.ExpenseHandler.GetExpenseHandler)
+						expenseRoutes.PUT("/:expenseId",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.ExpenseHandler.UpdateExpenseHandler)
+						expenseRoutes.DELETE("/:expenseId",
+							middleware.RequireTripMembership(deps.TripModel),
+							deps.ExpenseHandler.DeleteExpenseHandler)
+
+						// Settlement routes nested under expenses
+						settlementRoutes := expenseRoutes.Group("/settlements")
+						{
+							settlementRoutes.POST("",
+								middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourceSettlement, nil),
+								deps.ExpenseHandler.CreateSettlementHandler)
+							settlementRoutes.GET("",
+								middleware.RequirePermission(deps.TripModel, types.ActionRead, types.ResourceSettlement, nil),
+								deps.ExpenseHandler.ListSettlementsHandler)
+							settlementRoutes.PUT("/:settlementId/settle",
+								middleware.RequirePermission(deps.TripModel, types.ActionUpdate, types.ResourceSettlement, nil),
+								deps.ExpenseHandler.SettleSettlementHandler)
+						}
 					}
 				}
 			}

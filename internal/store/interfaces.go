@@ -204,6 +204,33 @@ type PollStore interface {
 	BeginTx(ctx context.Context) (types.DatabaseTransaction, error)
 }
 
+// ExpenseStore handles expense-related data operations
+type ExpenseStore interface {
+	CreateExpense(ctx context.Context, params types.CreateExpenseStoreParams) (*types.Expense, error)
+	GetExpense(ctx context.Context, id, tripID string) (*types.Expense, error)
+	ListExpensesByTrip(ctx context.Context, tripID string, limit, offset int32) ([]*types.Expense, error)
+	CountExpensesByTrip(ctx context.Context, tripID string) (int64, error)
+	UpdateExpense(ctx context.Context, params types.UpdateExpenseStoreParams) (*types.Expense, error)
+	SoftDeleteExpense(ctx context.Context, id, tripID string) error
+	GetExpenseOwner(ctx context.Context, id, tripID string) (string, error)
+
+	CreateExpenseParticipant(ctx context.Context, params types.CreateParticipantStoreParams) (*types.ExpenseParticipant, error)
+	ListExpenseParticipants(ctx context.Context, expenseID string) ([]*types.ExpenseParticipant, error)
+	ListParticipantsByExpenseIDs(ctx context.Context, expenseIDs []string) ([]*types.ExpenseParticipant, error)
+	DeleteExpenseParticipants(ctx context.Context, expenseID string) error
+	ReplaceExpenseParticipants(ctx context.Context, expenseID string, params []types.CreateParticipantStoreParams) ([]types.ExpenseParticipant, error)
+
+	CreateSettlement(ctx context.Context, params types.CreateSettlementStoreParams) (*types.Settlement, error)
+	GetSettlement(ctx context.Context, id, tripID string) (*types.Settlement, error)
+	MarkSettlementSettled(ctx context.Context, id, tripID string) (*types.Settlement, error)
+	ListSettlementsByTrip(ctx context.Context, tripID string, limit, offset int32) ([]*types.Settlement, error)
+	SoftDeleteSettlement(ctx context.Context, id string) error
+
+	GetTripBalances(ctx context.Context, tripID string) ([]*types.MemberBalance, error)
+
+	CreateExpenseActivity(ctx context.Context, params types.CreateExpenseActivityStoreParams) error
+}
+
 // WalletStore handles wallet document data operations
 type WalletStore interface {
 	CreateDocument(ctx context.Context, doc *types.WalletDocument) (string, error)

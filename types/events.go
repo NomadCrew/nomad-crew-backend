@@ -40,6 +40,7 @@ const (
 	CategoryMember   = "MEMBER"
 	CategoryChat     = "CHAT"
 	CategoryPoll     = "POLL"
+	CategoryExpense  = "EXPENSE"
 )
 
 const (
@@ -81,6 +82,13 @@ const (
 	EventTypePollVoteRemoved EventType = CategoryPoll + "_VOTE_REMOVED"
 	EventTypePollClosed      EventType = CategoryPoll + "_CLOSED"
 	EventTypePollDeleted     EventType = CategoryPoll + "_DELETED"
+
+	// Expense events
+	EventTypeExpenseCreated    EventType = CategoryExpense + "_CREATED"
+	EventTypeExpenseUpdated    EventType = CategoryExpense + "_UPDATED"
+	EventTypeExpenseDeleted    EventType = CategoryExpense + "_DELETED"
+	EventTypeSettlementCreated EventType = CategoryExpense + "_SETTLEMENT_CREATED"
+	EventTypeSettlementSettled EventType = CategoryExpense + "_SETTLEMENT_SETTLED"
 
 	// Chat events
 	EventTypeChatGroupCreated       EventType = CategoryChat + "_GROUP_CREATED"

@@ -532,18 +532,44 @@ type ChatMessageReaction struct {
 }
 
 type Expense struct {
+	ID           string             `db:"id" json:"id"`
+	TripID       string             `db:"trip_id" json:"trip_id"`
+	UserID       string             `db:"user_id" json:"user_id"`
+	Description  *string            `db:"description" json:"description"`
+	Category     *string            `db:"category" json:"category"`
+	CreatedAt    pgtype.Timestamp   `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamp   `db:"updated_at" json:"updated_at"`
+	DeletedAt    pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	PaidByUserID string             `db:"paid_by_user_id" json:"paid_by_user_id"`
+	AmountMinor  int64              `db:"amount_minor" json:"amount_minor"`
+	CurrencyCode string             `db:"currency_code" json:"currency_code"`
+	Title        *string            `db:"title" json:"title"`
+	SplitType    string             `db:"split_type" json:"split_type"`
+	OccurredAt   pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+	ReceiptUrl   *string            `db:"receipt_url" json:"receipt_url"`
+	Notes        *string            `db:"notes" json:"notes"`
+}
+
+type ExpenseActivity struct {
+	ID        string             `db:"id" json:"id"`
+	ExpenseID *string            `db:"expense_id" json:"expense_id"`
+	TripID    string             `db:"trip_id" json:"trip_id"`
+	UserID    string             `db:"user_id" json:"user_id"`
+	Action    string             `db:"action" json:"action"`
+	Details   []byte             `db:"details" json:"details"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ExpenseParticipant struct {
 	ID            string             `db:"id" json:"id"`
-	TripID        string             `db:"trip_id" json:"trip_id"`
+	ExpenseID     string             `db:"expense_id" json:"expense_id"`
 	UserID        string             `db:"user_id" json:"user_id"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
-	Description   *string            `db:"description" json:"description"`
-	Category      *string            `db:"category" json:"category"`
-	PaymentMethod *string            `db:"payment_method" json:"payment_method"`
-	Receipt       *string            `db:"receipt" json:"receipt"`
-	Status        *string            `db:"status" json:"status"`
-	CreatedAt     pgtype.Timestamp   `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamp   `db:"updated_at" json:"updated_at"`
-	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	ShareMinor    int64              `db:"share_minor" json:"share_minor"`
+	ShareType     string             `db:"share_type" json:"share_type"`
+	PercentageBps *int32             `db:"percentage_bps" json:"percentage_bps"`
+	Shares        *int32             `db:"shares" json:"shares"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Location struct {
@@ -606,6 +632,21 @@ type PollVote struct {
 	OptionID  string             `db:"option_id" json:"option_id"`
 	UserID    string             `db:"user_id" json:"user_id"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Settlement struct {
+	ID              string             `db:"id" json:"id"`
+	TripID          string             `db:"trip_id" json:"trip_id"`
+	FromUserID      string             `db:"from_user_id" json:"from_user_id"`
+	ToUserID        string             `db:"to_user_id" json:"to_user_id"`
+	AmountMinor     int64              `db:"amount_minor" json:"amount_minor"`
+	CurrencyCode    string             `db:"currency_code" json:"currency_code"`
+	SettledAt       pgtype.Timestamptz `db:"settled_at" json:"settled_at"`
+	Note            *string            `db:"note" json:"note"`
+	CreatedByUserID string             `db:"created_by_user_id" json:"created_by_user_id"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt       pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
 type Todo struct {
@@ -687,4 +728,21 @@ type UserPushToken struct {
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	LastUsedAt pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`
+}
+
+type WalletDocument struct {
+	ID           string             `db:"id" json:"id"`
+	UserID       string             `db:"user_id" json:"user_id"`
+	TripID       *string            `db:"trip_id" json:"trip_id"`
+	WalletType   interface{}        `db:"wallet_type" json:"wallet_type"`
+	DocumentType interface{}        `db:"document_type" json:"document_type"`
+	Name         string             `db:"name" json:"name"`
+	Description  *string            `db:"description" json:"description"`
+	FilePath     string             `db:"file_path" json:"file_path"`
+	FileSize     int64              `db:"file_size" json:"file_size"`
+	MimeType     string             `db:"mime_type" json:"mime_type"`
+	Metadata     []byte             `db:"metadata" json:"metadata"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt    pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }

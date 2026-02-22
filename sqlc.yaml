@@ -11,6 +11,8 @@ sql:
       - "db/migrations/000007_add_polls.up.sql"
       - "db/migrations/000008_add_poll_expiration.up.sql"
       - "db/migrations/000011_extend_notification_types.up.sql"
+      - "db/migrations/000012_wallet_documents.up.sql"
+      - "db/migrations/000014_expense_splitting.up.sql"
     gen:
       go:
         package: "sqlc"
