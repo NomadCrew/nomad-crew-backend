@@ -2,6 +2,7 @@ package sqlcadapter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -31,10 +32,10 @@ func NewSqlcPollStore(pool *pgxpool.Pool) internal_store.PollStore {
 func (s *sqlcPollStore) CreatePoll(ctx context.Context, poll *types.Poll) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO polls (trip_id, question, poll_type, is_blind, allow_multiple_votes, created_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`,
-		poll.TripID, poll.Question, poll.AllowMultipleVotes, poll.CreatedBy, poll.ExpiresAt,
+		poll.TripID, poll.Question, poll.PollType, poll.IsBlind, poll.AllowMultipleVotes, poll.CreatedBy, poll.ExpiresAt,
 	).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("failed to create poll: %w", err)
@@ -54,20 +55,27 @@ func (s *sqlcPollStore) CreatePollWithOptions(ctx context.Context, poll *types.P
 
 	var pollID string
 	err = tx.QueryRow(ctx,
-		`INSERT INTO polls (trip_id, question, allow_multiple_votes, created_by, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO polls (trip_id, question, poll_type, is_blind, allow_multiple_votes, created_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`,
-		poll.TripID, poll.Question, poll.AllowMultipleVotes, poll.CreatedBy, poll.ExpiresAt,
+		poll.TripID, poll.Question, poll.PollType, poll.IsBlind, poll.AllowMultipleVotes, poll.CreatedBy, poll.ExpiresAt,
 	).Scan(&pollID)
 	if err != nil {
 		return "", fmt.Errorf("failed to create poll: %w", err)
 	}
 
 	for _, opt := range options {
+		var metadataJSON []byte
+		if opt.OptionMetadata != nil {
+			metadataJSON, err = json.Marshal(opt.OptionMetadata)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal option metadata: %w", err)
+			}
+		}
 		_, err = tx.Exec(ctx,
-			`INSERT INTO poll_options (poll_id, text, position, created_by)
-			VALUES ($1, $2, $3, $4)`,
-			pollID, opt.Text, opt.Position, opt.CreatedBy,
+			`INSERT INTO poll_options (poll_id, text, position, created_by, option_metadata)
+			VALUES ($1, $2, $3, $4, $5)`,
+			pollID, opt.Text, opt.Position, opt.CreatedBy, metadataJSON,
 		)
 		if err != nil {
 			return "", fmt.Errorf("failed to create poll option: %w", err)
@@ -84,7 +92,7 @@ func (s *sqlcPollStore) CreatePollWithOptions(ctx context.Context, poll *types.P
 // GetPoll retrieves a poll by ID and trip ID (IDOR prevention: always requires trip_id)
 func (s *sqlcPollStore) GetPoll(ctx context.Context, id, tripID string) (*types.Poll, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT id, trip_id, question, allow_multiple_votes, status, created_by,
+		`SELECT id, trip_id, question, poll_type, is_blind, allow_multiple_votes, status, created_by,
 		        closed_by, closed_at, expires_at, created_at, updated_at
 		FROM polls
 		WHERE id = $1 AND trip_id = $2 AND deleted_at IS NULL`,
@@ -108,7 +116,7 @@ func (s *sqlcPollStore) ListPolls(ctx context.Context, tripID string, limit, off
 
 	// Get paginated results
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, trip_id, question, allow_multiple_votes, status, created_by,
+		`SELECT id, trip_id, question, poll_type, is_blind, allow_multiple_votes, status, created_by,
 		        closed_by, closed_at, expires_at, created_at, updated_at
 		FROM polls
 		WHERE trip_id = $1 AND deleted_at IS NULL
@@ -142,7 +150,7 @@ func (s *sqlcPollStore) UpdatePollQuestion(ctx context.Context, id, tripID, ques
 		`UPDATE polls
 		SET question = $3, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1 AND trip_id = $2 AND deleted_at IS NULL
-		RETURNING id, trip_id, question, allow_multiple_votes, status, created_by,
+		RETURNING id, trip_id, question, poll_type, is_blind, allow_multiple_votes, status, created_by,
 		          closed_by, closed_at, expires_at, created_at, updated_at`,
 		id, tripID, question,
 	)
@@ -163,7 +171,7 @@ func (s *sqlcPollStore) ClosePoll(ctx context.Context, id, tripID, closedBy stri
 		`UPDATE polls
 		SET status = 'CLOSED', closed_by = $3, closed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1 AND trip_id = $2 AND deleted_at IS NULL AND status = 'ACTIVE'
-		RETURNING id, trip_id, question, allow_multiple_votes, status, created_by,
+		RETURNING id, trip_id, question, poll_type, is_blind, allow_multiple_votes, status, created_by,
 		          closed_by, closed_at, expires_at, created_at, updated_at`,
 		id, tripID, closedBy,
 	)
@@ -197,12 +205,20 @@ func (s *sqlcPollStore) SoftDeletePoll(ctx context.Context, id, tripID string) e
 
 // CreatePollOption creates a new poll option
 func (s *sqlcPollStore) CreatePollOption(ctx context.Context, option *types.PollOption) (string, error) {
+	var metadataJSON []byte
+	if option.OptionMetadata != nil {
+		var err error
+		metadataJSON, err = json.Marshal(option.OptionMetadata)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal option metadata: %w", err)
+		}
+	}
 	var id string
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO poll_options (poll_id, text, position, created_by)
-		VALUES ($1, $2, $3, $4)
+		`INSERT INTO poll_options (poll_id, text, position, created_by, option_metadata)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`,
-		option.PollID, option.Text, option.Position, option.CreatedBy,
+		option.PollID, option.Text, option.Position, option.CreatedBy, metadataJSON,
 	).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("failed to create poll option: %w", err)
@@ -213,7 +229,7 @@ func (s *sqlcPollStore) CreatePollOption(ctx context.Context, option *types.Poll
 // ListPollOptions retrieves all options for a poll
 func (s *sqlcPollStore) ListPollOptions(ctx context.Context, pollID string) ([]*types.PollOption, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, poll_id, text, position, created_by, created_at
+		`SELECT id, poll_id, text, position, created_by, created_at, option_metadata
 		FROM poll_options
 		WHERE poll_id = $1
 		ORDER BY position ASC`,
@@ -228,10 +244,14 @@ func (s *sqlcPollStore) ListPollOptions(ctx context.Context, pollID string) ([]*
 	for rows.Next() {
 		var opt types.PollOption
 		var createdAt pgtype.Timestamptz
-		if err := rows.Scan(&opt.ID, &opt.PollID, &opt.Text, &opt.Position, &opt.CreatedBy, &createdAt); err != nil {
+		var metadataRaw []byte
+		if err := rows.Scan(&opt.ID, &opt.PollID, &opt.Text, &opt.Position, &opt.CreatedBy, &createdAt, &metadataRaw); err != nil {
 			return nil, fmt.Errorf("failed to scan poll option: %w", err)
 		}
 		opt.CreatedAt = PgTimestamptzToTime(createdAt)
+		if err := opt.UnmarshalOptionMetadata(metadataRaw); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal option metadata: %w", err)
+		}
 		options = append(options, &opt)
 	}
 	if err := rows.Err(); err != nil {
@@ -422,6 +442,7 @@ func (s *sqlcPollStore) BeginTx(ctx context.Context) (types.DatabaseTransaction,
 // scanPoll scans a single poll row from QueryRow
 func (s *sqlcPollStore) scanPoll(row pgx.Row) (*types.Poll, error) {
 	var p types.Poll
+	var pollType string
 	var status string
 	var closedBy *string
 	var closedAt pgtype.Timestamptz
@@ -430,7 +451,7 @@ func (s *sqlcPollStore) scanPoll(row pgx.Row) (*types.Poll, error) {
 	var updatedAt pgtype.Timestamptz
 
 	err := row.Scan(
-		&p.ID, &p.TripID, &p.Question, &p.AllowMultipleVotes, &status, &p.CreatedBy,
+		&p.ID, &p.TripID, &p.Question, &pollType, &p.IsBlind, &p.AllowMultipleVotes, &status, &p.CreatedBy,
 		&closedBy, &closedAt, &expiresAt, &createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -440,6 +461,7 @@ func (s *sqlcPollStore) scanPoll(row pgx.Row) (*types.Poll, error) {
 		return nil, fmt.Errorf("failed to scan poll: %w", err)
 	}
 
+	p.PollType = types.PollType(pollType)
 	p.Status = types.PollStatus(status)
 	p.ClosedBy = closedBy
 	p.ClosedAt = PgTimestamptzToTimePtr(closedAt)
@@ -453,6 +475,7 @@ func (s *sqlcPollStore) scanPoll(row pgx.Row) (*types.Poll, error) {
 // scanPollRows scans a poll from a Rows iterator
 func (s *sqlcPollStore) scanPollRows(rows pgx.Rows) (*types.Poll, error) {
 	var p types.Poll
+	var pollType string
 	var status string
 	var closedBy *string
 	var closedAt pgtype.Timestamptz
@@ -461,13 +484,14 @@ func (s *sqlcPollStore) scanPollRows(rows pgx.Rows) (*types.Poll, error) {
 	var updatedAt pgtype.Timestamptz
 
 	err := rows.Scan(
-		&p.ID, &p.TripID, &p.Question, &p.AllowMultipleVotes, &status, &p.CreatedBy,
+		&p.ID, &p.TripID, &p.Question, &pollType, &p.IsBlind, &p.AllowMultipleVotes, &status, &p.CreatedBy,
 		&closedBy, &closedAt, &expiresAt, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	p.PollType = types.PollType(pollType)
 	p.Status = types.PollStatus(status)
 	p.ClosedBy = closedBy
 	p.ClosedAt = PgTimestamptzToTimePtr(closedAt)

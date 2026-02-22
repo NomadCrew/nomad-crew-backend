@@ -46,6 +46,8 @@ func (pm *PollModel) CreatePollWithEvent(ctx context.Context, tripID, userID str
 	poll := &types.Poll{
 		TripID:             tripID,
 		Question:           req.Question,
+		PollType:           req.PollType,
+		IsBlind:            req.IsBlind,
 		AllowMultipleVotes: req.AllowMultipleVotes,
 		CreatedBy:          userID,
 	}
@@ -57,14 +59,33 @@ func (pm *PollModel) CreatePollWithEvent(ctx context.Context, tripID, userID str
 	}
 	poll.ExpiresAt = time.Now().Add(time.Duration(durationMins) * time.Minute)
 
-	// Build options with trimmed text
-	options := make([]*types.PollOption, 0, len(req.Options))
-	for i, optText := range req.Options {
-		options = append(options, &types.PollOption{
-			Text:      strings.TrimSpace(optText),
-			Position:  i,
-			CreatedBy: userID,
-		})
+	// Build options — prefer RichOptions if provided, fall back to simple Options
+	var options []*types.PollOption
+	if len(req.RichOptions) > 0 {
+		options = make([]*types.PollOption, 0, len(req.RichOptions))
+		for i, ro := range req.RichOptions {
+			opt := &types.PollOption{
+				Text:      strings.TrimSpace(ro.Text),
+				Position:  i,
+				CreatedBy: userID,
+			}
+			if ro.Metadata != nil {
+				opt.OptionMetadata = ro.Metadata
+				opt.ImageURL = ro.Metadata.ImageURL
+				opt.Lat = ro.Metadata.Lat
+				opt.Lng = ro.Metadata.Lng
+			}
+			options = append(options, opt)
+		}
+	} else {
+		options = make([]*types.PollOption, 0, len(req.Options))
+		for i, optText := range req.Options {
+			options = append(options, &types.PollOption{
+				Text:      strings.TrimSpace(optText),
+				Position:  i,
+				CreatedBy: userID,
+			})
+		}
 	}
 
 	pollID, err := pm.store.CreatePollWithOptions(ctx, poll, options)
@@ -362,7 +383,7 @@ func (pm *PollModel) ClosePollWithEvent(ctx context.Context, tripID, pollID, use
 		return nil, err
 	}
 
-	// Publish event (fire-and-forget)
+	// Publish close event (fire-and-forget)
 	payload := map[string]interface{}{
 		"pollId":   pollID,
 		"tripId":   tripID,
@@ -370,6 +391,18 @@ func (pm *PollModel) ClosePollWithEvent(ctx context.Context, tripID, pollID, use
 	}
 	if err := pm.publishPollEvent(ctx, types.EventTypePollClosed, tripID, userID, payload); err != nil {
 		log.Warnw("Failed to publish poll closed event", "error", err, "pollId", pollID)
+	}
+
+	// For blind polls, also fire a POLL_REVEALED event so clients know to show results
+	if poll.IsBlind {
+		revealPayload := map[string]interface{}{
+			"pollId":   pollID,
+			"tripId":   tripID,
+			"closedBy": userID,
+		}
+		if err := pm.publishPollEvent(ctx, types.EventTypePollRevealed, tripID, userID, revealPayload); err != nil {
+			log.Warnw("Failed to publish poll revealed event", "error", err, "pollId", pollID)
+		}
 	}
 
 	return resp, nil
@@ -477,12 +510,24 @@ func (pm *PollModel) buildPollResponse(ctx context.Context, poll *types.Poll, us
 		})
 	}
 
-	return &types.PollResponse{
+	resp := &types.PollResponse{
 		Poll:          *poll,
 		Options:       optionResponses,
 		TotalVotes:    totalVotes,
 		UserVoteCount: len(userVotes),
-	}, nil
+	}
+
+	// Blind poll: strip vote counts and voter lists while poll is active.
+	// Only preserve HasVoted so the user knows they voted.
+	if poll.IsBlind && poll.Status == types.PollStatusActive {
+		for i := range resp.Options {
+			resp.Options[i].VoteCount = 0
+			resp.Options[i].Voters = []types.PollVoter{}
+		}
+		resp.TotalVotes = 0
+	}
+
+	return resp, nil
 }
 
 // Helper functions
@@ -496,31 +541,86 @@ func validatePollCreate(req *types.PollCreate) error {
 	if len(req.Question) > 500 {
 		validationErrors = append(validationErrors, "question exceeds 500 characters")
 	}
-	if len(req.Options) < 2 {
+
+	// Default poll type
+	if req.PollType == "" {
+		req.PollType = types.PollTypeStandard
+	}
+
+	// Validate poll type
+	switch req.PollType {
+	case types.PollTypeStandard, types.PollTypeBinary, types.PollTypeEmoji,
+		types.PollTypeSchedule, types.PollTypeVibeCheck:
+		// valid
+	default:
+		validationErrors = append(validationErrors, fmt.Sprintf("invalid poll type: %s", req.PollType))
+	}
+
+	// Determine option count from whichever field is populated
+	optionCount := len(req.Options)
+	if len(req.RichOptions) > 0 {
+		optionCount = len(req.RichOptions)
+	}
+
+	if optionCount < 2 {
 		validationErrors = append(validationErrors, "at least 2 options are required")
 	}
-	if len(req.Options) > 20 {
+	if optionCount > 20 {
 		validationErrors = append(validationErrors, "maximum 20 options allowed")
 	}
+
+	// Binary polls must have exactly 2 options
+	if req.PollType == types.PollTypeBinary && optionCount != 2 {
+		validationErrors = append(validationErrors, "binary polls must have exactly 2 options")
+	}
+
 	if req.DurationMinutes != nil {
 		if *req.DurationMinutes < 5 || *req.DurationMinutes > 2880 {
 			validationErrors = append(validationErrors, "durationMinutes must be between 5 and 2880 (5 minutes to 48 hours)")
 		}
 	}
-	seen := make(map[string]bool, len(req.Options))
-	for i, opt := range req.Options {
-		trimmed := strings.TrimSpace(opt)
-		if trimmed == "" {
-			validationErrors = append(validationErrors, fmt.Sprintf("option %d cannot be empty", i+1))
+
+	// Validate simple options
+	if len(req.Options) > 0 {
+		seen := make(map[string]bool, len(req.Options))
+		for i, opt := range req.Options {
+			trimmed := strings.TrimSpace(opt)
+			if trimmed == "" {
+				validationErrors = append(validationErrors, fmt.Sprintf("option %d cannot be empty", i+1))
+			}
+			if len(opt) > 200 {
+				validationErrors = append(validationErrors, fmt.Sprintf("option %d exceeds 200 characters", i+1))
+			}
+			// Skip duplicate check for emoji polls (same emoji text is valid)
+			if req.PollType != types.PollTypeEmoji {
+				lower := strings.ToLower(trimmed)
+				if lower != "" && seen[lower] {
+					validationErrors = append(validationErrors, fmt.Sprintf("option %d is a duplicate", i+1))
+				}
+				seen[lower] = true
+			}
 		}
-		if len(opt) > 200 {
-			validationErrors = append(validationErrors, fmt.Sprintf("option %d exceeds 200 characters", i+1))
+	}
+
+	// Validate rich options
+	if len(req.RichOptions) > 0 {
+		seen := make(map[string]bool, len(req.RichOptions))
+		for i, opt := range req.RichOptions {
+			trimmed := strings.TrimSpace(opt.Text)
+			if trimmed == "" {
+				validationErrors = append(validationErrors, fmt.Sprintf("option %d cannot be empty", i+1))
+			}
+			if len(opt.Text) > 200 {
+				validationErrors = append(validationErrors, fmt.Sprintf("option %d exceeds 200 characters", i+1))
+			}
+			if req.PollType != types.PollTypeEmoji {
+				lower := strings.ToLower(trimmed)
+				if lower != "" && seen[lower] {
+					validationErrors = append(validationErrors, fmt.Sprintf("option %d is a duplicate", i+1))
+				}
+				seen[lower] = true
+			}
 		}
-		lower := strings.ToLower(trimmed)
-		if lower != "" && seen[lower] {
-			validationErrors = append(validationErrors, fmt.Sprintf("option %d is a duplicate", i+1))
-		}
-		seen[lower] = true
 	}
 
 	if len(validationErrors) > 0 {

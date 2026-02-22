@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type PollStatus string
 
@@ -9,10 +12,22 @@ const (
 	PollStatusClosed PollStatus = "CLOSED"
 )
 
+type PollType string
+
+const (
+	PollTypeStandard   PollType = "standard"
+	PollTypeBinary     PollType = "binary"
+	PollTypeEmoji      PollType = "emoji"
+	PollTypeSchedule   PollType = "schedule"
+	PollTypeVibeCheck  PollType = "vibe_check"
+)
+
 type Poll struct {
 	ID                 string     `json:"id"`
 	TripID             string     `json:"tripId"`
 	Question           string     `json:"question"`
+	PollType           PollType   `json:"pollType"`
+	IsBlind            bool       `json:"isBlind"`
 	Status             PollStatus `json:"status"`
 	AllowMultipleVotes bool       `json:"allowMultipleVotes"`
 	CreatedBy          string     `json:"createdBy"`
@@ -27,13 +42,41 @@ func (p *Poll) IsExpired() bool {
 	return time.Now().After(p.ExpiresAt)
 }
 
+// OptionMetadata holds optional rich data for poll options (stored as JSONB).
+type OptionMetadata struct {
+	ImageURL *string  `json:"imageUrl,omitempty"`
+	Lat      *float64 `json:"lat,omitempty"`
+	Lng      *float64 `json:"lng,omitempty"`
+}
+
 type PollOption struct {
-	ID        string    `json:"id"`
-	PollID    string    `json:"pollId"`
-	Text      string    `json:"text"`
-	Position  int       `json:"position"`
-	CreatedBy string    `json:"createdBy"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID             string           `json:"id"`
+	PollID         string           `json:"pollId"`
+	Text           string           `json:"text"`
+	Position       int              `json:"position"`
+	CreatedBy      string           `json:"createdBy"`
+	CreatedAt      time.Time        `json:"createdAt"`
+	OptionMetadata *OptionMetadata  `json:"optionMetadata,omitempty"`
+	// Convenience fields flattened from OptionMetadata for API responses
+	ImageURL       *string          `json:"imageUrl,omitempty"`
+	Lat            *float64         `json:"lat,omitempty"`
+	Lng            *float64         `json:"lng,omitempty"`
+}
+
+// UnmarshalOptionMetadata parses the JSONB option_metadata column into the flattened fields.
+func (o *PollOption) UnmarshalOptionMetadata(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	var meta OptionMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return err
+	}
+	o.OptionMetadata = &meta
+	o.ImageURL = meta.ImageURL
+	o.Lat = meta.Lat
+	o.Lng = meta.Lng
+	return nil
 }
 
 type PollVote struct {
@@ -46,11 +89,19 @@ type PollVote struct {
 
 // API request types
 
+type PollOptionCreate struct {
+	Text     string          `json:"text" binding:"required,max=200"`
+	Metadata *OptionMetadata `json:"metadata,omitempty"`
+}
+
 type PollCreate struct {
-	Question           string   `json:"question" binding:"required,max=500"`
-	Options            []string `json:"options" binding:"required,min=2,max=20,dive,min=1,max=200"`
-	AllowMultipleVotes bool     `json:"allowMultipleVotes"`
-	DurationMinutes    *int     `json:"durationMinutes,omitempty"`
+	Question           string             `json:"question" binding:"required,max=500"`
+	Options            []string           `json:"options,omitempty" binding:"omitempty,min=2,max=20,dive,min=1,max=200"`
+	RichOptions        []PollOptionCreate `json:"richOptions,omitempty"`
+	PollType           PollType           `json:"pollType,omitempty"`
+	IsBlind            bool               `json:"isBlind,omitempty"`
+	AllowMultipleVotes bool               `json:"allowMultipleVotes"`
+	DurationMinutes    *int               `json:"durationMinutes,omitempty"`
 }
 
 type PollUpdate struct {

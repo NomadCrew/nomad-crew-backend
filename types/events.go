@@ -81,6 +81,7 @@ const (
 	EventTypePollVoteCast    EventType = CategoryPoll + "_VOTE_CAST"
 	EventTypePollVoteRemoved EventType = CategoryPoll + "_VOTE_REMOVED"
 	EventTypePollClosed      EventType = CategoryPoll + "_CLOSED"
+	EventTypePollRevealed    EventType = CategoryPoll + "_REVEALED"
 	EventTypePollDeleted     EventType = CategoryPoll + "_DELETED"
 
 	// Expense events
@@ -280,6 +281,12 @@ type PollVoteRemovedEvent struct {
 }
 
 type PollClosedEvent struct {
+	PollID   string `json:"pollId"`
+	TripID   string `json:"tripId"`
+	ClosedBy string `json:"closedBy"`
+}
+
+type PollRevealedEvent struct {
 	PollID   string `json:"pollId"`
 	TripID   string `json:"tripId"`
 	ClosedBy string `json:"closedBy"`
