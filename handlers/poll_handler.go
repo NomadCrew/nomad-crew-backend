@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/NomadCrew/nomad-crew-backend/errors"
@@ -10,13 +11,29 @@ import (
 	"github.com/google/uuid"
 )
 
-type PollHandler struct {
-	pollModel *models.PollModel
+// PollServiceInterface defines the methods used by PollHandler,
+// allowing the handler to be tested with a mock.
+type PollServiceInterface interface {
+	CreatePollWithEvent(ctx context.Context, tripID, userID string, req *types.PollCreate) (*types.PollResponse, error)
+	GetPollWithResults(ctx context.Context, tripID, pollID, userID string) (*types.PollResponse, error)
+	ListTripPolls(ctx context.Context, tripID, userID string, limit, offset int) ([]*types.PollResponse, int, error)
+	UpdatePollWithEvent(ctx context.Context, tripID, pollID, userID string, req *types.PollUpdate) (*types.PollResponse, error)
+	DeletePollWithEvent(ctx context.Context, tripID, pollID, userID string) error
+	CastVoteWithEvent(ctx context.Context, tripID, pollID, optionID, userID string) error
+	RemoveVoteWithEvent(ctx context.Context, tripID, pollID, optionID, userID string) error
+	ClosePollWithEvent(ctx context.Context, tripID, pollID, userID string) (*types.PollResponse, error)
 }
 
-func NewPollHandler(model *models.PollModel) *PollHandler {
+// compile-time check: *models.PollModel satisfies PollServiceInterface
+var _ PollServiceInterface = (*models.PollModel)(nil)
+
+type PollHandler struct {
+	pollService PollServiceInterface
+}
+
+func NewPollHandler(service PollServiceInterface) *PollHandler {
 	return &PollHandler{
-		pollModel: model,
+		pollService: service,
 	}
 }
 
@@ -45,7 +62,7 @@ func (h *PollHandler) CreatePollHandler(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.pollModel.CreatePollWithEvent(c.Request.Context(), tripID, userID, &req)
+	resp, err := h.pollService.CreatePollWithEvent(c.Request.Context(), tripID, userID, &req)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -70,7 +87,7 @@ func (h *PollHandler) ListPollsHandler(c *gin.Context) {
 
 	params := getPaginationParams(c, 20, 0)
 
-	polls, total, err := h.pollModel.ListTripPolls(c.Request.Context(), tripID, userID, params.Limit, params.Offset)
+	polls, total, err := h.pollService.ListTripPolls(c.Request.Context(), tripID, userID, params.Limit, params.Offset)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -101,7 +118,7 @@ func (h *PollHandler) GetPollHandler(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.pollModel.GetPollWithResults(c.Request.Context(), tripID, pollID, userID)
+	resp, err := h.pollService.GetPollWithResults(c.Request.Context(), tripID, pollID, userID)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -130,7 +147,7 @@ func (h *PollHandler) UpdatePollHandler(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.pollModel.UpdatePollWithEvent(c.Request.Context(), tripID, pollID, userID, &req)
+	resp, err := h.pollService.UpdatePollWithEvent(c.Request.Context(), tripID, pollID, userID, &req)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -154,7 +171,7 @@ func (h *PollHandler) DeletePollHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.pollModel.DeletePollWithEvent(c.Request.Context(), tripID, pollID, userID); err != nil {
+	if err := h.pollService.DeletePollWithEvent(c.Request.Context(), tripID, pollID, userID); err != nil {
 		_ = c.Error(err)
 		return
 	}
@@ -189,7 +206,7 @@ func (h *PollHandler) CastVoteHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.pollModel.CastVoteWithEvent(c.Request.Context(), tripID, pollID, req.OptionID, userID); err != nil {
+	if err := h.pollService.CastVoteWithEvent(c.Request.Context(), tripID, pollID, req.OptionID, userID); err != nil {
 		_ = c.Error(err)
 		return
 	}
@@ -215,7 +232,7 @@ func (h *PollHandler) RemoveVoteHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.pollModel.RemoveVoteWithEvent(c.Request.Context(), tripID, pollID, optionID, userID); err != nil {
+	if err := h.pollService.RemoveVoteWithEvent(c.Request.Context(), tripID, pollID, optionID, userID); err != nil {
 		_ = c.Error(err)
 		return
 	}
@@ -240,7 +257,7 @@ func (h *PollHandler) ClosePollHandler(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.pollModel.ClosePollWithEvent(c.Request.Context(), tripID, pollID, userID)
+	resp, err := h.pollService.ClosePollWithEvent(c.Request.Context(), tripID, pollID, userID)
 	if err != nil {
 		_ = c.Error(err)
 		return
