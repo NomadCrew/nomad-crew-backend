@@ -276,6 +276,9 @@ func main() {
 	walletService := walletSvc.NewWalletService(walletStore, tripStore, walletFileStorage, cfg.EffectiveWalletSigningKey())
 	walletHandler := handlers.NewWalletHandler(walletService)
 
+	// Poll image handler (reuses wallet file storage and signing key)
+	pollImageHandler := handlers.NewPollImageHandler(walletFileStorage, cfg.EffectiveWalletSigningKey())
+
 	// Expense store, service, and handler
 	expenseStore := sqlcadapter.NewSqlcExpenseStore(dbClient.GetPool())
 	log.Info("Using SQLC-based expense store")
@@ -345,6 +348,7 @@ func main() {
 	routerDeps.WebSocketHandler = wsHandler
 	routerDeps.PushTokenHandler = pushTokenHandler
 	routerDeps.PollHandler = pollHandler
+	routerDeps.PollImageHandler = pollImageHandler
 	routerDeps.FeedbackHandler = feedbackHandler
 	routerDeps.WalletHandler = walletHandler
 	routerDeps.ExpenseHandler = expenseHandler

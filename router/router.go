@@ -51,6 +51,8 @@ type Dependencies struct {
 	FeedbackHandler *handlers.FeedbackHandler
 	// Wallet handler for document management
 	WalletHandler *handlers.WalletHandler
+	// Poll image handler for poll option image uploads
+	PollImageHandler *handlers.PollImageHandler
 	// Expense handler for expense splitting
 	ExpenseHandler *handlers.ExpenseHandler
 }
@@ -349,6 +351,13 @@ func SetupRouter(deps Dependencies) *gin.Engine {
 							middleware.RequireTripMembership(deps.TripModel),
 							deps.PollHandler.ClosePollHandler)
 					}
+				}
+
+				// Poll Image Upload - any trip member can upload images for poll options
+				if deps.PollImageHandler != nil {
+					tripRoutes.POST("/:id/poll-images",
+						middleware.RequirePermission(deps.TripModel, types.ActionCreate, types.ResourcePoll, nil),
+						deps.PollImageHandler.UploadPollImageHandler)
 				}
 
 				// Trip Todo Routes - ADMIN+ can manage any, MEMBER can manage own

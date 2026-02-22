@@ -271,7 +271,7 @@ func (s *WalletService) UploadDocument(ctx context.Context, userID string, file 
 	}
 
 	// Generate storage path: <walletType>/<userID>/<timestamp>_<filename>
-	storagePath := fmt.Sprintf("%s/%s/%d_%s", create.WalletType, userID, time.Now().UnixNano(), sanitizeFilename(fileName))
+	storagePath := fmt.Sprintf("%s/%s/%d_%s", create.WalletType, userID, time.Now().UnixNano(), SanitizeFilename(fileName))
 
 	// Save file to storage
 	if err := s.fileStorage.Save(ctx, storagePath, cr, fileSize); err != nil {
@@ -430,6 +430,20 @@ func (s *WalletService) GenerateSignedURL(docPath string, expiresIn time.Duratio
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
+// GenerateSignedURLStatic creates an HMAC-signed download URL token using the provided key.
+// Exported so other packages (e.g. poll image handler) can reuse it without a WalletService instance.
+func GenerateSignedURLStatic(signingKey []byte, docPath string, expiresIn time.Duration) string {
+	expiry := time.Now().Add(expiresIn).Unix()
+	message := fmt.Sprintf("%s|%d", docPath, expiry)
+
+	mac := hmac.New(sha256.New, signingKey)
+	mac.Write([]byte(message))
+	sig := hex.EncodeToString(mac.Sum(nil))
+
+	raw := fmt.Sprintf("%s|%s|%d", sig, docPath, expiry)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
 // ValidateSignedURL validates an HMAC-signed token and returns the file path
 func (s *WalletService) ValidateSignedURL(token string) (string, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(token)
@@ -556,9 +570,10 @@ func (s *WalletService) DeleteAllUserDocuments(ctx context.Context, userID strin
 
 var safeFilenameRe = regexp.MustCompile(`[^a-zA-Z0-9._\-]`)
 
-// sanitizeFilename removes path separators and dangerous characters from a filename.
+// SanitizeFilename removes path separators and dangerous characters from a filename.
 // Preserves the file extension when truncating long names.
-func sanitizeFilename(name string) string {
+// Exported so other packages (e.g. poll image upload) can reuse it.
+func SanitizeFilename(name string) string {
 	name = filepath.Base(name)
 	name = safeFilenameRe.ReplaceAllString(name, "_")
 	if name == "" || name == "." || name == ".." {
